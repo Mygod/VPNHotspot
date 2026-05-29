@@ -19,12 +19,9 @@ import android.os.DeadObjectException
 import android.os.Handler
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
-import androidx.core.os.ExecutorCompat
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.root.RootManager
-import be.mygod.vpnhotspot.root.StartTethering
-import be.mygod.vpnhotspot.root.StopTethering
-import be.mygod.vpnhotspot.root.StopTetheringLegacy
+import be.mygod.vpnhotspot.root.TetheringCommands
 import be.mygod.vpnhotspot.util.ConstantLookup
 import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
@@ -32,9 +29,8 @@ import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.callSuper
 import be.mygod.vpnhotspot.util.getRootCause
 import be.mygod.vpnhotspot.util.matches
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.suspendCancellableCoroutine
 import timber.log.Timber
 import java.lang.ref.WeakReference
 import java.lang.reflect.InvocationHandler
@@ -44,6 +40,9 @@ import java.lang.reflect.Proxy
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CancellationException
 import java.util.concurrent.Executor
+import kotlin.coroutines.coroutineContext
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 /**
  * Heavily based on:
@@ -51,47 +50,22 @@ import java.util.concurrent.Executor
  * https://android.googlesource.com/platform/frameworks/base.git/+/android-7.0.0_r1/core/java/android/net/ConnectivityManager.java
  */
 object TetheringManagerCompat {
-    interface TetheringCallback {
-        /**
-         * ADDED: Called when a local Exception occurred.
-         */
-        fun onException(e: Exception) {
-            when (e.getRootCause()) {
-                is SecurityException, is CancellationException -> { }
-                else -> Timber.w(e)
-            }
-        }
-    }
     /**
-     * Callback for use with [startTethering] to find out whether tethering succeeded.
+     * Thrown by [startTethering]/[stopTethering] when the platform reports that the tethering
+     * operation failed. [errorCode] is one of `TetheringManager.TETHER_ERROR_*` (see
+     * [tetherErrorLookup]); it is null only for the legacy API, which does not report a code.
      */
-    interface StartTetheringCallback : TetheringCallback {
-        /**
-         * Called when tethering has been successfully started.
-         */
-        fun onTetheringStarted() { }
+    class Failure(val errorCode: Int? = null, cause: Throwable? = null) :
+        Exception("Tethering operation failed${errorCode?.let { " (error $it)" }.orEmpty()}", cause)
 
-        /**
-         * Called when starting tethering failed.
-         *
-         * @param error The error that caused the failure.
-         */
-        fun onTetheringFailed(error: Int? = null) { }
-
-    }
-    interface StopTetheringCallback : TetheringCallback {
-        /**
-         * Called when tethering has been successfully stopped.
-         */
-        fun onStopTetheringSucceeded() {}
-
-        /**
-         * Called when starting tethering failed.
-         *
-         * @param error The error that caused the failure.
-         */
-        @RequiresApi(30)
-        fun onStopTetheringFailed(error: Int) {}
+    /**
+     * Log [e] unless it is an expected permission denial or cancellation. Replaces the old
+     * `TetheringCallback.onException` default so call sites keep the same quiet-on-SecurityException
+     * behavior in their catch blocks. Rethrow [CancellationException] before calling this.
+     */
+    fun reportException(e: Throwable) = when (e.getRootCause()) {
+        is SecurityException, is CancellationException -> { }
+        else -> Timber.w(e)
     }
 
     @RequiresApi(30)
@@ -173,46 +147,36 @@ object TetheringManagerCompat {
     }
 
     @Deprecated("Legacy API")
-    fun startTetheringLegacy(type: Int, showProvisioningUi: Boolean, callback: StartTetheringCallback,
-                             handler: Handler? = null) {
-        val reference = WeakReference(callback)
-        val proxy = object : `ConnectivityManager$OnStartTetheringCallback`() {
-            override fun onTetheringStarted() {
-                reference.get()?.onTetheringStarted()
+    @Suppress("DEPRECATION")
+    suspend fun startTetheringLegacy(type: Int, showProvisioningUi: Boolean): Unit =
+        suspendCancellableCoroutine { cont ->
+            val proxy = object : `ConnectivityManager$OnStartTetheringCallback`() {
+                override fun onTetheringStarted() = cont.resume(Unit)
+                override fun onTetheringFailed() = cont.resumeWithException(Failure())
             }
-            override fun onTetheringFailed() {
-                reference.get()?.onTetheringFailed()
-            }
+            startTethering(Services.connectivity, type, showProvisioningUi, proxy, null)
         }
-        startTethering(Services.connectivity, type, showProvisioningUi, proxy, handler)
-    }
     @RequiresApi(30)
-    fun startTethering(type: Int, exemptFromEntitlementCheck: Boolean, showProvisioningUi: Boolean, executor: Executor,
-                       callback: TetheringManager.StartTetheringCallback) {
-        Services.tethering.startTethering(TetheringManager.TetheringRequest.Builder(type).also { builder ->
-            // setting exemption requires TETHER_PRIVILEGED permission
-            if (exemptFromEntitlementCheck) setExemptFromEntitlementCheck(builder, true)
-            setShouldShowEntitlementUi(builder, showProvisioningUi)
-        }.build(), executor, callback)
-    }
-    @RequiresApi(30)
-    private fun proxy(reference: WeakReference<StartTetheringCallback>): TetheringManager.StartTetheringCallback {
-        return object : TetheringManager.StartTetheringCallback {
-            override fun onTetheringStarted() {
-                reference.get()?.onTetheringStarted()
-            }
-            override fun onTetheringFailed(error: Int) {
-                reference.get()?.onTetheringFailed(error)
-            }
+    suspend fun startTethering(type: Int, exemptFromEntitlementCheck: Boolean, showProvisioningUi: Boolean): Unit =
+        suspendCancellableCoroutine { cont ->
+            Services.tethering.startTethering(TetheringManager.TetheringRequest.Builder(type).also { builder ->
+                // setting exemption requires TETHER_PRIVILEGED permission
+                if (exemptFromEntitlementCheck) setExemptFromEntitlementCheck(builder, true)
+                setShouldShowEntitlementUi(builder, showProvisioningUi)
+            }.build(), InPlaceExecutor, object : TetheringManager.StartTetheringCallback {
+                override fun onTetheringStarted() = cont.resume(Unit)
+                override fun onTetheringFailed(error: Int) = cont.resumeWithException(Failure(error))
+            })
         }
-    }
     /**
      * Runs tether provisioning for the given type if needed and then starts tethering if
      * the check succeeds. If no carrier provisioning is required for tethering, tethering is
      * enabled immediately. If provisioning fails, tethering will not be enabled. It also
      * schedules tether provisioning re-checks if appropriate.
      *
-     * CHANGED BEHAVIOR: This method will not throw Exceptions, instead, callback.onException will be called.
+     * CHANGED BEHAVIOR: suspends until done; returns normally on success, throws [Failure] when the
+     * platform reports a tethering error, or rethrows the local exception otherwise (callers can
+     * route it through [reportException] to preserve the old quiet-on-SecurityException logging).
      *
      * @param type The type of tethering to start. Must be one of
      *         {@link ConnectivityManager.TETHERING_WIFI},
@@ -222,103 +186,76 @@ object TetheringManagerCompat {
      *         is one. This should be true the first time this function is called and also any time
      *         the user can see this UI. It gives users information from their carrier about the
      *         check failing and how they can sign up for tethering if possible.
-     * @param callback an {@link OnStartTetheringCallback} which will be called to notify the caller
-     *         of the result of trying to tether.
-     * @param handler {@link Handler} to specify the thread upon which the callback will be invoked
      * *@param localIPv4Address for API 30+ (not implemented for now due to blacklist). If present, it
      *         configures tethering with the preferred local IPv4 link address to use.
      * *@see setStaticIpv4Addresses
      */
-    fun startTethering(type: Int, showProvisioningUi: Boolean, callback: StartTetheringCallback,
-                       handler: Handler? = null) {
-        if (Build.VERSION.SDK_INT >= 30) try {
-            val executor = if (handler == null) InPlaceExecutor else ExecutorCompat.create(handler)
-            val reference = WeakReference(callback)
-            startTethering(type, true, showProvisioningUi, executor, object : TetheringManager.StartTetheringCallback {
-                override fun onTetheringStarted() {
-                    reference.get()?.onTetheringStarted()
-                }
-                override fun onTetheringFailed(error: Int) {
-                    if (error != TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) {
-                        reference.get()?.onTetheringFailed(error)
-                    } else {
-                        val currentCallback = reference.get() ?: return
-                        GlobalScope.launch(Dispatchers.Unconfined) {
-                            val result = try {
-                                RootManager.use { it.execute(StartTethering(type, showProvisioningUi)) }
-                            } catch (eRoot: Exception) {
-                                try {   // last resort: start tethering without trying to bypass entitlement check
-                                    startTethering(type, false, showProvisioningUi, executor, proxy(reference))
-                                    if (eRoot !is CancellationException) Timber.w(eRoot)
-                                } catch (e: Exception) {
-                                    e.addSuppressed(eRoot)
-                                    currentCallback.onException(e)
-                                }
-                                return@launch
-                            }
-                            when {
-                                result == null -> currentCallback.onTetheringStarted()
-                                result.value == TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION -> try {
-                                    startTethering(type, false, showProvisioningUi, executor, proxy(reference))
-                                } catch (e: Exception) {
-                                    currentCallback.onException(e)
-                                }
-                                else -> currentCallback.onTetheringFailed(result.value)
-                            }
-                        }
-                    }
-                }
-            })
-        } catch (e: Exception) {
-            callback.onException(e)
-        } else @Suppress("DEPRECATION") try {
-            startTetheringLegacy(type, showProvisioningUi, callback, handler)
-        } catch (e: InvocationTargetException) {
-            if (e.targetException is SecurityException) GlobalScope.launch(Dispatchers.Unconfined) {
-                val result = try {
-                    RootManager.use {
-                        it.execute(be.mygod.vpnhotspot.root.StartTetheringLegacy(type, showProvisioningUi))
-                    }.value
+    suspend fun startTethering(type: Int, showProvisioningUi: Boolean) {
+        if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
+            try {
+                startTetheringLegacy(type, showProvisioningUi)
+            } catch (e: InvocationTargetException) {
+                if (e.targetException is SecurityException) try {
+                    RootManager.use { it.execute(TetheringCommands.StartLegacy(type, showProvisioningUi)) }
                 } catch (eRoot: Exception) {
-                    eRoot.addSuppressed(e)
+                    // surface a root-reported Failure as itself (unwrapped from RemoteException)
+                    throw (eRoot.getRootCause() as? Failure ?: eRoot).apply { addSuppressed(e) }
+                } else throw e
+            }
+            return
+        }
+        try {
+            return startTethering(type, true, showProvisioningUi)
+        } catch (e: Failure) {
+            if (e.errorCode != TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) throw e
+        }
+        try {
+            RootManager.use { it.execute(TetheringCommands.Start(type, showProvisioningUi)) }
+        } catch (eRoot: Exception) {
+            // Our own coroutine was cancelled (not the root session): abort instead of issuing a
+            // framework start the caller no longer wants.
+            coroutineContext.ensureActive()
+            val cause = eRoot.getRootCause()
+            // root reached the platform but the start was rejected
+            if (cause is Failure) {
+                if (cause.errorCode == TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) {
+                    startTethering(type, false, showProvisioningUi)
+                } else throw cause
+            } else {
+                // root could not run at all: last resort without bypassing the entitlement check
+                try {
+                    startTethering(type, false, showProvisioningUi)
+                } catch (e: Failure) {
                     if (eRoot !is CancellationException) Timber.w(eRoot)
-                    callback.onException(eRoot)
-                    return@launch
+                    throw e
+                } catch (e: Exception) {
+                    throw e.apply { addSuppressed(eRoot) }
                 }
-                if (result) callback.onTetheringStarted() else callback.onTetheringFailed()
-            } else callback.onException(e)
-        } catch (e: Exception) {
-            callback.onException(e)
+                if (eRoot !is CancellationException) Timber.w(eRoot)
+            }
         }
     }
 
     @RequiresApi(30)
-    fun stopTethering(type: Int, callback: StopTetheringCallback, context: Context) {
-        val reference = WeakReference(callback)
-        val contextRef = WeakReference(context)
+    suspend fun stopTethering(type: Int, context: Context): Unit = suspendCancellableCoroutine { cont ->
         val handler = object : InvocationHandler {
             override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?) = when {
-                method.matches("onConnectorAvailable", ITetheringConnector::class.java) -> {
+                method.matches("onConnectorAvailable", ITetheringConnector::class.java) -> run {
                     val connector = args!![0] as ITetheringConnector
-                    contextRef.get()?.let { context ->
-                        val resultListener = object : IIntResultListener.Stub() {
-                            override fun onResult(resultCode: Int) {
-                                val callback = reference.get()
-                                if (resultCode == TetheringManager.TETHER_ERROR_NO_ERROR) {
-                                    callback?.onStopTetheringSucceeded()
-                                } else callback?.onStopTetheringFailed(resultCode)
-                            }
+                    val resultListener = object : IIntResultListener.Stub() {
+                        override fun onResult(resultCode: Int) {
+                            if (resultCode == TetheringManager.TETHER_ERROR_NO_ERROR) cont.resume(Unit)
+                            else cont.resumeWithException(Failure(resultCode))
                         }
-                        if (stopTetheringHasAttributionTag) try {
-                            connector.stopTethering(type, context.opPackageName, context.attributionTag,
-                                resultListener)
-                            return@let
-                        } catch (e: NoSuchMethodError) {
-                            if (Build.VERSION.SDK_INT >= 31) Timber.w(e)
-                            stopTetheringHasAttributionTag = false
-                        }
-                        connector.stopTethering(type, context.opPackageName, resultListener)
                     }
+                    if (stopTetheringHasAttributionTag) try {
+                        connector.stopTethering(type, context.opPackageName, context.attributionTag, resultListener)
+                        return@run
+                    } catch (e: NoSuchMethodError) {
+                        if (Build.VERSION.SDK_INT >= 31) Timber.w(e)
+                        stopTetheringHasAttributionTag = false
+                    }
+                    connector.stopTethering(type, context.opPackageName, resultListener)
                 }
                 else -> callSuper(UnblockCentral.TetheringManager_ConnectorConsumer, proxy, method, args)
             }
@@ -327,53 +264,45 @@ object TetheringManagerCompat {
             UnblockCentral.TetheringManager_ConnectorConsumer.classLoader,
             arrayOf(UnblockCentral.TetheringManager_ConnectorConsumer), handler))
     }
-    private fun stopTetheringRoot(type: Int, callback: StopTetheringCallback,
-                                  suppressed: Exception? = null) = GlobalScope.launch(Dispatchers.Unconfined) {
-        val result = try {
-            RootManager.use { it.execute(StopTethering(type)) }
+    @RequiresApi(30)
+    private suspend fun stopTetheringRoot(type: Int, suppressed: Exception? = null) {
+        try {
+            RootManager.use { it.execute(TetheringCommands.Stop(type)) }
         } catch (eRoot: Exception) {
-            stopTetheringLegacy(type, callback, if (eRoot is CancellationException) suppressed else eRoot.apply {
+            // Our own coroutine was cancelled (not the root session): abort instead of issuing a
+            // synchronous legacy stop the caller no longer wants.
+            coroutineContext.ensureActive()
+            // any root failure (a remote Failure or the root session itself) falls back to the legacy stop
+            stopTetheringLegacy(type, if (eRoot is CancellationException) suppressed else eRoot.apply {
                 if (suppressed != null) addSuppressed(suppressed)
             })
-            return@launch
+            return
         }
         if (suppressed != null) Timber.w(suppressed)
-        if (result == null) callback.onStopTetheringSucceeded() else {
-            Timber.w(Exception("Unexpected stopTetheringRoot error ${result.value}, falling back"))
-            stopTetheringLegacy(type, callback, suppressed)
-        }
     }
-    fun stopTethering(type: Int, callback: StopTetheringCallback) {
-        if (Build.VERSION.SDK_INT >= 30) try {
-            stopTethering(type, object : StopTetheringCallback {
-                override fun onStopTetheringSucceeded() = callback.onStopTetheringSucceeded()
-                override fun onStopTetheringFailed(error: Int) {
-                    if (error != TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) {
-                        callback.onStopTetheringFailed(error)
-                    } else stopTetheringRoot(type, callback)
-                }
-            }, app)
-        } catch (e: Exception) {
-            stopTetheringRoot(type, callback, e)
-        } else stopTetheringLegacy(type, callback)
-    }
+    suspend fun stopTethering(type: Int) = if (Build.VERSION.SDK_INT >= 30) try {
+        stopTethering(type, app)
+    } catch (e: Failure) {
+        if (e.errorCode != TetheringManager.TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION) throw e
+        stopTetheringRoot(type)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        stopTetheringRoot(type, e)
+    } else stopTetheringLegacy(type, null)
     fun stopTetheringLegacy(type: Int) = stopTethering(Services.connectivity, type)
-    fun stopTetheringLegacy(type: Int, callback: StopTetheringCallback, suppressed: Exception? = null) {
+    private suspend fun stopTetheringLegacy(type: Int, suppressed: Exception?) {
         try {
             stopTetheringLegacy(type)
-            callback.onStopTetheringSucceeded()
             if (suppressed != null) Timber.w(suppressed)
         } catch (e: InvocationTargetException) {
             if (suppressed != null) e.addSuppressed(suppressed)
-            if (e.targetException is SecurityException) GlobalScope.launch(Dispatchers.Unconfined) {
-                try {
-                    RootManager.use { it.execute(StopTetheringLegacy(type)) }
-                    callback.onStopTetheringSucceeded()
-                } catch (eRoot: Exception) {
-                    eRoot.addSuppressed(e)
-                    callback.onException(eRoot)
-                }
-            } else callback.onException(e)
+            if (e.targetException !is SecurityException) throw e
+            try {
+                RootManager.use { it.execute(TetheringCommands.StopLegacy(type)) }
+            } catch (eRoot: Exception) {
+                throw eRoot.apply { addSuppressed(e) }
+            }
         }
     }
 
