@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.net.MacAddress
+import android.net.wifi.WifiClient
 import android.net.wifi.p2p.WifiP2pDevice
 import android.os.Build
 import android.os.IBinder
@@ -13,6 +14,7 @@ import android.system.OsConstants
 import androidx.annotation.RequiresApi
 import androidx.collection.LongObjectMap
 import androidx.collection.MutableScatterMap
+import androidx.collection.MutableScatterSet
 import androidx.collection.ObjectList
 import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.DefaultLifecycleObserver
@@ -80,7 +82,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
 
     private val repeater = MutableStateFlow<RepeaterService.Binder?>(null)
     private var p2p: Collection<WifiP2pDevice> = emptyList()
-    private var wifiAp: MutableScatterMap<Pair<String, MacAddress>, Unit>? = null
+    private var wifiAp: MutableScatterSet<Pair<String, MacAddress>>? = null
     private var netlinkSnapshot = NetlinkNeighbour.Snapshot(emptyList(), persistentMapOf())
     private var tetheringClients = MutableScatterMap<MacAddress, TetheredClientInfo>()
     private val clientsState = MutableStateFlow<List<Client>>(emptyList())
@@ -176,14 +178,17 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
     }
 
     @RequiresApi(30)
+    private fun parseWifiApClients(clients: List<WifiClient>): MutableScatterSet<Pair<String, MacAddress>>? {
+        return MutableScatterSet<Pair<String, MacAddress>>(clients.size).apply {
+            // Without AP instance identifiers, keep netlink as the activity source.
+            for (client in clients) add((client.apInstanceIdentifierOrNull ?: return null) to client.macAddress)
+        }
+    }
+    @RequiresApi(30)
     private suspend fun handleSoftApCallbacks(flow: Flow<WifiApManager.Event>) = flow.collect { event ->
         when (event) {
             is WifiApManager.Event.OnConnectedClientsChanged -> {
-                val wifiAp = MutableScatterMap<Pair<String, MacAddress>, Unit>()
-                for (client in event.clients) {
-                    client.apInstanceIdentifierOrNull?.let { wifiAp[it to client.macAddress] = Unit }
-                }
-                this.wifiAp = wifiAp
+                this.wifiAp = parseWifiApClients(event.clients)
                 populateClients()
             }
             is WifiApManager.Event.OnBlockedClientConnecting -> {
@@ -243,7 +248,7 @@ class ClientViewModel : ViewModel(), ServiceConnection, DefaultLifecycleObserver
                 }
             }
         }
-        wifiAp?.forEach { client, _ ->
+        wifiAp?.forEach { client ->
             getClient(client.second, client.first, TetherType.WIFI).apply {
                 addSource(client.first)
                 active = true
