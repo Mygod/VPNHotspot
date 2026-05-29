@@ -29,7 +29,9 @@ import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.VendorElements
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.createGroup
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
+import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.removeGroup
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestConnectionInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestDeviceAddress
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestGroupInfo
@@ -257,18 +259,18 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
             val service = service ?: return
             val channel = service.channel
             if (channel == null) SmartSnackbar.make(R.string.repeater_failure_disconnected).show()
-            else if (active) service.p2pManager.startWps(channel, WpsInfo().apply {
-                setup = if (pin == null) WpsInfo.PBC else {
-                    this.pin = pin
-                    WpsInfo.KEYPAD
-                }
-            }, object : WifiP2pManager.ActionListener {
-                override fun onSuccess() = SmartSnackbar.make(
+            else if (active) service.launch {
+                val reason = service.p2pManager.startWps(channel, WpsInfo().apply {
+                    setup = if (pin == null) WpsInfo.PBC else {
+                        this.pin = pin
+                        WpsInfo.KEYPAD
+                    }
+                })
+                if (reason == null) SmartSnackbar.make(
                         if (pin == null) R.string.repeater_wps_success_pbc else R.string.repeater_wps_success_keypad)
                         .shortToast().show()
-                override fun onFailure(reason: Int) = SmartSnackbar.make(
-                        service.formatReason(R.string.repeater_wps_failure, reason)).show()
-            })
+                else SmartSnackbar.make(service.formatReason(R.string.repeater_wps_failure, reason)).show()
+            }
         }
 
         fun shutdown() {
@@ -466,20 +468,13 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
             registerReceiver(receiver, filter)
             receiverRegistered = true
             val group = p2pManager.requestGroupInfo(channel)
-            when {
-                group == null -> doStart()
-                group.isGroupOwner -> if (routingManager == null) doStartLocked(group)
-                else -> {
-                    Timber.i("Removing old group ($group)")
-                    p2pManager.removeGroup(channel, object : WifiP2pManager.ActionListener {
-                        override fun onSuccess() {
-                            launch { doStart() }
-                        }
-                        override fun onFailure(reason: Int) =
-                            startFailure(formatReason(R.string.repeater_remove_old_group_failure, reason))
-                    })
-                }
-            }
+            if (group == null) doStart() else if (!group.isGroupOwner) {
+                Timber.i("Removing old group ($group)")
+                val reason = p2pManager.removeGroup(channel)
+                if (reason == null) {
+                    doStart()
+                } else startFailure(formatReason(R.string.repeater_remove_old_group_failure, reason))
+            } else if (routingManager == null) doStartLocked(group)
         }
         return START_NOT_STICKY
     }
@@ -488,18 +483,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
      */
     @SuppressLint("MissingPermission")  // missing permission will simply leading to returning ERROR
     private suspend fun doStart() {
-        val listener = object : WifiP2pManager.ActionListener {
-            override fun onFailure(reason: Int) {
-                startFailure(formatReason(R.string.repeater_create_group_failure, reason),
-                        showWifiEnable = reason == WifiP2pManager.BUSY)
-            }
-            override fun onSuccess() {
-                // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire to go to step 3
-                // in order for this to happen, we need to make sure that the callbacks are firing
-                if (Build.VERSION.SDK_INT in 30 until 33) onLocationModeChanged(app.location?.isLocationEnabled == true)
-            }
-        }
-        val channel = channel ?: return listener.onFailure(WifiP2pManager.BUSY)
+        val channel = channel ?: return onCreateGroupFailure(WifiP2pManager.BUSY)
         if (!safeMode) {
             binder.fetchPersistentGroup()
             setOperatingChannel()
@@ -507,42 +491,42 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
         if (Build.VERSION.SDK_INT >= 33) setVendorElements()
         val networkName = networkName?.toString()
         val passphrase = passphrase
-        if (!safeMode || networkName == null || passphrase.isNullOrEmpty()) {
+        val reason = if (!safeMode || networkName == null || passphrase.isNullOrEmpty()) {
             persistNextGroup = true
-            p2pManager.createGroup(channel, listener)
-        } else {
-            p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
-                try {   // bypass networkName check
-                    UnblockCentral.WifiP2pConfig_Builder_mNetworkName.set(this, networkName)
-                } catch (e: ReflectiveOperationException) {
+            p2pManager.createGroup(channel)
+        } else p2pManager.createGroup(channel, WifiP2pConfig.Builder().apply {
+            try {   // bypass networkName check
+                UnblockCentral.WifiP2pConfig_Builder_mNetworkName.set(this, networkName)
+            } catch (e: ReflectiveOperationException) {
+                Timber.w(e)
+                try {
+                    setNetworkName(networkName)
+                } catch (e: IllegalArgumentException) {
                     Timber.w(e)
-                    try {
-                        setNetworkName(networkName)
-                    } catch (e: IllegalArgumentException) {
-                        Timber.w(e)
-                        return startFailure(e.readableMessage)
-                    }
+                    return startFailure(e.readableMessage)
                 }
-                setPassphrase(passphrase)
-                when (val oc = operatingChannel) {
-                    0 -> setGroupOperatingBand(when (val band = operatingBand) {
-                        SoftApConfiguration.BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
-                        SoftApConfiguration.BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
-                        SoftApConfiguration.BAND_6GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_6GHZ
-                        else -> {
-                            require(SoftApConfigurationCompat.isLegacyEitherBand(band)) { "Unknown band $band" }
-                            WifiP2pConfig.GROUP_OWNER_BAND_AUTO
-                        }
-                    })
-                    else -> {
-                        setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(operatingBand, oc))
-                    }
+            }
+            setPassphrase(passphrase)
+            val oc = operatingChannel
+            if (oc == 0) setGroupOperatingBand(when (val band = operatingBand) {
+                SoftApConfiguration.BAND_2GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_2GHZ
+                SoftApConfiguration.BAND_5GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_5GHZ
+                SoftApConfiguration.BAND_6GHZ -> WifiP2pConfig.GROUP_OWNER_BAND_6GHZ
+                else -> {
+                    require(SoftApConfigurationCompat.isLegacyEitherBand(band)) { "Unknown band $band" }
+                    WifiP2pConfig.GROUP_OWNER_BAND_AUTO
                 }
-                setDeviceAddress(deviceAddress)
-                if (Build.VERSION.SDK_INT >= 36) setPccModeConnectionType(pccModeConnectionType)
-            }.build(), listener)
-        }
+            }) else setGroupOperatingFrequency(SoftApConfigurationCompat.channelToFrequency(operatingBand, oc))
+            setDeviceAddress(deviceAddress)
+            if (Build.VERSION.SDK_INT >= 36) setPccModeConnectionType(pccModeConnectionType)
+        }.build())
+        if (reason != null) return onCreateGroupFailure(reason)
+        // wait for WIFI_P2P_CONNECTION_CHANGED_ACTION to fire to go to step 3; for that to happen we
+        // need to make sure the callbacks are firing
+        if (Build.VERSION.SDK_INT in 30 until 33) onLocationModeChanged(app.location?.isLocationEnabled == true)
     }
+    private fun onCreateGroupFailure(reason: Int) = startFailure(
+        formatReason(R.string.repeater_create_group_failure, reason), showWifiEnable = reason == WifiP2pManager.BUSY)
     /**
      * Used during step 2, also called when connection changed
      */
@@ -596,19 +580,21 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
     private fun showNotification(group: WifiP2pGroup? = null) = ServiceNotification.startForeground(this,
             if (group == null) emptyMap() else mapOf(group.`interface` to (group.clientList?.size ?: 0)))
 
-    private fun removeGroup() {
-        p2pManager.removeGroup(channel ?: return, object : WifiP2pManager.ActionListener {
-            override fun onSuccess() {
-                clean()
-            }
-            override fun onFailure(reason: Int) {
-                if (reason != WifiP2pManager.BUSY) {
+    private fun removeGroup() = channel?.let { channel ->
+        val generation = lifecycleGeneration.get()
+        launch {
+            try {
+                val reason = p2pManager.removeGroup(channel)
+                if (reason != null && reason != WifiP2pManager.BUSY) {   // else assuming it's already gone
                     dismissIfApplicable()
                     SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
-                }   // else assuming it's already gone
-                onSuccess()
+                }
+            } finally {
+                // run the teardown even if our scope is cancelled mid-op (clean() would launch cleanLocked
+                // onto the now-cancelled scope and never run); cleanLocked itself is idempotent.
+                withContext(NonCancellable) { cleanLocked(generation = generation) }
             }
-        })
+        }
     }
     private fun clean(shouldDisable: Boolean = true) {
         val generation = lifecycleGeneration.get()
@@ -628,9 +614,7 @@ class RepeaterService : Service(), CoroutineScope, SharedPreferences.OnSharedPre
             timeoutMonitor = null
             val manager = routingManager
             routingManager = null
-            withContext(NonCancellable) {
-                manager?.stop()
-            }
+            withContext(NonCancellable) { manager?.stop() }
             if (status.value != Status.DESTROYED && generation != lifecycleGeneration.get()) return@withLock
             if (status.value != Status.DESTROYED) status.value = Status.IDLE
             ServiceNotification.stopForeground(this)

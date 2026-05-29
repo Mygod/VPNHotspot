@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.net.MacAddress
 import android.net.wifi.ScanResult
 import android.net.wifi.WpsInfo
+import android.net.wifi.p2p.WifiP2pConfig
 import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pGroupList
 import android.net.wifi.p2p.WifiP2pInfo
@@ -13,19 +14,22 @@ import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.MacAddressCompat
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 object WifiP2pManagerHelper {
-    private class ResultListener : WifiP2pManager.ActionListener {
-        val future = CompletableDeferred<Int?>()
-
-        override fun onSuccess() {
-            future.complete(null)
+    /**
+     * Bridge a [WifiP2pManager.ActionListener]-based call into a suspend function: returns null on
+     * success or the `WifiP2pManager` failure reason. The continuation is released once the platform
+     * invokes the listener, so nothing heavier than it is retained behind the callback.
+     */
+    private suspend fun actionListener(block: (WifiP2pManager.ActionListener) -> Unit): Int? =
+        suspendCancellableCoroutine { cont ->
+            block(object : WifiP2pManager.ActionListener {
+                override fun onSuccess() = cont.resume(null)
+                override fun onFailure(reason: Int) = cont.resume(reason)
+            })
         }
-
-        override fun onFailure(reason: Int) {
-            future.complete(reason)
-        }
-    }
 
     const val UNSUPPORTED = -2
 
@@ -42,25 +46,18 @@ object WifiP2pManagerHelper {
     /**
      * Requires one of NETWORK_SETTING, NETWORK_STACK, or OVERRIDE_WIFI_CONFIG permission since API 30.
      */
-    suspend fun WifiP2pManager.setWifiP2pChannels(c: WifiP2pManager.Channel, lc: Int, oc: Int): Int? {
-        val result = ResultListener()
-        try {
-            setWifiP2pChannels(this, c, lc, oc, result)
-        } catch (_: NoSuchMethodException) {
-            app.logEvent("NoSuchMethod_setWifiP2pChannels")
-            return UNSUPPORTED
-        }
-        return result.future.await()
+    suspend fun WifiP2pManager.setWifiP2pChannels(c: WifiP2pManager.Channel, lc: Int, oc: Int): Int? = try {
+        actionListener { setWifiP2pChannels(this, c, lc, oc, it) }
+    } catch (_: NoSuchMethodException) {
+        app.logEvent("NoSuchMethod_setWifiP2pChannels")
+        UNSUPPORTED
     }
 
     @SuppressLint("MissingPermission")  // this method will fail correctly if permission is missing
     @RequiresApi(33)
     suspend fun WifiP2pManager.setVendorElements(c: WifiP2pManager.Channel,
-                                                 ve: List<ScanResult.InformationElement>): Int? {
-        val result = ResultListener()
-        setVendorElements(c, ve, result)
-        return result.future.await()
-    }
+                                                 ve: List<ScanResult.InformationElement>): Int? =
+        actionListener { setVendorElements(c, ve, it) }
 
     /**
      * Available since Android 4.3.
@@ -77,9 +74,22 @@ object WifiP2pManagerHelper {
             null
         }
     }
-    fun WifiP2pManager.startWps(c: WifiP2pManager.Channel, wps: WpsInfo, listener: WifiP2pManager.ActionListener) {
-        startWps!!(this, c, wps, listener)
-    }
+    suspend fun WifiP2pManager.startWps(c: WifiP2pManager.Channel, wps: WpsInfo): Int? =
+        actionListener { startWps!!(this, c, wps, it) }
+
+    /**
+     * Create/remove a P2P group. Returns null on success or the `WifiP2pManager` failure reason.
+     * A missing permission simply surfaces as a failure reason rather than throwing.
+     */
+    @SuppressLint("MissingPermission")
+    suspend fun WifiP2pManager.createGroup(c: WifiP2pManager.Channel): Int? =
+        actionListener { createGroup(c, it) }
+    @SuppressLint("MissingPermission")
+    suspend fun WifiP2pManager.createGroup(c: WifiP2pManager.Channel, config: WifiP2pConfig): Int? =
+        actionListener { createGroup(c, config, it) }
+    @SuppressLint("MissingPermission")
+    suspend fun WifiP2pManager.removeGroup(c: WifiP2pManager.Channel): Int? =
+        actionListener { removeGroup(c, it) }
 
     /**
      * Available since Android 4.2.
@@ -93,15 +103,11 @@ object WifiP2pManagerHelper {
     /**
      * Requires one of NETWORK_SETTING, NETWORK_STACK, or READ_WIFI_CREDENTIAL permission since API 30.
      */
-    suspend fun WifiP2pManager.deletePersistentGroup(c: WifiP2pManager.Channel, netId: Int): Int? {
-        val result = ResultListener()
-        try {
-            deletePersistentGroup(this, c, netId, result)
-        } catch (_: NoSuchMethodException) {
-            app.logEvent("NoSuchMethod_deletePersistentGroup")
-            return UNSUPPORTED
-        }
-        return result.future.await()
+    suspend fun WifiP2pManager.deletePersistentGroup(c: WifiP2pManager.Channel, netId: Int): Int? = try {
+        actionListener { deletePersistentGroup(this, c, netId, it) }
+    } catch (_: NoSuchMethodException) {
+        app.logEvent("NoSuchMethod_deletePersistentGroup")
+        UNSUPPORTED
     }
 
     private val requestPersistentGroupInfo by lazy {
