@@ -59,7 +59,7 @@ fun ApConfigurationScreen(
         600_000L
     } else TetherTimeoutMonitor.defaultTimeoutBridged.toLong()
     val softApRuntimeInfo by if (!state.p2pMode && Build.VERSION.SDK_INT >= 30 && !inspectionMode) {
-        rememberSoftApRuntimeInfo()
+        rememberSoftApRuntimeInfo(state.target)
     } else {
         remember { mutableStateOf(null) }
     }

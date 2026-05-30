@@ -27,16 +27,19 @@ import timber.log.Timber
 import java.text.NumberFormat
 import java.util.Locale
 
+internal enum class SoftApCallbackTarget { Tethered, LocalOnlyHotspot }
+
 @RequiresApi(30)
 @Composable
 internal fun rememberWifiSummaryApi30(
     baseError: AnnotatedString?,
     linkStyles: TextLinkStyles,
+    target: SoftApCallbackTarget = SoftApCallbackTarget.Tethered,
 ): State<AnnotatedString?> {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val locale = LocalConfiguration.current.locales[0]
-    return produceState(baseError, context, lifecycleOwner, locale, baseError, linkStyles) {
+    return produceState(baseError, context, lifecycleOwner, locale, baseError, linkStyles, target) {
         var wifiFailureReason: Int? = null
         var wifiNumClients: Int? = null
         var wifiInfo = emptyList<SoftApInfo>()
@@ -53,7 +56,9 @@ internal fun rememberWifiSummaryApi30(
             )
         }
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            WifiApCommands.softApCallbackFlow(expensive = true).catch { e -> Timber.w(e) }.collect { event ->
+            (if (target == SoftApCallbackTarget.LocalOnlyHotspot && Build.VERSION.SDK_INT >= 33) {
+                WifiApCommands.localOnlyHotspotSoftApCallbackFlow(expensive = true)
+            } else WifiApCommands.softApCallbackFlow(expensive = true)).catch { e -> Timber.w(e) }.collect { event ->
                 when (event) {
                     is WifiApManager.Event.OnStateChanged -> {
                         if (!WifiApManager.checkWifiApState(event.state)) return@collect

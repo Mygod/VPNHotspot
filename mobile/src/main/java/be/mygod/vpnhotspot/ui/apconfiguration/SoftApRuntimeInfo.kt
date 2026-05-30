@@ -23,6 +23,7 @@ import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.toRegionalIndicatorFlagOrNull
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
 import timber.log.Timber
 import java.util.Locale
 
@@ -33,10 +34,10 @@ internal data class SoftApRuntimeInfo(
 
 @RequiresApi(30)
 @Composable
-internal fun rememberSoftApRuntimeInfo(): State<SoftApRuntimeInfo?> {
+internal fun rememberSoftApRuntimeInfo(target: ApConfigurationTarget): State<SoftApRuntimeInfo?> {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    return produceState<SoftApRuntimeInfo?>(null, context, lifecycleOwner) {
+    return produceState<SoftApRuntimeInfo?>(null, context, lifecycleOwner, target) {
         var currentCapability: SoftApCapability? = null
         fun update() {
             value = currentCapability?.let {
@@ -47,7 +48,15 @@ internal fun rememberSoftApRuntimeInfo(): State<SoftApRuntimeInfo?> {
             }
         }
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            WifiApCommands.softApCallbackFlow(expensive = true).catch { e -> Timber.w(e) }.collect { event ->
+            val events = if (target == ApConfigurationTarget.Temporary && Build.VERSION.SDK_INT >= 33) {
+                WifiApCommands.localOnlyHotspotSoftApCallbackFlow(expensive = true).catch { e ->
+                    if (e is WifiApManager.SoftApCallbackUnavailableException) {
+                        if (e.cause == null) Timber.d(e) else Timber.w(e)
+                        emitAll(WifiApCommands.softApCallbackFlow(expensive = true))
+                    } else throw e
+                }
+            } else WifiApCommands.softApCallbackFlow(expensive = true)
+            events.catch { e -> Timber.w(e) }.collect { event ->
                 when (event) {
                     is WifiApManager.Event.OnCapabilityChanged -> {
                         currentCapability = event.capability

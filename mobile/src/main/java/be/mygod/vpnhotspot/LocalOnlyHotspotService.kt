@@ -337,4 +337,8 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
             if (exit) cancel()
         }
     }
+
+    override fun countsFlow(active: List<String>) = if (Build.VERSION.SDK_INT >= 33) {
+        softApCountsFlow(active, WifiApCommands.localOnlyHotspotSoftApCallbackFlow())
+    } else super.countsFlow(active)
 }

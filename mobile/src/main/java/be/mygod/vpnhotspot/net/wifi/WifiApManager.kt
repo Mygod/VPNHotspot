@@ -16,6 +16,7 @@ import android.net.wifi.WifiClient
 import android.net.wifi.WifiManager
 import android.net.wifi.`WifiManager$SoftApCallback`
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
 import android.os.Parcelable
@@ -223,6 +224,19 @@ object WifiApManager {
     ) : RuntimeException("Soft AP callback is unavailable", cause)
     private enum class SoftApCallbackCapability { Unknown, Available, Unavailable }
     private var directSoftApCallbackCapability = SoftApCallbackCapability.Unknown
+    private var directLocalOnlyHotspotSoftApCallbackCapability = SoftApCallbackCapability.Unknown
+    /**
+     * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-13.0.0_r1/framework/java/android/net/wifi/WifiManager.java#360
+     */
+    private const val EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE = "EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE"
+    /**
+     * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-13.0.0_r1/framework/java/android/net/wifi/WifiManager.java#980
+     */
+    private const val IFACE_IP_MODE_TETHERED = 1
+    /**
+     * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-13.0.0_r1/framework/java/android/net/wifi/WifiManager.java#990
+     */
+    private const val IFACE_IP_MODE_LOCAL_ONLY = 2
 
     sealed class Event : Parcelable {
         @Parcelize
@@ -283,6 +297,16 @@ object WifiApManager {
     private val unregisterSoftApCallback by lazy {
         WifiManager::class.java.getDeclaredMethod("unregisterSoftApCallback", `WifiManager$SoftApCallback`::class.java)
     }
+    @get:RequiresApi(33)
+    private val registerLocalOnlyHotspotSoftApCallback by lazy {
+        WifiManager::class.java.getDeclaredMethod("registerLocalOnlyHotspotSoftApCallback", Executor::class.java,
+            `WifiManager$SoftApCallback`::class.java)
+    }
+    @get:RequiresApi(33)
+    private val unregisterLocalOnlyHotspotSoftApCallback by lazy {
+        WifiManager::class.java.getDeclaredMethod("unregisterLocalOnlyHotspotSoftApCallback",
+            `WifiManager$SoftApCallback`::class.java)
+    }
     val softApCallbackFlow = binderCallbackFlow("Soft AP callback") {
         if (directSoftApCallbackCapability == SoftApCallbackCapability.Unavailable) {
             throw SoftApCallbackUnavailableException()
@@ -322,23 +346,71 @@ object WifiApManager {
             }
         }
     }
+    @get:RequiresApi(33)
+    val localOnlyHotspotSoftApCallbackFlow = binderCallbackFlow("local-only hotspot Soft AP callback") {
+        if (directLocalOnlyHotspotSoftApCallbackCapability == SoftApCallbackCapability.Unavailable) {
+            throw SoftApCallbackUnavailableException()
+        }
+        val callback = softApCallback(::push)
+        try {
+            registerLocalOnlyHotspotSoftApCallback(Services.wifi, InPlaceExecutor, callback)
+            directLocalOnlyHotspotSoftApCallbackCapability = SoftApCallbackCapability.Available
+        } catch (e: Throwable) {
+            when (e) {
+                is InvocationTargetException -> when (val target = e.targetException) {
+                    is SecurityException, is UnsupportedOperationException, is LinkageError -> target
+                    else -> null
+                }
+                is SecurityException, is ReflectiveOperationException, is UnsupportedOperationException,
+                is LinkageError -> e
+                else -> null
+            }?.let {
+                directLocalOnlyHotspotSoftApCallbackCapability = SoftApCallbackCapability.Unavailable
+                throw SoftApCallbackUnavailableException(it)
+            }
+            throw e
+        }
+        return@binderCallbackFlow {
+            try {
+                unregisterLocalOnlyHotspotSoftApCallback(Services.wifi, callback)
+            } catch (e: Exception) {
+                Timber.w(e)
+            }
+        }
+    }
 
     @RequiresApi(31)
-    fun newSoftApCallbackBinder(callback: `WifiManager$SoftApCallback`) =
+    fun newSoftApCallbackBinder(callback: `WifiManager$SoftApCallback`, mode: Int = IFACE_IP_MODE_TETHERED) =
         UnblockCentral.WifiManager_SoftApCallbackProxy.let { (constructor, legacy) ->
-            if (legacy) constructor.newInstance(Services.wifi, InPlaceExecutor, callback)
-            // IFACE_IP_MODE_TETHERED: https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/wifi/java/android/net/wifi/WifiManager.java#805
-            else constructor.newInstance(Services.wifi, InPlaceExecutor, callback, 1)
+            if (legacy) {
+                if (mode != IFACE_IP_MODE_TETHERED) {
+                    throw NoSuchMethodException("SoftApCallbackProxy mode constructor")
+                }
+                constructor.newInstance(Services.wifi, InPlaceExecutor, callback)
+            } else constructor.newInstance(Services.wifi, InPlaceExecutor, callback, mode)
         } as IBinder
+    @RequiresApi(33)
+    fun newLocalOnlyHotspotSoftApCallbackBinder(callback: `WifiManager$SoftApCallback`) =
+        newSoftApCallbackBinder(callback, IFACE_IP_MODE_LOCAL_ONLY)
 
     @get:RequiresApi(31)
     private val iWifiManager by lazy { UnblockCentral.WifiManager_mService.get(Services.wifi) as IWifiManager }
     @RequiresApi(31)
-    fun registerSoftApCallbackBinder(callback: IBinder) =
+    fun registerSoftApCallback(callback: IBinder) =
         iWifiManager.registerSoftApCallback(ISoftApCallback.Stub.asInterface(callback))
     @RequiresApi(31)
-    fun unregisterSoftApCallbackBinder(callback: IBinder) =
+    fun unregisterSoftApCallback(callback: IBinder) =
         iWifiManager.unregisterSoftApCallback(ISoftApCallback.Stub.asInterface(callback))
+    @RequiresApi(33)
+    fun registerLocalOnlyHotspotSoftApCallback(callback: IBinder) =
+        iWifiManager.registerLocalOnlyHotspotSoftApCallback(ISoftApCallback.Stub.asInterface(callback), Bundle().apply {
+            putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE, Services.context.attributionSource)
+        })
+    @RequiresApi(33)
+    fun unregisterLocalOnlyHotspotSoftApCallback(callback: IBinder) =
+        iWifiManager.unregisterLocalOnlyHotspotSoftApCallback(ISoftApCallback.Stub.asInterface(callback), Bundle().apply {
+            putParcelable(EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE, Services.context.attributionSource)
+        })
 
     sealed class LocalOnlyHotspotEvent : Parcelable {
         @Parcelize

@@ -34,6 +34,7 @@ import timber.log.Timber
 object WifiApCommands {
     private enum class SoftApCallbackCapability { Unknown, Available, Unavailable }
     private var binderSoftApCallbackCapability = SoftApCallbackCapability.Unknown
+    private var binderLocalOnlyHotspotSoftApCallbackCapability = SoftApCallbackCapability.Unknown
     private data class AutoFiringCallbacks(
         var state: WifiApManager.Event.OnStateChanged? = null,
         var numClients: WifiApManager.Event.OnNumClientsChanged? = null,
@@ -61,98 +62,135 @@ object WifiApCommands {
             capability?.let { subscriber.trySend(it) }
         }
     }
-    private val softApCallbackScope = CoroutineScope(SupervisorJob())
-    private val softApCallbackLock = Any()
-    private val softApCallbackSubscribers = mutableScatterMapOf<SendChannel<WifiApManager.Event>, Boolean>()
-    private val lastSoftApCallback = AutoFiringCallbacks()
-    private var softApCallbackJob: Job? = null
+    private class SoftApCallbackRelay(
+        private val collectTiers: suspend SoftApCallbackRelay.() -> Unit,
+    ) {
+        private val scope = CoroutineScope(SupervisorJob())
+        private val lock = Any()
+        private val subscribers = mutableScatterMapOf<SendChannel<WifiApManager.Event>, Boolean>()
+        private val lastCallback = AutoFiringCallbacks()
+        private var job: Job? = null
 
-    fun softApCallbackFlow(expensive: Boolean = false) = callbackFlow {
-        var jobToStart: Job? = null
-        synchronized(softApCallbackLock) {
-            if (softApCallbackJob == null) {
-                softApCallbackSubscribers[this] = expensive
-                val job = softApCallbackScope.launch(start = CoroutineStart.LAZY) {
-                    try {
-                        collectSoftApCallbackTiers()
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        synchronized(softApCallbackLock) { softApCallbackSubscribers.forEachKey { it.close(e) } }
-                    } finally {
-                        val currentJob = currentCoroutineContext()[Job]
-                        synchronized(softApCallbackLock) {
-                            if (softApCallbackJob === currentJob) softApCallbackJob = null
+        fun flow(expensive: Boolean = false) = callbackFlow {
+            var jobToStart: Job? = null
+            synchronized(lock) {
+                if (job == null) {
+                    subscribers[this] = expensive
+                    val startedJob = scope.launch(start = CoroutineStart.LAZY) {
+                        try {
+                            collectTiers()
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            synchronized(lock) { subscribers.forEachKey { it.close(e) } }
+                        } finally {
+                            val currentJob = currentCoroutineContext()[Job]
+                            synchronized(lock) {
+                                if (job === currentJob) job = null
+                            }
                         }
                     }
-                }
-                softApCallbackJob = job
-                jobToStart = job
-            } else {
-                softApCallbackSubscribers[this] = expensive
-                lastSoftApCallback.sendTo(this)
-            }
-        }
-        jobToStart?.start()
-        awaitClose {
-            synchronized(softApCallbackLock) {
-                softApCallbackSubscribers.remove(this)
-                if (softApCallbackSubscribers.isEmpty()) {
-                    softApCallbackJob?.cancel()
-                    softApCallbackJob = null
+                    job = startedJob
+                    jobToStart = startedJob
+                } else {
+                    subscribers[this] = expensive
+                    lastCallback.sendTo(this)
                 }
             }
+            jobToStart?.start()
+            awaitClose {
+                synchronized(lock) {
+                    subscribers.remove(this)
+                    if (subscribers.isEmpty()) {
+                        job?.cancel()
+                        job = null
+                    }
+                }
+            }
+        }.buffer(Channel.UNLIMITED)
+
+        suspend fun collect(flow: Flow<WifiApManager.Event>) = try {
+            flow.collect { event ->
+                synchronized(lock) {
+                    lastCallback.update(event)
+                    subscribers.removeIf { subscriber, _ -> subscriber.trySend(event).isFailure }
+                    if (subscribers.isEmpty()) {
+                        job?.cancel()
+                        job = null
+                    }
+                }
+            }
+            null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: WifiApManager.SoftApCallbackUnavailableException) {
+            e
+        } catch (e: Exception) {
+            Timber.w(e)
+            WifiApManager.SoftApCallbackUnavailableException(e)
         }
-    }.buffer(Channel.UNLIMITED)
+
+        fun hasExpensiveSubscribers() = synchronized(lock) { subscribers.any { _, expensive -> expensive } }
+    }
+
+    private val softApCallbackRelay = SoftApCallbackRelay {
+        var failure = collect(WifiApManager.softApCallbackFlow) ?: return@SoftApCallbackRelay
+        if (Build.VERSION.SDK_INT >= 31) {
+            failure = (collect(softApCallbackBinderFlow) ?: return@SoftApCallbackRelay).apply {
+                addSuppressed(failure)
+            }
+        }
+        if (hasExpensiveSubscribers()) failure = (collect(flow {
+            RootManager.use { emitAll(it.flow(SoftApCallbackFlow())) }
+        }) ?: return@SoftApCallbackRelay).apply { addSuppressed(failure) }
+        throw failure
+    }
+    fun softApCallbackFlow(expensive: Boolean = false) = softApCallbackRelay.flow(expensive)
+
+    @get:RequiresApi(33)
+    private val localOnlyHotspotSoftApCallbackRelay = SoftApCallbackRelay {
+        var failure = collect(WifiApManager.localOnlyHotspotSoftApCallbackFlow) ?: return@SoftApCallbackRelay
+        failure = (collect(localOnlyHotspotSoftApCallbackBinderFlow) ?: return@SoftApCallbackRelay).apply {
+            addSuppressed(failure)
+        }
+        if (hasExpensiveSubscribers()) failure = (collect(flow {
+            RootManager.use { emitAll(it.flow(LocalOnlyHotspotSoftApCallbackFlow())) }
+        }) ?: return@SoftApCallbackRelay).apply { addSuppressed(failure) }
+        throw failure
+    }
+    @RequiresApi(33)
+    fun localOnlyHotspotSoftApCallbackFlow(expensive: Boolean = false) =
+        localOnlyHotspotSoftApCallbackRelay.flow(expensive)
 
     @Parcelize
     class SoftApCallbackFlow : RootFlow<WifiApManager.Event> {
         override fun flow() = WifiApManager.softApCallbackFlow
     }
-    private suspend fun collectSoftApCallbackTiers(flow: Flow<WifiApManager.Event>) = try {
-        flow.collect { event ->
-            synchronized(softApCallbackLock) {
-                lastSoftApCallback.update(event)
-                softApCallbackSubscribers.removeIf { subscriber, _ -> subscriber.trySend(event).isFailure }
-                if (softApCallbackSubscribers.isEmpty()) {
-                    softApCallbackJob?.cancel()
-                    softApCallbackJob = null
-                }
-            }
-        }
-        null
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: WifiApManager.SoftApCallbackUnavailableException) {
-        e
-    } catch (e: Exception) {
-        Timber.w(e)
-        WifiApManager.SoftApCallbackUnavailableException(e)
-    }
-    private suspend fun collectSoftApCallbackTiers() {
-        var failure = collectSoftApCallbackTiers(WifiApManager.softApCallbackFlow) ?: return
-        if (Build.VERSION.SDK_INT >= 31) {
-            failure = (collectSoftApCallbackTiers(softApCallbackBinderFlow) ?: return).apply {
-                addSuppressed(failure)
-            }
-        }
-        if (synchronized(softApCallbackLock) { softApCallbackSubscribers.any { _, expensive -> expensive } }) {
-            failure = (collectSoftApCallbackTiers(flow {
-                RootManager.use { emitAll(it.flow(SoftApCallbackFlow())) }
-            }) ?: return).apply { addSuppressed(failure) }
-        }
-        throw failure
+    @Parcelize
+    @RequiresApi(33)
+    class LocalOnlyHotspotSoftApCallbackFlow : RootFlow<WifiApManager.Event> {
+        override fun flow() = WifiApManager.localOnlyHotspotSoftApCallbackFlow
     }
 
     @Parcelize
     @RequiresApi(31)
-    data class RegisterSoftApCallbackBinder(val callback: IBinder) : RootCommandNoResult {
-        override suspend fun execute() = null.also { WifiApManager.registerSoftApCallbackBinder(callback) }
+    data class RegisterSoftApCallback(val callback: IBinder) : RootCommandNoResult {
+        override suspend fun execute() = null.also { WifiApManager.registerSoftApCallback(callback) }
     }
     @Parcelize
     @RequiresApi(31)
-    data class UnregisterSoftApCallbackBinder(val callback: IBinder) : RootCommandNoResult {
-        override suspend fun execute() = null.also { WifiApManager.unregisterSoftApCallbackBinder(callback) }
+    data class UnregisterSoftApCallback(val callback: IBinder) : RootCommandNoResult {
+        override suspend fun execute() = null.also { WifiApManager.unregisterSoftApCallback(callback) }
+    }
+    @Parcelize
+    @RequiresApi(33)
+    data class RegisterLocalOnlyHotspotSoftApCallback(val callback: IBinder) : RootCommandNoResult {
+        override suspend fun execute() = null.also { WifiApManager.registerLocalOnlyHotspotSoftApCallback(callback) }
+    }
+    @Parcelize
+    @RequiresApi(33)
+    data class UnregisterLocalOnlyHotspotSoftApCallback(val callback: IBinder) : RootCommandNoResult {
+        override suspend fun execute() = null.also { WifiApManager.unregisterLocalOnlyHotspotSoftApCallback(callback) }
     }
     @RequiresApi(31)
     private val softApCallbackBinderFlow = binderCallbackFlow("Soft AP binder callback") {
@@ -178,14 +216,14 @@ object WifiApCommands {
         try {
             RootManager.use { root ->
                 withContext(NonCancellable) {
-                    root.execute(RegisterSoftApCallbackBinder(callback))
+                    root.execute(RegisterSoftApCallback(callback))
                     registered = true
                 }
             }
             binderSoftApCallbackCapability = SoftApCallbackCapability.Available
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
-                if (registered) RootManager.use { it.execute(UnregisterSoftApCallbackBinder(callback)) }
+                if (registered) RootManager.use { it.execute(UnregisterSoftApCallback(callback)) }
             }
             throw e
         } catch (e: Exception) {
@@ -193,13 +231,64 @@ object WifiApCommands {
         }
         return@binderCallbackFlow {
             try {
-                if (registered) RootManager.use { it.execute(UnregisterSoftApCallbackBinder(callback)) }
+                if (registered) RootManager.use { it.execute(UnregisterSoftApCallback(callback)) }
             } catch (_: CancellationException) {
             } catch (e: Exception) {
                 Timber.w(e)
             }
         }
     }
+    @RequiresApi(33)
+    private val localOnlyHotspotSoftApCallbackBinderFlow =
+        binderCallbackFlow("local-only hotspot Soft AP binder callback") {
+            if (binderLocalOnlyHotspotSoftApCallbackCapability == SoftApCallbackCapability.Unavailable) {
+                throw WifiApManager.SoftApCallbackUnavailableException()
+            }
+            val callback = try {
+                WifiApManager.newLocalOnlyHotspotSoftApCallbackBinder(WifiApManager.softApCallback(::push))
+            } catch (e: ReflectiveOperationException) {
+                binderLocalOnlyHotspotSoftApCallbackCapability = SoftApCallbackCapability.Unavailable
+                throw WifiApManager.SoftApCallbackUnavailableException(e)
+            } catch (e: SecurityException) {
+                binderLocalOnlyHotspotSoftApCallbackCapability = SoftApCallbackCapability.Unavailable
+                throw WifiApManager.SoftApCallbackUnavailableException(e)
+            } catch (e: ClassCastException) {
+                binderLocalOnlyHotspotSoftApCallbackCapability = SoftApCallbackCapability.Unavailable
+                throw WifiApManager.SoftApCallbackUnavailableException(e)
+            } catch (e: LinkageError) {
+                binderLocalOnlyHotspotSoftApCallbackCapability = SoftApCallbackCapability.Unavailable
+                throw WifiApManager.SoftApCallbackUnavailableException(e)
+            }
+            var registered = false
+            try {
+                RootManager.use { root ->
+                    withContext(NonCancellable) {
+                        root.execute(RegisterLocalOnlyHotspotSoftApCallback(callback))
+                        registered = true
+                    }
+                }
+                binderLocalOnlyHotspotSoftApCallbackCapability = SoftApCallbackCapability.Available
+            } catch (e: CancellationException) {
+                withContext(NonCancellable) {
+                    if (registered) RootManager.use {
+                        it.execute(UnregisterLocalOnlyHotspotSoftApCallback(callback))
+                    }
+                }
+                throw e
+            } catch (e: Exception) {
+                throw WifiApManager.SoftApCallbackUnavailableException(e)
+            }
+            return@binderCallbackFlow {
+                try {
+                    if (registered) RootManager.use {
+                        it.execute(UnregisterLocalOnlyHotspotSoftApCallback(callback))
+                    }
+                } catch (_: CancellationException) {
+                } catch (e: Exception) {
+                    Timber.w(e)
+                }
+            }
+        }
 
     @Parcelize
     @Deprecated("Use GetConfiguration instead", ReplaceWith("GetConfiguration"))

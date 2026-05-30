@@ -3,18 +3,14 @@ package be.mygod.vpnhotspot
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import androidx.annotation.RequiresApi
 import androidx.collection.MutableScatterMap
 import androidx.collection.MutableScatterSet
 import androidx.collection.ScatterSet
 import androidx.collection.emptyScatterSet
 import androidx.collection.toMutableScatterMap
-import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.Routing
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.net.wifi.WifiApManager
-import be.mygod.vpnhotspot.net.wifi.apInstanceIdentifierOrNull
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -23,12 +19,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.runningFold
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
@@ -47,31 +40,7 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
             get()?.dismiss()
             dismissHandle = null
         }
-
-        @RequiresApi(31)
-        private val softApStateFlow = WifiApCommands.softApCallbackFlow().runningFold(SoftApState()) { state, event ->
-            when (event) {
-                is WifiApManager.Event.OnInfoChanged ->
-                    state.copy(links = event.info.map { it.apInstanceIdentifierOrNull })
-                is WifiApManager.Event.OnConnectedClientsChanged ->
-                    state.copy(clients = event.clients.map { it.apInstanceIdentifierOrNull })
-                else -> state
-            }
-        }.catch { e ->
-            // Soft AP callback unavailable: drop authoritative counts so every interface falls back to netlink.
-            if (e is WifiApManager.SoftApCallbackUnavailableException && e.cause == null) Timber.d(e) else Timber.w(e)
-            emit(SoftApState())
-        }
     }
-    /**
-     * The Soft AP callback's latest view, kept as raw AP-instance identifiers (canonicalized lazily against
-     * the current bridge topology). [links] are the active AP links from OnInfoChanged — the interfaces the
-     * callback is authoritative for — and [clients] are the connected clients. Either is null until its
-     * callback first arrives (a null [clients] is "not observed yet", distinct from an observed empty list),
-     * keeping counts on netlink until the Soft AP state is fully known.
-     */
-    private data class SoftApState(val links: List<String?>? = null, val clients: List<String?>? = null)
-
 
     class Binder(owner: TetheringService) : android.os.Binder() {
         val managedIfaces = owner.managedIfaces.asStateFlow()
@@ -245,35 +214,7 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
         tetheredIfaces = null
     }
 
-    /**
-     * Per-interface Soft AP connected-client counts. The authoritative interface set comes from the active
-     * AP links (each instance canonicalized through the bridge topology, so bridged links merge onto their
-     * bridge), tallied from the connected clients and reporting 0 for a link with no clients. Returns an
-     * empty map — falling every interface back to netlink — whenever the callback data can't yield a
-     * trustworthy tally, so an authoritative count never undercounts the netlink one.
-     */
-    private fun softApCounts(softAp: SoftApState, snapshot: NetlinkNeighbour.Snapshot): Map<String, Int> {
-        val links = softAp.links ?: return emptyMap()
-        val ifaces = HashSet<String>(links.size)
-        for (link in links) ifaces.add((link ?: continue).let { snapshot.bridgeMasterByMember[it] ?: it })
-        if (ifaces.isEmpty()) return emptyMap()
-        // Until the first connected-clients callback the list is unknown (not "zero"), so stay on netlink
-        // rather than authoritatively reporting 0 for links whose clients have not been observed yet.
-        val clients = softAp.clients ?: return emptyMap()
-        val counts = HashMap<String, Int>()
-        for (client in clients) {
-            // A connected client without an AP instance identifier can't be attributed to any interface, so
-            // every interface's tally would be an undercount that wrongly overrides netlink — fall back instead.
-            val canonical = (client ?: return emptyMap()).let { snapshot.bridgeMasterByMember[it] ?: it }
-            counts[canonical] = (counts[canonical] ?: 0) + 1
-        }
-        return ifaces.associateWith { counts[it] ?: 0 }
-    }
-    override fun countsFlow(active: List<String>) = if (Build.VERSION.SDK_INT < 31) {
-        super.countsFlow(active)
-    } else combine(NetlinkNeighbour.monitorSnapshots, softApStateFlow) { snapshot, softAp ->
-        val sizeLookup = netlinkSizeLookup(snapshot)
-        val authoritative = softApCounts(softAp, snapshot)
-        active.associateWith { authoritative[it] ?: sizeLookup[it] ?: 0 }
-    }
+    override fun countsFlow(active: List<String>) = if (Build.VERSION.SDK_INT >= 31) {
+        softApCountsFlow(active, WifiApCommands.softApCallbackFlow())
+    } else super.countsFlow(active)
 }

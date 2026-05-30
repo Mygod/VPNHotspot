@@ -107,6 +107,7 @@ These additional reflected whitelisted/system API are listed below:
 * `Landroid/net/wifi/WifiManager;->EXTRA_WIFI_AP_FAILURE_REASON:Ljava/lang/String;,sdk,system-api,test-api`
 * `Landroid/net/wifi/WifiManager;->EXTRA_WIFI_AP_INTERFACE_NAME:Ljava/lang/String;,sdk,system-api,test-api`
 * `Landroid/net/wifi/WifiManager;->EXTRA_WIFI_AP_STATE:Ljava/lang/String;,sdk,system-api,test-api`
+* (since API 31) `Landroid/net/wifi/WifiManager;->IFACE_IP_MODE_LOCAL_ONLY:I,sdk,system-api,test-api`
 * (since API 31) `Landroid/net/wifi/WifiManager;->IFACE_IP_MODE_TETHERED:I,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/WifiManager;->SAP_CLIENT_BLOCK_REASON_CODE_*:I,sdk,system-api,test-api`
 * `Landroid/net/wifi/WifiManager;->SAP_START_FAILURE_*:I,sdk,system-api,test-api`
@@ -119,10 +120,12 @@ These additional reflected whitelisted/system API are listed below:
 * (since API 30) `Landroid/net/wifi/WifiManager;->getSoftApConfiguration()Landroid/net/wifi/SoftApConfiguration;,sdk,system-api,test-api`
 * (prior to API 30) `Landroid/net/wifi/WifiManager;->getWifiApConfiguration()Landroid/net/wifi/WifiConfiguration;,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/WifiManager;->isApMacRandomizationSupported()Z,sdk,system-api,test-api`
+* (since API 33) `Landroid/net/wifi/WifiManager;->registerLocalOnlyHotspotSoftApCallback(Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;)V,sdk,system-api,test-api`
 * `Landroid/net/wifi/WifiManager;->registerSoftApCallback(Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;)V,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/WifiManager;->setSoftApConfiguration(Landroid/net/wifi/SoftApConfiguration;)Z,sdk,system-api,test-api`
 * (prior to API 30) `Landroid/net/wifi/WifiManager;->setWifiApConfiguration(Landroid/net/wifi/WifiConfiguration;)Z,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/wifi/WifiManager;->startLocalOnlyHotspot(Landroid/net/wifi/SoftApConfiguration;Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$LocalOnlyHotspotCallback;)V,sdk,system-api,test-api`
+* (since API 33) `Landroid/net/wifi/WifiManager;->unregisterLocalOnlyHotspotSoftApCallback(Landroid/net/wifi/WifiManager$SoftApCallback;)V,sdk,system-api,test-api`
 * `Landroid/net/wifi/WifiManager;->unregisterSoftApCallback(Landroid/net/wifi/WifiManager$SoftApCallback;)V,sdk,system-api,test-api`
 * (since API 35) `Landroid/net/wifi/p2p/WifiP2pGroup;->getVendorData()Ljava/util/List;,sdk,system-api,test-api`
 * `Landroid/net/wifi/p2p/WifiP2pManager;->deletePersistentGroup(Landroid/net/wifi/p2p/WifiP2pManager$Channel;ILandroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,sdk,system-api,test-api`

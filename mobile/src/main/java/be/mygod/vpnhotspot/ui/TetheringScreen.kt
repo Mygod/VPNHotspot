@@ -162,6 +162,10 @@ fun TetheringScreen(
     val wifiSummary by if (inspectionMode) {
         remember(wifiBaseError) { mutableStateOf(wifiBaseError) }
     } else rememberWifiSummary(wifiBaseError, linkStyles)
+    val localOnlyBaseSummary = networkInterfaceAddressesText(ifaceLookup[localOnlyIface], linkStyles)
+    val localOnlySummary by if (inspectionMode || Build.VERSION.SDK_INT < 33 || localOnlyIface.isNullOrEmpty()) {
+        remember(localOnlyBaseSummary) { mutableStateOf(localOnlyBaseSummary) }
+    } else rememberWifiSummaryApi30(localOnlyBaseSummary, linkStyles, SoftApCallbackTarget.LocalOnlyHotspot)
     var bluetoothVersion by remember { mutableIntStateOf(0) }
     val bluetoothAdapter = if (inspectionMode) null else remember {
         context.getSystemService<BluetoothManager>()?.adapter
@@ -282,7 +286,7 @@ fun TetheringScreen(
                 TetheringRow(
                     icon = R.drawable.ic_android_wifi_3_bar_plus,
                     title = stringResource(R.string.tethering_temp_hotspot),
-                    summary = networkInterfaceAddressesText(ifaceLookup[localOnlyIface], linkStyles),
+                    summary = localOnlySummary,
                     checked = localOnlyIface != null,
                     onClick = onConfigureTemporaryHotspot ?: toggleLocalOnly,
                     onCheckedChange = if (onConfigureTemporaryHotspot == null) null else toggleLocalOnly,
