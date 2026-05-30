@@ -202,7 +202,7 @@ The following Android system binaries are assumed to be bundled and executable:
   commands including `-I`, `-D`, `-N`, `-nvx -L <chain>`);
 * `/system/bin/ndc` (`ipfwd`, `nat`);
 * `/system/bin/settings` (`put global`);
-* `/system/bin/linker`, `/system/bin/linker64` (`path.zip!/program`).
+* `/system/bin/linker` or `/system/bin/linker64` (`path.zip!/program`).
 
 Wi-Fi driver `wpa_supplicant`:
 
