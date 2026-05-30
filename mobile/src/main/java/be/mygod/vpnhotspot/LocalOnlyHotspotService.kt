@@ -95,7 +95,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
     private val configuration = MutableStateFlow<SoftApConfigurationCompat?>(null)
     /**
      * Drives the foreground notification off [iface]: counts while connected ("something"), an empty
-     * notification while connecting (""), nothing (no foreground) while idle (null).
+     * notification while no active interface is owned (""), nothing (no foreground) while idle (null).
      */
     override val interfaces = iface.map { value ->
         when {
@@ -105,7 +105,8 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
         }
     }
     /**
-     * null represents IDLE, "" represents CONNECTING, "something" represents CONNECTED.
+     * null represents IDLE, "" represents a request without an active interface, "something" represents
+     * CONNECTED.
      */
     private fun updateIface(value: String?) {
         iface.value = value
@@ -322,6 +323,11 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
         val requestJob = localOnlyHotspotJob
         launch(start = CoroutineStart.UNDISPATCHED) {
             if (!exit && generation != lifecycleGeneration.get()) return@launch
+            // Withdraw the active interface from the shared notification before waiting for the LOHS
+            // request job to finish. The request cleanup can suspend behind framework callback teardown;
+            // leaving [iface] non-empty lets the notification collector keep publishing "0 connected"
+            // for this interface, which masks any inactive monitor entry for the same interface.
+            if (iface.value?.isNotEmpty() == true) updateIface("")
             requestJob?.join()
             routingMutex.withLock {
                 if (!exit && generation != lifecycleGeneration.get()) return@withLock
