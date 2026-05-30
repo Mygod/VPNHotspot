@@ -20,6 +20,7 @@ import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.apInstanceIdentifierOrNull
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.ui.apconfiguration.VendorData
 import be.mygod.vpnhotspot.ui.apconfiguration.formatTimeoutMillis
 import kotlinx.coroutines.flow.catch
 import timber.log.Timber
@@ -137,6 +138,12 @@ private fun softApInfoSummary(
             }?.let {
                 append(", MLD MAC ")
                 appendMacAddress(it.toString(), linkStyles)
+            }
+        }
+        if (Build.VERSION.SDK_INT >= 35) {
+            VendorData.serialize(infos.flatMap { it.vendorData }).takeIf { it.isNotEmpty() }?.let { data ->
+                if (length > 0) append('\n')
+                append(context.getString(R.string.tethering_manage_wifi_vendor_data, data))
             }
         }
     }

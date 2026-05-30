@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.ui.apconfiguration
 import android.content.Context
 import android.net.wifi.SoftApCapability
 import android.net.wifi.SoftApConfiguration
-import android.net.wifi.SoftApInfo
 import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
@@ -39,25 +38,17 @@ internal fun rememberSoftApRuntimeInfo(): State<SoftApRuntimeInfo?> {
     val lifecycleOwner = LocalLifecycleOwner.current
     return produceState<SoftApRuntimeInfo?>(null, context, lifecycleOwner) {
         var currentCapability: SoftApCapability? = null
-        var vendorData = ""
         fun update() {
             value = currentCapability?.let {
                 SoftApRuntimeInfo(
                     supportedChannels = softApSupportedChannels(context, it),
-                    advancedInfo = softApAdvancedInfo(context, it, vendorData),
+                    advancedInfo = softApAdvancedInfo(context, it),
                 )
-            }
-        }
-        fun updateVendorData(infos: List<SoftApInfo>) {
-            if (Build.VERSION.SDK_INT >= 35) {
-                vendorData = VendorData.serialize(infos.flatMap { it.vendorData })
-                update()
             }
         }
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             WifiApCommands.softApCallbackFlow(expensive = true).catch { e -> Timber.w(e) }.collect { event ->
                 when (event) {
-                    is WifiApManager.Event.OnInfoChanged -> updateVendorData(event.info)
                     is WifiApManager.Event.OnCapabilityChanged -> {
                         currentCapability = event.capability
                         update()
@@ -69,7 +60,7 @@ internal fun rememberSoftApRuntimeInfo(): State<SoftApRuntimeInfo?> {
     }
 }
 
-private fun softApAdvancedInfo(context: Context, capability: SoftApCapability, vendorData: String): String {
+private fun softApAdvancedInfo(context: Context, capability: SoftApCapability): String {
     val lines = mutableListOf(
         context.getString(R.string.repeater_features) + softApSupportedFeatures(context, capability),
     )
@@ -84,7 +75,6 @@ private fun softApAdvancedInfo(context: Context, capability: SoftApCapability, v
         } ?: countryCode
         lines += context.getString(R.string.tethering_manage_wifi_country_code, label)
     }
-    if (vendorData.isNotEmpty()) lines += context.getString(R.string.tethering_manage_wifi_vendor_data, vendorData)
     return lines.joinToString("\n")
 }
 
