@@ -426,7 +426,7 @@ pub(super) fn is_missing(error: &io::Error) -> bool {
 }
 
 pub(super) fn is_missing_address(error: &io::Error) -> bool {
-    is_missing(error) || error_errno(error) == Some(libc::EADDRNOTAVAIL)
+    matches!(error_errno(error), Some(libc::EADDRNOTAVAIL | libc::ENXIO)) || is_missing(error)
 }
 
 pub(super) fn rule_details(command: &IpRuleCommand) -> Vec<(String, String)> {

@@ -654,8 +654,9 @@ For every current interface name:
 - delete address `<nat66-gateway>/<prefix-len>` from that interface.
 - delete table 99 unicast route `<nat66-prefix> dev <interface>`.
 
-Missing address or route is expected. Other errors are reported as structured
-nonfatal cleanup reports.
+Missing address or route is expected. For address deletion, this includes an
+interface that still exists but has no IPv6 address state. Other errors are
+reported as structured nonfatal cleanup reports.
 
 ### IPv4 Firewall Cleanup
 
