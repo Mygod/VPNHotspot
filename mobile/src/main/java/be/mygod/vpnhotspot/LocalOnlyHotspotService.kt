@@ -292,6 +292,8 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
         }
         try {
             collectLocalOnlyHotspotEvents(WifiApManager.startLocalOnlyHotspotFlow(), generation, requestJob)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: IllegalStateException) {
             if (generation != lifecycleGeneration.get()) return
             // throws IllegalStateException if the caller attempts to start the LocalOnlyHotspot while they
