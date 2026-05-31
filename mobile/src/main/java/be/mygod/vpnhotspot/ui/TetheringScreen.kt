@@ -495,7 +495,7 @@ fun TetheringScreen(
                 }
                 if (active) row("gateway_ra_$iface") {
                     val raEntries = listOf(
-                        null to stringResource(R.string.tethering_gateway_ra_disabled),
+                        null to stringResource(R.string.tethering_gateway_ra_follow_global),
                         RaPreference.RA_PREFERENCE_HIGH to stringResource(R.string.tethering_gateway_ra_high),
                         RaPreference.RA_PREFERENCE_MEDIUM to stringResource(R.string.tethering_gateway_ra_medium),
                         RaPreference.RA_PREFERENCE_LOW to stringResource(R.string.tethering_gateway_ra_low),

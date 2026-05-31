@@ -43,7 +43,7 @@
   <string name="tethering_gateway">閘道共享</string>
   <string name="tethering_gateway_empty">沒有可用介面（需要一個已啟用且帶 IPv4 位址的介面）。</string>
   <string name="tethering_gateway_ra_preference">IPv6 NAT66 / RA 優先順序</string>
-  <string name="tethering_gateway_ra_disabled">停用</string>
+  <string name="tethering_gateway_ra_follow_global">跟隨全域設定</string>
   <string name="tethering_gateway_ra_high">高</string>
   <string name="tethering_gateway_ra_medium">中</string>
   <string name="tethering_gateway_ra_low">低</string>

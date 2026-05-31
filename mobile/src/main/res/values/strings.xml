@@ -61,7 +61,7 @@
     <string name="tethering_gateway">Gateway sharing</string>
     <string name="tethering_gateway_empty">No eligible interface (needs an up interface with an IPv4 address).</string>
     <string name="tethering_gateway_ra_preference">IPv6 NAT66 / RA preference</string>
-    <string name="tethering_gateway_ra_disabled">Disabled</string>
+    <string name="tethering_gateway_ra_follow_global">Follow global setting</string>
     <string name="tethering_gateway_ra_high">High</string>
     <string name="tethering_gateway_ra_medium">Medium</string>
     <string name="tethering_gateway_ra_low">Low</string>
