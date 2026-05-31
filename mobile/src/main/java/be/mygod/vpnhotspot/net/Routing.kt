@@ -86,6 +86,13 @@ class Routing(private val caller: Any, private val downstream: String) {
     private val allowedMacs = MutableScatterSet<MacAddress>()
     private val started = AtomicBoolean()
     private val job = Job()
+    /**
+     * Set by [stopForClean] so the routing coroutine leaves its daemon session open: [RoutingManager.clean]
+     * drains it through the daemon (CleanRouting tears down every session before it can fail), so the normal
+     * cancel path here must not also close it.
+     */
+    @Volatile
+    private var cleaning = false
 
     private sealed class RoutingUpdate(val key: Any) {
         class UpstreamSnapshot(val upstream: UpstreamTracker, val value: Upstream?) : RoutingUpdate(upstream)
@@ -261,9 +268,13 @@ class Routing(private val caller: Any, private val downstream: String) {
                 }
             } finally {
                 withContext(NonCancellable) {
-                    // record stats before exiting to prevent stats losing
-                    if (clients.isNotEmpty() || allowedMacs.isNotEmpty()) TrafficRecorder.update()
-                    session?.close()
+                    // Clean leaves the session open so the daemon drains it (withdraw_cleanup) during
+                    // CleanRouting, which disposes it even if Clean later fails; don't double-close here.
+                    if (!cleaning) {
+                        // record stats before exiting to prevent stats losing
+                        if (clients.isNotEmpty() || allowedMacs.isNotEmpty()) TrafficRecorder.update()
+                        session?.close()
+                    }
                     Timber.i("Stopped routing for $downstream by $caller")
                 }
             }
@@ -324,7 +335,10 @@ class Routing(private val caller: Any, private val downstream: String) {
         )
     }
 
-    suspend fun stopForClean() = withContext(NonCancellable) { job.cancelAndJoin() }
+    fun stopForClean() = job.apply {
+        cleaning = true
+        cancel()
+    }
 
     suspend fun revert() = withContext(NonCancellable) {
         job.cancelAndJoin()

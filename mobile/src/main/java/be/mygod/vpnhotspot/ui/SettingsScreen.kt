@@ -84,6 +84,7 @@ import com.google.android.gms.oss.licenses.R as OssLicensesR
 import com.google.android.gms.oss.licenses.v2.OssLicensesMenuActivity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -167,9 +168,7 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                     icon = R.drawable.ic_cleaning_services,
                     title = stringResource(R.string.settings_service_clean),
                     summary = stringResource(R.string.settings_service_clean_summary),
-                    onClick = {
-                        if (!inspectionMode) scope.launch(Dispatchers.Default) { RoutingManager.clean() }
-                    },
+                    onClick = { if (!inspectionMode) RoutingManager.clean() },
                 )
             }
         }

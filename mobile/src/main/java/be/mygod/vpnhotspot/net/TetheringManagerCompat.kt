@@ -31,6 +31,7 @@ import be.mygod.vpnhotspot.util.callSuper
 import be.mygod.vpnhotspot.util.binderCallbackFlow
 import be.mygod.vpnhotspot.util.getRootCause
 import be.mygod.vpnhotspot.util.matches
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -41,7 +42,6 @@ import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CancellationException
 import kotlin.coroutines.coroutineContext
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException

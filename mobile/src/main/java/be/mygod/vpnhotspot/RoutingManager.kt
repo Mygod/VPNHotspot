@@ -13,7 +13,9 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -63,7 +65,10 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
         private val monitor = Mutex()
         private var cleaning: CompletableDeferred<Unit>? = null
 
-        suspend fun clean() {
+        // clean() is a global reset; don't tie it to this composition's scope or
+        // navigating away mid-clean leaves managers started but without routing.
+        @OptIn(DelicateCoroutinesApi::class)
+        fun clean() = GlobalScope.launch {
             val clean = CompletableDeferred<Unit>()
             monitor.withLock {
                 cleaning?.let { return@withLock it }
@@ -71,7 +76,7 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                 null
             }?.let {
                 it.await()
-                return
+                return@launch
             }
             try {
                 val routings = monitor.withLock {
@@ -85,13 +90,13 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                     }
                 }
                 try {
-                    for (routing in routings) routing.stopForClean()
+                    for (job in routings.map { it.stopForClean() }) job.join()
                     Routing.clean()
                 } catch (e: Exception) {
                     for (routing in routings) routing.revert()
                     Timber.d(e)
                     SmartSnackbar.make(e).show()
-                    return
+                    return@launch
                 }
                 val restarts = monitor.withLock {
                     buildList(active.size) {
