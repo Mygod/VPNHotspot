@@ -24,8 +24,18 @@ class LeakCanaryInstaller : ContentProvider() {
                         val libLeaks: List<Leak> = heapAnalysis.libraryLeaks
                         for ((type, leaks) in sequenceOf("application" to appLeaks, "library" to libLeaks)) {
                             for (leak in leaks) {
+                                val firstTrace = leak.leakTraces.firstOrNull()
+                                val traceSummary = firstTrace?.let { trace ->
+                                    "${trace.gcRootType.name}: ${
+                                        (trace.referencePath.asSequence().map { reference ->
+                                            "${reference.originObject.classSimpleName}.${reference.referenceDisplayName}"
+                                        } + sequenceOf(trace.leakingObject.classSimpleName)).joinToString(" -> ")
+                                    }".take(1024)
+                                }
                                 val exception = IllegalStateException(
-                                    "LeakCanary $type leak: ${leak.shortDescription} [${leak.signature}]")
+                                    "LeakCanary $type leak: ${leak.shortDescription}" +
+                                            traceSummary?.let { ": $it" }.orEmpty() +
+                                            " [${leak.signature}]")
                                 exception.stackTrace = arrayOf(StackTraceElement("LeakCanary", "${type}Leak",
                                     leak.signature.take(255), 1))
                                 FirebaseCrashlytics.getInstance().recordException(exception,
@@ -33,6 +43,25 @@ class LeakCanaryInstaller : ContentProvider() {
                                         putString("leakcanary.analysis", "success")
                                         putString("leakcanary.type", type)
                                         putString("leakcanary.signature", leak.signature.take(1024))
+                                        firstTrace?.let { trace ->
+                                            putString("leakcanary.gcRootType", trace.gcRootType.name)
+                                            putString("leakcanary.leakingClass", trace.leakingObject.className.take(1024))
+                                            traceSummary?.let { putString("leakcanary.traceSummary", it) }
+                                            for (label in trace.leakingObject.labels) {
+                                                when {
+                                                    label.startsWith("watchDurationMillis = ") -> {
+                                                        label.substringAfter(" = ").toLongOrNull()?.let {
+                                                            putLong("leakcanary.watchDurationMillis", it)
+                                                        }
+                                                    }
+                                                    label.startsWith("retainedDurationMillis = ") -> {
+                                                        label.substringAfter(" = ").toLongOrNull()?.let {
+                                                            putLong("leakcanary.retainedDurationMillis", it)
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                         putInt("leakcanary.applicationLeakCount", appLeaks.size)
                                         putInt("leakcanary.libraryLeakCount", libLeaks.size)
                                         putInt("leakcanary.traceCount", leak.leakTraces.size)
