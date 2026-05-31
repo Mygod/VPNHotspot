@@ -381,7 +381,6 @@ fun TetheringScreen(
                     icon = R.drawable.ic_lan,
                     iconTint = MaterialTheme.colorScheme.secondary,
                     title = stringResource(R.string.tethering_gateway),
-                    summary = stringResource(R.string.tethering_gateway_summary),
                 )
             }
             if (gatewayCandidates.isEmpty()) {

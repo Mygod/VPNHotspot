@@ -58,9 +58,7 @@
 
     <string name="tethering_watch_reconnect">Watch for reconnect</string>
 
-    <string name="tethering_gateway">Gateway (single-arm router)</string>
-    <string name="tethering_gateway_summary">Route an existing LAN this device joined as a client into the VPN.
-        On other devices, set their gateway (and DNS) to this device’s IP on the chosen interface.</string>
+    <string name="tethering_gateway">Gateway sharing</string>
     <string name="tethering_gateway_empty">No eligible interface (needs an up interface with an IPv4 address).</string>
 
     <string name="tethering_manage">Manage system tethering…</string>
