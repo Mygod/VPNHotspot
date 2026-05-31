@@ -53,6 +53,11 @@
   <string name="tethering_watch_reconnect">監控重新連線</string>
   <string name="tethering_gateway">閘道共用</string>
   <string name="tethering_gateway_empty">沒有可用介面（需要一個已啟用且帶 IPv4 位址的介面）。</string>
+  <string name="tethering_gateway_ra_preference">IPv6 NAT66 / RA 優先順序</string>
+  <string name="tethering_gateway_ra_disabled">停用</string>
+  <string name="tethering_gateway_ra_high">高</string>
+  <string name="tethering_gateway_ra_medium">中</string>
+  <string name="tethering_gateway_ra_low">低</string>
   <string name="tethering_manage">系統網路共用管理…</string>
   <string name="tethering_manage_offload_enabled">若 VPN 網路共用無法運作，請在「開發人員選項」中關閉「網路共用硬體加速」。</string>
   <string name="tethering_manage_usb">USB 網路共用</string>
