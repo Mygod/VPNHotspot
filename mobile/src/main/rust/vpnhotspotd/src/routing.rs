@@ -37,7 +37,7 @@ pub(crate) use static_addresses::replace_static_addresses;
 const RULE_PRIORITY_DAEMON_BASE: u32 = 20600;
 // Gateway (single-arm router) return path: VPN replies arrive on the upstream and must look up the
 // main table to reach the downstream client subnet. Sits between the daemon and upstream priorities.
-const RULE_PRIORITY_GATEWAY_RETURN_BASE: u32 = 20650;
+const RULE_PRIORITY_GATEWAY_RETURN_BASE: u32 = 20500;
 const RULE_PRIORITY_UPSTREAM_BASE: u32 = 20700;
 const RULE_PRIORITY_UPSTREAM_FALLBACK_BASE: u32 = 20800;
 const RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE: u32 = 20900;

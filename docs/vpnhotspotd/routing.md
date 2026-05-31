@@ -739,7 +739,7 @@ tethering rules. The code names four base priorities:
 | Role | Android 12+ | Android 10/11 |
 | --- | ---: | ---: |
 | NAT66 daemon table lookup | `20600` | `17600` |
-| Gateway return table lookup | `20650` | `17650` |
+| Gateway return table lookup | `20500` | `17500` |
 | Primary upstream table lookup | `20700` | `17700` |
 | Fallback upstream table lookup | `20800` | `17800` |
 | Downstream unreachable guard | `20900` | `17900` |
