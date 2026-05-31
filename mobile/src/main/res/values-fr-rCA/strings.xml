@@ -277,7 +277,8 @@
   <string name="notification_interfaces_inactive">Inactif: %s</string>
   <plurals name="quick_settings_hotspot_secondary_label_num_devices">
     <item quantity="one">%d appareil</item>
-    <item quantity="many">%d appareil</item>
+    <item quantity="other">%d appareils</item>
+    <item quantity="many">%d appareils</item>
   </plurals>
   <string name="failure_reason_unknown">inconnu #%d</string>
   <string name="permission_missing">Autorisation manquante</string>
