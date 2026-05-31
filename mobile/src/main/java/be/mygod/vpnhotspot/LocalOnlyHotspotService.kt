@@ -51,11 +51,19 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
     class Binder(owner: LocalOnlyHotspotService) : android.os.Binder() {
         @Volatile
         private var service: LocalOnlyHotspotService? = owner
-        val iface = owner.iface.asStateFlow()
-        val configuration = owner.configuration.asStateFlow()
+        private val _iface = MutableStateFlow<String?>(null)
+        val iface = _iface.asStateFlow()
+        private val _configuration = MutableStateFlow<SoftApConfigurationCompat?>(null)
+        val configuration = _configuration.asStateFlow()
+
+        fun update(iface: String?, configuration: SoftApConfigurationCompat?) {
+            _iface.value = iface
+            _configuration.value = configuration
+        }
 
         fun detach() {
             service = null
+            update(null, null)
         }
 
         fun stop(shouldDisable: Boolean = true, exit: Boolean = false) {
@@ -92,7 +100,6 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
             refreshConfiguration()
         }
     private val iface = MutableStateFlow<String?>(null)
-    private val configuration = MutableStateFlow<SoftApConfigurationCompat?>(null)
     /**
      * Drives the foreground notification off [iface]: counts while connected ("something"), an empty
      * notification while no active interface is owned (""), nothing (no foreground) while idle (null).
@@ -113,7 +120,8 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
         refreshConfiguration()
     }
     private fun refreshConfiguration() {
-        configuration.value = if (iface.value == null) null else reservation?.configuration
+        val currentIface = iface.value
+        binder.update(currentIface, if (currentIface == null) null else reservation?.configuration)
     }
     private val binder = Binder(this)
     private suspend fun collectLocalOnlyHotspotEvents(
