@@ -40,5 +40,5 @@ compose-compiler = "org.jetbrains.kotlin.plugin.compose:2.3.21"
 crashlytics = "com.google.firebase.crashlytics:3.0.7"
 google-services = "com.google.gms.google-services:4.4.4"
 kotlin-parcelize = "org.jetbrains.kotlin.plugin.parcelize:2.3.21"
-ksp = "com.google.devtools.ksp:2.3.8"
+ksp = "com.google.devtools.ksp:2.3.9"
 wire = { id = "com.squareup.wire", version.ref = "wire" }
