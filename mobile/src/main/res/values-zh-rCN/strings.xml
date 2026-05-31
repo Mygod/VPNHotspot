@@ -44,7 +44,7 @@
   <string name="tethering_gateway">网关共享</string>
   <string name="tethering_gateway_empty">没有可用接口（需要一个已启用且带 IPv4 地址的接口）。</string>
   <string name="tethering_gateway_ra_preference">IPv6 NAT66 / RA 优先级</string>
-  <string name="tethering_gateway_ra_follow_global">跟随全局设置</string>
+  <string name="tethering_gateway_ra_follow_global">跟随全局 IPv6 模式</string>
   <string name="tethering_gateway_ra_high">高</string>
   <string name="tethering_gateway_ra_medium">中</string>
   <string name="tethering_gateway_ra_low">低</string>
