@@ -80,6 +80,7 @@ import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.root.daemon.RaPreference
 import be.mygod.vpnhotspot.ui.apconfiguration.VendorData
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.Services
@@ -489,6 +490,35 @@ fun TetheringScreen(
                                 .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE_MONITOR, iface))
                             else context.startForegroundService(Intent(context, TetheringService::class.java)
                                 .putExtra(TetheringService.EXTRA_ADD_INTERFACE_MONITOR, iface))
+                        },
+                    )
+                }
+                if (active) row("gateway_ra_$iface") {
+                    val raEntries = listOf(
+                        null to stringResource(R.string.tethering_gateway_ra_disabled),
+                        RaPreference.RA_PREFERENCE_HIGH to stringResource(R.string.tethering_gateway_ra_high),
+                        RaPreference.RA_PREFERENCE_MEDIUM to stringResource(R.string.tethering_gateway_ra_medium),
+                        RaPreference.RA_PREFERENCE_LOW to stringResource(R.string.tethering_gateway_ra_low),
+                    )
+                    val currentPref = TetheringService.gatewayRaPreference(iface)
+                    val selectedIndex = raEntries.indexOfFirst { it.first == currentPref }
+                    var selectingRa by rememberSaveable { mutableStateOf(false) }
+                    PreferenceRow(
+                        title = stringResource(R.string.tethering_gateway_ra_preference),
+                        summary = raEntries[if (selectedIndex >= 0) selectedIndex else 0].second,
+                        onClick = { selectingRa = true },
+                    )
+                    if (selectingRa) PreferenceSelectionSheet(
+                        title = stringResource(R.string.tethering_gateway_ra_preference),
+                        entryCount = raEntries.size,
+                        selectedIndex = if (selectedIndex >= 0) selectedIndex else 0,
+                        entryLabel = { raEntries[it].second },
+                        onDismissRequest = { selectingRa = false },
+                        onSelect = {
+                            TetheringService.setGatewayRaPreference(iface, raEntries[it].first)
+                            selectingRa = false
+                            context.startForegroundService(Intent(context, TetheringService::class.java)
+                                .putExtra(TetheringService.EXTRA_RESTART_INTERFACE_GATEWAY, iface))
                         },
                     )
                 }

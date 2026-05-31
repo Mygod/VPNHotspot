@@ -10,10 +10,10 @@ use prost::Message;
 
 use crate::shared::ipsec::IpSecForwardPolicyTarget;
 use crate::shared::model::{
-    ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatConfig, SessionConfig,
+    ipv6_nat_gateway, ipv6_nat_prefix, ClientConfig, Ipv6NatConfig, RaPreference, SessionConfig,
     DAEMON_REPLY_MARK,
 };
-use crate::shared::proto::daemon::{self, DaemonErrorReport, MasqueradeMode};
+use crate::shared::proto::daemon::{self, DaemonErrorReport, MasqueradeMode, RaPreference as ProtoRaPreference};
 
 pub(crate) const MAX_ERROR_DETAILS: usize = 32;
 const MAX_ERROR_FIELD_BYTES: usize = 4096;
@@ -285,7 +285,12 @@ pub fn read_session_config(config: daemon::SessionConfig) -> io::Result<SessionC
     let ipv6_nat = if let Some(ipv6_nat) = config.ipv6_nat {
         let prefix = ipv6_nat_prefix(&ipv6_nat.prefix_seed, &downstream);
         let gateway = ipv6_nat_gateway(prefix);
-        Some(Ipv6NatConfig { gateway })
+        let ra_preference = match ProtoRaPreference::try_from(ipv6_nat.ra_preference) {
+            Ok(ProtoRaPreference::High) => RaPreference::High,
+            Ok(ProtoRaPreference::Low) => RaPreference::Low,
+            _ => RaPreference::Medium,
+        };
+        Some(Ipv6NatConfig { gateway, ra_preference })
     } else {
         None
     };

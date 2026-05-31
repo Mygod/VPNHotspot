@@ -8,10 +8,14 @@ import androidx.collection.MutableScatterSet
 import androidx.collection.ScatterSet
 import androidx.collection.emptyScatterSet
 import androidx.collection.toMutableScatterMap
+import androidx.core.content.edit
+import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.Routing.Ipv6Mode
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.root.daemon.RaPreference
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +41,34 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
         const val EXTRA_REMOVE_INTERFACE = "interface.remove"
         const val EXTRA_REMOVE_INTERFACE_MONITOR = "interface.remove.monitor"
         const val EXTRA_REMOVE_INTERFACE_GATEWAY = "interface.remove.gateway"
+        const val EXTRA_RESTART_INTERFACE_GATEWAY = "interface.restart.gateway"
+
+        private const val KEY_GATEWAY_RA_PREFIX = "service.gateway.raPreference."
+
+        fun gatewayRaPreference(iface: String): RaPreference? {
+            val value = app.pref.getString(KEY_GATEWAY_RA_PREFIX + iface, null) ?: return null
+            return when (value) {
+                "High" -> RaPreference.RA_PREFERENCE_HIGH
+                "Medium" -> RaPreference.RA_PREFERENCE_MEDIUM
+                "Low" -> RaPreference.RA_PREFERENCE_LOW
+                else -> null
+            }
+        }
+
+        fun setGatewayRaPreference(iface: String, pref: RaPreference?) {
+            app.pref.edit {
+                if (pref == null) {
+                    remove(KEY_GATEWAY_RA_PREFIX + iface)
+                } else {
+                    putString(KEY_GATEWAY_RA_PREFIX + iface, when (pref) {
+                        RaPreference.RA_PREFERENCE_HIGH -> "High"
+                        RaPreference.RA_PREFERENCE_MEDIUM -> "Medium"
+                        RaPreference.RA_PREFERENCE_LOW -> "Low"
+                        is RaPreference.Unrecognized -> "Medium"
+                    })
+                }
+            }
+        }
 
         var dismissHandle: TileServiceDismissHandle? = null
         private fun dismissIfApplicable() = dismissHandle?.run {
@@ -65,8 +97,16 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
             if (this@Downstream.gateway) {
                 ipForward = true   // client interface is not a system tether; enable forwarding
                 gateway = true     // request the daemon's single-arm return-path rule
+                val pref = gatewayRaPreference(downstream)
+                if (pref != null) {
+                    ipv6Mode = Ipv6Mode.Nat
+                    raPreference = pref
+                } else {
+                    ipv6Mode = RoutingManager.ipv6Mode
+                }
+            } else {
+                ipv6Mode = RoutingManager.ipv6Mode
             }
-            ipv6Mode = RoutingManager.ipv6Mode
         }
     }
 
@@ -234,6 +274,12 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
                         if (tetheredIfaces?.contains(iface) != true) {
                             downstreams.remove(iface)?.stop()
                         }
+                    }
+                }
+                intent.getStringExtra(EXTRA_RESTART_INTERFACE_GATEWAY)?.also { iface ->
+                    downstreams[iface]?.also { downstream ->
+                        downstream.stop()
+                        downstream.start()
                     }
                 }
                 onDownstreamsChangedLocked()

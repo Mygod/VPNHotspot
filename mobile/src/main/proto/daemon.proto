@@ -73,6 +73,13 @@ message ClientConfig {
 
 message Ipv6NatConfig {
   string prefix_seed = 1;
+  RaPreference ra_preference = 2;
+}
+
+enum RaPreference {
+  RA_PREFERENCE_MEDIUM = 0;
+  RA_PREFERENCE_HIGH = 1;
+  RA_PREFERENCE_LOW = 2;
 }
 
 message Ipv6Prefix {

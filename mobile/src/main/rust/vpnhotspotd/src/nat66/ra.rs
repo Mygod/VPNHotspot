@@ -526,7 +526,7 @@ async fn send_ra(
     let fd = create_send_socket(&config.downstream, config.reply_mark, router)?;
     let destination =
         target.unwrap_or_else(|| SocketAddrV6::new(ALL_NODES, 0, 0, router.interface_index));
-    let packet = make_current_ra_packet(ipv6_nat.gateway, mtu);
+    let packet = make_current_ra_packet(ipv6_nat.gateway, mtu, ipv6_nat.ra_preference);
     send_packet_to(&fd, &packet, SockAddr::from(destination)).await
 }
 

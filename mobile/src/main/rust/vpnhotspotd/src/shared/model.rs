@@ -101,9 +101,17 @@ pub struct ClientConfig {
     pub ipv4: Vec<Ipv4Addr>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RaPreference {
+    High,
+    Medium,
+    Low,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Ipv6NatConfig {
     pub gateway: Ipv6Inet,
+    pub ra_preference: RaPreference,
 }
 
 #[derive(Clone)]
@@ -385,6 +393,7 @@ mod tests {
     fn ipv6_nat_config() -> Ipv6NatConfig {
         Ipv6NatConfig {
             gateway: Ipv6Inet::new("fd00::1".parse().unwrap(), 64).unwrap(),
+            ra_preference: RaPreference::Medium,
         }
     }
 }

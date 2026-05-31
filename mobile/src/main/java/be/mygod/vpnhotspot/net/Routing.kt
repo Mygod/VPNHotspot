@@ -21,6 +21,7 @@ import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.root.daemon.Ipv6NatConfig
 import be.mygod.vpnhotspot.root.daemon.Ipv6Prefix
 import be.mygod.vpnhotspot.root.daemon.MasqueradeMode
+import be.mygod.vpnhotspot.root.daemon.RaPreference
 import be.mygod.vpnhotspot.root.daemon.SessionConfig
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
@@ -84,6 +85,7 @@ class Routing(private val caller: Any, private val downstream: String) {
      * clients on a physical interface this device joined as a LAN client (not a system tether).
      */
     var gateway = false
+    var raPreference: RaPreference = RaPreference.RA_PREFERENCE_MEDIUM
 
     private val fallbackUpstream = UpstreamTracker()
     private val primaryUpstream = UpstreamTracker()
@@ -336,7 +338,7 @@ class Routing(private val caller: Any, private val downstream: String) {
                     ))
                 }
             },
-            ipv6_nat = if (ipv6Mode == Ipv6Mode.Nat) Ipv6NatConfig(ipv6NatPrefixSeed) else null,
+            ipv6_nat = if (ipv6Mode == Ipv6Mode.Nat) Ipv6NatConfig(ipv6NatPrefixSeed, raPreference) else null,
             gateway = gateway,
         )
     }

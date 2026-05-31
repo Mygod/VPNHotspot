@@ -7,11 +7,13 @@ use etherparse::icmpv6::{
 };
 use etherparse::{Icmpv6Header, Icmpv6Type};
 
+use crate::shared::model::RaPreference;
+
 // Recursive DNS Server option, RFC 8106 section 5.1.
 const RDNSS_OPTION_TYPE: NdpOptionType = NdpOptionType(25);
 const RDNSS_OPTION_LENGTH_UNITS: u8 = 3;
 
-pub fn make_current_ra_packet(gateway: Ipv6Inet, mtu: u32) -> Vec<u8> {
+pub fn make_current_ra_packet(gateway: Ipv6Inet, mtu: u32, preference: RaPreference) -> Vec<u8> {
     RaAdvertisement {
         dns_server: gateway.address(),
         advertised_prefix: gateway.network(),
@@ -20,6 +22,7 @@ pub fn make_current_ra_packet(gateway: Ipv6Inet, mtu: u32) -> Vec<u8> {
         valid_lifetime: 3600,
         preferred_lifetime: 1800,
         rdnss_lifetime: 600,
+        ra_preference: preference,
     }
     .encode()
 }
@@ -33,6 +36,7 @@ pub fn make_zero_lifetime_ra_packet(prefix: Ipv6Inet, mtu: u32, keep_router: boo
         valid_lifetime: 0,
         preferred_lifetime: 0,
         rdnss_lifetime: 0,
+        ra_preference: RaPreference::Medium,
     }
     .encode()
 }
@@ -49,6 +53,7 @@ struct RaAdvertisement {
     valid_lifetime: u32,
     preferred_lifetime: u32,
     rdnss_lifetime: u32,
+    ra_preference: RaPreference,
 }
 
 impl RaAdvertisement {
@@ -63,6 +68,13 @@ impl RaAdvertisement {
             }))
             .to_bytes(),
         );
+        // RFC 4191: Default Router Preference in bits 4-3 of the flags byte (packet[5])
+        let prf_bits = match self.ra_preference {
+            RaPreference::High => 0x08,
+            RaPreference::Medium => 0x00,
+            RaPreference::Low => 0x18,
+        };
+        packet[5] |= prf_bits;
         packet.extend_from_slice(
             &RouterAdvertisementPayload {
                 reachable_time: 0,
@@ -122,6 +134,7 @@ mod tests {
             valid_lifetime: 0,
             preferred_lifetime: 0,
             rdnss_lifetime: 0,
+            ra_preference: RaPreference::Medium,
         }
         .encode();
         assert_eq!(&packet[20..24], &0u32.to_be_bytes());
@@ -132,7 +145,7 @@ mod tests {
     #[test]
     fn current_ra_masks_gateway_to_advertised_prefix() {
         let gateway = Ipv6Inet::new("fd47:6b7c:2186:b452::1".parse().unwrap(), 64).unwrap();
-        let packet = make_current_ra_packet(gateway, 1500);
+        let packet = make_current_ra_packet(gateway, 1500, RaPreference::Medium);
         assert_eq!(
             &packet[32..48],
             &"fd47:6b7c:2186:b452::"
@@ -141,6 +154,27 @@ mod tests {
                 .octets()
         );
         assert_eq!(&packet[64..80], &gateway.address().octets());
+    }
+
+    #[test]
+    fn ra_preference_high_sets_correct_bits() {
+        let gateway = Ipv6Inet::new("fd47:6b7c:2186:b452::1".parse().unwrap(), 64).unwrap();
+        let packet = make_current_ra_packet(gateway, 1500, RaPreference::High);
+        assert_eq!(packet[5] & 0x18, 0x08);
+    }
+
+    #[test]
+    fn ra_preference_low_sets_correct_bits() {
+        let gateway = Ipv6Inet::new("fd47:6b7c:2186:b452::1".parse().unwrap(), 64).unwrap();
+        let packet = make_current_ra_packet(gateway, 1500, RaPreference::Low);
+        assert_eq!(packet[5] & 0x18, 0x18);
+    }
+
+    #[test]
+    fn ra_preference_medium_clears_preference_bits() {
+        let gateway = Ipv6Inet::new("fd47:6b7c:2186:b452::1".parse().unwrap(), 64).unwrap();
+        let packet = make_current_ra_packet(gateway, 1500, RaPreference::Medium);
+        assert_eq!(packet[5] & 0x18, 0x00);
     }
 
     #[test]
