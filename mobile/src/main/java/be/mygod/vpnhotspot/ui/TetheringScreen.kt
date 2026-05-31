@@ -90,6 +90,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
+import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.SocketException
 import java.text.NumberFormat
@@ -99,6 +100,7 @@ data class TetheringServiceState(
     val managedIfaces: Set<String> = emptySet(),
     val inactiveIfaces: Set<String> = emptySet(),
     val monitoredIfaces: Set<String> = emptySet(),
+    val gatewayIfaces: Set<String> = emptySet(),
 )
 
 @Composable
@@ -152,11 +154,26 @@ fun TetheringScreen(
     val monitored = tetheringServiceState.monitoredIfaces
     val managed = tetheringServiceState.managedIfaces
     val inactive = tetheringServiceState.inactiveIfaces
+    val gateway = tetheringServiceState.gatewayIfaces
     val tetheredTypes = remember(tetherStates, tetherTypeVersion) {
         tetherStates.tethered.map { TetherType.ofInterface(it) }.toSet()
     }
     val interfaceIfaces = remember(tetherStates, monitored) {
         (tetherStates.tethered + monitored).toSortedSet().toList()
+    }
+    // Single-arm router candidates: up physical interfaces with an IPv4 that this device joined as a
+    // client. Exclude interfaces already shown above (tethered/monitored); always include active ones.
+    val gatewayCandidates = remember(ifaceLookup, tetherStates, monitored, gateway) {
+        val exclude = tetherStates.tethered + monitored
+        (ifaceLookup.values.asSequence().filter { iface ->
+            try {
+                iface.isUp && !iface.isLoopback && !iface.isPointToPoint &&
+                        iface.interfaceAddresses.any { it.address is Inet4Address }
+            } catch (e: SocketException) {
+                Timber.d(e)
+                false
+            }
+        }.map { it.name }.toSet() + gateway - exclude).toSortedSet().toList()
     }
     val wifiBaseError = tetherError(context, tetherStates, TetherType.WIFI)
     val wifiSummary by if (inspectionMode) {
@@ -355,6 +372,40 @@ fun TetheringScreen(
                             },
                         )
                     }
+                }
+            }
+        }
+        preferenceGroup(key = "gateway") {
+            row(R.string.tethering_gateway) {
+                PreferenceRow(
+                    icon = R.drawable.ic_lan,
+                    iconTint = MaterialTheme.colorScheme.secondary,
+                    title = stringResource(R.string.tethering_gateway),
+                    summary = stringResource(R.string.tethering_gateway_summary),
+                )
+            }
+            if (gatewayCandidates.isEmpty()) {
+                row("gateway_empty") {
+                    PreferenceRow(
+                        modifier = Modifier.padding(start = 48.dp),
+                        title = stringResource(R.string.tethering_gateway_empty),
+                    )
+                }
+            } else for (iface in gatewayCandidates) {
+                row("gateway_$iface") {
+                    val active = gateway.contains(iface)
+                    TetheringRow(
+                        icon = TetherType.ofInterface(iface).icon,
+                        title = iface,
+                        summary = networkInterfaceAddressesText(ifaceLookup[iface], linkStyles),
+                        checked = active,
+                        onClick = {
+                            if (active) context.startService(Intent(context, TetheringService::class.java)
+                                .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE_GATEWAY, iface))
+                            else context.startForegroundService(Intent(context, TetheringService::class.java)
+                                .putExtra(TetheringService.EXTRA_ADD_INTERFACE_GATEWAY, iface))
+                        },
+                    )
                 }
             }
         }

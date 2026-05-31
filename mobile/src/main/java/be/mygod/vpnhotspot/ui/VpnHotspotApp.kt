@@ -167,10 +167,12 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
             val managedIfaces by binder.managedIfaces.collectAsStateWithLifecycle()
             val inactiveIfaces by binder.inactiveIfaces.collectAsStateWithLifecycle()
             val monitoredIfaces by binder.monitoredIfaces.collectAsStateWithLifecycle()
+            val gatewayIfaces by binder.gatewayIfaces.collectAsStateWithLifecycle()
             TetheringServiceState(
                 managedIfaces = managedIfaces.asSet(),
                 inactiveIfaces = inactiveIfaces.asSet(),
                 monitoredIfaces = monitoredIfaces.asSet(),
+                gatewayIfaces = gatewayIfaces.asSet(),
             )
         }
     }
