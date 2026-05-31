@@ -129,6 +129,7 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
     }
     private suspend fun onDownstreamsChangedLocked() {
         val monitoredIfaces = MutableScatterSet<String>()
+        val monitoredGatewayIfaces = MutableScatterSet<String>()
         val gatewayIfaces = MutableScatterSet<String>()
         val inactiveIfaces = MutableScatterSet<String>()
         val managedIfaces = MutableScatterSet<String>()
@@ -141,13 +142,16 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
                 monitoredIfaces.add(downstream.downstream)
                 if (!downstream.started) inactiveIfaces.add(downstream.downstream)
             }
-            if (downstream.gateway) gatewayIfaces.add(downstream.downstream)
+            if (downstream.gateway) {
+                gatewayIfaces.add(downstream.downstream)
+                if (downstream.monitor) monitoredGatewayIfaces.add(downstream.downstream)
+            }
         }
-        if (monitoredIfaces.isEmpty() && gatewayIfaces.isEmpty()) {
+        if (monitoredIfaces.isEmpty() && monitoredGatewayIfaces.isEmpty()) {
             BootReceiver.delete<TetheringService>()
         } else BootReceiver.add<TetheringService>(Starter(
             ArrayList<String>(monitoredIfaces.size).apply { monitoredIfaces.forEach { add(it) } },
-            ArrayList<String>(gatewayIfaces.size).apply { gatewayIfaces.forEach { add(it) } },
+            ArrayList<String>(monitoredGatewayIfaces.size).apply { monitoredGatewayIfaces.forEach { add(it) } },
         ))
         // Publish to the bound binder before the teardown below: when reached from the TetherStates
         // collector, unregisterReceiver() cancels tetherStatesJob — this coroutine's own parent — which
@@ -226,8 +230,8 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
                 intent.getStringExtra(EXTRA_REMOVE_INTERFACE_GATEWAY)?.also { iface ->
                     downstreams[iface]?.also { downstream ->
                         downstream.gateway = false
-                        // keep it alive only if still needed as a monitor or an actively tethered downstream
-                        if (!downstream.monitor && tetheredIfaces?.contains(iface) != true) {
+                        downstream.monitor = false
+                        if (tetheredIfaces?.contains(iface) != true) {
                             downstreams.remove(iface)?.stop()
                         }
                     }

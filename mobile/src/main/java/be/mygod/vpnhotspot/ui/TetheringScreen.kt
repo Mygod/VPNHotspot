@@ -159,13 +159,13 @@ fun TetheringScreen(
     val tetheredTypes = remember(tetherStates, tetherTypeVersion) {
         tetherStates.tethered.map { TetherType.ofInterface(it) }.toSet()
     }
-    val interfaceIfaces = remember(tetherStates, monitored) {
-        (tetherStates.tethered + monitored).toSortedSet().toList()
+    val interfaceIfaces = remember(tetherStates, monitored, gateway) {
+        (tetherStates.tethered + monitored - gateway).toSortedSet().toList()
     }
     // Single-arm router candidates: up physical interfaces with an IPv4 that this device joined as a
     // client. Exclude interfaces already shown above (tethered/monitored); always include active ones.
     val gatewayCandidates = remember(ifaceLookup, tetherStates, monitored, gateway) {
-        val exclude = tetherStates.tethered + monitored
+        val exclude = tetherStates.tethered + (monitored - gateway)
         (ifaceLookup.values.asSequence().filter { iface ->
             try {
                 iface.isUp && !iface.isLoopback && !iface.isPointToPoint &&
@@ -459,7 +459,8 @@ fun TetheringScreen(
             }
             if (gatewayExpanded || gateway.isNotEmpty()) for (iface in gatewayCandidates) {
                 val active = gateway.contains(iface)
-                if (!gatewayExpanded && !active) continue
+                val watch = monitored.contains(iface)
+                if (!gatewayExpanded && !active && !watch) continue
                 row("gateway_$iface") {
                     TetheringRow(
                         icon = TetherType.ofInterface(iface).icon,
@@ -471,6 +472,23 @@ fun TetheringScreen(
                                 .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE_GATEWAY, iface))
                             else context.startForegroundService(Intent(context, TetheringService::class.java)
                                 .putExtra(TetheringService.EXTRA_ADD_INTERFACE_GATEWAY, iface))
+                        },
+                    )
+                }
+                if (active || watch) row("gateway_watch_$iface") {
+                    PreferenceRow(
+                        title = stringResource(R.string.tethering_watch_reconnect),
+                        trailing = {
+                            PreferenceSwitch(
+                                checked = watch,
+                                onCheckedChange = null,
+                            )
+                        },
+                        onClick = {
+                            if (watch) context.startService(Intent(context, TetheringService::class.java)
+                                .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE_MONITOR, iface))
+                            else context.startForegroundService(Intent(context, TetheringService::class.java)
+                                .putExtra(TetheringService.EXTRA_ADD_INTERFACE_MONITOR, iface))
                         },
                     )
                 }
