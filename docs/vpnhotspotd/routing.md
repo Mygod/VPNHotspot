@@ -214,6 +214,30 @@ Missing upstream links are skipped because upstream snapshots can race interface
 churn. Other netlink lookup errors are reported as structured nonfatals and
 that upstream interface is skipped for the current best-effort reconcile.
 
+### IPv4 Gateway Return Rule
+
+Condition: `SessionConfig.gateway` is set, for each unique resolved upstream
+interface whose name is not the downstream interface.
+
+External mutation:
+
+- replace IPv4 policy rule
+  `iif <upstream> priority <gateway-return-priority> lookup <main (254)>`
+
+Rollback:
+
+- delete the corresponding IPv4 policy rule by full rule shape.
+
+A single-arm router downstream is a physical interface this device joined as a
+LAN client, not a system tether, so netd never registers its subnet in the
+`local_network` table. VPN replies arrive on the upstream and are matched by
+netd's `iif <upstream> lookup local_network` rule, which has no route to the
+client subnet, leaving replies unreachable. This rule sends upstream-ingress
+traffic to the main table, which holds the kernel connected route for the
+downstream subnet, so replies reach the clients. Upstreams equal to the
+downstream are skipped: the fallback upstream can be the downstream itself, and
+`iif <downstream> lookup main` would hijack forward traffic.
+
 ### Netd Masquerade
 
 Condition: `SessionConfig.masquerade == MASQUERADE_MODE_NETD`, for each unique
@@ -645,6 +669,7 @@ External mutations:
 - repeatedly delete IPv4 policy rules at `<primary-priority>`.
 - repeatedly delete IPv4 policy rules at `<fallback-priority>`.
 - repeatedly delete IPv4 policy rules at `<upstream-disable-priority>`.
+- repeatedly delete IPv4 policy rules at `<gateway-return-priority>`.
 - flush IPv6 routes from table 900.
 
 For every current interface name:
@@ -714,6 +739,7 @@ tethering rules. The code names four base priorities:
 | Role | Android 12+ | Android 10/11 |
 | --- | ---: | ---: |
 | NAT66 daemon table lookup | `20600` | `17600` |
+| Gateway return table lookup | `20650` | `17650` |
 | Primary upstream table lookup | `20700` | `17700` |
 | Fallback upstream table lookup | `20800` | `17800` |
 | Downstream unreachable guard | `20900` | `17900` |
@@ -725,6 +751,8 @@ The daemon uses these table conventions:
 
 - table 900 is VPNHotspot's daemon table for NAT66 local interception;
 - table 99 is Android's shared `local_network` table;
+- table 254 is the kernel main table, looked up by the gateway return rule for
+  the downstream client subnet's connected route;
 - upstream interface tables use Android's `ifindex + 1000` convention.
 
 Table 900 may be flushed by Clean because it is reserved by VPNHotspot. Table

@@ -62,7 +62,10 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
     private class Downstream(caller: Any, downstream: String, var monitor: Boolean = false,
                              var gateway: Boolean = false) : RoutingManager(caller, downstream) {
         override fun Routing.configure() {
-            if (gateway) ipForward = true   // client interface is not a system tether; enable forwarding
+            if (this@Downstream.gateway) {
+                ipForward = true   // client interface is not a system tether; enable forwarding
+                gateway = true     // request the daemon's single-arm return-path rule
+            }
             ipv6Mode = RoutingManager.ipv6Mode
         }
     }

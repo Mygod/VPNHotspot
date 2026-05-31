@@ -37,6 +37,9 @@ pub const DAEMON_ICMP_NFQUEUE_NUM: u16 = 30_000;
 /// that range while avoiding kernel-reserved tables and AOSP's fixed 97..99 tables.
 pub const DAEMON_TABLE: u32 = 900;
 pub const LOCAL_NETWORK_TABLE: u32 = 99;
+/// Kernel's main routing table (RT_TABLE_MAIN). Holds the kernel-installed connected route for
+/// every interface's own subnet, so a gateway downstream's client subnet is reachable here.
+pub const MAIN_TABLE: u32 = 254;
 
 pub fn kernel_release_supports_fra_ip_proto(release: &str) -> Option<bool> {
     let (major, rest) = release.split_once('.')?;
@@ -65,6 +68,8 @@ pub struct SessionConfig {
     pub fallback_upstream_interfaces: Vec<String>,
     pub clients: Vec<ClientConfig>,
     pub ipv6_nat: Option<Ipv6NatConfig>,
+    /// Single-arm router downstream: add a return-path rule so VPN replies reach the client subnet.
+    pub gateway: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -362,6 +367,7 @@ mod tests {
             fallback_upstream_interfaces: Vec::new(),
             clients: Vec::new(),
             ipv6_nat: None,
+            gateway: false,
         }
     }
 

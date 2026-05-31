@@ -55,6 +55,9 @@ message SessionConfig {
   repeated string fallback_upstream_interfaces = 9;
   repeated ClientConfig clients = 10;
   optional Ipv6NatConfig ipv6_nat = 11;
+  // Single-arm router (gateway) downstream: a physical interface this device joined as a LAN client.
+  // Enables a return-path rule so VPN replies reach downstream clients (see routing/desired.rs).
+  bool gateway = 12;
 }
 
 enum MasqueradeMode {

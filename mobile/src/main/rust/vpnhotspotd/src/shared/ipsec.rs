@@ -351,6 +351,7 @@ mUserResourceTracker:
                 .collect(),
             clients: Vec::new(),
             ipv6_nat: None,
+            gateway: false,
         }
     }
 }

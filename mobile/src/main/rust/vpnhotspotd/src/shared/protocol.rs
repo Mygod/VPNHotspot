@@ -303,6 +303,7 @@ pub fn read_session_config(config: daemon::SessionConfig) -> io::Result<SessionC
         fallback_upstream_interfaces: config.fallback_upstream_interfaces,
         clients,
         ipv6_nat,
+        gateway: config.gateway,
     })
 }
 

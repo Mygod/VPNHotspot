@@ -9,7 +9,7 @@ use vpnhotspotd::shared::downstream::DownstreamIpv4;
 use vpnhotspotd::shared::model::{
     mac_string, ClientDnsPorts, ClientIpv6NatPorts, Ipv6NatConfig, Ipv6NatPorts, SessionConfig,
     SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
-    DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_TABLE, LOCAL_NETWORK_TABLE,
+    DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_TABLE, LOCAL_NETWORK_TABLE, MAIN_TABLE,
 };
 use vpnhotspotd::shared::proto::daemon::MasqueradeMode;
 
@@ -22,8 +22,8 @@ use super::netlink_commands::{
 };
 use super::{
     push_unique, rule_priority, RoutingMutation, Runtime, RULE_PRIORITY_DAEMON_BASE,
-    RULE_PRIORITY_UPSTREAM_BASE, RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE,
-    RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
+    RULE_PRIORITY_GATEWAY_RETURN_BASE, RULE_PRIORITY_UPSTREAM_BASE,
+    RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE, RULE_PRIORITY_UPSTREAM_FALLBACK_BASE,
 };
 
 impl Runtime {
@@ -143,6 +143,26 @@ impl Runtime {
                         ip_protocol: None,
                     })),
                 );
+                // Gateway return path: unlike a tether downstream, a single-arm router interface is not
+                // registered in netd's local_network table, so VPN replies arriving on the upstream have
+                // no route back to the client subnet. Route upstream-ingress traffic via the main table,
+                // which carries the kernel connected route for the downstream subnet. Skip upstreams that
+                // are the downstream itself (the fallback can equal it) to avoid hijacking forward traffic.
+                if config.gateway && ifname.as_str() != config.downstream {
+                    push_unique(
+                        &mut mutations,
+                        RoutingMutation::Ip(IpCommand::Rule(IpRuleCommand {
+                            operation: IpOperation::Replace,
+                            family: IpFamily::Ipv4,
+                            iif: ifname.clone(),
+                            priority: rule_priority(RULE_PRIORITY_GATEWAY_RETURN_BASE),
+                            action: RuleAction::Lookup,
+                            table: MAIN_TABLE,
+                            fwmark: None,
+                            ip_protocol: None,
+                        })),
+                    );
+                }
                 match config.masquerade {
                     MasqueradeMode::None => {}
                     MasqueradeMode::Simple => push_unique(
