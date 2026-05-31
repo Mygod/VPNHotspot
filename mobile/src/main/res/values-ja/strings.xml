@@ -58,10 +58,8 @@
   <string name="tethering_temp_hotspot_failure_incompatible_mode">互換性のないモード</string>
   <string name="tethering_temp_hotspot_failure_tethering_disallowed">テザリングは許可されていません</string>
   <string name="tethering_watch_reconnect">再接続を監視</string>
-
   <string name="tethering_gateway">ゲートウェイ共有</string>
   <string name="tethering_gateway_empty">対象のインターフェースがありません（IPv4 アドレスを持つ有効なインターフェースが必要です）。</string>
-
   <string name="tethering_manage">システムのテザリングを管理…</string>
   <string name="tethering_manage_offload_enabled">VPN テザリングが機能しない場合は、開発者オプションから
         テザリング時のハードウェア アクセラレーションを無効化してください</string>
