@@ -36,7 +36,12 @@ pub const DAEMON_ICMP_NFQUEUE_NUM: u16 = 30_000;
 /// Android interface route tables start at ifindex + 1000. Use 900 to leave buffer below
 /// that range while avoiding kernel-reserved tables and AOSP's fixed 97..99 tables.
 pub const DAEMON_TABLE: u32 = 900;
-pub const LOCAL_NETWORK_TABLE: u32 = 99;
+/// Android's fixed local_network route table.
+///
+/// Sources:
+/// https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/RouteController.cpp#73
+/// https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/server/RouteController.cpp#54
+pub const ANDROID_ROUTE_TABLE_LOCAL_NETWORK: u32 = 97;
 /// Kernel's main routing table (RT_TABLE_MAIN). Holds the kernel-installed connected route for
 /// every interface's own subnet, so a gateway downstream's client subnet is reachable here.
 pub const MAIN_TABLE: u32 = 254;

@@ -7,7 +7,7 @@ use rtnetlink::packet_route::{address::AddressAttribute, AddressFamily};
 
 use crate::{netlink, report};
 use vpnhotspotd::shared::model::{
-    ipv6_nat_gateway, ipv6_nat_prefix, DAEMON_TABLE, LOCAL_NETWORK_TABLE,
+    ipv6_nat_gateway, ipv6_nat_prefix, ANDROID_ROUTE_TABLE_LOCAL_NETWORK, DAEMON_TABLE,
 };
 use vpnhotspotd::shared::proto::daemon::{CleanRoutingCommand, ReplaceStaticAddressesCommand};
 use vpnhotspotd::shared::protocol::{error_errno, read_ip_address_entry, IoResultReportExt};
@@ -124,7 +124,7 @@ pub(super) async fn clean_ip(
             destination: IpAddr::V6(prefix.first_address()),
             prefix_len: prefix.network_length(),
             interface,
-            table: LOCAL_NETWORK_TABLE,
+            table: ANDROID_ROUTE_TABLE_LOCAL_NETWORK,
         };
         if let Err(e) = apply_route_command(handle, &route).await {
             if !is_missing(&e) {

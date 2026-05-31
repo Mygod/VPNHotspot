@@ -279,6 +279,7 @@
   </plurals>
   <plurals name="notification_interfaces">
     <item quantity="one">%d interface</item>
+    <item quantity="other">%d interfaces</item>
     <item quantity="many">%d de interfaces</item>
   </plurals>
   <string name="notification_interfaces_inactive">Inativo: %s</string>

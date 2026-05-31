@@ -8,8 +8,8 @@ use crate::{firewall::IptablesTarget, netlink, report};
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
 use vpnhotspotd::shared::model::{
     mac_string, ClientDnsPorts, ClientIpv6NatPorts, Ipv6NatConfig, Ipv6NatPorts, SessionConfig,
-    SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
-    DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_TABLE, LOCAL_NETWORK_TABLE, MAIN_TABLE,
+    SessionPorts, UpstreamConfig, UpstreamRole, ANDROID_ROUTE_TABLE_LOCAL_NETWORK,
+    DAEMON_INTERCEPT_FWMARK_MASK, DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_TABLE, MAIN_TABLE,
 };
 use vpnhotspotd::shared::proto::daemon::MasqueradeMode;
 
@@ -219,7 +219,7 @@ impl Runtime {
                     destination: IpAddr::V6(ipv6_nat.gateway.first_address()),
                     prefix_len: ipv6_nat.gateway.network_length(),
                     interface: config.downstream.clone(),
-                    table: LOCAL_NETWORK_TABLE,
+                    table: ANDROID_ROUTE_TABLE_LOCAL_NETWORK,
                 })),
             );
             push_unique(

@@ -282,7 +282,8 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
   <string name="notification_interfaces_inactive">Inactiva: %s</string>
   <plurals name="quick_settings_hotspot_secondary_label_num_devices">
     <item quantity="one">%d dispositivo</item>
-    <item quantity="many">%d dispositivo</item>
+    <item quantity="other">%d dispositivos</item>
+    <item quantity="many">%d de dispositivos</item>
   </plurals>
   <string name="failure_reason_unknown">desconocido #%d</string>
   <string name="permission_missing">Falta permiso</string>
