@@ -202,9 +202,13 @@ The dispatcher owns:
 - UDP error registrations used by live UDP associations.
 
 A NAT66 session registers ICMP only after proving that downstream send support
-is available for its downstream interface and reply mark. Dropping the
-registration removes that downstream interface from ICMP dispatch. Dropping the
-session removes its Echo state.
+is available for its downstream interface and reply mark. If the transparent raw
+IPv6 bind probe fails with `EADDRNOTAVAIL`, kernels older than Linux 5.11.14
+and unparsable `uname.release` values are treated as expected legacy lack of
+support and do not emit a structured nonfatal. The session still continues
+without ICMP Echo interception. Dropping the registration removes that
+downstream interface from ICMP dispatch. Dropping the session removes its Echo
+state.
 
 ICMP Echo interception is optional. Routing installs the ICMP NFQUEUE rule only
 when the registration exists. Ordinary local control-plane ICMPv6, neighbour
@@ -285,7 +289,8 @@ NAT66 startup is best effort across these pieces:
 - RA task setup failure is nonfatal; existing NAT66 interception may continue,
   but clients may need other configuration to discover the gateway.
 - ICMP registration failure is nonfatal; NAT66 continues without ICMP Echo
-  interception.
+  interception. The known transparent raw IPv6 bind `EADDRNOTAVAIL` failure is
+  reported only when `uname.release` parses as Linux 5.11.14 or newer.
 - Unattributable ICMP NFQUEUE packets are dropped and reported as nonfatal
   background state.
 - ICMP error-queue setup failure is reported, but Echo and UDP may continue

@@ -11,9 +11,12 @@ use tokio_util::sync::CancellationToken;
 
 use cidr::Ipv6Inet;
 
-use crate::report;
 use crate::{dns, netlink};
-use vpnhotspotd::shared::model::{mac_string, ClientIpv6NatPorts, Ipv6NatPorts, SessionConfig};
+use crate::{platform, report};
+use vpnhotspotd::shared::model::{
+    kernel_release_raw_ipv6_bind_rejection_is_unexpected, mac_string, ClientIpv6NatPorts,
+    Ipv6NatPorts, SessionConfig,
+};
 use vpnhotspotd::shared::nat66_counter::{Nat66CounterKey, Nat66CounterSource, Nat66Counters};
 use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::daemon_io_error_report_with_details;
@@ -111,14 +114,22 @@ impl Runtime {
         {
             Ok(registration) => Some(registration),
             Err(e) => {
-                report::report_for(
-                    Some(call_id),
-                    daemon_io_error_report_with_details(
-                        "nat66.icmp_start",
-                        e,
-                        [("downstream", config.downstream.clone())],
-                    ),
-                );
+                let kernel_release = platform::kernel_release().ok();
+                if e.raw_os_error() != Some(libc::EADDRNOTAVAIL)
+                    || kernel_release
+                        .as_deref()
+                        .and_then(kernel_release_raw_ipv6_bind_rejection_is_unexpected)
+                        == Some(true)
+                {
+                    let mut details = vec![("downstream".to_owned(), config.downstream.clone())];
+                    if let Some(kernel_release) = kernel_release {
+                        details.push(("kernel_release".to_owned(), kernel_release));
+                    }
+                    report::report_for(
+                        Some(call_id),
+                        daemon_io_error_report_with_details("nat66.icmp_start", e, details),
+                    );
+                }
                 None
             }
         };

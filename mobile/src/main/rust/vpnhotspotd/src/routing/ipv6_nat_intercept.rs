@@ -1,4 +1,3 @@
-use std::ffi::CStr;
 use std::io;
 use std::sync::OnceLock;
 
@@ -16,7 +15,7 @@ use vpnhotspotd::shared::{
     protocol::{daemon_error_report_with_details, error_errno},
 };
 
-use crate::{netlink, report};
+use crate::{netlink, platform, report};
 use tokio::sync::Mutex;
 
 use super::{
@@ -59,7 +58,7 @@ impl Ipv6NatInterceptMode {
                     Err(reason) => Ipv6NatInterceptProbeResult {
                         mode: Self::FwmarkFallback,
                         failure: Some(reason),
-                        kernel_release: kernel_release().ok(),
+                        kernel_release: platform::kernel_release().ok(),
                     },
                 };
                 *cached = Some(result.clone());
@@ -190,14 +189,4 @@ fn probe_command(ip_protocol: Option<IpProtocol>) -> IpRuleCommand {
         fwmark: None,
         ip_protocol,
     }
-}
-
-fn kernel_release() -> io::Result<String> {
-    let mut uts = std::mem::MaybeUninit::<libc::utsname>::uninit();
-    if unsafe { libc::uname(uts.as_mut_ptr()) } != 0 {
-        return Err(io::Error::last_os_error());
-    }
-    let uts = unsafe { uts.assume_init() };
-    let release = unsafe { CStr::from_ptr(uts.release.as_ptr()) };
-    Ok(release.to_string_lossy().into_owned())
 }

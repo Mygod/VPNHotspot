@@ -43,7 +43,13 @@ pub const DAEMON_TABLE: u32 = 900;
 /// https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/server/RouteController.cpp#54
 pub const ANDROID_ROUTE_TABLE_LOCAL_NETWORK: u32 = 97;
 
-pub fn kernel_release_supports_fra_ip_proto(release: &str) -> Option<bool> {
+struct KernelRelease {
+    major: u32,
+    minor: u32,
+    patch: Option<u32>,
+}
+
+fn parse_kernel_release(release: &str) -> Option<KernelRelease> {
     let (major, rest) = release.split_once('.')?;
     let minor_end = rest
         .find(|character: char| !character.is_ascii_digit())
@@ -51,9 +57,39 @@ pub fn kernel_release_supports_fra_ip_proto(release: &str) -> Option<bool> {
     if minor_end == 0 {
         return None;
     }
-    let major = major.parse::<u32>().ok()?;
-    let minor = rest[..minor_end].parse::<u32>().ok()?;
-    Some(major > 4 || major == 4 && minor >= 17)
+    let patch = if rest[minor_end..].starts_with('.') {
+        let patch_start = minor_end + 1;
+        let patch_end = rest[patch_start..]
+            .find(|character: char| !character.is_ascii_digit())
+            .map_or(rest.len(), |end| patch_start + end);
+        if patch_start == patch_end {
+            return None;
+        } else {
+            Some(rest[patch_start..patch_end].parse::<u32>().ok()?)
+        }
+    } else {
+        None
+    };
+    Some(KernelRelease {
+        major: major.parse::<u32>().ok()?,
+        minor: rest[..minor_end].parse::<u32>().ok()?,
+        patch,
+    })
+}
+
+pub fn kernel_release_supports_fra_ip_proto(release: &str) -> Option<bool> {
+    let release = parse_kernel_release(release)?;
+    Some(release.major > 4 || release.major == 4 && release.minor >= 17)
+}
+
+pub fn kernel_release_raw_ipv6_bind_rejection_is_unexpected(release: &str) -> Option<bool> {
+    let release = parse_kernel_release(release)?;
+    Some(match (release.major, release.minor) {
+        (major, _) if major > 5 => true,
+        (5, minor) if minor > 11 => true,
+        (5, 11) => release.patch.is_some_and(|patch| patch >= 14),
+        _ => false,
+    })
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -297,6 +333,52 @@ mod tests {
     fn kernel_release_supports_fra_ip_proto_returns_none_for_unparsable_release() {
         assert_eq!(kernel_release_supports_fra_ip_proto("android"), None);
         assert_eq!(kernel_release_supports_fra_ip_proto("4.x"), None);
+    }
+
+    #[test]
+    fn kernel_release_raw_ipv6_bind_rejection_is_unexpected_from_5_11_14() {
+        assert_eq!(
+            kernel_release_raw_ipv6_bind_rejection_is_unexpected("5.11.13-android"),
+            Some(false)
+        );
+        assert_eq!(
+            kernel_release_raw_ipv6_bind_rejection_is_unexpected("5.11.14-g123"),
+            Some(true)
+        );
+        assert_eq!(
+            kernel_release_raw_ipv6_bind_rejection_is_unexpected(
+                "6.1.145-android14-11-gfa1d6308d1fe"
+            ),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn kernel_release_raw_ipv6_bind_rejection_is_expected_on_older_stable_branches() {
+        assert_eq!(
+            kernel_release_raw_ipv6_bind_rejection_is_unexpected("4.19.187-android"),
+            Some(false)
+        );
+        assert_eq!(
+            kernel_release_raw_ipv6_bind_rejection_is_unexpected("5.4.112-android"),
+            Some(false)
+        );
+        assert_eq!(
+            kernel_release_raw_ipv6_bind_rejection_is_unexpected("5.10.30-android"),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn kernel_release_raw_ipv6_bind_rejection_returns_none_for_unparsable_release() {
+        assert_eq!(
+            kernel_release_raw_ipv6_bind_rejection_is_unexpected("android"),
+            None
+        );
+        assert_eq!(
+            kernel_release_raw_ipv6_bind_rejection_is_unexpected("5.11.x"),
+            None
+        );
     }
 
     #[test]
