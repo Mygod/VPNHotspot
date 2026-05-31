@@ -85,8 +85,8 @@ abstract class RoutingManager(private val caller: Any, val downstream: String, p
                     }
                 }
                 try {
-                    Routing.clean()
                     for (routing in routings) routing.stopForClean()
+                    Routing.clean()
                 } catch (e: Exception) {
                     for (routing in routings) routing.revert()
                     Timber.d(e)

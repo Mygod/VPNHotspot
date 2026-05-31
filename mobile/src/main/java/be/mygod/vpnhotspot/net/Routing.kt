@@ -200,10 +200,8 @@ class Routing(private val caller: Any, private val downstream: String) {
                                 removedMacs = MutableObjectList(allowedMacs.size)
                                 allowedMacs.forEach { mac -> if (mac !in candidateAllowedMacs) removedMacs.add(mac) }
                                 // record stats before removing rules to prevent stats losing
-                                if (removed.isNotEmpty() || removedMacs.isNotEmpty()) {
-                                    withContext(NonCancellable) {
-                                        TrafficRecorder.update(bypassThrottling = true)
-                                    }
+                                if (removed.isNotEmpty() || removedMacs.isNotEmpty()) withContext(NonCancellable) {
+                                    TrafficRecorder.update()
                                 }
                                 added = MutableObjectList(candidateClients.size)
                                 candidateClients.forEach { ip, mac -> if (clients[ip] != mac) added.add(ip) }
@@ -230,18 +228,12 @@ class Routing(private val caller: Any, private val downstream: String) {
                             SmartSnackbar.make(e).show()
                             continue
                         }
-                        if (clientsChanged) {
+                        if (clientsChanged) withContext(NonCancellable) {
                             val committedClients = nextClients!!
                             // Removed MACs become retired daemon counters only after the session replacement commits.
-                            if (removedMacs.isNotEmpty()) {
-                                withContext(NonCancellable) {
-                                    TrafficRecorder.update(bypassThrottling = true)
-                                }
-                            }
-                            withContext(NonCancellable) {
-                                removed.forEach { TrafficRecorder.unregister(it, downstream) }
-                                removedMacs.forEach { TrafficRecorder.unregister(it, downstream) }
-                            }
+                            if (removedMacs.isNotEmpty()) TrafficRecorder.update()
+                            removed.forEach { TrafficRecorder.unregister(it, downstream) }
+                            removedMacs.forEach { TrafficRecorder.unregister(it, downstream) }
                             addedMacs.forEach { TrafficRecorder.register(it, downstream) }
                             added.forEach { ip ->
                                 try {
@@ -270,9 +262,7 @@ class Routing(private val caller: Any, private val downstream: String) {
             } finally {
                 withContext(NonCancellable) {
                     // record stats before exiting to prevent stats losing
-                    if (clients.isNotEmpty() || allowedMacs.isNotEmpty()) {
-                        TrafficRecorder.update(bypassThrottling = true)
-                    }
+                    if (clients.isNotEmpty() || allowedMacs.isNotEmpty()) TrafficRecorder.update()
                     session?.close()
                     Timber.i("Stopped routing for $downstream by $caller")
                 }

@@ -48,32 +48,28 @@ object TrafficRecorder {
     private var lastUpdate = 0L
     private val activeClients = MutableScatterSet<ClientKey>()
     private val records = MutableScatterMap<CounterKey, TrafficRecord>()
-    private val updateMutex = Mutex()
+    private val updateMutex = Mutex()   // owns recorder state below and updateJob
     private val foregroundUpdatesState = MutableSharedFlow<ForegroundUpdate>(
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
     val foregroundUpdates = foregroundUpdatesState.asSharedFlow()
 
-    fun register(ip: InetAddress, downstream: String, mac: MacAddress) {
+    suspend fun register(ip: InetAddress, downstream: String, mac: MacAddress) = updateMutex.withLock {
         val key = CounterKey(mac, downstream, CounterSource(ip, null))
+        check(records[key] == null)
         val record = TrafficRecord(mac = mac, ip = ip, downstream = downstream)
         AppDatabase.instance.trafficRecordDao.insert(record)
-        synchronized(this) {
-            Timber.d("Registering $key")
-            records.compute(key) { _, old ->
-                check(old == null)
-                record
-            }
-            scheduleUpdateLocked()
-        }
+        Timber.d("Registering $key")
+        check(records.put(key, record) == null)
+        scheduleUpdateLocked()
     }
-    fun register(mac: MacAddress, downstream: String) = synchronized(this) {
+    suspend fun register(mac: MacAddress, downstream: String) = updateMutex.withLock {
         Timber.d("Registering ${ClientKey(mac, downstream)}")
         activeClients.add(ClientKey(mac, downstream))
         scheduleUpdateLocked()
     }
-    fun unregister(ip: InetAddress, downstream: String) = synchronized(this) {
+    suspend fun unregister(ip: InetAddress, downstream: String) = updateMutex.withLock {
         var removed = false
         records.removeIf { key, _ ->
             (key.downstream == downstream && key.source.ip == ip && key.source.upstream == null).also {
@@ -85,7 +81,7 @@ object TrafficRecorder {
         }
         if (!removed) Timber.w("Failed to find traffic record for ${ip to downstream}.")
     }
-    fun unregister(mac: MacAddress, downstream: String) = synchronized(this) {
+    suspend fun unregister(mac: MacAddress, downstream: String) = updateMutex.withLock {
         val clientKey = ClientKey(mac, downstream)
         Timber.d("Unregistering $clientKey")
         if (!activeClients.remove(clientKey)) Timber.w("Failed to find traffic client for $clientKey.")
@@ -107,18 +103,23 @@ object TrafficRecorder {
         }
         updateJob = GlobalScope.launch(start = CoroutineStart.UNDISPATCHED) {
             delay(timeout)
-            update(bypassThrottling = true)
+            update()
         }
     }
 
-    fun rescheduleUpdate() = synchronized(this) {
+    suspend fun rescheduleUpdate() = updateMutex.withLock {
         unscheduleUpdateLocked()
         scheduleUpdateLocked()
     }
 
-    private suspend fun doUpdate(timestamp: Long) {
-        val counters = DaemonController.readTrafficCounters()
-        synchronized(this) {
+    suspend fun update() = updateMutex.withLock { updateLocked() }
+    private suspend fun updateLocked() {
+        if (updateJob === currentCoroutineContext()[Job]) updateJob = null else unscheduleUpdateLocked()
+        if (records.isEmpty() && activeClients.isEmpty()) return
+        try {
+            val counters = DaemonController.readTrafficCounters()
+            val timestamp = System.currentTimeMillis()
+            lastUpdate = timestamp
             val oldRecords = MutableLongObjectMap<TrafficRecord>()
             val seenKeys = MutableScatterSet<CounterKey>()
             loop@ for (counter in counters) {
@@ -184,48 +185,28 @@ object TrafficRecorder {
             val newRecords = MutableObjectList<TrafficRecord>(records.size)
             records.forEachValue { newRecords.add(it) }
             foregroundUpdatesState.tryEmit(ForegroundUpdate(newRecords, oldRecords))
+        } catch (_: CancellationException) {
+        } catch (e: Exception) {
+            Timber.w(e)
+            SmartSnackbar.make(e).show()
         }
-    }
-    suspend fun update(bypassThrottling: Boolean = false) {
-        updateMutex.withLock {
-            val currentJob = currentCoroutineContext()[Job]
-            val timestamp = synchronized(this) {
-                if (updateJob === currentJob) updateJob = null else unscheduleUpdateLocked()
-                if (records.isEmpty() && activeClients.isEmpty()) return@withLock
-                val timestamp = System.currentTimeMillis()
-                if (!bypassThrottling && timestamp - lastUpdate <= 100) return@withLock
-                timestamp
-            }
-            try {
-                doUpdate(timestamp)
-            } catch (_: CancellationException) {
-            } catch (e: Exception) {
-                Timber.w(e)
-                SmartSnackbar.make(e).show()
-            }
-            synchronized(this) {
-                lastUpdate = timestamp
-                if (records.isNotEmpty() || activeClients.isNotEmpty()) scheduleUpdateLocked()
-            }
-        }
+        if (records.isNotEmpty() || activeClients.isNotEmpty()) scheduleUpdateLocked()
     }
 
-    suspend fun clean() {
-        update(bypassThrottling = true)
-        synchronized(this) {
-            unscheduleUpdateLocked()
-            Timber.d("Cleaning records")
-            activeClients.clear()
-            records.clear()
-        }
+    suspend fun clean() = updateMutex.withLock {
+        updateLocked()
+        unscheduleUpdateLocked()
+        Timber.d("Cleaning records")
+        activeClients.clear()
+        records.clear()
     }
 
     /**
      * Possibly inefficient. Don't call this too often.
      */
-    fun isWorking(mac: MacAddress) = synchronized(this) {
-        activeClients.forEach { if (it.mac == mac) return@synchronized true }
-        records.forEach { key, _ -> if (key.mac == mac) return@synchronized true }
+    suspend fun isWorking(mac: MacAddress) = updateMutex.withLock {
+        activeClients.forEach { if (it.mac == mac) return@withLock true }
+        records.forEach { key, _ -> if (key.mac == mac) return@withLock true }
         false
     }
 
