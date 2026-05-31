@@ -261,7 +261,7 @@ least one TCP or UDP runtime capability.
 
 External mutations:
 
-- replace IPv6 unicast route in table 99:
+- replace IPv6 unicast route in table 97:
   `<nat66-prefix> dev <downstream> table local_network`
 - replace IPv6 address on the downstream:
   `<nat66-gateway>/<prefix-len> dev <downstream>`
@@ -287,9 +287,9 @@ Clean:
 - flush IPv6 routes from table 900.
 - reconstruct `<nat66-prefix>` and `<nat66-gateway>` for every current
   interface from the Clean prefix seed, then delete the gateway address and
-  table 99 route for each interface.
+  table 97 route for each interface.
 
-Clean never flushes table 99 because it is Android's shared `local_network`
+Clean never flushes table 97 because it is Android's shared `local_network`
 table.
 
 Before routing the first candidate NAT66 TCP/UDP listener ports, routing probes
@@ -652,7 +652,7 @@ For every current interface name:
 - reconstruct the deterministic NAT66 prefix from the Clean prefix seed and the
   interface name.
 - delete address `<nat66-gateway>/<prefix-len>` from that interface.
-- delete table 99 unicast route `<nat66-prefix> dev <interface>`.
+- delete table 97 unicast route `<nat66-prefix> dev <interface>`.
 
 Missing address or route is expected. For address deletion, this includes an
 interface that still exists but has no IPv6 address state. Other errors are
@@ -724,11 +724,11 @@ and tethering priorities were lower before Android 12.
 The daemon uses these table conventions:
 
 - table 900 is VPNHotspot's daemon table for NAT66 local interception;
-- table 99 is Android's shared `local_network` table;
+- table 97 is Android's shared `local_network` route table;
 - upstream interface tables use Android's `ifindex + 1000` convention.
 
 Table 900 may be flushed by Clean because it is reserved by VPNHotspot. Table
-99 must not be flushed; delete only reconstructed VPNHotspot NAT66 routes from
+97 must not be flushed; delete only reconstructed VPNHotspot NAT66 routes from
 it.
 
 ## Guardrails

@@ -188,8 +188,8 @@ Other:
 * For route-table numbers, Android interface tables are assumed to start at ifindex + 1000; `IPv6 NAT`
   TPROXY uses table 900 to stay below that range and away from AOSP fixed tables 97..99 and kernel built-ins.
 * Clean flushes table 900 because that table is reserved by VPNHotspot. `IPv6 NAT` also adds its
-  deterministic ULA /64 route to Android's shared `local_network` table; Clean never flushes that table
-  and only deletes VPNHotspot prefixes reconstructed from current interface names.
+  deterministic ULA /64 route to Android's shared `local_network` route table 97; Clean never flushes
+  that table and only deletes VPNHotspot prefixes reconstructed from current interface names.
 * For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata.
 * `IPv6 NAT` fwmark fallback for TPROXY uses masked high reserved bits `0x10000000/0x10000000`.
   That fallback is expected on only kernels without effective `FRA_IP_PROTO` policy-rule support, which upstream Linux added in 4.17.
