@@ -7,6 +7,7 @@ mod nat66;
 mod neighbour;
 mod netlink;
 mod platform;
+mod process_io;
 mod report;
 mod routing;
 mod session;

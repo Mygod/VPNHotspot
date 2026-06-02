@@ -2,12 +2,13 @@ use std::io;
 use std::process::ExitStatus;
 use std::process::Stdio;
 
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use vpnhotspotd::shared::protocol::{IoErrorReportExt, IoResultReportExt};
 
+use crate::process_io::{append_limited, read_limited};
+
 pub(crate) const NDC: &str = "/system/bin/ndc";
-const RESTORE_ERROR_OUTPUT_LIMIT: usize = 4096;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum IptablesTarget {
@@ -183,25 +184,6 @@ fn restore_status_error_parts(
         stderr.trim_end(),
     ))
     .with_report_context_details("firewall.restore.status", restore_details(target, input))
-}
-
-async fn read_limited(mut input: impl AsyncRead + Unpin) -> io::Result<Vec<u8>> {
-    let mut result = Vec::new();
-    let mut buffer = [0; 1024];
-    loop {
-        let read = input.read(&mut buffer).await?;
-        if read == 0 {
-            return Ok(result);
-        }
-        append_limited(&mut result, &buffer[..read]);
-    }
-}
-
-fn append_limited(output: &mut Vec<u8>, input: &[u8]) {
-    let remaining = RESTORE_ERROR_OUTPUT_LIMIT.saturating_sub(output.len());
-    if remaining > 0 {
-        output.extend_from_slice(&input[..input.len().min(remaining)]);
-    }
 }
 
 pub(crate) fn restore_input(table: &str, lines: &[String]) -> String {

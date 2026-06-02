@@ -14,18 +14,26 @@ pub struct IpSecForwardPolicyTarget {
     pub xfrm_interface_id: i32,
 }
 
-struct TunnelRecord<'a> {
-    resource_id: &'a str,
-    uid: &'a str,
-    interface: &'a str,
-    input_key: &'a str,
+const TUNNEL_RECORD_NEEDLE: &str = "{mResource={super={mResourceId=";
+const TRANSFORM_RECORD_NEEDLE: &str = "mConfig={mMode=TUNNEL,";
+
+struct TunnelRecord {
+    uid: String,
+    interface: String,
+    input_key: String,
+    xfrm_interface_id: i32,
 }
 
-struct TransformRecord<'a> {
-    source_address: &'a str,
-    destination_address: &'a str,
-    network: &'a str,
-    xfrm_interface_id: &'a str,
+#[derive(Clone)]
+struct TransformRecord {
+    source_address: String,
+    destination_address: String,
+}
+
+#[derive(Clone, Copy)]
+enum SectionKind {
+    Tunnel,
+    Transform,
 }
 
 #[derive(Default)]
@@ -95,94 +103,201 @@ pub fn find_forward_policy_targets<'a>(
     interfaces: impl IntoIterator<Item = &'a str>,
     dump: &str,
 ) -> io::Result<Vec<IpSecForwardPolicyTarget>> {
-    let interfaces = interfaces.into_iter().collect::<HashSet<_>>();
-    if interfaces.is_empty() {
-        return Ok(Vec::new());
-    }
-    let transforms = transform_records(dump);
-    let mut targets = Vec::new();
-    for tunnel in tunnel_records(dump) {
-        if !interfaces.contains(tunnel.interface) {
-            continue;
+    let mut scanner = ForwardPolicyTargetScanner::new(interfaces);
+    scanner.push_str(dump)?;
+    scanner.finish()
+}
+
+pub struct ForwardPolicyTargetScanner {
+    interfaces: HashSet<String>,
+    transforms: HashMap<i32, TransformRecord>,
+    tunnels: Vec<TunnelRecord>,
+    buffer: String,
+}
+
+impl ForwardPolicyTargetScanner {
+    pub fn new<'a>(interfaces: impl IntoIterator<Item = &'a str>) -> Self {
+        Self {
+            interfaces: interfaces.into_iter().map(str::to_owned).collect(),
+            transforms: HashMap::new(),
+            tunnels: Vec::new(),
+            buffer: String::new(),
         }
-        let xfrm_interface_id = parse_i32(tunnel.resource_id, "tunnel resource id")?;
-        let Some(inbound) = transforms.iter().find(|transform| {
-            transform.network == "null"
-                && matches!(
-                    parse_i32(transform.xfrm_interface_id, "transform xfrm interface id"),
-                    Ok(id) if id == xfrm_interface_id
-                )
-                && is_ipv4(transform.source_address)
-                && is_ipv4(transform.destination_address)
-        }) else {
-            continue;
+    }
+
+    pub fn push_str(&mut self, chunk: &str) -> io::Result<()> {
+        if self.interfaces.is_empty() {
+            return Ok(());
+        }
+        self.buffer.push_str(chunk);
+        self.drain_sections()
+    }
+
+    pub fn finish(mut self) -> io::Result<Vec<IpSecForwardPolicyTarget>> {
+        if self.interfaces.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.drain_sections()?;
+        let mut targets = Vec::new();
+        for tunnel in self.tunnels {
+            let Some(inbound) = self.transforms.get(&tunnel.xfrm_interface_id) else {
+                continue;
+            };
+            targets.push(IpSecForwardPolicyTarget {
+                interface: tunnel.interface,
+                uid: parse_i32(&tunnel.uid, "tunnel uid")?,
+                source_address: inbound.source_address.clone(),
+                destination_address: inbound.destination_address.clone(),
+                mark_value: parse_i32(&tunnel.input_key, "tunnel input key")?,
+                xfrm_interface_id: tunnel.xfrm_interface_id,
+            });
+        }
+        Ok(targets)
+    }
+
+    fn drain_sections(&mut self) -> io::Result<()> {
+        loop {
+            let Some((start, kind, needle)) = next_section(&self.buffer) else {
+                retain_needle_suffix(&mut self.buffer);
+                return Ok(());
+            };
+            let brace_offset = needle.find('{').expect("needle contains opening brace");
+            let section_start = start + brace_offset;
+            let Some(len) = braced_section_len(&self.buffer[section_start..]) else {
+                if start > 0 {
+                    self.buffer.drain(..start);
+                }
+                return Ok(());
+            };
+            let section_end = section_start + len;
+            let section = self.buffer[section_start..section_end].to_owned();
+            self.buffer.drain(..section_end);
+            match kind {
+                SectionKind::Tunnel => {
+                    self.process_nested_transform_records(&section);
+                    self.process_tunnel_record(&section)?;
+                }
+                SectionKind::Transform => self.process_transform_record(&section),
+            }
+        }
+    }
+
+    fn process_tunnel_record(&mut self, record: &str) -> io::Result<()> {
+        let Some((resource_id, after_resource_id)) = digits_after(record, "mResourceId=") else {
+            return Ok(());
         };
-        targets.push(IpSecForwardPolicyTarget {
-            interface: tunnel.interface.to_owned(),
-            uid: parse_i32(tunnel.uid, "tunnel uid")?,
-            source_address: inbound.source_address.to_owned(),
-            destination_address: inbound.destination_address.to_owned(),
-            mark_value: parse_i32(tunnel.input_key, "tunnel input key")?,
-            xfrm_interface_id,
+        let Some((_, after_pid)) = digits_after(after_resource_id, "pid=") else {
+            return Ok(());
+        };
+        let Some((uid, after_uid)) = digits_after(after_pid, "uid=") else {
+            return Ok(());
+        };
+        let Some((interface, after_interface)) = field_after(after_uid, "mInterfaceName=") else {
+            return Ok(());
+        };
+        if !self.interfaces.contains(interface) {
+            return Ok(());
+        }
+        let Some((_, after_local)) = field_after(after_interface, "mLocalAddress=") else {
+            return Ok(());
+        };
+        let Some((_, after_remote)) = field_after(after_local, "mRemoteAddress=") else {
+            return Ok(());
+        };
+        let Some((input_key, after_input_key)) = digits_after(after_remote, "mIkey=") else {
+            return Ok(());
+        };
+        if digits_after(after_input_key, "mOkey=").is_none() {
+            return Ok(());
+        }
+        self.tunnels.push(TunnelRecord {
+            uid: uid.to_owned(),
+            interface: interface.to_owned(),
+            input_key: input_key.to_owned(),
+            xfrm_interface_id: parse_i32(resource_id, "tunnel resource id")?,
         });
+        Ok(())
     }
-    Ok(targets)
-}
 
-fn tunnel_records(dump: &str) -> Vec<TunnelRecord<'_>> {
-    braced_sections(dump, "{mResource={super={mResourceId=")
-        .into_iter()
-        .filter_map(|record| {
-            let (resource_id, after_resource_id) = digits_after(record, "mResourceId=")?;
-            let (_, after_pid) = digits_after(after_resource_id, "pid=")?;
-            let (uid, after_uid) = digits_after(after_pid, "uid=")?;
-            let (interface, after_interface) = field_after(after_uid, "mInterfaceName=")?;
-            let (_, after_local) = field_after(after_interface, "mLocalAddress=")?;
-            let (_, after_remote) = field_after(after_local, "mRemoteAddress=")?;
-            let (input_key, after_input_key) = digits_after(after_remote, "mIkey=")?;
-            digits_after(after_input_key, "mOkey=")?;
-            Some(TunnelRecord {
-                resource_id,
-                uid,
-                interface,
-                input_key,
-            })
-        })
-        .collect()
-}
+    fn process_nested_transform_records(&mut self, record: &str) {
+        let brace_offset = TRANSFORM_RECORD_NEEDLE
+            .find('{')
+            .expect("needle contains opening brace");
+        let mut offset = 0;
+        while let Some(start) = record[offset..]
+            .find(TRANSFORM_RECORD_NEEDLE)
+            .map(|start| offset + start)
+        {
+            let section = &record[start + brace_offset..];
+            let Some(len) = braced_section_len(section) else {
+                return;
+            };
+            self.process_transform_record(&section[..len]);
+            offset = start + brace_offset + len;
+        }
+    }
 
-fn transform_records(dump: &str) -> Vec<TransformRecord<'_>> {
-    braced_sections(dump, "mConfig={mMode=TUNNEL,")
-        .into_iter()
-        .filter_map(|record| {
-            let (source_address, after_source) = field_after(record, "mSourceAddress=")?;
-            let (destination_address, after_destination) =
-                field_after(after_source, "mDestinationAddress=")?;
-            let (network, after_network) = field_after(after_destination, "mNetwork=")?;
-            let (xfrm_interface_id, _) = digits_after(after_network, "mXfrmInterfaceId=")?;
-            Some(TransformRecord {
-                source_address,
-                destination_address,
-                network,
-                xfrm_interface_id,
-            })
-        })
-        .collect()
-}
-
-fn braced_sections<'a>(dump: &'a str, needle: &str) -> Vec<&'a str> {
-    let brace_offset = needle.find('{').expect("needle contains opening brace");
-    let mut offset = 0;
-    let mut sections = Vec::new();
-    while let Some(start) = dump[offset..].find(needle).map(|start| offset + start) {
-        let section = &dump[start + brace_offset..];
-        let Some(len) = braced_section_len(section) else {
-            break;
+    fn process_transform_record(&mut self, record: &str) {
+        let Some((source_address, after_source)) = field_after(record, "mSourceAddress=") else {
+            return;
         };
-        sections.push(&section[..len]);
-        offset = start + brace_offset + len;
+        let Some((destination_address, after_destination)) =
+            field_after(after_source, "mDestinationAddress=")
+        else {
+            return;
+        };
+        let Some((network, after_network)) = field_after(after_destination, "mNetwork=") else {
+            return;
+        };
+        if network != "null" || !is_ipv4(source_address) || !is_ipv4(destination_address) {
+            return;
+        }
+        let Some((xfrm_interface_id, _)) = digits_after(after_network, "mXfrmInterfaceId=") else {
+            return;
+        };
+        let Ok(xfrm_interface_id) = parse_i32(xfrm_interface_id, "transform xfrm interface id")
+        else {
+            return;
+        };
+        self.transforms
+            .entry(xfrm_interface_id)
+            .or_insert_with(|| TransformRecord {
+                source_address: source_address.to_owned(),
+                destination_address: destination_address.to_owned(),
+            });
     }
-    sections
+}
+
+fn next_section(buffer: &str) -> Option<(usize, SectionKind, &'static str)> {
+    match (
+        buffer
+            .find(TUNNEL_RECORD_NEEDLE)
+            .map(|start| (start, SectionKind::Tunnel, TUNNEL_RECORD_NEEDLE)),
+        buffer
+            .find(TRANSFORM_RECORD_NEEDLE)
+            .map(|start| (start, SectionKind::Transform, TRANSFORM_RECORD_NEEDLE)),
+    ) {
+        (Some(tunnel), Some(transform)) if tunnel.0 <= transform.0 => Some(tunnel),
+        (Some(_), Some(transform)) => Some(transform),
+        (Some(tunnel), None) => Some(tunnel),
+        (None, Some(transform)) => Some(transform),
+        (None, None) => None,
+    }
+}
+
+fn retain_needle_suffix(buffer: &mut String) {
+    let keep = [TUNNEL_RECORD_NEEDLE, TRANSFORM_RECORD_NEEDLE]
+        .into_iter()
+        .flat_map(|needle| {
+            (1..needle.len())
+                .rev()
+                .find(|len| buffer.ends_with(&needle[..*len]))
+        })
+        .max()
+        .unwrap_or_default();
+    if keep < buffer.len() {
+        buffer.drain(..buffer.len() - keep);
+    }
 }
 
 fn braced_section_len(section: &str) -> Option<usize> {
@@ -258,15 +373,19 @@ mUserResourceTracker:
     fn extracts_forward_policy_target() {
         assert_eq!(
             find_forward_policy_targets(["ipsec1"].into_iter(), DUMP).unwrap(),
-            vec![IpSecForwardPolicyTarget {
-                interface: "ipsec1".to_owned(),
-                uid: 1000,
-                source_address: "162.120.192.11".to_owned(),
-                destination_address: "10.0.0.62".to_owned(),
-                mark_value: 64512,
-                xfrm_interface_id: 1,
-            }]
+            vec![expected_target()]
         );
+    }
+
+    #[test]
+    fn extracts_forward_policy_target_from_streamed_chunks() {
+        let mut scanner = ForwardPolicyTargetScanner::new(["ipsec1"]);
+        for chunk in DUMP.as_bytes().chunks(17) {
+            scanner
+                .push_str(std::str::from_utf8(chunk).unwrap())
+                .unwrap();
+        }
+        assert_eq!(scanner.finish().unwrap(), vec![expected_target()]);
     }
 
     #[test]
@@ -351,6 +470,17 @@ mUserResourceTracker:
                 .collect(),
             clients: Vec::new(),
             ipv6_nat: None,
+        }
+    }
+
+    fn expected_target() -> IpSecForwardPolicyTarget {
+        IpSecForwardPolicyTarget {
+            interface: "ipsec1".to_owned(),
+            uid: 1000,
+            source_address: "162.120.192.11".to_owned(),
+            destination_address: "10.0.0.62".to_owned(),
+            mark_value: 64512,
+            xfrm_interface_id: 1,
         }
     }
 }
