@@ -65,27 +65,54 @@ pub fn changed_ipv4_forward_counter_addresses(
 pub fn parse_ipv4_forward_counter_line(
     line: &str,
 ) -> Result<Option<Ipv4ForwardCounterLine>, String> {
-    let columns = line.split_whitespace().collect::<Vec<_>>();
-    if columns.len() < 9 || columns[2] != "ACCEPT" {
+    let mut columns = line.split_whitespace();
+    let Some(packets) = columns.next() else {
+        return Ok(None);
+    };
+    let Some(bytes) = columns.next() else {
+        return Ok(None);
+    };
+    let Some(target) = columns.next() else {
+        return Ok(None);
+    };
+    if target != "ACCEPT" {
         return Ok(None);
     }
-    let packets = columns[0]
+    let Some(_) = columns.next() else {
+        return Ok(None);
+    };
+    let Some(_) = columns.next() else {
+        return Ok(None);
+    };
+    let Some(input) = columns.next() else {
+        return Ok(None);
+    };
+    let Some(output) = columns.next() else {
+        return Ok(None);
+    };
+    let Some(source) = columns.next() else {
+        return Ok(None);
+    };
+    let Some(destination) = columns.next() else {
+        return Ok(None);
+    };
+    let packets = packets
         .parse()
         .map_err(|e| format!("failed to parse traffic packet counter from {line:?}: {e}"))?;
-    let bytes = columns[1]
+    let bytes = bytes
         .parse()
         .map_err(|e| format!("failed to parse traffic byte counter from {line:?}: {e}"))?;
-    let is_received = columns[7] == ANYWHERE;
-    let is_sent = columns[8] == ANYWHERE;
+    let is_received = source == ANYWHERE;
+    let is_sent = destination == ANYWHERE;
     if is_received == is_sent {
         return Err(format!("unexpected traffic counter rule shape: {line}"));
     }
-    let address = columns[if is_received { 8 } else { 7 }]
+    let address = if is_received { destination } else { source }
         .parse()
         .map_err(|e| format!("failed to parse traffic counter address from {line:?}: {e}"))?;
     Ok(Some(Ipv4ForwardCounterLine {
         key: Ipv4ForwardKey {
-            downstream: columns[if is_received { 6 } else { 5 }].to_owned(),
+            downstream: if is_received { output } else { input }.to_owned(),
             address,
         },
         direction: if is_received {

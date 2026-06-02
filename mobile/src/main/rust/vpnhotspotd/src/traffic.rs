@@ -14,43 +14,39 @@ pub(crate) async fn read_counters(
 ) -> io::Result<Vec<daemon::TrafficCounter>> {
     let client_macs = client_macs(configs);
     let mut counters = HashMap::new();
-    for line in read_counter_lines().await? {
-        let Some(line) = (match parse_ipv4_forward_counter_line(&line) {
-            Ok(line) => line,
-            Err(e) => {
-                report::stdout!("{e}");
-                None
-            }
-        }) else {
-            continue;
-        };
-        let Some(mac) = client_macs.get(&line.key) else {
-            continue;
-        };
-        let counter = counters
-            .entry(line.key)
-            .or_insert_with(|| Ipv4ForwardCounter::new(*mac));
-        counter.update_if_missing(line.direction, line.packets, line.bytes);
-    }
-    Ok(counters
-        .into_iter()
-        .filter_map(|(key, counter)| counter.into_proto(key))
-        .collect())
-}
-
-async fn read_counter_lines() -> io::Result<Vec<String>> {
-    Ok(firewall::restore_stdout(
+    firewall::restore_stdout_lines(
         IptablesTarget::Ipv4,
         "*filter
 -nvx -L vpnhotspot_stats
 COMMIT
 ",
+        |line| {
+            if !is_counter_line(line) {
+                return;
+            }
+            let Some(line) = (match parse_ipv4_forward_counter_line(line) {
+                Ok(line) => line,
+                Err(e) => {
+                    report::stdout!("{e}");
+                    None
+                }
+            }) else {
+                return;
+            };
+            let Some(mac) = client_macs.get(&line.key) else {
+                return;
+            };
+            let counter = counters
+                .entry(line.key)
+                .or_insert_with(|| Ipv4ForwardCounter::new(*mac));
+            counter.update_if_missing(line.direction, line.packets, line.bytes);
+        },
     )
-    .await?
-    .lines()
-    .filter(|line| is_counter_line(line))
-    .map(str::to_owned)
-    .collect())
+    .await?;
+    Ok(counters
+        .into_iter()
+        .filter_map(|(key, counter)| counter.into_proto(key))
+        .collect())
 }
 
 fn is_counter_line(line: &str) -> bool {
