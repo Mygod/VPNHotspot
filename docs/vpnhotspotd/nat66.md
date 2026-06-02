@@ -68,6 +68,14 @@ Upstream sockets are bound to Android networks with `android_setsocknetwork`.
 Reply sockets use the daemon reply mark so responses route through Android's
 local-network path before VPN UID rules.
 
+The selected Android network is external state owned by ConnectivityService and
+netd. If it disappears between session config publication and upstream socket
+setup, `android_setsocknetwork` can fail with `ENONET`. NAT66 logs that
+per-flow/per-association setup loss with the selected network and role, then
+drops the intercepted connection or datagram without emitting a structured
+nonfatal. No daemon-owned socket state is committed in that case, so normal
+session stop, replacement, process death, or Clean has no extra cleanup work.
+
 ## Routing Contract
 
 Routing owns packet interception. NAT66 owns only the listeners, proxy tasks,
@@ -120,9 +128,11 @@ context for accepted connections. The TCP runtime:
 - relays bytes bidirectionally, preserving TCP half-close semantics.
 
 Connection setup failures caused by the remote path are logged and consumed.
-Socket setup failures that indicate daemon or platform state problems are
-terminal for that connection task and reported through the normal daemon report
-path.
+When `android_setsocknetwork` reports `ENONET`, the selected upstream network
+handle has already disappeared; the connection is logged and dropped because no
+upstream socket state was committed. Other socket setup failures that indicate
+daemon or platform state problems are terminal for that connection task and
+reported with the selected network context through the daemon report path.
 
 TCP is connection-local. It does not publish separate NAT66 state after the
 connection task starts. A graceful EOF on one side shuts down only the write half
@@ -154,6 +164,15 @@ For each downstream datagram, the listener:
 UDP counts one sent unit per upstream datagram and one received unit per
 upstream response datagram. NAT66 gateway DNS datagrams are counted by DNS, not
 by the `/nat66/udp` source.
+
+Creating a UDP association first selects an Android network, binds the upstream
+socket to that network, and connects the socket to the IPv6 destination. `ENONET`
+from network selection is treated the same as TCP setup loss. `EHOSTUNREACH` or
+`ENETUNREACH` from the connected UDP socket setup means the selected network
+accepted the socket but cannot route that destination, for example a fallback
+network without a usable IPv6 route. NAT66 logs the failure with MAC, client,
+destination, selected network, and role, then drops the datagram without creating
+an association. Other UDP setup/connect failures remain structured nonfatals.
 
 Each association has one task that owns upstream receives and downstream
 responses. The listener owns downstream receives and association creation. The

@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 use crate::dns::{self, DNS_PORT};
 use crate::report;
 use crate::socket::is_connection_closed;
-use crate::upstream::{connect_tcp, TcpConnectError};
+use crate::upstream::{connect_tcp, is_selected_network_missing, UpstreamConnectError};
 use vpnhotspotd::shared::model::{
     mac_string, select_upstream_network, SelectedNetwork, SessionConfig,
 };
@@ -114,11 +114,28 @@ async fn handle_connection(
     };
     let outbound = match connect_tcp(selection.network, destination).await {
         Ok(outbound) => outbound,
-        Err(TcpConnectError::Connect(e)) => {
+        Err(UpstreamConnectError::Connect(e)) => {
             log_connection_error("connect", mac, client, destination, selection, &e);
             return Ok(());
         }
-        Err(TcpConnectError::Setup(e)) => return Err(e),
+        Err(UpstreamConnectError::Setup(e)) if is_selected_network_missing(&e) => {
+            log_connection_error("setup", mac, client, destination, selection, &e);
+            return Ok(());
+        }
+        Err(UpstreamConnectError::Setup(e)) => {
+            report::io_with_details(
+                "nat66.tcp_setup",
+                e,
+                [
+                    ("mac", mac_string(&mac)),
+                    ("client", client.to_string()),
+                    ("destination", destination.to_string()),
+                    ("network", selection.network.to_string()),
+                    ("role", format!("{:?}", selection.role)),
+                ],
+            );
+            return Ok(());
+        }
     };
     if let Err(e) = counters.add_tcp_connection(mac) {
         report::io("nat66.tcp_counter", e);

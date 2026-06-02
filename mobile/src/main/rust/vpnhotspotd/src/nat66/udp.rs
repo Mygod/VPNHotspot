@@ -14,10 +14,15 @@ use tokio_util::sync::CancellationToken;
 use super::{sleep_until_deadline, IDLE_TIMEOUT};
 use crate::dns::{resolve_or_error_counted, DNS_PORT};
 use crate::nat66::icmp;
-use crate::upstream::connect_udp;
-use crate::{report, socket::is_kernel_icmp_error};
+use crate::upstream::{connect_udp, is_selected_network_missing, UpstreamConnectError};
+use crate::{
+    report,
+    socket::{is_kernel_icmp_error, is_route_unreachable},
+};
 use vpnhotspotd::shared::icmp_nat::{is_special_destination, nat66_hop_limit, Nat66HopLimit};
-use vpnhotspotd::shared::model::{mac_string, select_network, SessionConfig};
+use vpnhotspotd::shared::model::{
+    mac_string, select_upstream_network, SelectedNetwork, SessionConfig,
+};
 use vpnhotspotd::shared::nat66_counter::{Nat66CounterSource, Nat66Counters};
 
 mod icmp_error;
@@ -234,8 +239,8 @@ pub(crate) fn spawn_loop(
                                     Nat66HopLimit::Forward(hop_limit) => hop_limit,
                                     Nat66HopLimit::Missing => continue,
                                 };
-                                let network = match select_network(&snapshot, *destination.ip()) {
-                                    Some(network) => network,
+                                let selection = match select_upstream_network(&snapshot, *destination.ip()) {
+                                    Some(selection) => selection,
                                     None => continue,
                                 };
                                 let key = AssociationKey { client, destination };
@@ -294,9 +299,17 @@ pub(crate) fn spawn_loop(
                                     }
                                     continue;
                                 }
-                                let upstream = match connect_udp(network, destination).await {
+                                let upstream = match connect_udp(selection.network, destination).await {
                                     Ok(socket) => socket,
-                                    Err(e) => {
+                                    Err(UpstreamConnectError::Setup(e)) if is_selected_network_missing(&e) => {
+                                        log_connection_error("setup", mac, client, destination, selection, &e);
+                                        continue;
+                                    }
+                                    Err(UpstreamConnectError::Connect(e)) if is_route_unreachable(&e) => {
+                                        log_connection_error("connect", mac, client, destination, selection, &e);
+                                        continue;
+                                    }
+                                    Err(UpstreamConnectError::Setup(e) | UpstreamConnectError::Connect(e)) => {
                                         report::io_with_details(
                                             "nat66.udp_connect",
                                             e,
@@ -304,6 +317,8 @@ pub(crate) fn spawn_loop(
                                                 ("mac", mac_string(&mac)),
                                                 ("client", client.to_string()),
                                                 ("destination", destination.to_string()),
+                                                ("network", selection.network.to_string()),
+                                                ("role", format!("{:?}", selection.role)),
                                             ],
                                         );
                                         continue;
@@ -331,7 +346,7 @@ pub(crate) fn spawn_loop(
                                 let icmp_errors = match upstream.local_addr() {
                                     Ok(SocketAddr::V6(source)) => {
                                         match icmp_dispatcher.register_udp_error(
-                                            network,
+                                            selection.network,
                                             source,
                                             destination,
                                             icmp::UdpErrorContext {
@@ -464,6 +479,20 @@ pub(crate) fn spawn_loop(
         }
     });
     Ok(())
+}
+
+fn log_connection_error(
+    operation: &str,
+    mac: [u8; 6],
+    client: SocketAddrV6,
+    destination: SocketAddrV6,
+    selection: SelectedNetwork,
+    error: &io::Error,
+) {
+    report::stdout!(
+        "udp proxy {operation} failed: mac={} client={client} destination={destination} network={} role={:?}: {error}",
+        mac_string(&mac), selection.network, selection.role
+    );
 }
 
 impl AssociationTask {
