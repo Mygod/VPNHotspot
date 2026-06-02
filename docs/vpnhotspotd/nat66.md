@@ -187,6 +187,11 @@ responses. The listener owns downstream receives and association creation. The
 association task reports activity back to the listener, and idle associations
 are cancelled after the NAT66 idle timeout.
 
+Reply socket reservations keep the pool aware of source/mark binds while an
+association may hold a cached reply socket. Association teardown releases the
+cached socket reference before releasing the reservation, so a replacement
+association cannot race a duplicate transparent bind for the same reply source.
+
 ICMP error translation for UDP is association-local and MAC-attributed. The
 association registers only while the connected upstream UDP socket is alive, and
 it must not revive an expired association.

@@ -68,6 +68,13 @@ struct AssociationTask {
     association_event_tx: mpsc::UnboundedSender<UdpAssociationEvent>,
 }
 
+impl Drop for AssociationTask {
+    fn drop(&mut self) {
+        // Keep the pool aware of this bind until the task's cached socket reference is gone.
+        drop(self.reply_socket.take());
+    }
+}
+
 pub(crate) fn spawn_loop(
     listener: UdpSocket,
     config: Arc<Mutex<SessionConfig>>,
