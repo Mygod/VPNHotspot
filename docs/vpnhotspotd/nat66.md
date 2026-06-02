@@ -141,6 +141,14 @@ closes or an I/O error occurs. Reset, broken-pipe, timeout, and other connection
 errors end the connection task. The session runtime does not track completed TCP
 connections.
 
+TCP relay reports are attributed to the relay leg before they leave the
+connection task. Read, write, flush, and shutdown errors use separate contexts
+under `nat66.tcp_relay.inbound_to_outbound.*` or
+`nat66.tcp_relay.outbound_to_inbound.*` and include the MAC, client,
+destination, selected network, role, direction, operation, and relay stage.
+Expected connection-close errors remain log-only; unexpected relay I/O errors
+become structured daemon nonfatals with that relay context preserved.
+
 TCP byte counters update during relay. NAT66 TCP also increments its sent packet
 counter once after a remote upstream socket is successfully opened; that counter
 is a connection count, not an IP or TCP segment count.
