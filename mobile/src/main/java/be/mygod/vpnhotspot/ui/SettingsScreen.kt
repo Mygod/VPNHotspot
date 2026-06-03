@@ -58,6 +58,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import be.mygod.librootkotlinx.io.awaitExit
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.BootReceiver
 import be.mygod.vpnhotspot.BuildConfig
@@ -74,17 +75,16 @@ import be.mygod.vpnhotspot.root.Dump
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.daemon.MasqueradeMode
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
+import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.util.globalNetworkRequestBuilder
 import be.mygod.vpnhotspot.util.launchUrl
 import be.mygod.vpnhotspot.util.readableMessage
-import be.mygod.vpnhotspot.util.Services
-import com.google.android.gms.oss.licenses.R as OssLicensesR
 import com.google.android.gms.oss.licenses.v2.OssLicensesMenuActivity
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -93,6 +93,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.PrintWriter
 import java.net.InetAddress
+import com.google.android.gms.oss.licenses.R as OssLicensesR
 
 @Composable
 fun SettingsScreen(snackbarHostState: SnackbarHostState) {
@@ -703,11 +704,13 @@ private suspend fun shareLogcat(context: Context) {
                 writer.println()
             }
         }
+        UnblockCentral.openPidFd
         try {
             ProcessBuilder(Dump.LOGCAT, "-d").apply {
+                redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
                 redirectErrorStream(true)
                 redirectOutput(ProcessBuilder.Redirect.appendTo(logFile))
-            }.start().waitFor()
+            }.start().awaitExit()
         } catch (e: IOException) {
             Timber.w(e)
             logFile.appendText(e.stackTraceToString())

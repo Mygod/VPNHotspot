@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.root
 
 import android.annotation.SuppressLint
+import android.os.ParcelFileDescriptor
 import android.os.Parcelable
 import android.util.Log
 import be.mygod.librootkotlinx.Logger
@@ -9,6 +10,7 @@ import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.librootkotlinx.RootFlow
 import be.mygod.librootkotlinx.RootServer
 import be.mygod.librootkotlinx.RootSession
+import be.mygod.librootkotlinx.io.awaitExit
 import be.mygod.librootkotlinx.systemContext
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.Services
@@ -83,8 +85,20 @@ object RootManager : RootSession(), Logger {
     override fun i(m: String?, t: Throwable?) = Timber.i(t, m)
     override fun w(m: String?, t: Throwable?) = Timber.w(t, m)
 
+    override suspend fun handleRootLifecycle(
+        process: Process,
+        stdin: ParcelFileDescriptor,
+        stdout: ParcelFileDescriptor,
+        stderr: ParcelFileDescriptor,
+    ) {
+        super.handleRootLifecycle(process, stdin, stdout, stderr)
+        val exit = process.awaitExit()
+        if (exit != 0) Timber.w("Root JVM unexpectedly exited with $exit")
+    }
+
     override suspend fun initServer(server: RootServer) {
         Logger.me = this
+        UnblockCentral.openPidFd
         super.initServer(server)
         server.execute(RootInit())
         GlobalScope.launch {

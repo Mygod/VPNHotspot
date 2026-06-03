@@ -22,6 +22,7 @@ import androidx.annotation.Size
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.getSystemService
+import be.mygod.librootkotlinx.NoShellException
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.util.CrashlyticsKeyProvider
@@ -36,7 +37,6 @@ import com.google.firebase.analytics.ParametersBuilder
 import com.google.firebase.analytics.logEvent
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.provider.FirebaseInitProvider
-import com.topjohnwu.superuser.NoShellException
 import kotlinx.coroutines.DEBUG_PROPERTY_NAME
 import kotlinx.coroutines.DEBUG_PROPERTY_VALUE_ON
 import kotlinx.coroutines.GlobalScope

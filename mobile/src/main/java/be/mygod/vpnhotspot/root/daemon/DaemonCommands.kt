@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.root.daemon
 
 import android.os.ParcelFileDescriptor
 import be.mygod.librootkotlinx.RootCommandNoResult
+import be.mygod.librootkotlinx.io.startPipes
 import kotlinx.parcelize.Parcelize
 import java.io.File
 
@@ -15,13 +16,13 @@ data class RunDaemon(
     override suspend fun execute() = null.also {
         stdout.use { stdout ->
             stderr.use { stderr ->
-                ProcessBuilder(command + socketName)
-                    .apply { environment()["RUST_BACKTRACE"] = "1" }
-                    .redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
+                ProcessBuilder(command + socketName).apply {
+                    environment()["RUST_BACKTRACE"] = "1"
+                    redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
                     // Opened before fork, then dup2'd onto the child stdio fds.
-                    .redirectOutput(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stdout.fd}")))
-                    .redirectError(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stderr.fd}")))
-                    .start()
+                    redirectOutput(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stdout.fd}")))
+                    redirectError(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stderr.fd}")))
+                }.startPipes(stdin = false, stdout = false, stderr = false)
             }
         }
     }

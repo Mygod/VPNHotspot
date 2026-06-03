@@ -1,82 +1,24 @@
 package be.mygod.vpnhotspot.root
 
 import android.content.Context
-import android.os.ParcelFileDescriptor
 import android.os.RemoteException
 import android.provider.Settings
 import be.mygod.librootkotlinx.RootCommandNoResult
+import be.mygod.librootkotlinx.io.awaitExit
 import be.mygod.librootkotlinx.io.openReadChannel
+import be.mygod.librootkotlinx.io.openWriteChannel
+import be.mygod.librootkotlinx.io.startPipes
 import be.mygod.vpnhotspot.util.Services
 import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.toByteArray
+import io.ktor.utils.io.writeFully
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import java.io.File
-import java.io.IOException
-
-suspend fun <T> ProcessBuilder.withOutputChannels(
-    block: suspend (Process, ByteReadChannel, ByteReadChannel) -> T,
-): T {
-    val stdoutPipe = ParcelFileDescriptor.createPipe()
-    val stderrPipe = ParcelFileDescriptor.createPipe()
-    var stdoutRead: ParcelFileDescriptor? = stdoutPipe[0]
-    var stdoutWrite: ParcelFileDescriptor? = stdoutPipe[1]
-    var stderrRead: ParcelFileDescriptor? = stderrPipe[0]
-    var stderrWrite: ParcelFileDescriptor? = stderrPipe[1]
-    var stdoutChannel: ByteReadChannel? = null
-    var stderrChannel: ByteReadChannel? = null
-    var process: Process? = null
-    var started = false
-    try {
-        redirectOutput(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stdoutWrite!!.fd}")))
-        redirectError(ProcessBuilder.Redirect.to(File("/proc/self/fd/${stderrWrite!!.fd}")))
-        process = withContext(Dispatchers.IO) { start() }
-        val stdout = stdoutRead!!.openReadChannel(Services.mainHandler).also {
-            stdoutRead = null
-            stdoutChannel = it
-        }
-        val stderr = stderrRead!!.openReadChannel(Services.mainHandler).also {
-            stderrRead = null
-            stderrChannel = it
-        }
-        stdoutWrite.close()
-        stdoutWrite = null
-        stderrWrite.close()
-        stderrWrite = null
-        started = true
-        return try {
-            block(process, stdout, stderr)
-        } catch (e: Throwable) {
-            if (process.isAlive) process.destroyForcibly()
-            throw e
-        } finally {
-            stdout.cancel(null)
-            stderr.cancel(null)
-            stdoutChannel = null
-            stderrChannel = null
-        }
-    } finally {
-        if (!started) process?.destroyForcibly()
-        stdoutChannel?.cancel(null)
-        stderrChannel?.cancel(null)
-        try {
-            stdoutRead?.close()
-        } catch (_: IOException) { }
-        try {
-            stdoutWrite?.close()
-        } catch (_: IOException) { }
-        try {
-            stderrRead?.close()
-        } catch (_: IOException) { }
-        try {
-            stderrWrite?.close()
-        } catch (_: IOException) { }
-    }
-}
 
 @Parcelize
 data class Dump(val path: String) : RootCommandNoResult {
@@ -89,56 +31,63 @@ data class Dump(val path: String) : RootCommandNoResult {
 
     override suspend fun execute() = withContext(Dispatchers.IO) {
         val output = File(path)
-        val process = ProcessBuilder("/system/bin/sh").apply {
+        ProcessBuilder("/system/bin/sh").apply {
             redirectErrorStream(true)
             redirectOutput(ProcessBuilder.Redirect.appendTo(output))
-        }.start()
-        process.outputStream.bufferedWriter().use { commands ->
-            commands.appendLine("""
-                |echo
-                |echo dumpsys ${Context.WIFI_P2P_SERVICE}
-                |$DUMPSYS ${Context.WIFI_P2P_SERVICE}
-                |echo
-                |echo dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
-                |$DUMPSYS ${Context.CONNECTIVITY_SERVICE} tethering
-                |echo
-                |echo iptables-save
-                |/system/bin/iptables-save
-                |echo
-                |echo ip6tables-save
-                |/system/bin/ip6tables-save
-                |echo
-                |echo ip rule
-                |$IP rule
-                |echo
-                |echo ip route show table all
-                |$IP route show table all
-                |echo
-                |echo ip neigh
-                |$IP neigh
-                |echo
-                |echo ip -s link
-                |$IP -s link
-                |echo
-                |echo iptables -t nat -nvx -L POSTROUTING
-                |$IPTABLES -w -t nat -nvx -L POSTROUTING
-                |echo
-                |echo iptables -t nat -nvx -L vpnhotspot_masquerade
-                |$IPTABLES -w -t nat -nvx -L vpnhotspot_masquerade
-                |echo
-                |echo iptables -nvx -L vpnhotspot_acl
-                |$IPTABLES -w -nvx -L vpnhotspot_acl
-                |echo
-                |echo iptables -nvx -L vpnhotspot_stats
-                |$IPTABLES -w -nvx -L vpnhotspot_stats
-                |echo
-                |echo logcat-su
-                |$LOGCAT -d
-            """.trimMargin())
-        }
-        when (val exit = process.waitFor()) {
-            0 -> { }
-            else -> output.appendText("Process exited with $exit")
+        }.startPipes(stdout = false, stderr = false).use { pipes ->
+            var stdin: ByteWriteChannel? = null
+            try {
+                stdin = pipes.stdin!!.openWriteChannel(Services.mainHandler)
+                stdin.writeFully("""
+                    |echo
+                    |echo dumpsys ${Context.WIFI_P2P_SERVICE}
+                    |$DUMPSYS ${Context.WIFI_P2P_SERVICE}
+                    |echo
+                    |echo dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
+                    |$DUMPSYS ${Context.CONNECTIVITY_SERVICE} tethering
+                    |echo
+                    |echo iptables-save
+                    |/system/bin/iptables-save
+                    |echo
+                    |echo ip6tables-save
+                    |/system/bin/ip6tables-save
+                    |echo
+                    |echo ip rule
+                    |$IP rule
+                    |echo
+                    |echo ip route show table all
+                    |$IP route show table all
+                    |echo
+                    |echo ip neigh
+                    |$IP neigh
+                    |echo
+                    |echo ip -s link
+                    |$IP -s link
+                    |echo
+                    |echo iptables -t nat -nvx -L POSTROUTING
+                    |$IPTABLES -w -t nat -nvx -L POSTROUTING
+                    |echo
+                    |echo iptables -t nat -nvx -L vpnhotspot_masquerade
+                    |$IPTABLES -w -t nat -nvx -L vpnhotspot_masquerade
+                    |echo
+                    |echo iptables -nvx -L vpnhotspot_acl
+                    |$IPTABLES -w -nvx -L vpnhotspot_acl
+                    |echo
+                    |echo iptables -nvx -L vpnhotspot_stats
+                    |$IPTABLES -w -nvx -L vpnhotspot_stats
+                    |echo
+                    |echo logcat-su
+                    |$LOGCAT -d
+                """.trimMargin().encodeToByteArray())
+                stdin.flushAndClose()
+                stdin = null
+                when (val exit = pipes.process.awaitExit()) {
+                    0 -> { }
+                    else -> output.appendText("Process exited with $exit")
+                }
+            } finally {
+                stdin?.cancel(null)
+            }
         }
         null
     }
@@ -162,15 +111,24 @@ data class SettingsGlobalPut(val name: String, val value: String) : RootCommandN
     }
 
     override suspend fun execute() = null.also {
-        val (exit, output) = ProcessBuilder("/system/bin/settings", "put", "global", name, value)
-            .withOutputChannels { process, stdout, stderr ->
+        val (exit, output) = ProcessBuilder("/system/bin/settings", "put", "global", name, value).apply {
+            redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
+        }.startPipes(stdin = false).use { pipes ->
+            var stdout: ByteReadChannel? = null
+            var stderr: ByteReadChannel? = null
+            try {
+                stdout = pipes.stdout!!.openReadChannel(Services.mainHandler)
+                stderr = pipes.stderr!!.openReadChannel(Services.mainHandler)
                 coroutineScope {
                     val stdoutText = async { stdout.toByteArray().decodeToString() }
                     val stderrText = async { stderr.toByteArray().decodeToString() }
-                    val exit = runInterruptible(Dispatchers.IO) { process.waitFor() }
-                    exit to stdoutText.await() + stderrText.await()
+                    pipes.process.awaitExit() to stdoutText.await() + stderrText.await()
                 }
+            } finally {
+                stdout?.cancel(null)
+                stderr?.cancel(null)
             }
+        }
         if (exit != 0 || output.isNotEmpty()) throw RemoteException("Process exited with $exit: $output")
     }
 }

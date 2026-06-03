@@ -93,4 +93,13 @@ object UnblockCentral {
             isAccessible = true
         }
     }
+
+    /**
+     * For [be.mygod.librootkotlinx.io.awaitExit].
+      */
+    val openPidFd get() = if (Build.VERSION.SDK_INT >= 31) try {
+        init
+    } catch (e: Exception) {
+        Timber.w(e)
+    } else { }
 }
