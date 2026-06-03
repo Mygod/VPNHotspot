@@ -691,7 +691,7 @@ private fun SettingsPreview() {
 }
 
 private suspend fun shareLogcat(context: Context) {
-    val logFile = withContext(Dispatchers.IO) {
+    val logUri = withContext(Dispatchers.IO) {
         val logDir = File(context.cacheDir, "log")
         logDir.mkdir()
         val logFile = File.createTempFile("vpnhotspot-", ".log", logDir)
@@ -723,12 +723,12 @@ private suspend fun shareLogcat(context: Context) {
             if (e !is CancellationException) Timber.w(e)
             PrintWriter(FileOutputStream(logFile, true)).use { e.printStackTrace(it) }
         }
-        logFile
+        FileProvider.getUriForFile(context, "be.mygod.vpnhotspot.log", logFile)
     }
     context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND)
         .setType("text/x-log")
         .setFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        .putExtra(Intent.EXTRA_STREAM, FileProvider.getUriForFile(context, "be.mygod.vpnhotspot.log", logFile)), null))
+        .putExtra(Intent.EXTRA_STREAM, logUri), null))
 }
 
 private val UPSTREAM_INTERNET_V4_ADDRESS = InetAddress.getByAddress(byteArrayOf(8, 8, 8, 8))
