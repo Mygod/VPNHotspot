@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.input.maxLength
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
@@ -93,6 +94,8 @@ fun TextApRow(
                     ) else TextFieldLineLimits.SingleLine,
                     scrollState = scrollState,
                     isError = error != null,
+                    shape = OutlinedTextFieldDefaults.roundedShape,
+                    colors = OutlinedTextFieldDefaults.tonalColors(),
                     supportingText = if (error != null || maxLength != null) {
                         {
                             Column {

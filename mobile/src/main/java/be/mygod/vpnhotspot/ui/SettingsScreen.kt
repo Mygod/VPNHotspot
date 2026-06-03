@@ -26,6 +26,7 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.scrollbar
@@ -507,7 +508,8 @@ private fun TextPreferenceRow(
                                     modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.SecondaryEditable),
                                 )
                             },
-                            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                            colors = OutlinedTextFieldDefaults.tonalColors(),
+                            shape = OutlinedTextFieldDefaults.roundedShape,
                             singleLine = true,
                         )
                         ExposedDropdownMenu(

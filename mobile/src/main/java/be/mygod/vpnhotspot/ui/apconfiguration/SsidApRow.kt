@@ -12,6 +12,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
@@ -114,6 +115,8 @@ fun SsidApRow(
                         .contentType(ContentType.NewUsername + ContentType.Username),
                     singleLine = true,
                     isError = draftError != null,
+                    shape = OutlinedTextFieldDefaults.roundedShape,
+                    colors = OutlinedTextFieldDefaults.tonalColors(),
                     supportingText = {
                         Column {
                             draftError?.let { ErrorApText(it) } ?: state.ssidSafeModeWarning(

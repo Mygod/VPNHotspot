@@ -238,7 +238,6 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
                 validClientCount = validClientCount,
                 snackbarHostState = snackbarHostState,
                 showSnackbarHost = route == RootDestination.Tethering.route,
-                onReselect = { tetheringInterfaceRefreshVersion++ },
             ) {
                 TetheringScreen(
                     snackbarHostState,
@@ -248,6 +247,7 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
                     tetherStates,
                     tetheringServiceState,
                     interfaceRefreshVersion = tetheringInterfaceRefreshVersion,
+                    onRefresh = { tetheringInterfaceRefreshVersion++ },
                     onConfigureRepeater = {
                         if (!apConfigurationLoading) {
                             apConfigurationLoading = true

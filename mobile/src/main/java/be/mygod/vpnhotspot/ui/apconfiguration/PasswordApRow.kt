@@ -12,6 +12,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedSecureTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -70,6 +71,8 @@ fun PasswordApRow(state: ApConfigurationState) {
                         .contentType(ContentType("wifiPassword") + ContentType.Password),
                     inputTransformation = if (maxLength) InputTransformation.maxLength(63) else null,
                     isError = error != null,
+                    shape = OutlinedTextFieldDefaults.roundedShape,
+                    colors = OutlinedTextFieldDefaults.tonalColors(),
                     supportingText = if (error != null || maxLength) {
                         {
                             Column {

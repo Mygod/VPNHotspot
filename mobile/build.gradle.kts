@@ -142,7 +142,7 @@ android {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 29
         targetSdk = 36
-        versionCode = 2003
+        versionCode = 2004
         versionName = "3.0.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -234,7 +234,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation(libs.activity.compose)
     implementation(libs.browser)
-    implementation(libs.core.ktx)
+    implementation(libs.core)
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics)
     implementation(libs.hiddenapibypass)

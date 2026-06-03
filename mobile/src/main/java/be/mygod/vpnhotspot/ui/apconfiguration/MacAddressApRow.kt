@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.scrollbar
@@ -99,6 +100,7 @@ private fun MacAddressApDialog(
                     keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                     singleLine = true,
                     isError = bssidError != null,
+                    shape = OutlinedTextFieldDefaults.roundedShape,
                     supportingText = bssidError?.let { { ErrorApText(it) } },
                 )
             }
@@ -158,6 +160,7 @@ private fun MacAddressApDialog(
                                             keyboardOptions = MACHINE_TEXT_KEYBOARD_OPTIONS,
                                             singleLine = true,
                                             isError = persistentRandomizedMacError != null,
+                                            shape = OutlinedTextFieldDefaults.roundedShape,
                                             supportingText = persistentRandomizedMacError?.let { { ErrorApText(it) } },
                                         )
                                     }

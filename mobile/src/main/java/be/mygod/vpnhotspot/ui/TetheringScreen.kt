@@ -20,6 +20,7 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -29,8 +30,10 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -110,6 +113,7 @@ fun TetheringScreen(
     tetherStates: TetherStates,
     tetheringServiceState: TetheringServiceState,
     interfaceRefreshVersion: Int = 0,
+    onRefresh: () -> Unit = {},
     onConfigureRepeater: () -> Unit,
     onConfigureTemporaryHotspot: (() -> Unit)?,
     onConfigureAp: () -> Unit,
@@ -241,184 +245,194 @@ fun TetheringScreen(
         if (showBluetooth) bluetoothTethering?.active else null
     }
 
-    SettingsList {
-        preferenceGroup(key = "active_tethering") {
-            if (showRepeater) {
-                val active = repeaterStatus == RepeaterService.Status.ACTIVE
-                val switchEnabled = repeaterStatus == RepeaterService.Status.IDLE || active
-                val toggleRepeater: () -> Unit = {
-                    when (repeaterStatus) {
-                        RepeaterService.Status.IDLE -> startRepeater(if (Build.VERSION.SDK_INT >= 33) {
-                            Manifest.permission.NEARBY_WIFI_DEVICES
-                        } else Manifest.permission.ACCESS_FINE_LOCATION)
-                        RepeaterService.Status.ACTIVE -> onStopRepeater()
-                        else -> { }
-                    }
-                }
-                row(R.string.title_repeater) {
-                    TetheringRow(
-                        icon = R.drawable.ic_router,
-                        title = stringResource(R.string.title_repeater),
-                        summary = repeaterSummary(context, repeaterGroup, ifaceLookup, linkStyles),
-                        checked = repeaterStatus == RepeaterService.Status.STARTING || active,
-                        switchEnabled = switchEnabled,
-                        onClick = onConfigureRepeater,
-                        onCheckedChange = toggleRepeater,
-                    )
-                }
-                if (showRepeaterWps) row("repeater_wps") {
-                    PreferenceRow(
-                        modifier = Modifier.padding(start = 48.dp),
-                        icon = R.drawable.ic_wifi_protected_setup,
-                        title = stringResource(R.string.repeater_wps),
-                        onClick = { if (active) wpsDialog = true },
-                    )
-                }
-            }
-            row(R.string.tethering_temp_hotspot) {
-                val toggleLocalOnly: () -> Unit = {
-                    if (localOnlyIface == null) {
-                        startLocalOnly(if (Build.VERSION.SDK_INT >= 33) {
-                            Manifest.permission.NEARBY_WIFI_DEVICES
-                        } else Manifest.permission.ACCESS_FINE_LOCATION)
-                    } else onStopTemporaryHotspot()
-                }
-                TetheringRow(
-                    icon = R.drawable.ic_android_wifi_3_bar_plus,
-                    title = stringResource(R.string.tethering_temp_hotspot),
-                    summary = localOnlySummary,
-                    checked = localOnlyIface != null,
-                    onClick = onConfigureTemporaryHotspot ?: toggleLocalOnly,
-                    onCheckedChange = if (onConfigureTemporaryHotspot == null) null else toggleLocalOnly,
-                )
-            }
-            row(R.string.tethering_static_ip) {
-                TetheringRow(
-                    icon = R.drawable.ic_push_pin,
-                    title = stringResource(R.string.tethering_static_ip),
-                    summary = buildAnnotatedString {
-                        for ((address, prefixLength) in staticIpAddresses) {
-                            if (length > 0) append('\n')
-                            appendIpAddress(address, linkStyles)
-                            if (prefixLength.toInt() != address.address.size * 8) append("/$prefixLength")
+    PullToRefreshBox(
+        isRefreshing = false,
+        onRefresh = {
+            onRefresh()
+            manageBarVersion++
+            bluetoothVersion++
+        },
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        SettingsList {
+            preferenceGroup(key = "active_tethering") {
+                if (showRepeater) {
+                    val active = repeaterStatus == RepeaterService.Status.ACTIVE
+                    val switchEnabled = repeaterStatus == RepeaterService.Status.IDLE || active
+                    val toggleRepeater: () -> Unit = {
+                        when (repeaterStatus) {
+                            RepeaterService.Status.IDLE -> startRepeater(if (Build.VERSION.SDK_INT >= 33) {
+                                Manifest.permission.NEARBY_WIFI_DEVICES
+                            } else Manifest.permission.ACCESS_FINE_LOCATION)
+                            RepeaterService.Status.ACTIVE -> onStopRepeater()
+                            else -> { }
                         }
-                    },
-                    checked = staticIpActive,
-                    switchEnabled = !staticIpApplying,
-                    onClick = {
-                        staticIpDraft = StaticIpSetter.ips
-                    },
-                    onCheckedChange = { StaticIpSetter.enable(!staticIpActive) },
-                )
-            }
-        }
-        for (iface in interfaceIfaces) {
-            item(key = "interface_$iface") {
-                val active = managed.contains(iface)
-                val watch = monitored.contains(iface)
-                val ifaceInactive = inactive.contains(iface)
-                val vpnTethering = active && !ifaceInactive
-                PreferenceGroup {
-                    row("vpn_tethering") {
+                    }
+                    row(R.string.title_repeater) {
                         TetheringRow(
-                            icon = TetherType.ofInterface(iface).icon,
-                            title = iface,
-                            summary = networkInterfaceAddressesText(
-                                ifaceLookup[iface],
-                                linkStyles,
-                                macOnly = ifaceInactive,
-                            ),
-                            checked = vpnTethering,
-                            enabled = !ifaceInactive,
-                            onClick = {
-                                if (active) context.startService(Intent(context, TetheringService::class.java)
-                                    .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE, iface))
-                                else context.startForegroundService(Intent(context, TetheringService::class.java)
-                                    .putExtra(TetheringService.EXTRA_ADD_INTERFACES, arrayOf(iface)))
-                            },
+                            icon = R.drawable.ic_router,
+                            title = stringResource(R.string.title_repeater),
+                            summary = repeaterSummary(context, repeaterGroup, ifaceLookup, linkStyles),
+                            checked = repeaterStatus == RepeaterService.Status.STARTING || active,
+                            switchEnabled = switchEnabled,
+                            onClick = onConfigureRepeater,
+                            onCheckedChange = toggleRepeater,
                         )
                     }
-                    if (vpnTethering || watch) row("watch_reconnect") {
+                    if (showRepeaterWps) row("repeater_wps") {
                         PreferenceRow(
-                            title = stringResource(R.string.tethering_watch_reconnect),
-                            trailing = {
-                                PreferenceSwitch(
-                                    checked = watch,
-                                    onCheckedChange = null,
-                                )
-                            },
-                            onClick = {
-                                if (watch) context.startService(Intent(context, TetheringService::class.java)
-                                    .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE_MONITOR, iface))
-                                else context.startForegroundService(Intent(context, TetheringService::class.java)
-                                    .putExtra(TetheringService.EXTRA_ADD_INTERFACE_MONITOR, iface))
-                            },
+                            modifier = Modifier.padding(start = 48.dp),
+                            icon = R.drawable.ic_wifi_protected_setup,
+                            title = stringResource(R.string.repeater_wps),
+                            onClick = { if (active) wpsDialog = true },
                         )
                     }
                 }
-            }
-        }
-        preferenceGroup(key = "manage_tethering") {
-            row(R.string.tethering_manage) {
-                PreferenceRow(
-                    icon = R.drawable.ic_add,
-                    iconTint = MaterialTheme.colorScheme.secondary,
-                    title = stringResource(R.string.tethering_manage),
-                    summary = if (manageOffloadEnabled) {
-                        stringResource(R.string.tethering_manage_offload_enabled)
-                    } else null,
-                    onClick = { ManageBar.start(context::startActivity) },
-                )
-            }
-            row(R.string.tethering_manage_wifi) {
-                TetheringTypeRow(
-                    icon = R.drawable.ic_network_wifi,
-                    title = R.string.tethering_manage_wifi,
-                    checked = tetheredTypes.contains(TetherType.WIFI),
-                    summary = wifiSummary,
-                    tetheringType = TetheringManager.TETHERING_WIFI,
-                    snackbarHostState = snackbarHostState,
-                    onConfigure = onConfigureAp,
-                )
-            }
-            row(R.string.tethering_manage_usb) {
-                TetheringTypeRow(
-                    icon = R.drawable.ic_usb,
-                    title = R.string.tethering_manage_usb,
-                    checked = tetheredTypes.contains(TetherType.USB) || tetheredTypes.contains(TetherType.NCM),
-                    summary = tetherError(context, tetherStates, TetherType.USB),
-                    tetheringType = TetheringManagerCompat.TETHERING_USB,
-                    snackbarHostState = snackbarHostState,
-                )
-            }
-            if (showBluetooth) {
-                row(R.string.tethering_manage_bluetooth) {
-                    BluetoothTetheringRow(
-                        active = bluetoothActive,
+                row(R.string.tethering_temp_hotspot) {
+                    val toggleLocalOnly: () -> Unit = {
+                        if (localOnlyIface == null) {
+                            startLocalOnly(if (Build.VERSION.SDK_INT >= 33) {
+                                Manifest.permission.NEARBY_WIFI_DEVICES
+                            } else Manifest.permission.ACCESS_FINE_LOCATION)
+                        } else onStopTemporaryHotspot()
+                    }
+                    TetheringRow(
+                        icon = R.drawable.ic_android_wifi_3_bar_plus,
+                        title = stringResource(R.string.tethering_temp_hotspot),
+                        summary = localOnlySummary,
+                        checked = localOnlyIface != null,
+                        onClick = onConfigureTemporaryHotspot ?: toggleLocalOnly,
+                        onCheckedChange = if (onConfigureTemporaryHotspot == null) null else toggleLocalOnly,
+                    )
+                }
+                row(R.string.tethering_static_ip) {
+                    TetheringRow(
+                        icon = R.drawable.ic_push_pin,
+                        title = stringResource(R.string.tethering_static_ip),
                         summary = buildAnnotatedString {
-                            if (bluetoothActive == null) bluetoothTethering?.activeFailureCause?.readableMessage?.let {
-                                append(it)
-                            }
-                            tetherError(context, tetherStates, TetherType.BLUETOOTH)?.let {
+                            for ((address, prefixLength) in staticIpAddresses) {
                                 if (length > 0) append('\n')
-                                append(it)
+                                appendIpAddress(address, linkStyles)
+                                if (prefixLength.toInt() != address.address.size * 8) append("/$prefixLength")
                             }
                         },
-                        bluetoothTethering = bluetoothTethering,
-                        snackbarHostState = snackbarHostState,
-                        onRefresh = { bluetoothVersion++ },
+                        checked = staticIpActive,
+                        switchEnabled = !staticIpApplying,
+                        onClick = {
+                            staticIpDraft = StaticIpSetter.ips
+                        },
+                        onCheckedChange = { StaticIpSetter.enable(!staticIpActive) },
                     )
                 }
             }
-            if (Build.VERSION.SDK_INT >= 30) row(R.string.tethering_manage_ethernet) {
-                TetheringTypeRow(
-                    icon = TetherType.ETHERNET.icon,
-                    title = R.string.tethering_manage_ethernet,
-                    checked = tetheredTypes.contains(TetherType.ETHERNET),
-                    summary = tetherError(context, tetherStates, TetherType.ETHERNET),
-                    tetheringType = TetheringManagerCompat.TETHERING_ETHERNET,
-                    snackbarHostState = snackbarHostState,
-                )
+            for (iface in interfaceIfaces) {
+                item(key = "interface_$iface") {
+                    val active = managed.contains(iface)
+                    val watch = monitored.contains(iface)
+                    val ifaceInactive = inactive.contains(iface)
+                    val vpnTethering = active && !ifaceInactive
+                    PreferenceGroup {
+                        row("vpn_tethering") {
+                            TetheringRow(
+                                icon = TetherType.ofInterface(iface).icon,
+                                title = iface,
+                                summary = networkInterfaceAddressesText(
+                                    ifaceLookup[iface],
+                                    linkStyles,
+                                    macOnly = ifaceInactive,
+                                ),
+                                checked = vpnTethering,
+                                enabled = !ifaceInactive,
+                                onClick = {
+                                    if (active) context.startService(Intent(context, TetheringService::class.java)
+                                        .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE, iface))
+                                    else context.startForegroundService(Intent(context, TetheringService::class.java)
+                                        .putExtra(TetheringService.EXTRA_ADD_INTERFACES, arrayOf(iface)))
+                                },
+                            )
+                        }
+                        if (vpnTethering || watch) row("watch_reconnect") {
+                            PreferenceRow(
+                                title = stringResource(R.string.tethering_watch_reconnect),
+                                trailing = {
+                                    PreferenceSwitch(
+                                        checked = watch,
+                                        onCheckedChange = null,
+                                    )
+                                },
+                                onClick = {
+                                    if (watch) context.startService(Intent(context, TetheringService::class.java)
+                                        .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE_MONITOR, iface))
+                                    else context.startForegroundService(Intent(context, TetheringService::class.java)
+                                        .putExtra(TetheringService.EXTRA_ADD_INTERFACE_MONITOR, iface))
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+            preferenceGroup(key = "manage_tethering") {
+                row(R.string.tethering_manage) {
+                    PreferenceRow(
+                        icon = R.drawable.ic_add,
+                        iconTint = MaterialTheme.colorScheme.secondary,
+                        title = stringResource(R.string.tethering_manage),
+                        summary = if (manageOffloadEnabled) {
+                            stringResource(R.string.tethering_manage_offload_enabled)
+                        } else null,
+                        onClick = { ManageBar.start(context::startActivity) },
+                    )
+                }
+                row(R.string.tethering_manage_wifi) {
+                    TetheringTypeRow(
+                        icon = R.drawable.ic_network_wifi,
+                        title = R.string.tethering_manage_wifi,
+                        checked = tetheredTypes.contains(TetherType.WIFI),
+                        summary = wifiSummary,
+                        tetheringType = TetheringManager.TETHERING_WIFI,
+                        snackbarHostState = snackbarHostState,
+                        onConfigure = onConfigureAp,
+                    )
+                }
+                row(R.string.tethering_manage_usb) {
+                    TetheringTypeRow(
+                        icon = R.drawable.ic_usb,
+                        title = R.string.tethering_manage_usb,
+                        checked = tetheredTypes.contains(TetherType.USB) || tetheredTypes.contains(TetherType.NCM),
+                        summary = tetherError(context, tetherStates, TetherType.USB),
+                        tetheringType = TetheringManagerCompat.TETHERING_USB,
+                        snackbarHostState = snackbarHostState,
+                    )
+                }
+                if (showBluetooth) {
+                    row(R.string.tethering_manage_bluetooth) {
+                        BluetoothTetheringRow(
+                            active = bluetoothActive,
+                            summary = buildAnnotatedString {
+                                if (bluetoothActive == null) bluetoothTethering?.activeFailureCause?.readableMessage?.let {
+                                    append(it)
+                                }
+                                tetherError(context, tetherStates, TetherType.BLUETOOTH)?.let {
+                                    if (length > 0) append('\n')
+                                    append(it)
+                                }
+                            },
+                            bluetoothTethering = bluetoothTethering,
+                            snackbarHostState = snackbarHostState,
+                            onRefresh = { bluetoothVersion++ },
+                        )
+                    }
+                }
+                if (Build.VERSION.SDK_INT >= 30) row(R.string.tethering_manage_ethernet) {
+                    TetheringTypeRow(
+                        icon = TetherType.ETHERNET.icon,
+                        title = R.string.tethering_manage_ethernet,
+                        checked = tetheredTypes.contains(TetherType.ETHERNET),
+                        summary = tetherError(context, tetherStates, TetherType.ETHERNET),
+                        tetheringType = TetheringManagerCompat.TETHERING_ETHERNET,
+                        snackbarHostState = snackbarHostState,
+                    )
+                }
             }
         }
     }
@@ -453,6 +467,8 @@ fun TetheringScreen(
                             maxHeightInLines = 2,
                         ),
                         scrollState = scrollState,
+                        shape = OutlinedTextFieldDefaults.roundedShape,
+                        colors = OutlinedTextFieldDefaults.tonalColors(),
                     )
                 }
             },
@@ -487,6 +503,8 @@ fun TetheringScreen(
                         .focusRequester(focusRequester),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
+                    shape = OutlinedTextFieldDefaults.roundedShape,
+                    colors = OutlinedTextFieldDefaults.tonalColors(),
                 )
             },
             confirmButton = {

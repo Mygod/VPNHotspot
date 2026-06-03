@@ -16,7 +16,9 @@ import androidx.compose.foundation.text.input.maxLength
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldLabelPosition
 import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -128,6 +130,7 @@ fun TextSwitchApRow(
                             ),
                         enabled = fieldEnabled,
                         inputTransformation = maxLength?.let { InputTransformation.maxLength(it) },
+                        labelPosition = TextFieldLabelPosition.Inside(),
                         label = { Text(stringResource(valueTitle)) },
                         keyboardOptions = keyboardOptions,
                         placeholder = placeholder?.let { { Text(it) } },
@@ -137,6 +140,8 @@ fun TextSwitchApRow(
                         ) else TextFieldLineLimits.SingleLine,
                         scrollState = scrollState,
                         isError = fieldEnabled && error != null,
+                        shape = OutlinedTextFieldDefaults.roundedShape,
+                        colors = OutlinedTextFieldDefaults.tonalColors(),
                         suffix = suffix?.let { { Text(it) } },
                         supportingText = if ((fieldEnabled && error != null) || maxLength != null) {
                             {
