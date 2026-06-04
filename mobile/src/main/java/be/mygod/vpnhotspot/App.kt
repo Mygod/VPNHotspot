@@ -51,8 +51,13 @@ class App : Application() {
         lateinit var app: App
     }
 
-    override fun onCreate() {
-        super.onCreate()
+    init {
+        // overhead of debug mode is minimal: https://github.com/Kotlin/kotlinx.coroutines/blob/f528898/docs/debugging.md#debug-mode
+        System.setProperty(DEBUG_PROPERTY_NAME, DEBUG_PROPERTY_VALUE_ON)
+    }
+
+    override fun attachBaseContext(base: Context?) {
+        super.attachBaseContext(base)
         app = this
         deviceStorage = DeviceStorageApp(this)
         @Suppress("DEPRECATION")
@@ -61,8 +66,6 @@ class App : Application() {
         deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
         Services.init { this }
 
-        // overhead of debug mode is minimal: https://github.com/Kotlin/kotlinx.coroutines/blob/f528898/docs/debugging.md#debug-mode
-        System.setProperty(DEBUG_PROPERTY_NAME, DEBUG_PROPERTY_VALUE_ON)
         DynamiteModule::class.java.getDeclaredField("zzg").apply { isAccessible = true }.set(null, false)
         // call super.attachInfo get around ProviderInfo check
         FirebaseInitProvider::class.java.privateLookup().findSpecial(ContentProvider::class.java, "attachInfo",
@@ -111,6 +114,10 @@ class App : Application() {
         StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().apply {
             if (BuildConfig.DEBUG) detectAll() else detectFileUriExposure()
         }.penaltyListener(InPlaceExecutor) { Timber.w(it, "StrictMode VM policy violation") }.build())
+    }
+
+    override fun onCreate() {
+        super.onCreate()
         ServiceNotification.updateNotificationChannels()
     }
 
