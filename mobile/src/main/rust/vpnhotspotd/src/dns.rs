@@ -32,7 +32,6 @@ const DNS_MAX_PACKET: usize = 65_535;
 pub(crate) struct Runtime {
     call_id: u64,
     downstream: String,
-    bind_address: Ipv4Addr,
     reply_mark: u32,
     config: Arc<Mutex<SessionConfig>>,
     stop: CancellationToken,
@@ -67,7 +66,6 @@ impl Runtime {
     pub(crate) fn start(
         call_id: u64,
         downstream: &str,
-        bind_address: Ipv4Addr,
         reply_mark: u32,
         config: Arc<Mutex<SessionConfig>>,
         stop: CancellationToken,
@@ -76,7 +74,6 @@ impl Runtime {
         let mut runtime = Self {
             call_id,
             downstream: downstream.to_owned(),
-            bind_address,
             reply_mark,
             config,
             stop,
@@ -174,7 +171,7 @@ impl Runtime {
 
     fn start_tcp(&self, mac: [u8; 6]) -> Option<ClientListenerRuntime> {
         let stop = self.stop.child_token();
-        match create_tcp_listener(self.bind_address, self.reply_mark).and_then(|listener| {
+        match create_tcp_listener(self.reply_mark).and_then(|listener| {
             let port = listener.local_addr()?.port();
             spawn_tcp_loop(
                 listener,
@@ -188,14 +185,7 @@ impl Runtime {
             Ok(port) => Some(ClientListenerRuntime { port, stop }),
             Err(e) => {
                 stop.cancel();
-                report_start_error(
-                    self.call_id,
-                    "dns.tcp_start",
-                    e,
-                    &self.downstream,
-                    self.bind_address,
-                    mac,
-                );
+                report_start_error(self.call_id, "dns.tcp_start", e, &self.downstream, mac);
                 None
             }
         }
@@ -203,7 +193,7 @@ impl Runtime {
 
     fn start_udp(&self, mac: [u8; 6]) -> Option<ClientListenerRuntime> {
         let stop = self.stop.child_token();
-        match create_udp_listener(self.bind_address, self.reply_mark).and_then(|socket| {
+        match create_udp_listener(self.reply_mark).and_then(|socket| {
             let port = socket.local_addr()?.port();
             spawn_udp_loop(
                 socket,
@@ -217,14 +207,7 @@ impl Runtime {
             Ok(port) => Some(ClientListenerRuntime { port, stop }),
             Err(e) => {
                 stop.cancel();
-                report_start_error(
-                    self.call_id,
-                    "dns.udp_start",
-                    e,
-                    &self.downstream,
-                    self.bind_address,
-                    mac,
-                );
+                report_start_error(self.call_id, "dns.udp_start", e, &self.downstream, mac);
                 None
             }
         }
@@ -257,7 +240,6 @@ fn report_start_error(
     context: &str,
     error: io::Error,
     downstream: &str,
-    bind_address: Ipv4Addr,
     mac: [u8; 6],
 ) {
     report::report_for(
@@ -267,7 +249,7 @@ fn report_start_error(
             error,
             [
                 ("downstream", downstream.to_owned()),
-                ("bind_address", bind_address.to_string()),
+                ("bind_address", Ipv4Addr::UNSPECIFIED.to_string()),
                 ("mac", mac_string(&mac)),
             ],
         ),
@@ -322,15 +304,15 @@ unsafe extern "C" {
     fn android_res_cancel(nsend_fd: c_int);
 }
 
-fn create_tcp_listener(bind_address: Ipv4Addr, reply_mark: u32) -> io::Result<TcpListener> {
-    let listener = TcpListener::bind((bind_address, 0))?;
+fn create_tcp_listener(reply_mark: u32) -> io::Result<TcpListener> {
+    let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0))?;
     SockRef::from(&listener).set_mark(reply_mark)?;
     listener.set_nonblocking(true)?;
     Ok(listener)
 }
 
-fn create_udp_listener(bind_address: Ipv4Addr, reply_mark: u32) -> io::Result<UdpSocket> {
-    let socket = UdpSocket::bind((bind_address, 0))?;
+fn create_udp_listener(reply_mark: u32) -> io::Result<UdpSocket> {
+    let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0))?;
     SockRef::from(&socket).set_mark(reply_mark)?;
     socket.set_nonblocking(true)?;
     Ok(socket)
@@ -375,6 +357,7 @@ fn spawn_tcp_loop(
                         if stop.is_cancelled() {
                             break;
                         }
+                        let terminal = e.kind() == io::ErrorKind::InvalidInput;
                         if matches!(
                             e.kind(),
                             io::ErrorKind::Interrupted | io::ErrorKind::ConnectionAborted
@@ -386,6 +369,9 @@ fn spawn_tcp_loop(
                             e,
                             [("mac", mac_string(&mac))],
                         );
+                        if terminal {
+                            break;
+                        }
                     }
                 }
             }

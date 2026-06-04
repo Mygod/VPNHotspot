@@ -60,7 +60,9 @@ path fails.
 Condition: the owned nat chain and PREROUTING jump are present for a started
 session with downstream IPv4. Per-MAC redirect rules are present per committed
 client MAC and protocol when DNS startup produced that MAC/protocol listener
-port and routing can also install the matching direct-port guard.
+port and routing can also install the matching direct-port guard. DNS listener
+ports are daemon-owned sockets bound to `0.0.0.0`; the downstream IPv4 address is
+owned by routing and appears only in packet matching and conntrack validation.
 
 External mutations:
 
@@ -69,16 +71,18 @@ External mutations:
 - `iptables -t nat -I vpnhotspot_dns_nat -i <downstream> -p tcp -m mac --mac-source <mac> -d <downstream-ipv4> --dport 53 -j DNAT --to-destination :<dns-tcp-port-for-mac>`
 - `iptables -t nat -I vpnhotspot_dns_nat -i <downstream> -p udp -m mac --mac-source <mac> -d <downstream-ipv4> --dport 53 -j DNAT --to-destination :<dns-udp-port-for-mac>`
 - `iptables -t filter -I vpnhotspot_dns_input -i <downstream> -p tcp -d <downstream-ipv4> --dport <dns-tcp-port-for-mac> -m conntrack --ctorigdst <downstream-ipv4> --ctorigdstport 53 -j RETURN`
-- `iptables -t filter -I vpnhotspot_dns_input -i <downstream> -p tcp -d <downstream-ipv4> --dport <dns-tcp-port-for-mac> -j REJECT --reject-with tcp-reset`
+- `iptables -t filter -I vpnhotspot_dns_input -p tcp --dport <dns-tcp-port-for-mac> -j REJECT --reject-with tcp-reset`
 - `iptables -t filter -I vpnhotspot_dns_input -i <downstream> -p udp -d <downstream-ipv4> --dport <dns-udp-port-for-mac> -m conntrack --ctorigdst <downstream-ipv4> --ctorigdstport 53 -j RETURN`
-- `iptables -t filter -I vpnhotspot_dns_input -i <downstream> -p udp -d <downstream-ipv4> --dport <dns-udp-port-for-mac> -j REJECT --reject-with icmp-port-unreachable`
+- `iptables -t filter -I vpnhotspot_dns_input -p udp --dport <dns-udp-port-for-mac> -j REJECT --reject-with icmp-port-unreachable`
 
 Effective order for a listener port is the conntrack original-destination
 `RETURN` before the direct-port `REJECT`. The guard makes the ephemeral listener
 port reachable only as the post-DNAT target of a packet originally addressed to
-the downstream gateway on port 53. If routing cannot install or validate the
-conntrack original-destination guard, it must omit that MAC/protocol DNS
-capability instead of exposing the listener port directly.
+the downstream gateway on port 53. Because listeners are wildcard-bound, the
+direct-port `REJECT` is intentionally not scoped to the downstream interface or
+gateway address. If routing cannot install or validate the conntrack
+original-destination guard, it must omit that MAC/protocol DNS capability
+instead of exposing the listener port directly.
 
 The guard lines above are the required effective order. Because iptables `-I`
 inserts at the head by default, implementation must either insert with explicit

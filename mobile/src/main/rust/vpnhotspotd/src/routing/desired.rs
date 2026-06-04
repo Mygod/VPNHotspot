@@ -513,7 +513,7 @@ impl Runtime {
         protocol: &str,
         port: u16,
     ) -> [IptablesRule; 2] {
-        let base_args = [
+        let mut allow_args = [
             "-i".to_owned(),
             config.downstream.clone(),
             "-p".to_owned(),
@@ -522,8 +522,8 @@ impl Runtime {
             self.downstream_ipv4.address.to_string(),
             "--dport".to_owned(),
             port.to_string(),
-        ];
-        let mut allow_args = base_args.to_vec();
+        ]
+        .to_vec();
         allow_args.extend([
             "-m".to_owned(),
             "conntrack".to_owned(),
@@ -534,8 +534,11 @@ impl Runtime {
             "-j".to_owned(),
             "RETURN".to_owned(),
         ]);
-        let mut reject_args = base_args.to_vec();
-        reject_args.extend([
+        let reject_args = [
+            "-p".to_owned(),
+            protocol.to_owned(),
+            "--dport".to_owned(),
+            port.to_string(),
             "-j".to_owned(),
             "REJECT".to_owned(),
             "--reject-with".to_owned(),
@@ -544,7 +547,8 @@ impl Runtime {
             } else {
                 "icmp-port-unreachable".to_owned()
             },
-        ]);
+        ]
+        .to_vec();
         [
             IptablesRule::new(
                 IptablesTarget::Ipv4,

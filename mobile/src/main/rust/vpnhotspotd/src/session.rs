@@ -43,7 +43,6 @@ impl Session {
         let mut dns = dns::Runtime::start(
             call_id,
             &config.downstream,
-            downstream_ipv4.address,
             config.reply_mark,
             shared.clone(),
             stop.clone(),
