@@ -5,6 +5,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.annotation.RequiresApi
 import androidx.collection.mutableScatterMapOf
+import be.mygod.librootkotlinx.NoShellException
 import be.mygod.librootkotlinx.ParcelableBoolean
 import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandNoResult
@@ -137,6 +138,10 @@ object WifiApCommands {
         var failure = collect(WifiApManager.softApCallbackFlow) ?: return@SoftApCallbackRelay
         if (Build.VERSION.SDK_INT >= 31) {
             failure = (collect(softApCallbackBinderFlow) ?: return@SoftApCallbackRelay).apply {
+                (cause as? NoShellException)?.let {
+                    it.addSuppressed(failure)
+                    throw it
+                }
                 addSuppressed(failure)
             }
         }
@@ -151,6 +156,10 @@ object WifiApCommands {
     private val localOnlyHotspotSoftApCallbackRelay = SoftApCallbackRelay {
         var failure = collect(WifiApManager.localOnlyHotspotSoftApCallbackFlow) ?: return@SoftApCallbackRelay
         failure = (collect(localOnlyHotspotSoftApCallbackBinderFlow) ?: return@SoftApCallbackRelay).apply {
+            (cause as? NoShellException)?.let {
+                it.addSuppressed(failure)
+                throw it
+            }
             addSuppressed(failure)
         }
         if (hasExpensiveSubscribers()) failure = (collect(flow {
