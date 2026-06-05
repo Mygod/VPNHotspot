@@ -225,6 +225,34 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
+tasks.register("verifyReleaseCoroutineDebugR8") {
+    group = "verification"
+    description = "Verifies release R8 keeps coroutine JobCancellationException stack-trace support."
+    dependsOn("minifyReleaseWithR8")
+
+    val mappingFile = layout.buildDirectory.file("intermediates/mapping/release/minifyReleaseWithR8/mapping.txt")
+    inputs.file(mappingFile)
+
+    doLast {
+        val marker = "kotlinx.coroutines.JobCancellationException ->"
+        val section = buildList {
+            var collecting = false
+            for (line in mappingFile.get().asFile.readLines()) {
+                if (line.startsWith(marker)) collecting = true
+                else if (collecting && line.isNotEmpty() && !line.startsWith(" ") && !line.startsWith("#")) break
+                if (collecting) add(line)
+            }
+        }.joinToString("\n")
+        check(section.isNotEmpty()) { "Missing JobCancellationException section in release R8 mapping." }
+        check("fillInStackTrace():41:41" in section && "fillInStackTrace():42:42" in section) {
+            "Release R8 optimized JobCancellationException.fillInStackTrace to remove coroutine debug stack traces:\n$section"
+        }
+        check("createCopy():55:55" in section && "createCopy():56:56" in section) {
+            "Release R8 optimized JobCancellationException.createCopy to remove coroutine stack-trace recovery:\n$section"
+        }
+    }
+}
+
 dependencies {
     compileOnly(files(hiddenApiStubsJar))
     ksp(libs.room.compiler)

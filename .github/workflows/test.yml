@@ -52,6 +52,9 @@ jobs:
       - name: Run build and tests
         run: ./gradlew assembleDebug check --no-daemon
 
+      - name: Verify release R8 coroutine debug
+        run: ./gradlew :mobile:verifyReleaseCoroutineDebugR8 --no-daemon
+
       - name: Upload APKs
         if: always()
         uses: actions/upload-artifact@v7

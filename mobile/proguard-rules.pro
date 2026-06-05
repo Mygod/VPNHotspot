@@ -17,6 +17,11 @@
 -keepattributes SourceFile,LineNumberTable
 -dontobfuscate
 
+-assumenosideeffects class kotlinx.coroutines.DebugKt {
+    boolean getDEBUG() return true;
+    boolean getRECOVER_STACK_TRACES() return true;
+}
+
 # Keep blocked direct-link calls in a separate class so UnblockCentral installs exemptions first.
 -keep class be.mygod.vpnhotspot.util.UnblockCentralLinking { *; }
 
