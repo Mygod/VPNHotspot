@@ -4,6 +4,7 @@ import android.app.Service
 import be.mygod.vpnhotspot.net.NetlinkNeighbour
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.apInstanceIdentifierOrNull
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -95,6 +96,7 @@ abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
                 else -> state
             }
         }.catch { e ->
+            if (e is CancellationException) throw e
             // Soft AP callback unavailable: drop authoritative counts so every interface falls back to netlink.
             if (e is WifiApManager.SoftApCallbackUnavailableException && e.cause == null) Timber.d(e) else Timber.w(e)
             emit(SoftApState())
