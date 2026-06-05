@@ -16,7 +16,9 @@ use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
 use crate::report;
-use crate::socket::{is_connection_closed, is_udp_reply_unreachable, set_nonblocking};
+use crate::socket::{
+    is_connection_closed, is_route_unreachable, is_udp_reply_unreachable, set_nonblocking,
+};
 use vpnhotspotd::shared::dns_counter::DnsCounters;
 use vpnhotspotd::shared::dns_wire;
 use vpnhotspotd::shared::model::{mac_string, ClientDnsPorts, Network, SessionConfig};
@@ -346,6 +348,8 @@ fn spawn_tcp_loop(
                                 } => if let Err(e) = result {
                                     if is_connection_closed(&e) {
                                         report::stderr!("dns tcp connection closed: {e}");
+                                    } else if is_route_unreachable(&e) {
+                                        report::stderr!("dns tcp connection unreachable: {e}");
                                     } else {
                                         report::io("dns.tcp_connection", e);
                                     }

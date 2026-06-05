@@ -68,6 +68,11 @@ Upstream sockets are bound to Android networks with `android_setsocknetwork`.
 Reply sockets use the daemon reply mark so responses route through Android's
 local-network path before VPN UID rules.
 
+NAT66 DNS traffic to the NAT66 gateway reuses the DNS runtime's TCP and UDP
+handlers. Host- or network-unreachable DNS TCP response writes are treated as
+downstream reachability churn and logged, matching direct DNS TCP handling,
+instead of surfacing as `nat66.tcp_connection` nonfatals.
+
 The selected Android network is external state owned by ConnectivityService and
 netd. If it disappears between session config publication and upstream socket
 setup, `android_setsocknetwork` can fail with `ENONET`. NAT66 logs that

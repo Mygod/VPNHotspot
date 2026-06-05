@@ -83,8 +83,10 @@ TCP DNS accepts normal DNS-over-TCP framing:
 Each framed query and framed response is one DNS TCP accounting unit. DNS TCP
 does not try to infer lower-layer TCP packet counts.
 
-Unexpected EOF while reading the next frame ends the connection cleanly. Other
-I/O failures are returned to the connection task.
+Unexpected EOF while reading the next frame ends the connection cleanly.
+Host- or network-unreachable response writes are treated as downstream
+reachability churn and logged. Other I/O failures are returned to the
+connection task.
 
 ## UDP DNS
 

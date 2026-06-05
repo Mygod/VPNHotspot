@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::dns::{self, DNS_PORT};
 use crate::report;
-use crate::socket::is_connection_closed;
+use crate::socket::{is_connection_closed, is_route_unreachable};
 use crate::upstream::{connect_tcp, is_selected_network_missing, UpstreamConnectError};
 use vpnhotspotd::shared::model::{
     mac_string, select_upstream_network, SelectedNetwork, SessionConfig,
@@ -103,6 +103,10 @@ async fn handle_connection(
             if is_connection_closed(&e) {
                 report::stdout!(
                     "tcp proxy dns closed: client={client} destination={destination}: {e}"
+                );
+            } else if is_route_unreachable(&e) {
+                report::stdout!(
+                    "tcp proxy dns unreachable: client={client} destination={destination}: {e}"
                 );
             } else {
                 return Err(e);
