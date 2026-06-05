@@ -93,7 +93,7 @@ object RootManager : RootSession(), Logger {
     ) {
         super.handleRootLifecycle(process, stdin, stdout, stderr)
         val exit = process.awaitExit()
-        if (exit != 0) Timber.w("Root JVM unexpectedly exited with $exit")
+        if (exit != 0) Timber.w(Exception("Root JVM unexpectedly exited with $exit"))
     }
 
     override suspend fun initServer(server: RootServer) {
