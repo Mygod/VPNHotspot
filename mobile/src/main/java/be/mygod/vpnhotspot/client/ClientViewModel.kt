@@ -125,9 +125,6 @@ class ClientViewModel : ViewModel(), DefaultLifecycleObserver {
                         updateTrafficRates(newRecords, oldRecords)
                     }
                 }
-                launch(Dispatchers.Default) {
-                    TrafficRecorder.rescheduleUpdate()
-                }
             }
         }
 

@@ -21,7 +21,8 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onSubscription
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -53,7 +54,9 @@ object TrafficRecorder {
         extraBufferCapacity = 1,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
-    val foregroundUpdates = foregroundUpdatesState.asSharedFlow()
+    val foregroundUpdates = foregroundUpdatesState
+        .onSubscription { rescheduleUpdate() }
+        .onCompletion { rescheduleUpdate() }
 
     suspend fun register(ip: InetAddress, downstream: String, mac: MacAddress) = updateMutex.withLock {
         val key = CounterKey(mac, downstream, CounterSource(ip, null))
@@ -107,7 +110,7 @@ object TrafficRecorder {
         }
     }
 
-    suspend fun rescheduleUpdate() = updateMutex.withLock {
+    private suspend fun rescheduleUpdate() = updateMutex.withLock {
         unscheduleUpdateLocked()
         scheduleUpdateLocked()
     }
