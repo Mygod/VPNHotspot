@@ -439,6 +439,13 @@ fun TetheringScreen(
 
     if (staticIpDraft != null) {
         val focusRequester = rememberDialogFocusRequester()
+        val staticIpDraftValue = staticIpDraftText.text.toString()
+        val staticIpDraftError = try {
+            StaticIpSetter.parseAddresses(staticIpDraftValue).count()
+            null
+        } catch (e: InvocationTargetException) {
+            e.readableMessage
+        }
         AlertDialog(
             onDismissRequest = {
                 staticIpDraft = null
@@ -467,16 +474,28 @@ fun TetheringScreen(
                             maxHeightInLines = 2,
                         ),
                         scrollState = scrollState,
+                        isError = staticIpDraftError != null,
                         shape = OutlinedTextFieldDefaults.roundedShape,
                         colors = OutlinedTextFieldDefaults.tonalColors(),
+                        supportingText = staticIpDraftError?.let {
+                            {
+                                Text(
+                                    text = it,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        },
                     )
                 }
             },
             confirmButton = {
-                DialogConfirmButton(onClick = {
-                    StaticIpSetter.ips = staticIpDraftText.text.toString().trim()
-                    staticIpDraft = null
-                }) {
+                DialogConfirmButton(
+                    enabled = staticIpDraftError == null,
+                    onClick = {
+                        StaticIpSetter.ips = staticIpDraftValue.trim()
+                        staticIpDraft = null
+                    },
+                ) {
                     Text(stringResource(android.R.string.ok))
                 }
             },

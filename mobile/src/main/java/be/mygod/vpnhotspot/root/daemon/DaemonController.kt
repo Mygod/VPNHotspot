@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.root.daemon
 
+import android.net.LinkAddress
 import android.net.LocalServerSocket
 import android.os.ParcelFileDescriptor
 import android.os.Process
@@ -114,11 +115,11 @@ object DaemonController {
         }
     }
 
-    suspend fun replaceStaticAddresses(dev: String, addresses: List<Pair<InetAddress, Int>>) {
+    suspend fun replaceStaticAddresses(dev: String, addresses: Iterable<LinkAddress>) {
         request(ClientEnvelope(replace_static_addresses = ReplaceStaticAddressesCommand(
             dev = dev,
-            addresses = addresses.map { (address, prefixLength) ->
-                IpAddressEntry(address.address.toByteString(), prefixLength)
+            addresses = addresses.map { address ->
+                IpAddressEntry(address.address.address.toByteString(), address.prefixLength)
             },
         ))).requireAck()
     }

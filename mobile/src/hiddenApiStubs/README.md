@@ -15,6 +15,7 @@ These additional reflected whitelisted/system API are listed below:
 * `Landroid/bluetooth/BluetoothProfile;->PAN:I,sdk,system-api,test-api`
 * (prior to API 30) `Landroid/net/ConnectivityManager;->startTethering(IZLandroid/net/ConnectivityManager$OnStartTetheringCallback;Landroid/os/Handler;)V,sdk,system-api,test-api`
 * (prior to API 30) `Landroid/net/ConnectivityManager;->stopTethering(I)V,sdk,system-api,test-api`
+* `Landroid/net/LinkAddress;-><init>(Ljava/lang/String;)V,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/LinkAddress;->getDeprecationTime()J,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/LinkAddress;->getExpirationTime()J,sdk,system-api,test-api`
 * `Landroid/net/LinkProperties;->getAllInterfaceNames()Ljava/util/List;,sdk,system-api,test-api`

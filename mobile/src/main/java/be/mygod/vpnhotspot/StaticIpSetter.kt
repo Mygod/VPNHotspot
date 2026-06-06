@@ -1,7 +1,8 @@
 package be.mygod.vpnhotspot
 
+import android.annotation.SuppressLint
 import android.content.Context
-import android.net.InetAddresses
+import android.net.LinkAddress
 import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.root.daemon.DaemonController
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
+import java.lang.reflect.InvocationTargetException
 import java.net.InetAddress
 import java.net.NetworkInterface
 import java.net.SocketException
@@ -70,6 +72,18 @@ class StaticIpSetter : BootReceiver.Startable {
         }
         private var pendingEnabled: Boolean? = null
 
+        @get:SuppressLint("SoonBlockedPrivateApi")
+        private val constructorLinkAddress by lazy {
+            LinkAddress::class.java.getDeclaredConstructor(String::class.java)
+        }
+        fun parseAddresses(value: String) = value.lineSequence().mapNotNull { line ->
+            val trimmed = line.trim()
+            if (trimmed.isBlank()) return@mapNotNull null
+            constructorLinkAddress.newInstance(if ('/' in trimmed) trimmed else {
+                "$trimmed/${if (':' in trimmed) 128 else 32}"
+            })
+        }
+
         fun enable(enabled: Boolean) {
             GlobalScope.launch(Dispatchers.Main.immediate) {
                 pendingEnabled = enabled
@@ -84,24 +98,15 @@ class StaticIpSetter : BootReceiver.Startable {
                         val next = pendingEnabled ?: break
                         pendingEnabled = null
                         val success = try {
-                            if (next) {
-                                val addresses = ArrayList<Pair<InetAddress, Int>>()
-                                for (line in ips.lineSequence()) {
-                                    val value = line.trim()
-                                    if (value.isBlank()) continue
-                                    addresses += value.split('/', limit = 2).let {
-                                        val parsed = InetAddresses.parseNumericAddress(it[0])
-                                        parsed to if (it.size == 1) parsed.address.size * 8 else it[1].toInt()
-                                    }
-                                }
-                                DaemonController.replaceStaticAddresses("lo", addresses)
-                                true
-                            } else {
-                                DaemonController.replaceStaticAddresses("lo", emptyList())
-                                false
-                            }
+                            DaemonController.replaceStaticAddresses("lo", if (next) {
+                                parseAddresses(ips).asIterable()
+                            } else emptyList())
+                            next
                         } catch (e: CancellationException) {
                             throw e
+                        } catch (e: IllegalArgumentException) {
+                            SmartSnackbar.make(e).show()
+                            null
                         } catch (e: Exception) {
                             Timber.w(e)
                             SmartSnackbar.make(e).show()
