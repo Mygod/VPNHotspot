@@ -142,17 +142,18 @@ reported with the selected network context through the daemon report path.
 TCP is connection-local. It does not publish separate NAT66 state after the
 connection task starts. A graceful EOF on one side shuts down only the write half
 of the opposite socket and the other direction keeps relaying until it also
-closes or an I/O error occurs. Reset, broken-pipe, timeout, and other connection
-errors end the connection task. The session runtime does not track completed TCP
-connections.
+closes or an I/O error occurs. Reset, broken-pipe, timeout, host-unreachable, and
+network-unreachable errors end only the connection task. The session runtime
+does not track completed TCP connections.
 
 TCP relay reports are attributed to the relay leg before they leave the
 connection task. Read, write, flush, and shutdown errors use separate contexts
 under `nat66.tcp_relay.inbound_to_outbound.*` or
 `nat66.tcp_relay.outbound_to_inbound.*` and include the MAC, client,
 destination, selected network, role, direction, operation, and relay stage.
-Expected connection-close errors remain log-only; unexpected relay I/O errors
-become structured daemon nonfatals with that relay context preserved.
+Expected connection-close and route-unreachable errors remain log-only;
+unexpected relay I/O errors become structured daemon nonfatals with that relay
+context preserved.
 
 TCP byte counters update during relay. NAT66 TCP also increments its sent packet
 counter once after a remote upstream socket is successfully opened; that counter

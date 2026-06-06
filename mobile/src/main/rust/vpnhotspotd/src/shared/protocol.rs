@@ -431,6 +431,15 @@ mod tests {
         assert_eq!(reported_io_error_report(&error), Some(report));
     }
 
+    #[test]
+    fn error_errno_reads_wrapped_report_errno() {
+        let error =
+            io::Error::from_raw_os_error(libc::ENETUNREACH).with_report_context("nat66.tcp_relay");
+
+        assert_eq!(error.raw_os_error(), None);
+        assert_eq!(error_errno(&error), Some(libc::ENETUNREACH));
+    }
+
     fn daemon_error_report() -> DaemonErrorReport {
         DaemonErrorReport {
             context: "routing.command".to_owned(),

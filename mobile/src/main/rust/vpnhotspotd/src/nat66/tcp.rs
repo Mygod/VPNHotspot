@@ -157,7 +157,7 @@ async fn handle_connection(
     )
     .await
     {
-        if is_connection_closed(&e) {
+        if is_connection_closed(&e) || is_route_unreachable(&e) {
             log_connection_error("relay", mac, client, destination, selection, &e);
         } else {
             return Err(e);
@@ -438,6 +438,7 @@ fn log_connection_error(
 ) {
     let outcome = match error.kind() {
         io::ErrorKind::TimedOut => "timed out",
+        _ if is_route_unreachable(error) => "unreachable",
         _ if is_connection_closed(error) => "closed",
         _ => "failed",
     };

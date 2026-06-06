@@ -4,6 +4,7 @@ use std::os::fd::{AsFd, BorrowedFd, RawFd};
 use libc::{fcntl, F_GETFL, F_SETFL, O_NONBLOCK};
 use socket2::{SockAddr, Socket};
 use tokio::io::unix::AsyncFd;
+use vpnhotspotd::shared::protocol::error_errno;
 
 pub(crate) async fn await_connect(socket: &Socket) -> io::Result<()> {
     await_writable(socket.as_fd()).await?;
@@ -87,7 +88,7 @@ pub(crate) fn is_connection_closed(error: &io::Error) -> bool {
 
 pub(crate) fn is_route_unreachable(error: &io::Error) -> bool {
     matches!(
-        error.raw_os_error(),
+        error_errno(error),
         Some(libc::EHOSTUNREACH | libc::ENETUNREACH)
     )
 }
