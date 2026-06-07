@@ -6,7 +6,6 @@ import android.os.Parcelable
 import android.util.Log
 import be.mygod.librootkotlinx.Logger
 import be.mygod.librootkotlinx.ParcelableThrowable
-import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.librootkotlinx.RootFlow
 import be.mygod.librootkotlinx.RootServer
 import be.mygod.librootkotlinx.RootSession
@@ -16,6 +15,8 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
@@ -29,12 +30,22 @@ import timber.log.Timber
 object RootManager : RootSession(), Logger {
     override val context get() = app.deviceStorage
 
-    private var logThrowable = { priority: Int, t: Throwable ->
-        if (priority >= Log.WARN) t.printStackTrace(System.err)
+    @Parcelize
+    sealed class RootInitEvent : Parcelable {
+        @Parcelize
+        class Initialized : RootInitEvent()
+        @Parcelize
+        data class LoggedThrowable(val priority: Int, val t: ParcelableThrowable) : RootInitEvent()
     }
     @Parcelize
-    class RootInit : RootCommandNoResult {
-        override suspend fun execute() = null.also {
+    class RootInit : RootFlow<RootInitEvent> {
+        override fun flow() = callbackFlow {
+            val channel = Channel<Pair<Int, Throwable>>(Channel.CONFLATED) { (priority, t) ->
+                if (priority >= Log.WARN) t.printStackTrace(System.err)
+            }
+            var logThrowable = { priority: Int, t: Throwable ->
+                channel.trySend(priority to t).exceptionOrNull()?.printStackTrace(System.err)
+            }
             Timber.plant(object : Timber.DebugTree() {
                 @SuppressLint("LogNotTimber")
                 override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
@@ -54,22 +65,12 @@ object RootManager : RootSession(), Logger {
             Logger.me = RootManager
             Services.init { systemContext }
             UnblockCentral.needInit = false
-        }
-    }
-    @Parcelize
-    data class LoggedThrowable(val priority: Int, val t: ParcelableThrowable) : Parcelable
-    @Parcelize
-    class RootInitLogThrowable : RootFlow<LoggedThrowable> {
-        override fun flow() = callbackFlow {
-            val channel = Channel<Pair<Int, Throwable>>(Channel.CONFLATED) { (priority, t) ->
-                if (priority >= Log.WARN) t.printStackTrace(System.err)
-            }
             val job = launch {
-                channel.consumeEach { (priority, t) -> send(LoggedThrowable(priority, ParcelableThrowable(t))) }
+                channel.consumeEach { (priority, t) ->
+                    send(RootInitEvent.LoggedThrowable(priority, ParcelableThrowable(t)))
+                }
             }
-            logThrowable = { priority, t ->
-                channel.trySend(priority to t).exceptionOrNull()?.printStackTrace(System.err)
-            }
+            send(RootInitEvent.Initialized())
             awaitClose {
                 logThrowable = { priority, t ->
                     if (priority >= Log.WARN) t.printStackTrace(System.err)
@@ -100,16 +101,23 @@ object RootManager : RootSession(), Logger {
         Logger.me = this
         UnblockCentral.openPidFd
         super.initServer(server)
-        server.execute(RootInit())
-        GlobalScope.launch {
+        val initialized = CompletableDeferred<Unit>()
+        GlobalScope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
-                server.flow(RootInitLogThrowable()).collect { (priority, p) ->
-                    Timber.tag("RootRemote").log(priority, p.unwrap())
+                server.flow(RootInit()).collect { event ->
+                    when (event) {
+                        is RootInitEvent.Initialized -> initialized.complete(Unit)
+                        is RootInitEvent.LoggedThrowable -> Timber.tag("RootRemote").log(event.priority,
+                            event.t.unwrap())
+                    }
                 }
-            } catch (_: CancellationException) {
+                initialized.complete(Unit)
+            } catch (e: CancellationException) {
+                if (!initialized.isCompleted) initialized.cancel(e)
             } catch (e: Exception) {
-                Timber.w(e)
+                if (!initialized.isCompleted) initialized.completeExceptionally(e) else Timber.w(e)
             }
         }
+        initialized.await()
     }
 }
