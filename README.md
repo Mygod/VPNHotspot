@@ -43,6 +43,19 @@ Installing as system app also has the side benefit of launching root daemon less
 
 Whenever you install an app update, if there was a new protected permission addition (last updated in v2.17.1), you should update the app installed in system as well to make the system grant the privileged permission.
 
+## Gateway sharing (single-arm router)
+
+Besides sharing your VPN over a hotspot, this device can act as a gateway on an existing LAN it has joined as an ordinary client (Wi-Fi or Ethernet), forwarding other devices' traffic into the VPN. In networking terms this is a single-arm router (router-on-a-stick): the device routes traffic that arrives on the interface it is also using as a client.
+
+This is more technical to set up than a hotspot, but lets you give a whole network VPN access without making clients connect to a separate hotspot.
+
+To use it:
+
+1. Root the device and connect it to the LAN as a normal client.
+2. Connect a VPN on this device.
+3. In the app's tethering screen, under **Gateway sharing**, enable the interface that holds the LAN address (e.g. `wlan0`).
+4. On each other device, set its gateway **and DNS** to this device's IP on that LAN (statically, or via your router's DHCP). Their traffic then routes through the VPN; DNS is resolved over the VPN to avoid leaks.
+
 ## Q & A
 
 Search the [issue tracker](https://github.com/Mygod/VPNHotspot/issues) for more.

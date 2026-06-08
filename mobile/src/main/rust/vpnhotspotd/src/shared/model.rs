@@ -42,6 +42,9 @@ pub const DAEMON_TABLE: u32 = 900;
 /// https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/RouteController.cpp#73
 /// https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/server/RouteController.cpp#54
 pub const ANDROID_ROUTE_TABLE_LOCAL_NETWORK: u32 = 97;
+/// Kernel's main routing table (RT_TABLE_MAIN). Holds the kernel-installed connected route for
+/// every interface's own subnet, so a gateway downstream's client subnet is reachable here.
+pub const MAIN_TABLE: u32 = 254;
 
 struct KernelRelease {
     major: u32,
@@ -106,6 +109,8 @@ pub struct SessionConfig {
     pub fallback_upstream_interfaces: Vec<String>,
     pub clients: Vec<ClientConfig>,
     pub ipv6_nat: Option<Ipv6NatConfig>,
+    /// Single-arm router downstream: add a return-path rule so VPN replies reach the client subnet.
+    pub gateway: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -132,9 +137,17 @@ pub struct ClientConfig {
     pub ipv4: Vec<Ipv4Addr>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RaPreference {
+    High,
+    Medium,
+    Low,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Ipv6NatConfig {
     pub gateway: Ipv6Inet,
+    pub ra_preference: RaPreference,
 }
 
 #[derive(Clone)]
@@ -449,6 +462,7 @@ mod tests {
             fallback_upstream_interfaces: Vec::new(),
             clients: Vec::new(),
             ipv6_nat: None,
+            gateway: false,
         }
     }
 
@@ -461,6 +475,7 @@ mod tests {
     fn ipv6_nat_config() -> Ipv6NatConfig {
         Ipv6NatConfig {
             gateway: Ipv6Inet::new("fd00::1".parse().unwrap(), 64).unwrap(),
+            ra_preference: RaPreference::Medium,
         }
     }
 }

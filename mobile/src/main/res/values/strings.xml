@@ -58,6 +58,14 @@
 
     <string name="tethering_watch_reconnect">Watch for reconnect</string>
 
+    <string name="tethering_gateway">Gateway sharing</string>
+    <string name="tethering_gateway_empty">No eligible interface (needs an up interface with an IPv4 address).</string>
+    <string name="tethering_gateway_ra_preference">IPv6 NAT66 / RA preference</string>
+    <string name="tethering_gateway_ra_follow_global">Follow global IPv6 mode</string>
+    <string name="tethering_gateway_ra_high">High</string>
+    <string name="tethering_gateway_ra_medium">Medium</string>
+    <string name="tethering_gateway_ra_low">Low</string>
+
     <string name="tethering_manage">Manage system tethering…</string>
     <string name="tethering_manage_offload_enabled">Please disable Tethering hardware acceleration in Developer options
         if VPN tethering does not work.</string>

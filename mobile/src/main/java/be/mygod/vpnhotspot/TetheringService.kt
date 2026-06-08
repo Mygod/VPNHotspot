@@ -8,10 +8,14 @@ import androidx.collection.MutableScatterSet
 import androidx.collection.ScatterSet
 import androidx.collection.emptyScatterSet
 import androidx.collection.toMutableScatterMap
+import androidx.core.content.edit
+import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.Routing
+import be.mygod.vpnhotspot.net.Routing.Ipv6Mode
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.root.daemon.RaPreference
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.Dispatchers
@@ -32,8 +36,39 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
         const val EXTRA_ADD_INTERFACES = "interface.add"
         const val EXTRA_ADD_INTERFACE_MONITOR = "interface.add.monitor"
         const val EXTRA_ADD_INTERFACES_MONITOR = "interface.adds.monitor"
+        const val EXTRA_ADD_INTERFACE_GATEWAY = "interface.add.gateway"
+        const val EXTRA_ADD_INTERFACES_GATEWAY = "interface.adds.gateway"
         const val EXTRA_REMOVE_INTERFACE = "interface.remove"
         const val EXTRA_REMOVE_INTERFACE_MONITOR = "interface.remove.monitor"
+        const val EXTRA_REMOVE_INTERFACE_GATEWAY = "interface.remove.gateway"
+        const val EXTRA_RESTART_INTERFACE_GATEWAY = "interface.restart.gateway"
+
+        private const val KEY_GATEWAY_RA_PREFIX = "service.gateway.raPreference."
+
+        fun gatewayRaPreference(iface: String): RaPreference? {
+            val value = app.pref.getString(KEY_GATEWAY_RA_PREFIX + iface, null) ?: return null
+            return when (value) {
+                "High" -> RaPreference.RA_PREFERENCE_HIGH
+                "Medium" -> RaPreference.RA_PREFERENCE_MEDIUM
+                "Low" -> RaPreference.RA_PREFERENCE_LOW
+                else -> null
+            }
+        }
+
+        fun setGatewayRaPreference(iface: String, pref: RaPreference?) {
+            app.pref.edit {
+                if (pref == null) {
+                    remove(KEY_GATEWAY_RA_PREFIX + iface)
+                } else {
+                    putString(KEY_GATEWAY_RA_PREFIX + iface, when (pref) {
+                        RaPreference.RA_PREFERENCE_HIGH -> "High"
+                        RaPreference.RA_PREFERENCE_MEDIUM -> "Medium"
+                        RaPreference.RA_PREFERENCE_LOW -> "Low"
+                        is RaPreference.Unrecognized -> "Medium"
+                    })
+                }
+            }
+        }
 
         var dismissHandle: TileServiceDismissHandle? = null
         private fun dismissIfApplicable() = dismissHandle?.run {
@@ -46,22 +81,42 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
         val managedIfaces = owner.managedIfaces.asStateFlow()
         val inactiveIfaces = owner.inactiveIfaceSet.asStateFlow()
         val monitoredIfaces = owner.monitoredIfaceSet.asStateFlow()
+        val gatewayIfaces = owner.gatewayIfaceSet.asStateFlow()
 
         fun isActive(iface: String) = managedIfaces.value.contains(iface)
     }
 
-    private class Downstream(caller: Any, downstream: String, var monitor: Boolean = false) :
-            RoutingManager(caller, downstream) {
+    /**
+     * [gateway] marks a single-arm router downstream: a physical interface this device joined as a LAN
+     * client. Unlike tether/monitor downstreams, its routing is gated on the interface existing rather
+     * than on system tethering state, so it starts immediately and survives [TetherStates] changes.
+     */
+    private class Downstream(caller: Any, downstream: String, var monitor: Boolean = false,
+                             var gateway: Boolean = false) : RoutingManager(caller, downstream) {
         override fun Routing.configure() {
-            ipv6Mode = RoutingManager.ipv6Mode
+            if (this@Downstream.gateway) {
+                ipForward = true   // client interface is not a system tether; enable forwarding
+                gateway = true     // request the daemon's single-arm return-path rule
+                val pref = gatewayRaPreference(downstream)
+                if (pref != null) {
+                    ipv6Mode = Ipv6Mode.Nat
+                    raPreference = pref
+                } else {
+                    ipv6Mode = RoutingManager.ipv6Mode
+                }
+            } else {
+                ipv6Mode = RoutingManager.ipv6Mode
+            }
         }
     }
 
     @Parcelize
-    data class Starter(val monitored: ArrayList<String>) : BootReceiver.Startable {
+    data class Starter(val monitored: ArrayList<String>, val gateway: ArrayList<String> = ArrayList()) :
+            BootReceiver.Startable {
         override fun start(context: Context) {
             context.startForegroundService(Intent(context, TetheringService::class.java).apply {
-                putStringArrayListExtra(EXTRA_ADD_INTERFACES_MONITOR, monitored)
+                if (monitored.isNotEmpty()) putStringArrayListExtra(EXTRA_ADD_INTERFACES_MONITOR, monitored)
+                if (gateway.isNotEmpty()) putStringArrayListExtra(EXTRA_ADD_INTERFACES_GATEWAY, gateway)
             })
         }
     }
@@ -74,6 +129,7 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
     private val managedIfaces = MutableStateFlow<ScatterSet<String>>(emptyScatterSet())
     private val inactiveIfaceSet = MutableStateFlow<ScatterSet<String>>(emptyScatterSet())
     private val monitoredIfaceSet = MutableStateFlow<ScatterSet<String>>(emptyScatterSet())
+    private val gatewayIfaceSet = MutableStateFlow<ScatterSet<String>>(emptyScatterSet())
     override val interfaces = MutableStateFlow<Interfaces?>(null)
     private val binder = Binder(this)
     private var downstreams = MutableScatterMap<String, Downstream>()
@@ -104,6 +160,7 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
                 if (downstream != null && downstream.monitor && !downstream.start()) dismissIfApplicable()
             }
             toRemove.forEach { iface, downstream ->
+                if (downstream.gateway) return@forEach   // gateway downstreams are not tether-state gated
                 if (!downstream.monitor) check(downstreams.remove(iface, downstream))
                 downstream.stop()
             }
@@ -112,6 +169,8 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
     }
     private suspend fun onDownstreamsChangedLocked() {
         val monitoredIfaces = MutableScatterSet<String>()
+        val monitoredGatewayIfaces = MutableScatterSet<String>()
+        val gatewayIfaces = MutableScatterSet<String>()
         val inactiveIfaces = MutableScatterSet<String>()
         val managedIfaces = MutableScatterSet<String>()
         val active = ArrayList<String>(downstreams.size)
@@ -123,19 +182,23 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
                 monitoredIfaces.add(downstream.downstream)
                 if (!downstream.started) inactiveIfaces.add(downstream.downstream)
             }
+            if (downstream.gateway) {
+                gatewayIfaces.add(downstream.downstream)
+                if (downstream.monitor) monitoredGatewayIfaces.add(downstream.downstream)
+            }
         }
-        monitoredIfaces.also { ifaces ->
-            if (ifaces.isEmpty()) {
-                BootReceiver.delete<TetheringService>()
-            } else BootReceiver.add<TetheringService>(Starter(ArrayList<String>(ifaces.size).apply {
-                ifaces.forEach { iface -> add(iface) }
-            }))
-        }
+        if (monitoredIfaces.isEmpty() && monitoredGatewayIfaces.isEmpty()) {
+            BootReceiver.delete<TetheringService>()
+        } else BootReceiver.add<TetheringService>(Starter(
+            ArrayList<String>(monitoredIfaces.size).apply { monitoredIfaces.forEach { add(it) } },
+            ArrayList<String>(monitoredGatewayIfaces.size).apply { monitoredGatewayIfaces.forEach { add(it) } },
+        ))
         // Publish to the bound binder before the teardown below: when reached from the TetherStates
         // collector, unregisterReceiver() cancels tetherStatesJob — this coroutine's own parent — which
         // would otherwise skip this withContext and leave stale managedIfaces visible to bound UI.
         withContext(Dispatchers.Main) {
             monitoredIfaceSet.value = monitoredIfaces
+            gatewayIfaceSet.value = gatewayIfaces
             inactiveIfaceSet.value = inactiveIfaces
             this@TetheringService.managedIfaces.value = managedIfaces
         }
@@ -182,11 +245,41 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
                     }
                     if (downstreamToStart?.start() == false) dismissIfApplicable()
                 }
+                val gatewayList = intent.getStringArrayListExtra(EXTRA_ADD_INTERFACES_GATEWAY) ?:
+                    intent.getStringExtra(EXTRA_ADD_INTERFACE_GATEWAY)?.let { listOf(it) }
+                if (!gatewayList.isNullOrEmpty()) for (iface in gatewayList) {
+                    var downstreamToStart: Downstream? = null
+                    downstreams.compute(iface) { _, downstream ->
+                        if (downstream == null) {
+                            Downstream(this@TetheringService, iface, gateway = true).also { downstreamToStart = it }
+                        } else {
+                            downstream.gateway = true
+                            if (!downstream.started) downstreamToStart = downstream
+                            downstream
+                        }
+                    }
+                    if (downstreamToStart?.start() == false) dismissIfApplicable()
+                }
                 intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.stop() }
                 intent.getStringExtra(EXTRA_REMOVE_INTERFACE_MONITOR)?.also { iface ->
                     downstreams[iface]?.also { downstream ->
                         downstream.monitor = false
                         if (!downstream.started) downstreams.remove(iface)?.stop()
+                    }
+                }
+                intent.getStringExtra(EXTRA_REMOVE_INTERFACE_GATEWAY)?.also { iface ->
+                    downstreams[iface]?.also { downstream ->
+                        downstream.gateway = false
+                        downstream.monitor = false
+                        if (tetheredIfaces?.contains(iface) != true) {
+                            downstreams.remove(iface)?.stop()
+                        }
+                    }
+                }
+                intent.getStringExtra(EXTRA_RESTART_INTERFACE_GATEWAY)?.also { iface ->
+                    downstreams[iface]?.also { downstream ->
+                        downstream.stop()
+                        downstream.start()
                     }
                 }
                 onDownstreamsChangedLocked()

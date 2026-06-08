@@ -83,6 +83,7 @@ import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.root.daemon.RaPreference
 import be.mygod.vpnhotspot.ui.apconfiguration.VendorData
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.Services
@@ -93,6 +94,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
+import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.SocketException
 import java.text.NumberFormat
@@ -102,6 +104,7 @@ data class TetheringServiceState(
     val managedIfaces: Set<String> = emptySet(),
     val inactiveIfaces: Set<String> = emptySet(),
     val monitoredIfaces: Set<String> = emptySet(),
+    val gatewayIfaces: Set<String> = emptySet(),
 )
 
 @Composable
@@ -138,6 +141,7 @@ fun TetheringScreen(
         TextFieldState(staticIpDraft.orEmpty())
     }
     var wpsDialog by rememberSaveable { mutableStateOf(false) }
+    var gatewayExpanded by rememberSaveable { mutableStateOf(false) }
     var wpsPin by rememberTextFieldValueAtEnd("", wpsDialog)
     val tetherTypeVersion by if (inspectionMode) remember { mutableIntStateOf(0) } else rememberTetherTypeVersion()
     var manageBarVersion by remember { mutableIntStateOf(0) }
@@ -156,11 +160,26 @@ fun TetheringScreen(
     val monitored = tetheringServiceState.monitoredIfaces
     val managed = tetheringServiceState.managedIfaces
     val inactive = tetheringServiceState.inactiveIfaces
+    val gateway = tetheringServiceState.gatewayIfaces
     val tetheredTypes = remember(tetherStates, tetherTypeVersion) {
         tetherStates.tethered.map { TetherType.ofInterface(it) }.toSet()
     }
-    val interfaceIfaces = remember(tetherStates, monitored) {
-        (tetherStates.tethered + monitored).toSortedSet().toList()
+    val interfaceIfaces = remember(tetherStates, monitored, gateway) {
+        (tetherStates.tethered + monitored - gateway).toSortedSet().toList()
+    }
+    // Single-arm router candidates: up physical interfaces with an IPv4 that this device joined as a
+    // client. Exclude interfaces already shown above (tethered/monitored); always include active ones.
+    val gatewayCandidates = remember(ifaceLookup, tetherStates, monitored, gateway) {
+        val exclude = tetherStates.tethered + (monitored - gateway)
+        (ifaceLookup.values.asSequence().filter { iface ->
+            try {
+                iface.isUp && !iface.isLoopback && !iface.isPointToPoint &&
+                        iface.interfaceAddresses.any { it.address is Inet4Address }
+            } catch (e: SocketException) {
+                Timber.d(e)
+                false
+            }
+        }.map { it.name }.toSet() + gateway - exclude).toSortedSet().toList()
     }
     val wifiBaseError = tetherError(context, tetherStates, TetherType.WIFI)
     val wifiSummary by if (inspectionMode) {
@@ -431,6 +450,90 @@ fun TetheringScreen(
                         summary = tetherError(context, tetherStates, TetherType.ETHERNET),
                         tetheringType = TetheringManagerCompat.TETHERING_ETHERNET,
                         snackbarHostState = snackbarHostState,
+                    )
+                }
+            }
+        }
+        preferenceGroup(key = "gateway") {
+            row(R.string.tethering_gateway) {
+                val activeGateways = gatewayCandidates.filter { gateway.contains(it) }
+                PreferenceRow(
+                    icon = R.drawable.ic_lan,
+                    iconTint = MaterialTheme.colorScheme.secondary,
+                    title = stringResource(R.string.tethering_gateway),
+                    summary = when {
+                        gatewayCandidates.isEmpty() -> stringResource(R.string.tethering_gateway_empty)
+                        activeGateways.isNotEmpty() -> activeGateways.joinToString()
+                        else -> null
+                    },
+                    enabled = gatewayCandidates.isNotEmpty(),
+                    onClick = if (gatewayCandidates.isNotEmpty()) {
+                        { gatewayExpanded = !gatewayExpanded }
+                    } else null,
+                )
+            }
+            if (gatewayExpanded || gateway.isNotEmpty()) for (iface in gatewayCandidates) {
+                val active = gateway.contains(iface)
+                val watch = monitored.contains(iface)
+                if (!gatewayExpanded && !active && !watch) continue
+                row("gateway_$iface") {
+                    TetheringRow(
+                        icon = TetherType.ofInterface(iface).icon,
+                        title = iface,
+                        summary = networkInterfaceAddressesText(ifaceLookup[iface], linkStyles),
+                        checked = active,
+                        onClick = {
+                            if (active) context.startService(Intent(context, TetheringService::class.java)
+                                .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE_GATEWAY, iface))
+                            else context.startForegroundService(Intent(context, TetheringService::class.java)
+                                .putExtra(TetheringService.EXTRA_ADD_INTERFACE_GATEWAY, iface))
+                        },
+                    )
+                }
+                if (active || watch) row("gateway_watch_$iface") {
+                    PreferenceRow(
+                        title = stringResource(R.string.tethering_watch_reconnect),
+                        trailing = {
+                            PreferenceSwitch(
+                                checked = watch,
+                                onCheckedChange = null,
+                            )
+                        },
+                        onClick = {
+                            if (watch) context.startService(Intent(context, TetheringService::class.java)
+                                .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE_MONITOR, iface))
+                            else context.startForegroundService(Intent(context, TetheringService::class.java)
+                                .putExtra(TetheringService.EXTRA_ADD_INTERFACE_MONITOR, iface))
+                        },
+                    )
+                }
+                if (active) row("gateway_ra_$iface") {
+                    val raEntries = listOf(
+                        null to stringResource(R.string.tethering_gateway_ra_follow_global),
+                        RaPreference.RA_PREFERENCE_HIGH to stringResource(R.string.tethering_gateway_ra_high),
+                        RaPreference.RA_PREFERENCE_MEDIUM to stringResource(R.string.tethering_gateway_ra_medium),
+                        RaPreference.RA_PREFERENCE_LOW to stringResource(R.string.tethering_gateway_ra_low),
+                    )
+                    val currentPref = TetheringService.gatewayRaPreference(iface)
+                    val selectedIndex = raEntries.indexOfFirst { it.first == currentPref }
+                    var selectingRa by rememberSaveable { mutableStateOf(false) }
+                    PreferenceRow(
+                        title = stringResource(R.string.tethering_gateway_ra_preference),
+                        summary = raEntries[if (selectedIndex >= 0) selectedIndex else 0].second,
+                        onClick = { selectingRa = true },
+                    )
+                    if (selectingRa) PreferenceSelectionSheet(
+                        title = stringResource(R.string.tethering_gateway_ra_preference),
+                        entryCount = raEntries.size,
+                        selectedIndex = if (selectedIndex >= 0) selectedIndex else 0,
+                        entryLabel = { raEntries[it].second },
+                        onDismissRequest = { selectingRa = false },
+                        onSelect = {
+                            TetheringService.setGatewayRaPreference(iface, raEntries[it].first)
+                            selectingRa = false
+                            context.startForegroundService(Intent(context, TetheringService::class.java)
+                                .putExtra(TetheringService.EXTRA_RESTART_INTERFACE_GATEWAY, iface))
+                        },
                     )
                 }
             }
