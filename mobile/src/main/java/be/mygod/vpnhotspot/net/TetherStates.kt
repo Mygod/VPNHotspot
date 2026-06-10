@@ -93,9 +93,9 @@ data class TetherStates(
                         when (event) {
                             is TetheringManagerCompat.Event.ErrorChanged -> {
                                 states = states.copy(errored = if (event.error == 0) {
-                                    states.errored.remove(event.ifName)
+                                    states.errored.removing(event.ifName)
                                 } else {
-                                    states.errored.put(event.ifName, event.error)
+                                    states.errored.putting(event.ifName, event.error)
                                 })
                                 scheduleDispatch()
                             }

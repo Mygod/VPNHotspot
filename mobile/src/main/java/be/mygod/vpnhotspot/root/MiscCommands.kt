@@ -37,7 +37,7 @@ data class Dump(val path: String) : RootCommandNoResult {
         }.startPipes(stdout = false, stderr = false).use { pipes ->
             var stdin: ByteWriteChannel? = null
             try {
-                stdin = pipes.stdin!!.openWriteChannel(Services.mainHandler)
+                stdin = pipes.requireStdin().openWriteChannel(Services.mainHandler)
                 stdin.writeFully("""
                     |echo
                     |echo dumpsys ${Context.WIFI_P2P_SERVICE}
@@ -117,8 +117,8 @@ data class SettingsGlobalPut(val name: String, val value: String) : RootCommandN
             var stdout: ByteReadChannel? = null
             var stderr: ByteReadChannel? = null
             try {
-                stdout = pipes.stdout!!.openReadChannel(Services.mainHandler)
-                stderr = pipes.stderr!!.openReadChannel(Services.mainHandler)
+                stdout = pipes.requireStdout().openReadChannel(Services.mainHandler)
+                stderr = pipes.requireStderr().openReadChannel(Services.mainHandler)
                 coroutineScope {
                     val stdoutText = async { stdout.toByteArray().decodeToString() }
                     val stderrText = async { stderr.toByteArray().decodeToString() }
