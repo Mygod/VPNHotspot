@@ -293,6 +293,10 @@ inflate upstream counters.
 The RA task owns NAT66 prefix advertisement on the downstream. It sends current
 RAs periodically, answers router solicitations, watches downstream IPv6 address
 changes, and suppresses or withdraws non-NAT66 downstream prefixes when needed.
+Solicitations from a usable source address are answered to that source. A
+solicitation from the unspecified address `::` is answered with a
+downstream-scoped all-nodes multicast RA to `ff02::1`, because `::` is not a
+routable unicast reply target.
 
 The task requires a downstream link-local router address. If the address is not
 available, it waits and logs that state instead of inventing a router source.

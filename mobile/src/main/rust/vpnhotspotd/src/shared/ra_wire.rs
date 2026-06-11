@@ -1,4 +1,4 @@
-use std::net::Ipv6Addr;
+use std::net::{Ipv6Addr, SocketAddrV6};
 
 use cidr::{Ipv6Cidr, Ipv6Inet};
 use etherparse::icmpv6::{
@@ -10,6 +10,7 @@ use etherparse::{Icmpv6Header, Icmpv6Type};
 // Recursive DNS Server option, RFC 8106 section 5.1.
 const RDNSS_OPTION_TYPE: NdpOptionType = NdpOptionType(25);
 const RDNSS_OPTION_LENGTH_UNITS: u8 = 3;
+const ALL_NODES: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 1);
 
 pub fn make_current_ra_packet(gateway: Ipv6Inet, mtu: u32) -> Vec<u8> {
     RaAdvertisement {
@@ -39,6 +40,16 @@ pub fn make_zero_lifetime_ra_packet(prefix: Ipv6Inet, mtu: u32, keep_router: boo
 
 pub fn is_router_link_local(address: Ipv6Addr) -> bool {
     address.is_unicast_link_local()
+}
+
+pub fn router_advertisement_destination(
+    solicitation_source: Option<SocketAddrV6>,
+    interface_index: u32,
+) -> SocketAddrV6 {
+    match solicitation_source {
+        Some(source) if !source.ip().is_unspecified() => source,
+        _ => SocketAddrV6::new(ALL_NODES, 0, 0, interface_index),
+    }
 }
 
 struct RaAdvertisement {
@@ -149,5 +160,31 @@ mod tests {
         assert!(!is_router_link_local("fd00::1".parse().unwrap()));
         assert!(!is_router_link_local("ff02::1".parse().unwrap()));
         assert!(!is_router_link_local("::1".parse().unwrap()));
+    }
+
+    #[test]
+    fn periodic_ra_uses_all_nodes_multicast() {
+        assert_eq!(
+            router_advertisement_destination(None, 7),
+            SocketAddrV6::new(ALL_NODES, 0, 0, 7)
+        );
+    }
+
+    #[test]
+    fn solicited_ra_preserves_usable_source() {
+        let source = SocketAddrV6::new("fe80::1234".parse().unwrap(), 0, 0, 9);
+
+        assert_eq!(router_advertisement_destination(Some(source), 7), source);
+    }
+
+    #[test]
+    fn solicited_ra_from_unspecified_source_uses_all_nodes_multicast() {
+        assert_eq!(
+            router_advertisement_destination(
+                Some(SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 9)),
+                7
+            ),
+            SocketAddrV6::new(ALL_NODES, 0, 0, 7)
+        );
     }
 }

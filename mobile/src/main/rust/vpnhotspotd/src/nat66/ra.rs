@@ -26,13 +26,13 @@ use crate::socket::send_packet_to;
 use vpnhotspotd::shared::model::SessionConfig;
 use vpnhotspotd::shared::ra_wire::{
     is_router_link_local, make_current_ra_packet, make_zero_lifetime_ra_packet,
+    router_advertisement_destination,
 };
 
 const RA_PERIOD: Duration = Duration::from_secs(30);
 const SUPPRESSED_RA_PERIOD: Duration = Duration::from_secs(3);
 const SUPPRESSED_RA_WINDOW: Duration = Duration::from_secs(15);
 const DEFAULT_MTU: u32 = 1500;
-const ALL_NODES: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 1);
 
 enum RaRequest {
     RouterSolicitation(SocketAddrV6),
@@ -524,8 +524,7 @@ async fn send_ra(
         .as_ref()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing ipv6 NAT config"))?;
     let fd = create_send_socket(&config.downstream, config.reply_mark, router)?;
-    let destination =
-        target.unwrap_or_else(|| SocketAddrV6::new(ALL_NODES, 0, 0, router.interface_index));
+    let destination = router_advertisement_destination(target, router.interface_index);
     let packet = make_current_ra_packet(ipv6_nat.gateway, mtu);
     send_packet_to(&fd, &packet, SockAddr::from(destination)).await
 }
@@ -537,7 +536,7 @@ async fn send_zero_lifetime_ra(
     keep_router: bool,
     mtu: u32,
 ) -> io::Result<()> {
-    let destination = SocketAddrV6::new(ALL_NODES, 0, 0, router.interface_index);
+    let destination = router_advertisement_destination(None, router.interface_index);
     let packet = make_zero_lifetime_ra_packet(prefix, mtu, keep_router);
     send_packet_to(socket, &packet, SockAddr::from(destination)).await
 }
