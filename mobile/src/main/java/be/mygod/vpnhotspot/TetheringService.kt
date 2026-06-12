@@ -23,6 +23,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
@@ -66,17 +68,17 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
         }
     }
 
-    /**
-     * Writes and critical reads to downstreams should be protected with this context.
-     */
-    private val dispatcher = Dispatchers.Default.limitedParallelism(1, "TetheringService")
-    override val coroutineContext = dispatcher + Job()
+    override val coroutineContext = Job()
     private val managedIfaces = MutableStateFlow<ScatterSet<String>>(emptyScatterSet())
     private val inactiveIfaceSet = MutableStateFlow<ScatterSet<String>>(emptyScatterSet())
     private val monitoredIfaceSet = MutableStateFlow<ScatterSet<String>>(emptyScatterSet())
     override val interfaces = MutableStateFlow<Interfaces?>(null)
     private val binder = Binder(this)
     private var downstreams = MutableScatterMap<String, Downstream>()
+    /**
+     * Protects downstream state across suspending start/stop transitions.
+     */
+    private val downstreamsMutex = Mutex()
     private var tetherStatesJob: Job? = null
     private var tetheredIfaces: Set<String>? = null
 
@@ -97,17 +99,19 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
                 }
         }
         TetherStates.flow.map { it.tethered }.distinctUntilChanged().collect { tetheredInterfaces ->
-            tetheredIfaces = tetheredInterfaces
-            val toRemove = downstreams.toMutableScatterMap()
-            tetheredInterfaces.forEach { iface ->
-                val downstream = toRemove.remove(iface)
-                if (downstream != null && downstream.monitor && !downstream.start()) dismissIfApplicable()
+            downstreamsMutex.withLock {
+                tetheredIfaces = tetheredInterfaces
+                val toRemove = downstreams.toMutableScatterMap()
+                tetheredInterfaces.forEach { iface ->
+                    val downstream = toRemove.remove(iface)
+                    if (downstream != null && downstream.monitor && !downstream.start()) dismissIfApplicable()
+                }
+                toRemove.forEach { iface, downstream ->
+                    if (!downstream.monitor) check(downstreams.remove(iface, downstream))
+                    downstream.stop()
+                }
+                onDownstreamsChangedLocked()
             }
-            toRemove.forEach { iface, downstream ->
-                if (!downstream.monitor) check(downstreams.remove(iface, downstream))
-                downstream.stop()
-            }
-            onDownstreamsChangedLocked()
         }
     }
     private suspend fun onDownstreamsChangedLocked() {
@@ -156,41 +160,43 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
         launch { BootReceiver.startIfEnabled() }
         ServiceNotification.startForeground(this)   // call this first just in case we are shutting down immediately
         launch {
-            if (intent != null) {
-                for (iface in intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()) {
-                    var newDownstream: Downstream? = null
-                    downstreams.compute(iface) { _, existing ->
-                        existing ?: Downstream(this@TetheringService, iface).also { newDownstream = it }
+            downstreamsMutex.withLock {
+                if (intent != null) {
+                    for (iface in intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()) {
+                        var newDownstream: Downstream? = null
+                        downstreams.compute(iface) { _, existing ->
+                            existing ?: Downstream(this@TetheringService, iface).also { newDownstream = it }
+                        }
+                        if (newDownstream?.start() == false) dismissIfApplicable()
                     }
-                    if (newDownstream?.start() == false) dismissIfApplicable()
-                }
-                val monitorList = intent.getStringArrayListExtra(EXTRA_ADD_INTERFACES_MONITOR) ?:
-                    intent.getStringExtra(EXTRA_ADD_INTERFACE_MONITOR)?.let { listOf(it) }
-                if (!monitorList.isNullOrEmpty()) for (iface in monitorList) {
-                    val isTethered = tetheredIfaces?.contains(iface) == true
-                    var downstreamToStart: Downstream? = null
-                    downstreams.compute(iface) { _, downstream ->
-                        if (downstream == null) {
-                            Downstream(this@TetheringService, iface, true).also {
-                                if (isTethered) downstreamToStart = it
+                    val monitorList = intent.getStringArrayListExtra(EXTRA_ADD_INTERFACES_MONITOR) ?:
+                        intent.getStringExtra(EXTRA_ADD_INTERFACE_MONITOR)?.let { listOf(it) }
+                    if (!monitorList.isNullOrEmpty()) for (iface in monitorList) {
+                        val isTethered = tetheredIfaces?.contains(iface) == true
+                        var downstreamToStart: Downstream? = null
+                        downstreams.compute(iface) { _, downstream ->
+                            if (downstream == null) {
+                                Downstream(this@TetheringService, iface, true).also {
+                                    if (isTethered) downstreamToStart = it
+                                }
+                            } else {
+                                downstream.monitor = true
+                                if (isTethered && !downstream.started) downstreamToStart = downstream
+                                downstream
                             }
-                        } else {
-                            downstream.monitor = true
-                            if (isTethered && !downstream.started) downstreamToStart = downstream
-                            downstream
+                        }
+                        if (downstreamToStart?.start() == false) dismissIfApplicable()
+                    }
+                    intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.stop() }
+                    intent.getStringExtra(EXTRA_REMOVE_INTERFACE_MONITOR)?.also { iface ->
+                        downstreams[iface]?.also { downstream ->
+                            downstream.monitor = false
+                            if (!downstream.started) downstreams.remove(iface)?.stop()
                         }
                     }
-                    if (downstreamToStart?.start() == false) dismissIfApplicable()
-                }
-                intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.stop() }
-                intent.getStringExtra(EXTRA_REMOVE_INTERFACE_MONITOR)?.also { iface ->
-                    downstreams[iface]?.also { downstream ->
-                        downstream.monitor = false
-                        if (!downstream.started) downstreams.remove(iface)?.stop()
-                    }
-                }
-                onDownstreamsChangedLocked()
-            } else if (downstreams.isEmpty()) stopSelf(startId)
+                    onDownstreamsChangedLocked()
+                } else if (downstreams.isEmpty()) stopSelf(startId)
+            }
         }
         return START_NOT_STICKY
     }
@@ -199,11 +205,13 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
         interfaces.value = null
         ServiceNotification.stopForeground(this)
         launch {
-            unregisterReceiver()
-            val oldDownstreams = downstreams
-            downstreams = MutableScatterMap()
-            oldDownstreams.forEachValue { it.stop() }    // force clean to prevent leakage
-            cancel()
+            downstreamsMutex.withLock {
+                unregisterReceiver()
+                val oldDownstreams = downstreams
+                downstreams = MutableScatterMap()
+                oldDownstreams.forEachValue { it.stop() }    // force clean to prevent leakage
+                cancel()
+            }
         }
         super.onDestroy()
     }
