@@ -195,7 +195,12 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
                         }
                     }
                     onDownstreamsChangedLocked()
-                } else if (downstreams.isEmpty()) stopSelf(startId)
+                } else if (downstreams.isEmpty()) withContext(Dispatchers.Main) {
+                    if (stopSelfResult(startId)) {
+                        interfaces.value = null
+                        ServiceNotification.stopForeground(this@TetheringService)
+                    }
+                }
             }
         }
         return START_NOT_STICKY

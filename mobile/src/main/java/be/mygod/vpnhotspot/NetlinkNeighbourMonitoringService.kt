@@ -32,11 +32,12 @@ abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
      *
      * Each refresh is derived from a single emission of this flow — the counts and the inactive list always
      * come from the same [Interfaces] — so a null emission switches the pipeline to "show nothing" (cancelling
-     * the in-progress count collection) and can never be paired with a stale prior value. Removing the
-     * notification stays the caller's responsibility ([ServiceNotification.stopForeground]); emitting null only
-     * stops this service from refreshing it.
+     * the in-progress count collection), removes this service's foreground-notification contribution, and can
+     * never be paired with a stale prior value.
      */
     protected abstract val interfaces: Flow<Interfaces?>
+    private val notificationLock = Any()
+    private var notificationClosed = false
 
     private fun netlinkSizeLookup(snapshot: NetlinkNeighbour.Snapshot) =
         snapshot.neighbours.groupBy { it.dev }.mapValues { (_, neighbours) ->
@@ -112,6 +113,7 @@ abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
     override fun onCreate() {
         super.onCreate()
         launch {
+            var initial = true
             interfaces.flatMapLatest { ifaces ->
                 when {
                     ifaces == null -> flowOf<Content?>(null)
@@ -121,11 +123,27 @@ abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
                         .map { Content(it, ifaces.inactive) }
                 }
             }.distinctUntilChanged().collect { content ->
-                content?.let {
-                    ServiceNotification.startForeground(
-                        this@NetlinkNeighbourMonitoringService, it.counts, it.inactive, false)
+                if (initial) {
+                    initial = false
+                    // Services synchronously enter foreground before their first non-null interface state.
+                    if (content == null) return@collect
+                }
+                synchronized(notificationLock) {
+                    if (!notificationClosed) {
+                        if (content == null) ServiceNotification.stopForeground(this@NetlinkNeighbourMonitoringService)
+                        else ServiceNotification.startForeground(
+                            this@NetlinkNeighbourMonitoringService, content.counts, content.inactive, false)
+                    }
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        synchronized(notificationLock) {
+            notificationClosed = true
+            ServiceNotification.stopForeground(this)
+        }
+        super.onDestroy()
     }
 }
