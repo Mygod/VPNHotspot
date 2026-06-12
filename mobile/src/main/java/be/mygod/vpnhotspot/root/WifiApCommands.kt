@@ -11,6 +11,7 @@ import be.mygod.librootkotlinx.RootCommand
 import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.librootkotlinx.RootFlow
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.binderCallbackFlow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
@@ -207,7 +208,8 @@ object WifiApCommands {
             throw WifiApManager.SoftApCallbackUnavailableException()
         }
         val callback = try {
-            WifiApManager.newSoftApCallbackBinder(WifiApManager.softApCallback(::push))
+            // IFACE_IP_MODE_TETHERED: https://android.googlesource.com/platform/packages/modules/Wifi/+/android-13.0.0_r1/framework/java/android/net/wifi/WifiManager.java#980
+            UnblockCentral.WifiManager_SoftApCallbackProxy(WifiApManager.softApCallback(::push), 1)
         } catch (e: ReflectiveOperationException) {
             binderSoftApCallbackCapability = SoftApCallbackCapability.Unavailable
             throw WifiApManager.SoftApCallbackUnavailableException(e)
@@ -256,7 +258,8 @@ object WifiApCommands {
                 throw WifiApManager.SoftApCallbackUnavailableException()
             }
             val callback = try {
-                WifiApManager.newLocalOnlyHotspotSoftApCallbackBinder(WifiApManager.softApCallback(::push))
+                // IFACE_IP_MODE_LOCAL_ONLY: https://android.googlesource.com/platform/packages/modules/Wifi/+/android-13.0.0_r1/framework/java/android/net/wifi/WifiManager.java#990
+                UnblockCentral.WifiManager_SoftApCallbackProxy(WifiApManager.softApCallback(::push), 2)
             } catch (e: ReflectiveOperationException) {
                 binderLocalOnlyHotspotSoftApCallbackCapability = SoftApCallbackCapability.Unavailable
                 throw WifiApManager.SoftApCallbackUnavailableException(e)

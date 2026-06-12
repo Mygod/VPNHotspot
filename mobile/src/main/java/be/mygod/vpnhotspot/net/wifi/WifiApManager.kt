@@ -229,15 +229,6 @@ object WifiApManager {
      * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-13.0.0_r1/framework/java/android/net/wifi/WifiManager.java#360
      */
     private const val EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE = "EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE"
-    /**
-     * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-13.0.0_r1/framework/java/android/net/wifi/WifiManager.java#980
-     */
-    private const val IFACE_IP_MODE_TETHERED = 1
-    /**
-     * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-13.0.0_r1/framework/java/android/net/wifi/WifiManager.java#990
-     */
-    private const val IFACE_IP_MODE_LOCAL_ONLY = 2
-
     sealed class Event : Parcelable {
         @Parcelize
         data class OnStateChanged(val state: Int, val failureReason: Int) : Event()
@@ -378,20 +369,6 @@ object WifiApManager {
             }
         }
     }
-
-    @RequiresApi(31)
-    fun newSoftApCallbackBinder(callback: `WifiManager$SoftApCallback`, mode: Int = IFACE_IP_MODE_TETHERED) =
-        UnblockCentral.WifiManager_SoftApCallbackProxy.let { (constructor, legacy) ->
-            if (legacy) {
-                if (mode != IFACE_IP_MODE_TETHERED) {
-                    throw NoSuchMethodException("SoftApCallbackProxy mode constructor")
-                }
-                constructor.newInstance(Services.wifi, InPlaceExecutor, callback)
-            } else constructor.newInstance(Services.wifi, InPlaceExecutor, callback, mode)
-        } as IBinder
-    @RequiresApi(33)
-    fun newLocalOnlyHotspotSoftApCallbackBinder(callback: `WifiManager$SoftApCallback`) =
-        newSoftApCallbackBinder(callback, IFACE_IP_MODE_LOCAL_ONLY)
 
     @get:RequiresApi(31)
     private val iWifiManager by lazy { UnblockCentral.WifiManager_mService.get(Services.wifi) as IWifiManager }
