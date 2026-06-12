@@ -9,6 +9,7 @@ import android.os.Parcelable
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.toByteArray
 import be.mygod.vpnhotspot.util.toParcelable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -80,11 +81,15 @@ class BootReceiver : BroadcastReceiver() {
         suspend fun add(key: String, value: Startable) = try {
             updateConfig { startables.put(key, value).let { true } }
             onConfigUpdated(true)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.w(e)
         }
         suspend fun delete(key: String) = try {
             onConfigUpdated(updateConfig { startables.remove(key) != null }.startables.isNotEmpty())
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Timber.w(e)
         }
