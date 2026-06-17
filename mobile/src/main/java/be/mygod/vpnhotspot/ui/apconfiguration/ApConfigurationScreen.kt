@@ -13,6 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,6 +26,7 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
@@ -33,7 +35,11 @@ import androidx.compose.ui.unit.dp
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
+import be.mygod.vpnhotspot.net.wifi.VendorData
 import be.mygod.vpnhotspot.net.wifi.VendorElements
+import be.mygod.vpnhotspot.net.wifi.WifiApManager
+import be.mygod.vpnhotspot.root.RepeaterCommands
+import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.ui.SettingsList
 import be.mygod.vpnhotspot.ui.annotatedStringResource
 import be.mygod.vpnhotspot.ui.channelBandwidthLabel
@@ -64,6 +70,14 @@ fun ApConfigurationScreen(
         remember { mutableStateOf(null) }
     }
     val navigationBarPadding = WindowInsets.navigationBars.asPaddingValues()
+    if (state.p2pMode && !inspectionMode) LaunchedEffect(Unit) {
+        state.supplicantCapability = try {
+            RootManager.use { it.execute(RepeaterCommands.QuerySupplicantCapability()) }
+        } catch (e: Exception) {
+            Timber.d(e)
+            null
+        }
+    }
     SettingsList(
         contentPadding = PaddingValues(
             top = 8.dp,
@@ -71,6 +85,25 @@ fun ApConfigurationScreen(
         ),
     ) {
         preferenceGroup(key = "ap_basic") {
+            if (state.p2pMode) row(R.string.repeater_configuration_method) {
+                val frameworkLabel = stringResource(R.string.repeater_configuration_method_framework)
+                val supplicantLabel = stringResource(R.string.repeater_configuration_method_supplicant)
+                val frameworkSummary = annotatedStringResource(R.string.repeater_configuration_method_framework_summary)
+                val supplicantSummary = annotatedStringResource(
+                    R.string.repeater_configuration_method_supplicant_summary,
+                    state.supplicantCapability?.label.orEmpty(),
+                )
+                ListApRow(
+                    icon = R.drawable.ic_health_and_safety,
+                    title = R.string.repeater_configuration_method,
+                    selected = state.useFramework,
+                    entries = listOf(true, false),
+                    entryLabel = { if (it) frameworkLabel else supplicantLabel },
+                    selectedLabel = if (state.useFramework) frameworkLabel else supplicantLabel,
+                    entrySummary = { if (it) frameworkSummary else supplicantSummary },
+                    onSelect = { state.useFramework = it },
+                )
+            }
             row(R.string.wifi_ssid) {
                 SsidApRow(
                     state = state,
@@ -337,7 +370,9 @@ fun ApConfigurationScreen(
             }
         }
         preferenceGroup(title = R.string.wifi_hotspot_ap_advanced_title) {
-            row(R.string.wifi_advanced_mac_address_title) { MacAddressApRow(state) }
+            if (!state.p2pMode || (!state.useFramework && WifiApManager.p2pMacRandomizationSupported)) {
+                row(R.string.wifi_advanced_mac_address_title) { MacAddressApRow(state) }
+            }
             if (!state.p2pMode) row(R.string.wifi_hidden_network) {
                 SwitchApRow(
                     icon = R.drawable.ic_visibility_off,
@@ -390,7 +425,8 @@ fun ApConfigurationScreen(
                     ) { state.vendorElements = it }
                 }
             }
-            if (!state.p2pMode && Build.VERSION.SDK_INT >= 35) {
+            if (Build.VERSION.SDK_INT >= 35 && (!state.p2pMode ||
+                            (!state.useFramework && state.supplicantCapability?.supportsVendorData != false))) {
                 row(R.string.wifi_vendor_data) {
                     val description = annotatedStringResource(R.string.wifi_vendor_data_help).let { help ->
                         buildAnnotatedString {

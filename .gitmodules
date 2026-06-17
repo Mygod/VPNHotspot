@@ -1,0 +1,3 @@
+[submodule "aosp-hardware-interfaces"]
+	path = external/aosp/hardware/interfaces
+	url = https://android.googlesource.com/platform/hardware/interfaces

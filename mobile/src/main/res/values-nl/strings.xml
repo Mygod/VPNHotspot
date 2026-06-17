@@ -21,7 +21,6 @@
   <string name="repeater_create_group_failure">Kan P2P-groep niet maken (reden: %s)</string>
   <string name="repeater_remove_group_failure">Kan P2P-groep niet verwijderen (reden: %s)</string>
   <string name="repeater_remove_old_group_failure">Kan oude P2P-groep niet verwijderen (reden: %s)</string>
-  <string name="repeater_set_oc_failure">Kan werkkanaal niet instellen (reden: %s)</string>
   <string name="repeater_set_vendor_elements_failure">Kan leverancierelementen niet instellen (reden: %s)</string>
   <string name="repeater_failure_reason_error">interne fout</string>
   <string name="repeater_failure_reason_p2p_unsupported">Wi‑Fi Direct wordt niet ondersteund</string>
@@ -224,9 +223,6 @@
   <string name="settings_service_ipv6_mode_nat_summary">Wijst een deterministische app-eigen ULA &lt;tt&gt;/64&lt;/tt&gt; toe en proxyt downstream IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; plus best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; via de root-daemon. Dit is gebruikersruimtewerk, geen volledige pakket-NAT, en stuurt geen andere IPv6 next-header-protocollen door.</string>
   <string name="settings_service_auto_start">Services automatisch starten</string>
   <string name="settings_service_auto_start_summary">Herstel services als ze actief waren vóór het opnieuw opstarten van het apparaat of het bijwerken van de app.</string>
-  <string name="settings_service_repeater_safe_mode">Veilige modus voor repeater</string>
-  <string name="settings_service_repeater_safe_mode_summary">Brengt geen wijzigingen aan in de systeemconfiguratie, maar werkt mogelijk niet met korte netwerknamen. Onveilige modus werkt mogelijk niet op je apparaat en kan het tijdelijk onbruikbaar maken op een herstelbare manier.</string>
-  <string name="settings_service_repeater_safe_mode_warning">Korte netwerknamen kunnen vereisen dat veilige modus wordt uitgeschakeld.</string>
   <string name="settings_service_temp_hotspot_use_system">Systeemconfiguratie gebruiken voor tijdelijke hotspot</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Conflicteert met andere apps die een lokale hotspot gebruiken. Gebruikt ook meer resources op de achtergrond, tenzij geïnstalleerd als systeem-app.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Conflicteert met andere apps die een lokale hotspot gebruiken. Gebruikt ook meer resources op de achtergrond, tenzij geïnstalleerd als systeem-app. Werkt waarschijnlijk op Android 12 of nieuwer.</string>
@@ -315,7 +311,6 @@
   <string name="wifi_mac_address_persistent_randomization">Persistente randomisatie: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Niet-persistente randomisatie</string>
   <string name="wifi_mac_address_help">Configureer BSSID en MAC-randomisatie voor de AP. Android weigert BSSID\'s met alleen nullen, multicast en broadcast. Een expliciete BSSID wordt alleen gebruikt wanneer MAC-randomisatie is uitgeschakeld.</string>
-  <string name="wifi_p2p_mac_address_help">Configureer het P2P-apparaatadres dat door de repeater wordt gebruikt. Laat leeg om Android het adres te laten kiezen.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Persistent willekeurig MAC-adres</string>
   <string name="wifi_hidden_network">Verborgen netwerk</string>
   <string name="wifi_hidden_network_help">SSID niet uitzenden</string>

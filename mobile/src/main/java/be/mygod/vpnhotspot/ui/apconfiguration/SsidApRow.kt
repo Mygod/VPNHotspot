@@ -61,7 +61,7 @@ fun SsidApRow(
         summaryContent = {
             Column {
                 Text(state.ssid)
-                state.ssidSafeModeWarning(state.ssid, state.ssidHex, context)?.let { ErrorApText(it) }
+                state.ssidSupplicantModeWarning(state.ssid, state.ssidHex, context)?.let { ErrorApText(it) }
             }
         },
         trailing = {
@@ -119,7 +119,7 @@ fun SsidApRow(
                     colors = OutlinedTextFieldDefaults.tonalColors(),
                     supportingText = {
                         Column {
-                            draftError?.let { ErrorApText(it) } ?: state.ssidSafeModeWarning(
+                            draftError?.let { ErrorApText(it) } ?: state.ssidSupplicantModeWarning(
                                 draft.text,
                                 draftHex,
                                 context,

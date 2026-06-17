@@ -19,9 +19,11 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
+import be.mygod.vpnhotspot.net.wifi.VendorData
 import be.mygod.vpnhotspot.net.wifi.VendorElements
 import be.mygod.vpnhotspot.net.wifi.WifiSsidCompat
 import be.mygod.vpnhotspot.net.wifi.softApChannelWidthLookup
+import be.mygod.vpnhotspot.root.RepeaterCommands.SupplicantCapability
 import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
@@ -48,6 +50,7 @@ class ApConfigurationState(
         saved.target,
     ) {
         originalUnderlying = saved.originalUnderlying
+        _useFramework = saved.useFramework
         hexSsid = saved.hexSsid
         ssid = saved.ssid
         securityType = saved.securityType
@@ -84,14 +87,33 @@ class ApConfigurationState(
     private var base = initial
     private var originalUnderlying = initial.underlying
     val p2pMode get() = target == ApConfigurationTarget.Repeater
-    private val ssidHexToggleable = if (p2pMode) !RepeaterService.safeMode else Build.VERSION.SDK_INT >= 33
+    private var _useFramework by mutableStateOf(if (p2pMode) RepeaterService.useFramework else true)
+    /**
+     * Repeater configuration method, screen-local so dependent option lists update immediately. Like every
+     * other field on this screen it is only persisted from the apply path, so backing out without saving discards it.
+     */
+    var useFramework: Boolean
+        get() = _useFramework
+        set(value) {
+            if (_useFramework == value) return
+            _useFramework = value
+        }
+    private var _supplicantCapability by mutableStateOf<SupplicantCapability?>(null)
+    /** Best-effort live Supplicant backend capability, shown to explain which backend will receive the config. */
+    var supplicantCapability: SupplicantCapability?
+        get() = _supplicantCapability
+        set(value) {
+            _supplicantCapability = value
+        }
+    private val ssidHexToggleable get() = if (p2pMode) !useFramework else Build.VERSION.SDK_INT >= 33
     private var hexSsid = false
-    val securityEntries = when {
-        p2pMode && Build.VERSION.SDK_INT >= 36 -> listOf(
-            R.string.wifi_security_wpa2_personal,
-            R.string.wifi_security_wpa3_personal_transition,
-            R.string.wifi_security_wpa3_personal,
-        ).mapIndexed { index, label -> SecurityOption(label, index + SoftApConfiguration.SECURITY_TYPE_WPA2_PSK) }
+    val securityEntries get() = when {
+        p2pMode && Build.VERSION.SDK_INT >= 36 -> buildList {
+            add(SecurityOption(R.string.wifi_security_wpa2_personal, SoftApConfiguration.SECURITY_TYPE_WPA2_PSK))
+            add(SecurityOption(R.string.wifi_security_wpa3_personal_transition,
+                SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION))
+            add(SecurityOption(R.string.wifi_security_wpa3_personal, SoftApConfiguration.SECURITY_TYPE_WPA3_SAE))
+        }
         p2pMode -> listOf(SecurityOption(R.string.wifi_security_wpa2_personal,
             SoftApConfiguration.SECURITY_TYPE_WPA2_PSK))
         else -> listOf(
@@ -103,7 +125,7 @@ class ApConfigurationState(
             R.string.wifi_security_wpa3_owe,
         ).mapIndexed { index, label -> SecurityOption(label, index) }
     }
-    private val channelOptions = currentChannelOptions(p2pMode)
+    private val channelOptions get() = currentChannelOptions(p2pMode)
     val bandwidthEntries = if (Build.VERSION.SDK_INT >= 33) {
         softApChannelWidthLookup.lookup.let { lookup ->
             List(lookup.size()) {
@@ -150,7 +172,7 @@ class ApConfigurationState(
     var ieee80211ax by mutableStateOf(initial.isIeee80211axEnabled)
     var ieee80211be by mutableStateOf(initial.isIeee80211beEnabled)
     var vendorElements by mutableStateOf(VendorElements.serialize(initial.vendorElements))
-    var vendorData by mutableStateOf(if (!p2pMode && Build.VERSION.SDK_INT >= 35) {
+    var vendorData by mutableStateOf(if (Build.VERSION.SDK_INT >= 35) {
         VendorData.serialize(initial.vendorData)
     } else "")
     var clientIsolation by mutableStateOf(if (Build.VERSION.SDK_INT >= 36) initial.isClientIsolationEnabled else false)
@@ -250,7 +272,7 @@ class ApConfigurationState(
         } catch (e: Exception) {
             return e.readableMessage
         }
-        if (!p2pMode && Build.VERSION.SDK_INT >= 35) try {
+        if (Build.VERSION.SDK_INT >= 35) try {
             VendorData.deserialize(vendorData, context)
         } catch (e: Exception) {
             return e.readableMessage
@@ -293,7 +315,7 @@ class ApConfigurationState(
             isUserConfiguration = userConfig
             bridgedModeOpportunisticShutdownTimeoutMillis = bridgedTimeout.ifEmpty { "-1" }.toLong()
             vendorElements = VendorElements.deserialize(this@ApConfigurationState.vendorElements)
-            if (!p2pMode && Build.VERSION.SDK_INT >= 35) {
+            if (Build.VERSION.SDK_INT >= 35) {
                 vendorData = VendorData.deserialize(this@ApConfigurationState.vendorData)
             }
             persistentRandomizedMacAddress = persistentRandomizedMac.ifEmpty { null }?.let(MacAddress::fromString)
@@ -343,10 +365,10 @@ class ApConfigurationState(
         else parsedSsid?.hex.orEmpty()
     }
 
-    fun ssidSafeModeWarning(value: String, hex: Boolean, context: Context = app): String? {
-        if (!p2pMode || !RepeaterService.safeMode) return null
+    fun ssidSupplicantModeWarning(value: String, hex: Boolean, context: Context = app): String? {
+        if (!p2pMode || !useFramework) return null
         val size = ssidByteCount(value, hex)
-        return if (size in 1..8) context.getString(R.string.settings_service_repeater_safe_mode_warning) else null
+        return if (size in 1..8) context.getString(R.string.settings_service_repeater_supplicant_mode_warning) else null
     }
 
     fun ssidByteCount(value: String, hex: Boolean) = try {
@@ -402,7 +424,7 @@ class ApConfigurationState(
         ieee80211ax = config.isIeee80211axEnabled
         ieee80211be = config.isIeee80211beEnabled
         vendorElements = VendorElements.serialize(config.vendorElements)
-        vendorData = if (!p2pMode && Build.VERSION.SDK_INT >= 35) {
+        vendorData = if (Build.VERSION.SDK_INT >= 35) {
             VendorData.serialize(config.vendorData)
         } else ""
         clientIsolation = if (Build.VERSION.SDK_INT >= 36) config.isClientIsolationEnabled else false
@@ -426,14 +448,12 @@ class ApConfigurationState(
 
     fun channelEntries(allowDisabled: Boolean = false) = if (allowDisabled) listOf(ChannelOption.Disabled) +
             channelOptions else channelOptions
-    fun bssidEditable(macRandomization: Int) = p2pMode || Build.VERSION.SDK_INT < 31 ||
-            macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE
+    fun bssidEditable(macRandomization: Int) = !p2pMode && (Build.VERSION.SDK_INT < 31 ||
+            macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE)
     fun macAddressSummary(context: Context) = if (p2pMode) {
-        bssid.ifEmpty {
-            if (macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT) {
-                context.getString(R.string.wifi_mac_address_non_persistent_randomization)
-            } else ""
-        }
+        if (macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT) {
+            context.getString(R.string.wifi_mac_address_non_persistent_randomization)
+        } else ""
     } else {
         when {
             macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT ->
@@ -458,6 +478,7 @@ class ApConfigurationState(
         originalUnderlying = originalUnderlying,
         readOnly = readOnly,
         target = target,
+        useFramework = useFramework,
         hexSsid = hexSsid,
         ssid = ssid,
         securityType = securityType,
@@ -498,6 +519,7 @@ private data class SavedApConfigurationState(
     val originalUnderlying: Parcelable?,
     val readOnly: Boolean,
     val target: ApConfigurationTarget,
+    val useFramework: Boolean,
     val hexSsid: Boolean,
     val ssid: String,
     val securityType: Int,
