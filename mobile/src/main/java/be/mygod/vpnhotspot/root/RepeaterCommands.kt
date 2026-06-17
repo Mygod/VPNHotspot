@@ -1,15 +1,12 @@
 package be.mygod.vpnhotspot.root
 
 import android.hardware.wifi.common.OuiKeyedData
-import android.hardware.wifi.supplicant.ISupplicant
-import android.hardware.wifi.supplicant.ISupplicantP2pIface
 import android.hardware.wifi.supplicant.IfaceType
 import android.hardware.wifi.supplicant.KeyMgmtMask
 import android.hardware.wifi.supplicant.P2pAddGroupConfigurationParams
 import android.net.MacAddress
 import android.net.wifi.ScanResult
 import android.net.wifi.p2p.WifiP2pManager
-import android.os.IBinder
 import android.os.Looper
 import android.os.Parcelable
 import androidx.annotation.RequiresApi
@@ -17,7 +14,6 @@ import be.mygod.librootkotlinx.ParcelableInt
 import be.mygod.librootkotlinx.ParcelableList
 import be.mygod.librootkotlinx.ParcelableThrowable
 import be.mygod.librootkotlinx.RootCommand
-import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestDeviceAddress
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setVendorElements
@@ -46,22 +42,6 @@ object RepeaterCommands {
     }
 
     /**
-     * Source: https://android.googlesource.com/platform/frameworks/base/+/android16-qpr2-release/core/java/android/os/ServiceManager.java#274
-     */
-    private val ServiceManager_checkService by lazy {
-        Class.forName("android.os.ServiceManager").getDeclaredMethod("checkService", String::class.java)
-    }
-
-    /**
-     * The live `wpa_supplicant` P2P AIDL interface, or null when only the legacy HIDL HAL is registered.
-     */
-    private val aidlP2pInterface: ISupplicantP2pIface? get() {
-        val supplicant = ISupplicant.Stub.asInterface((ServiceManager_checkService(null,
-            "android.hardware.wifi.supplicant.ISupplicant/default") ?: return null) as IBinder)
-        return supplicant.getP2pInterface(supplicant.listInterfaces().first { it.type == IfaceType.P2P }!!.name)
-    }
-
-    /**
      * What the live supplicant backend can carry, so the UI can disable unrepresentable options and group creation
      * can fail with a specific error. [aidlVersion] is the AIDL `interfaceVersion`, or null when only the legacy
      * HIDL HAL is present. WPA3 key management, the 6 GHz band shorthand and vendor data all arrived in AIDL v3.
@@ -76,7 +56,7 @@ object RepeaterCommands {
 
     @Parcelize
     class QuerySupplicantCapability : RootCommand<SupplicantCapability> {
-        override suspend fun execute() = SupplicantCapability(aidlP2pInterface?.interfaceVersion)
+        override suspend fun execute() = SupplicantCapability(SupplicantAidl.instance?.interfaceVersion)
     }
 
     @Parcelize
@@ -89,8 +69,8 @@ object RepeaterCommands {
         private val vendorData: Array<OuiKeyedData>,
     ) : RootCommand<ParcelableThrowable?> {
         override suspend fun execute(): ParcelableThrowable? {
-            val p2pIface = aidlP2pInterface
-            val capability = SupplicantCapability(p2pIface?.interfaceVersion)
+            val aidl = SupplicantAidl.instance
+            val capability = SupplicantCapability(aidl?.interfaceVersion)
             if (!capability.supportsKeyManagement) {
                 require(keyMgmtMask == KeyMgmtMask.WPA_PSK) {
                     "WPA3 is not supported by the ${capability.label} supplicant backend"
@@ -102,7 +82,10 @@ object RepeaterCommands {
                     "Vendor data is not supported by the ${capability.label} supplicant backend"
                 }
             }
-            if (p2pIface == null) return SupplicantP2pIface.addGroup(ssid, passphrase, frequency, randomizeMac)
+            if (aidl == null) return SupplicantP2pIface.addGroup(ssid, passphrase, frequency, randomizeMac)
+            val p2pIface = aidl.listInterfaces().firstOrNull { it.type == IfaceType.P2P }?.let {
+                aidl.getP2pInterface(it.name)
+            } ?: error("No framework-owned P2P supplicant interface")
             val macRandomizationError = try {   // best-effort, matching Framework mode's MAC randomization behaviour
                 p2pIface.setMacRandomization(randomizeMac)
                 null

@@ -87,8 +87,19 @@ object WifiP2pManagerHelper {
     /**
      * Request a list of all the persistent p2p groups stored in the system, so an already-present group can be
      * adopted when the app has nothing persisted yet. We only read this; we never delete persistent groups.
+     * Supplicant mode may also ignore the returned list and use this as a framework-owned P2P setup pulse: AOSP
+     * `needsActiveP2p` does not exempt `REQUEST_PERSISTENT_GROUP_INFO`, so the framework calls `setupInterface()`
+     * before permission-gated handling can return an empty list.
      *
-     * Requires one of NETWORK_SETTING, NETWORK_STACK, or READ_WIFI_CREDENTIAL permission since API 30.
+     * Requires one of NETWORK_SETTING, NETWORK_STACK, or READ_WIFI_CREDENTIAL permission since API 30 for the group
+     * list contents.
+     *
+     * Sources:
+     * - https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/tags/android-16.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2114
+     * - https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/tags/android-16.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2358
+     * - https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/tags/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2147
+     * - https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/tags/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2391
+     * - https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/tags/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#3178
      */
     suspend fun WifiP2pManager.requestPersistentGroupInfo(c: WifiP2pManager.Channel) =
         suspendCancellableCoroutine { cont ->

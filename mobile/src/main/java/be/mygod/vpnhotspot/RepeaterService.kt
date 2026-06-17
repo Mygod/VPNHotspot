@@ -460,8 +460,9 @@ class RepeaterService : Service(), CoroutineScope {
     /**
      * Create a group owner through the configured backend and suspend until it is ready for routing.
      *
-     * Framework mode submits a [WifiP2pConfig]; Supplicant mode (`!useFramework`) adds a persistent group through
-     * `wpa_supplicant`. With no credentials configured we let the framework generate and then capture them.
+     * Framework mode submits a [WifiP2pConfig]; Supplicant mode (`!useFramework`) first asks the framework for
+     * persistent groups so it can run P2P interface setup before root touches `wpa_supplicant`, then adds a persistent
+     * group through `wpa_supplicant`. With no credentials configured we let the framework generate and capture them.
      */
     private suspend fun createGroup(channel: WifiP2pManager.Channel) = supervisorScope {
         if (Build.VERSION.SDK_INT >= 33) setVendorElements(channel)
@@ -483,6 +484,7 @@ class RepeaterService : Service(), CoroutineScope {
                     if (ssid == null || psk.isNullOrEmpty()) {
                         throw StartFailure(getString(R.string.repeater_configure_failure))
                     }
+                    p2pManager.requestPersistentGroupInfo(channel)
                     RootManager.use {
                         it.execute(RepeaterCommands.AddPersistentGroupWithConfig(ssid.bytes, psk,
                             when (val oc = operatingChannel) {

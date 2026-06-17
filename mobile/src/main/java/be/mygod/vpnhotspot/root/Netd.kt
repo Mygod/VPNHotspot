@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot.net
+package be.mygod.vpnhotspot.root
 
 import android.os.IBinder
 import androidx.annotation.RequiresApi

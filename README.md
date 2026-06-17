@@ -145,7 +145,10 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * `Landroid/hardware/wifi/supplicant/V1_2/ISupplicantP2pIface;->addGroup_1_2(Ljava/util/ArrayList;Ljava/lang/String;ZI[BZ)Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;`
 * `Landroid/hardware/wifi/supplicant/V1_2/ISupplicantP2pIface;->castFrom(Landroid/os/IHwInterface;)Landroid/hardware/wifi/supplicant/V1_2/ISupplicantP2pIface;`
 * `Landroid/hardware/wifi/supplicant/V1_2/ISupplicantP2pIface;->setMacRandomization(Z)Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;`
-* `Landroid/os/ServiceManager;->checkService(Ljava/lang/String;)Landroid/os/IBinder;,unsupported`
+* (since API 30) `Landroid/os/ServiceManager;->checkService(Ljava/lang/String;)Landroid/os/IBinder;,unsupported`
+* (since API 30) `Landroid/os/ServiceManager;->waitForDeclaredService(Ljava/lang/String;)Landroid/os/IBinder;,blocked`
+* (since API 30) `Landroid/system/wifi/mainline_supplicant/IMainlineSupplicant$Stub;->asInterface(Landroid/os/IBinder;)Landroid/system/wifi/mainline_supplicant/IMainlineSupplicant;`
+* (since API 30) `Landroid/system/wifi/mainline_supplicant/IMainlineSupplicant;->getVendorSupplicant()Lcom/android/wifi/x/android/hardware/wifi/supplicant/ISupplicant;`
 * (prior to API 30) `Landroid/provider/Settings$Global;->SOFT_AP_TIMEOUT_ENABLED:Ljava/lang/String;,lo-prio,max-target-o`
 * (on API 34) `Landroid/service/quicksettings/TileService;->mToken:Landroid/os/IBinder;,lo-prio,max-target-o`
 * (prior to API 30) `Lcom/android/internal/R$array;->config_tether_bluetooth_regexs:I,max-target-q`
@@ -154,6 +157,8 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (on API 29) `Lcom/android/internal/R$bool;->config_wifi_p2p_mac_randomization_supported:I,blacklist`
 * (prior to API 30) `Lcom/android/internal/R$integer;->config_wifi_framework_soft_ap_timeout_delay:I,greylist-max-o`
 * `Lcom/android/internal/R$string;->config_ethernet_iface_regex:I,lo-prio,max-target-o`
+* (since API 30) `Lcom/android/server/wifi/p2p/SupplicantP2pIfaceHalAidlBase;->HAL_INSTANCE_NAME:Ljava/lang/String;`
+* (since API 30) `Lcom/android/server/wifi/p2p/SupplicantP2pIfaceHalAidlMainlineImpl;->MAINLINE_SUPPLICANT_SERVICE_NAME:Ljava/lang/String;`
 * `Lcom/android/server/wifi/p2p/WifiP2pServiceImpl;->ANONYMIZED_DEVICE_ADDRESS:Ljava/lang/String;`
 * (since API 30) `Lcom/android/server/SystemServer;->TETHERING_CONNECTOR_CLASS:Ljava/lang/String;`
 * (since API 33) `Ldalvik/system/BaseDexClassLoader;->pathList:Ldalvik/system/DexPathList;,unsupported`
@@ -180,6 +185,9 @@ Other:
 * (prior to API 30) Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
 * P2P HIDL fallback probes generated supplicant HIDL Java classes from Android 10 `wifi-service.jar`
   and Android 11+ AOSP Wi-Fi `service-wifi.jar` `com.android.wifi.x.*` jarjar packages.
+* P2P AIDL mode probes the Wi-Fi mainline service `wifi_mainline_supplicant` from live
+  `service-wifi.jar` to recover the stable vendor supplicant AIDL binder before falling back to direct
+  vendor HAL registration.
 * `IPv6 NAT` mode depends on the iptables `TPROXY` and `NFQUEUE` targets and
   transparent sockets. ICMPv6 Echo interception uses app-owned queue `30000`
   and assumes queued downstream packets expose six-byte source hardware-address
