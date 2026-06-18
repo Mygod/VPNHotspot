@@ -505,12 +505,12 @@ class RepeaterService : Service(), CoroutineScope {
                                 SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION ->
                                     KeyMgmtMask.WPA_PSK or KeyMgmtMask.SAE
                                 else -> KeyMgmtMask.WPA_PSK
-                            }, randomizeMac, if (Build.VERSION.SDK_INT >= 35) vendorData.map { data ->
+                            }, randomizeMac, vendorData.map { data ->
                                 android.hardware.wifi.common.OuiKeyedData().apply {
                                     oui = data.oui
                                     vendorData = data.data
                                 }
-                            }.toTypedArray() else emptyArray()))
+                            }.toTypedArray()))
                     }?.let {
                         val macRandomizationError = it.unwrap()
                         Timber.w(macRandomizationError)

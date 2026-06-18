@@ -172,9 +172,7 @@ class ApConfigurationState(
     var ieee80211ax by mutableStateOf(initial.isIeee80211axEnabled)
     var ieee80211be by mutableStateOf(initial.isIeee80211beEnabled)
     var vendorElements by mutableStateOf(VendorElements.serialize(initial.vendorElements))
-    var vendorData by mutableStateOf(if (Build.VERSION.SDK_INT >= 35) {
-        VendorData.serialize(initial.vendorData)
-    } else "")
+    var vendorData by mutableStateOf(VendorData.serialize(initial.vendorData))
     var clientIsolation by mutableStateOf(if (Build.VERSION.SDK_INT >= 36) initial.isClientIsolationEnabled else false)
     var userConfig by mutableStateOf(initial.isUserConfiguration)
     var acs2g by mutableStateOf(RangeInput.toString(initial.allowedAcsChannels[SoftApConfiguration.BAND_2GHZ]).orEmpty())
@@ -272,7 +270,7 @@ class ApConfigurationState(
         } catch (e: Exception) {
             return e.readableMessage
         }
-        if (Build.VERSION.SDK_INT >= 35) try {
+        try {
             VendorData.deserialize(vendorData, context)
         } catch (e: Exception) {
             return e.readableMessage
@@ -315,9 +313,7 @@ class ApConfigurationState(
             isUserConfiguration = userConfig
             bridgedModeOpportunisticShutdownTimeoutMillis = bridgedTimeout.ifEmpty { "-1" }.toLong()
             vendorElements = VendorElements.deserialize(this@ApConfigurationState.vendorElements)
-            if (Build.VERSION.SDK_INT >= 35) {
-                vendorData = VendorData.deserialize(this@ApConfigurationState.vendorData)
-            }
+            vendorData = VendorData.deserialize(this@ApConfigurationState.vendorData)
             persistentRandomizedMacAddress = persistentRandomizedMac.ifEmpty { null }?.let(MacAddress::fromString)
             allowedAcsChannels = mapOf(
                 SoftApConfiguration.BAND_2GHZ to RangeInput.fromString(acs2g),
@@ -424,9 +420,7 @@ class ApConfigurationState(
         ieee80211ax = config.isIeee80211axEnabled
         ieee80211be = config.isIeee80211beEnabled
         vendorElements = VendorElements.serialize(config.vendorElements)
-        vendorData = if (Build.VERSION.SDK_INT >= 35) {
-            VendorData.serialize(config.vendorData)
-        } else ""
+        vendorData = VendorData.serialize(config.vendorData)
         clientIsolation = if (Build.VERSION.SDK_INT >= 36) config.isClientIsolationEnabled else false
         userConfig = config.isUserConfiguration
         acs2g = RangeInput.toString(config.allowedAcsChannels[SoftApConfiguration.BAND_2GHZ]).orEmpty()
