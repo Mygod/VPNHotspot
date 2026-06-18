@@ -188,6 +188,9 @@ class ApConfigurationState(
     }
     val ssidHex get() = hexSsid
     val canToggleSsidHex get() = ssidHexToggleable
+    val vendorDataEditable get() = if (p2pMode) {
+        !useFramework && supplicantCapability?.aidlV3 == true
+    } else Build.VERSION.SDK_INT >= 35
     val passwordEnabled get() = when (selectedSecurityType) {
         SoftApConfiguration.SECURITY_TYPE_OPEN,
         SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION,
@@ -270,7 +273,7 @@ class ApConfigurationState(
         } catch (e: Exception) {
             return e.readableMessage
         }
-        try {
+        if (vendorDataEditable) try {
             VendorData.deserialize(vendorData, context)
         } catch (e: Exception) {
             return e.readableMessage
@@ -313,7 +316,7 @@ class ApConfigurationState(
             isUserConfiguration = userConfig
             bridgedModeOpportunisticShutdownTimeoutMillis = bridgedTimeout.ifEmpty { "-1" }.toLong()
             vendorElements = VendorElements.deserialize(this@ApConfigurationState.vendorElements)
-            vendorData = VendorData.deserialize(this@ApConfigurationState.vendorData)
+            if (vendorDataEditable) vendorData = VendorData.deserialize(this@ApConfigurationState.vendorData)
             persistentRandomizedMacAddress = persistentRandomizedMac.ifEmpty { null }?.let(MacAddress::fromString)
             allowedAcsChannels = mapOf(
                 SoftApConfiguration.BAND_2GHZ to RangeInput.fromString(acs2g),

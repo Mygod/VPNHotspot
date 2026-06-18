@@ -424,10 +424,7 @@ fun ApConfigurationScreen(
                     ) { state.vendorElements = it }
                 }
             }
-            val vendorDataSupported = if (state.p2pMode) {
-                !state.useFramework && state.supplicantCapability?.aidlV3 == true
-            } else Build.VERSION.SDK_INT >= 35
-            if (vendorDataSupported) {
+            if (state.vendorDataEditable) {
                 row(R.string.wifi_vendor_data) {
                     val description = annotatedStringResource(R.string.wifi_vendor_data_help).let { help ->
                         buildAnnotatedString {
