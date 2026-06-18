@@ -2,11 +2,13 @@ package be.mygod.vpnhotspot.manage
 
 import android.content.Intent
 import android.os.Build
+import androidx.annotation.DoNotInline
 import be.mygod.vpnhotspot.App.Companion.app
 import timber.log.Timber
 
 object ManageBar {
     private const val ACTION_TETHER_SETTINGS = "android.settings.TETHER_SETTINGS"
+    @DoNotInline
     fun start(startActivity: (Intent) -> Unit) {
         var eSuppressed: RuntimeException? = null
         if (Build.VERSION.SDK_INT >= 30) try {
