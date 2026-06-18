@@ -418,6 +418,10 @@ class RepeaterService : Service(), CoroutineScope {
             withContext(NonCancellable) { routing.stop() }
         }
     } finally {
+        // Withdraw the active P2P interface before framework teardown starts. Group removal can outlive this
+        // service's foreground detach, and the shared notification otherwise keeps rendering the last group.
+        updateGroup(null)
+        showNotification()
         withContext(NonCancellable) {
             val group = try {
                 p2pManager.requestGroupInfo(channel)
