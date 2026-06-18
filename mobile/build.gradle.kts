@@ -177,7 +177,7 @@ abstract class GenerateSupplicantAidlJavaTask : DefaultTask() {
                 add("--lang=java")
                 add("--structured")
                 add("--stability=vintf")
-                add("--version=4")
+                add("--version=5")
                 add("--min_sdk_version=${minSdkVersion.get()}")
                 add("-p")
                 add(frameworkAidl.get().asFile.absolutePath)
@@ -301,7 +301,7 @@ androidComponents.onVariants { variant ->
         supplicantAidlDir.set(
             rootProject.layout.projectDirectory.dir(
                 "external/aosp/hardware/interfaces/wifi/supplicant/aidl/aidl_api/" +
-                    "android.hardware.wifi.supplicant/4"))
+                    "android.hardware.wifi.supplicant/5"))
         commonAidlDir.set(
             rootProject.layout.projectDirectory.dir(
                 "external/aosp/hardware/interfaces/wifi/common/aidl/aidl_api/" +

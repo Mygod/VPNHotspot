@@ -48,9 +48,7 @@ object RepeaterCommands {
      */
     @Parcelize
     data class SupplicantCapability(val aidlVersion: Int?) : Parcelable {
-        inline val supportsKeyManagement get() = aidlVersion != null && aidlVersion >= 3
-        inline val supports6GHzBand get() = aidlVersion != null && aidlVersion >= 3
-        inline val supportsVendorData get() = aidlVersion != null && aidlVersion >= 3
+        inline val aidlV3 get() = aidlVersion != null && aidlVersion >= 3
         val label get() = if (aidlVersion == null) "HIDL" else "AIDL v$aidlVersion"
     }
 
@@ -71,7 +69,7 @@ object RepeaterCommands {
         override suspend fun execute(): ParcelableThrowable? {
             val aidl = SupplicantAidl.instance
             val capability = SupplicantCapability(aidl?.interfaceVersion)
-            if (!capability.supportsKeyManagement) {
+            if (!capability.aidlV3) {
                 require(keyMgmtMask == KeyMgmtMask.WPA_PSK) {
                     "WPA3 is not supported by the ${capability.label} supplicant backend"
                 }

@@ -425,7 +425,7 @@ fun ApConfigurationScreen(
                 }
             }
             if (Build.VERSION.SDK_INT >= 35 && (!state.p2pMode ||
-                            (!state.useFramework && state.supplicantCapability?.supportsVendorData != false))) {
+                            (!state.useFramework && state.supplicantCapability?.aidlV3 != false))) {
                 row(R.string.wifi_vendor_data) {
                     val description = annotatedStringResource(R.string.wifi_vendor_data_help).let { help ->
                         buildAnnotatedString {
