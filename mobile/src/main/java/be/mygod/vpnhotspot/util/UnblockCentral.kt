@@ -70,28 +70,16 @@ object UnblockCentral {
         init
         val clazz = Class.forName("android.net.wifi.WifiManager\$SoftApCallbackProxy")
         try {
-            // Android 17+ dex no longer keeps the implicit outer WifiManager constructor parameter.
-            // https://android.googlesource.com/platform/packages/modules/Wifi/+/10246c5ae40b8872b670a8b28f9a0bbd8ba62e57/framework/java/android/net/wifi/WifiManager.java#6956
-            val constructor = clazz.getDeclaredConstructor(Executor::class.java,
-                `WifiManager$SoftApCallback`::class.java, Int::class.javaPrimitiveType).apply { isAccessible = true };
-            { callback, mode -> constructor.newInstance(InPlaceExecutor, callback, mode) as IBinder }
+            val constructor = clazz.getDeclaredConstructor(WifiManager::class.java, Executor::class.java,
+                `WifiManager$SoftApCallback`::class.java, Int::class.javaPrimitiveType)
+            constructor.isAccessible = true;
+            { callback, mode -> constructor.newInstance(Services.wifi, InPlaceExecutor, callback, mode) as IBinder }
         } catch (e: NoSuchMethodException) {
-            if (Build.VERSION.SDK_INT >= 37) Timber.w(e)
-            try {
-                // API 33-36 dex keeps the implicit outer WifiManager constructor parameter.
-                // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-13.0.0_r1/framework/java/android/net/wifi/WifiManager.java#5431
-                val constructor = clazz.getDeclaredConstructor(WifiManager::class.java, Executor::class.java,
-                    `WifiManager$SoftApCallback`::class.java, Int::class.javaPrimitiveType)
-                constructor.isAccessible = true;
-                { callback, mode -> constructor.newInstance(Services.wifi, InPlaceExecutor, callback, mode) as IBinder }
-            } catch (e: NoSuchMethodException) {
-                if (Build.VERSION.SDK_INT >= 33) Timber.w(e)
-                // API 31-32 uses the pre-mode signature.
-                // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-12.0.0_r1/framework/java/android/net/wifi/WifiManager.java#4691
-                val constructor = clazz.getDeclaredConstructor(WifiManager::class.java, Executor::class.java,
-                    `WifiManager$SoftApCallback`::class.java).apply { isAccessible = true };
-                { callback, _ -> constructor.newInstance(Services.wifi, InPlaceExecutor, callback) as IBinder }
-            }
+            if (Build.VERSION.SDK_INT >= 33) Timber.w(e)
+            val constructor = clazz.getDeclaredConstructor(WifiManager::class.java, Executor::class.java,
+                `WifiManager$SoftApCallback`::class.java)
+            constructor.isAccessible = true;
+            { callback, _ -> constructor.newInstance(Services.wifi, InPlaceExecutor, callback) as IBinder }
         }
     }
 
