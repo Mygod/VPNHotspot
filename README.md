@@ -120,6 +120,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (prior to API 30) `Landroid/net/wifi/WifiConfiguration;->apBand:I,unsupported`
 * (prior to API 30) `Landroid/net/wifi/WifiConfiguration;->apChannel:I,unsupported`
 * (since API 30) `Landroid/net/wifi/WifiContext;->ACTION_RESOURCES_APK:Ljava/lang/String;,blocked`
+* (since API 30) `Landroid/net/wifi/WifiContext;-><init>(Landroid/content/Context;)V,blocked`
 * (since API 31, prior to API 33) `Landroid/net/wifi/WifiManager$SoftApCallbackProxy;-><init>(Landroid/net/wifi/WifiManager;Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;)V,blocked`
 * (since API 33, prior to API 37) `Landroid/net/wifi/WifiManager$SoftApCallbackProxy;-><init>(Landroid/net/wifi/WifiManager;Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;I)V,blocked`
 * (since API 37) `Landroid/net/wifi/WifiManager$SoftApCallbackProxy;-><init>(Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;I)V`
@@ -145,8 +146,9 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * `Landroid/hardware/wifi/supplicant/V1_2/ISupplicantP2pIface;->addGroup_1_2(Ljava/util/ArrayList;Ljava/lang/String;ZI[BZ)Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;`
 * `Landroid/hardware/wifi/supplicant/V1_2/ISupplicantP2pIface;->castFrom(Landroid/os/IHwInterface;)Landroid/hardware/wifi/supplicant/V1_2/ISupplicantP2pIface;`
 * `Landroid/hardware/wifi/supplicant/V1_2/ISupplicantP2pIface;->setMacRandomization(Z)Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;`
-* (since API 30) `Landroid/os/ServiceManager;->checkService(Ljava/lang/String;)Landroid/os/IBinder;,unsupported`
 * (since API 30) `Landroid/os/ServiceManager;->waitForDeclaredService(Ljava/lang/String;)Landroid/os/IBinder;,blocked`
+* (since API 30) `Landroid/os/ServiceManager;->waitForService(Ljava/lang/String;)Landroid/os/IBinder;,blocked`
+* (since API 30) `Lcom/android/server/wifi/SupplicantStaIfaceHalAidlMainlineImpl;->isServiceAvailable(Landroid/content/Context;)Z`
 * (since API 30) `Landroid/system/wifi/mainline_supplicant/IMainlineSupplicant$Stub;->asInterface(Landroid/os/IBinder;)Landroid/system/wifi/mainline_supplicant/IMainlineSupplicant;`
 * (since API 30) `Landroid/system/wifi/mainline_supplicant/IMainlineSupplicant;->getVendorSupplicant()Lcom/android/wifi/x/android/hardware/wifi/supplicant/ISupplicant;`
 * (prior to API 30) `Landroid/provider/Settings$Global;->SOFT_AP_TIMEOUT_ENABLED:Ljava/lang/String;,lo-prio,max-target-o`
