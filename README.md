@@ -47,12 +47,12 @@ Whenever you install an app update, if there was a new protected permission addi
 
 Search the [issue tracker](https://github.com/Mygod/VPNHotspot/issues) for more.
 
-### What changes exactly can this app do to my system? (and how to revert them)
+### What persistent changes can this app do to my system?
 
-1. If you change repeater credentials in unsafe mode, this feature will modify `/data/misc/wifi/p2p_supplicant.conf` or `/data/vendor/wifi/wpa/p2p_supplicant.conf`.
-   If things stopped working after you use this feature, simply delete this file and everything should start working again.
-2. If you edited the system Wi-Fi hotspot configuration through this app, those changes will also persist.
-   Undo those changes if you face any issues.
+This app only indirectly write persistent changes through system APIs thus it should be generally pretty safe.
+
+1. In Supplicant mode, the repeater asks `wpa_supplicant` to create a persistent group on startup, which Android persists in `/data/vendor/wifi/wpa/p2p_supplicant.conf` or `/data/misc/wifi/p2p_supplicant.conf`.
+2. If you edited the system Wi-Fi hotspot configuration through this app, those changes will persist.
 3. If you toggle tethering hardware offload through this app, the Android global `tether_offload_disabled` setting will persist.
    Toggle it back in this app or the matching Developer options setting to revert it.
 
@@ -120,6 +120,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (prior to API 30) `Landroid/net/wifi/WifiConfiguration;->apBand:I,unsupported`
 * (prior to API 30) `Landroid/net/wifi/WifiConfiguration;->apChannel:I,unsupported`
 * (since API 30) `Landroid/net/wifi/WifiContext;->ACTION_RESOURCES_APK:Ljava/lang/String;,blocked`
+* (since API 30) `Landroid/net/wifi/WifiContext;-><init>(Landroid/content/Context;)V,blocked`
 * (since API 31, prior to API 33) `Landroid/net/wifi/WifiManager$SoftApCallbackProxy;-><init>(Landroid/net/wifi/WifiManager;Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;)V,blocked`
 * (since API 33, prior to API 37) `Landroid/net/wifi/WifiManager$SoftApCallbackProxy;-><init>(Landroid/net/wifi/WifiManager;Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;I)V,blocked`
 * (since API 37) `Landroid/net/wifi/WifiManager$SoftApCallbackProxy;-><init>(Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;I)V`
@@ -131,6 +132,25 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * `Landroid/net/wifi/p2p/WifiP2pConfig$Builder;->mNetworkName:Ljava/lang/String;,blocked`
 * (since API 30) `Landroid/net/wifi/p2p/WifiP2pGroup;->interfaceAddress:[B,unsupported`
 * `Landroid/net/wifi/p2p/WifiP2pManager;->startWps(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/WpsInfo;Landroid/net/wifi/p2p/WifiP2pManager$ActionListener;)V,unsupported`
+* `Landroid/hardware/wifi/supplicant/V1_0/IfaceType;->P2P:I`
+* `Landroid/hardware/wifi/supplicant/V1_0/ISupplicant;->getService()Landroid/hardware/wifi/supplicant/V1_0/ISupplicant;`
+* `Landroid/hardware/wifi/supplicant/V1_0/ISupplicant;->getInterface(Landroid/hardware/wifi/supplicant/V1_0/ISupplicant$IfaceInfo;Landroid/hardware/wifi/supplicant/V1_0/ISupplicant$getInterfaceCallback;)V`
+* `Landroid/hardware/wifi/supplicant/V1_0/ISupplicant$getInterfaceCallback;->onValues(Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;Landroid/hardware/wifi/supplicant/V1_0/ISupplicantIface;)V`
+* `Landroid/hardware/wifi/supplicant/V1_0/ISupplicant;->listInterfaces(Landroid/hardware/wifi/supplicant/V1_0/ISupplicant$listInterfacesCallback;)V`
+* `Landroid/hardware/wifi/supplicant/V1_0/ISupplicant$IfaceInfo;->name:Ljava/lang/String;`
+* `Landroid/hardware/wifi/supplicant/V1_0/ISupplicant$IfaceInfo;->type:I`
+* `Landroid/hardware/wifi/supplicant/V1_0/ISupplicant$listInterfacesCallback;->onValues(Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;Ljava/util/ArrayList;)V`
+* `Landroid/hardware/wifi/supplicant/V1_0/ISupplicantP2pIface;->asInterface(Landroid/os/IHwBinder;)Landroid/hardware/wifi/supplicant/V1_0/ISupplicantP2pIface;`
+* `Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;->code:I`
+* `Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;->debugMessage:Ljava/lang/String;`
+* `Landroid/hardware/wifi/supplicant/V1_2/ISupplicantP2pIface;->addGroup_1_2(Ljava/util/ArrayList;Ljava/lang/String;ZI[BZ)Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;`
+* `Landroid/hardware/wifi/supplicant/V1_2/ISupplicantP2pIface;->castFrom(Landroid/os/IHwInterface;)Landroid/hardware/wifi/supplicant/V1_2/ISupplicantP2pIface;`
+* `Landroid/hardware/wifi/supplicant/V1_2/ISupplicantP2pIface;->setMacRandomization(Z)Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;`
+* (since API 30) `Landroid/os/ServiceManager;->waitForDeclaredService(Ljava/lang/String;)Landroid/os/IBinder;,blocked`
+* (since API 30) `Landroid/os/ServiceManager;->waitForService(Ljava/lang/String;)Landroid/os/IBinder;,blocked`
+* (since API 30) `Lcom/android/server/wifi/SupplicantStaIfaceHalAidlMainlineImpl;->isServiceAvailable(Landroid/content/Context;)Z`
+* (since API 30) `Landroid/system/wifi/mainline_supplicant/IMainlineSupplicant$Stub;->asInterface(Landroid/os/IBinder;)Landroid/system/wifi/mainline_supplicant/IMainlineSupplicant;`
+* (since API 30) `Landroid/system/wifi/mainline_supplicant/IMainlineSupplicant;->getVendorSupplicant()Lcom/android/wifi/x/android/hardware/wifi/supplicant/ISupplicant;`
 * (prior to API 30) `Landroid/provider/Settings$Global;->SOFT_AP_TIMEOUT_ENABLED:Ljava/lang/String;,lo-prio,max-target-o`
 * (on API 34) `Landroid/service/quicksettings/TileService;->mToken:Landroid/os/IBinder;,lo-prio,max-target-o`
 * (prior to API 30) `Lcom/android/internal/R$array;->config_tether_bluetooth_regexs:I,max-target-q`
@@ -139,6 +159,9 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (on API 29) `Lcom/android/internal/R$bool;->config_wifi_p2p_mac_randomization_supported:I,blacklist`
 * (prior to API 30) `Lcom/android/internal/R$integer;->config_wifi_framework_soft_ap_timeout_delay:I,greylist-max-o`
 * `Lcom/android/internal/R$string;->config_ethernet_iface_regex:I,lo-prio,max-target-o`
+* (since API 31) `Lcom/android/server/IpSecService;->FULL_MASK:I`
+* (since API 30) `Lcom/android/server/wifi/p2p/SupplicantP2pIfaceHalAidlBase;->HAL_INSTANCE_NAME:Ljava/lang/String;`
+* (since API 30) `Lcom/android/server/wifi/p2p/SupplicantP2pIfaceHalAidlMainlineImpl;->MAINLINE_SUPPLICANT_SERVICE_NAME:Ljava/lang/String;`
 * `Lcom/android/server/wifi/p2p/WifiP2pServiceImpl;->ANONYMIZED_DEVICE_ADDRESS:Ljava/lang/String;`
 * (since API 30) `Lcom/android/server/SystemServer;->TETHERING_CONNECTOR_CLASS:Ljava/lang/String;`
 * (since API 33) `Ldalvik/system/BaseDexClassLoader;->pathList:Ldalvik/system/DexPathList;,unsupported`
@@ -163,6 +186,11 @@ Nonexported system resources:
 Other:
 
 * (prior to API 30) Activity `com.android.settings/.Settings$TetherSettingsActivity` is assumed to be exported.
+* P2P HIDL fallback probes generated supplicant HIDL Java classes from Android 10 `wifi-service.jar`
+  and Android 11+ AOSP Wi-Fi `service-wifi.jar` `com.android.wifi.x.*` jarjar packages.
+* P2P AIDL mode probes the Wi-Fi mainline service `wifi_mainline_supplicant` from live
+  `service-wifi.jar` to recover the stable vendor supplicant AIDL binder before falling back to direct
+  vendor HAL registration.
 * `IPv6 NAT` mode depends on the iptables `TPROXY` and `NFQUEUE` targets and
   transparent sockets. ICMPv6 Echo interception uses app-owned queue `30000`
   and assumes queued downstream packets expose six-byte source hardware-address
@@ -207,8 +235,3 @@ The following Android system binaries are assumed to be bundled and executable:
 * `/system/bin/ndc` (`ipfwd`, `nat`);
 * `/system/bin/settings` (`put global`);
 * `/system/bin/linker` or `/system/bin/linker64` (`path.zip!/program`).
-
-Wi-Fi driver `wpa_supplicant`:
-
-* P2P configuration file is assumed to be saved to [`/data/vendor/wifi/wpa/p2p_supplicant.conf` or `/data/misc/wifi/p2p_supplicant.conf`](https://android.googlesource.com/platform/external/wpa_supplicant_8/+/0b4856b6dc451e290f1f64f6af17e010be78c073/wpa_supplicant/hidl/1.1/supplicant.cpp#26) and have reasonable format;
-* Android system is expected to restart `wpa_supplicant` after it terminates.

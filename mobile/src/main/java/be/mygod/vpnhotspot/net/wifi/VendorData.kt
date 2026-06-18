@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot.ui.apconfiguration
+package be.mygod.vpnhotspot.net.wifi
 
 import android.content.Context
 import android.net.wifi.OuiKeyedData

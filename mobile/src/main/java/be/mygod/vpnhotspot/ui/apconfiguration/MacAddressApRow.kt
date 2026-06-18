@@ -121,7 +121,28 @@ private fun MacAddressApDialog(
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 if (state.p2pMode) {
-                    bssidField()
+                    PreferenceGroup(horizontalPadding = 0.dp) {
+                        row(SoftApConfigurationCompat.RANDOMIZATION_NONE) {
+                            MacRandomizationOptionRow(
+                                selected = draftRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE,
+                                title = stringResource(R.string.wifi_mac_randomization_none),
+                                description = annotatedStringResource(R.string.wifi_mac_randomization_none_help),
+                                onSelect = { draftRandomization = SoftApConfigurationCompat.RANDOMIZATION_NONE },
+                            )
+                        }
+                        row(SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT) {
+                            MacRandomizationOptionRow(
+                                selected = draftRandomization ==
+                                        SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT,
+                                title = stringResource(R.string.wifi_mac_randomization_non_persistent),
+                                description = annotatedStringResource(
+                                    R.string.wifi_mac_randomization_non_persistent_help),
+                                onSelect = {
+                                    draftRandomization = SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT
+                                },
+                            )
+                        }
+                    }
                 } else {
                     PreferenceGroup(horizontalPadding = 0.dp) {
                         row(SoftApConfigurationCompat.RANDOMIZATION_NONE) {
@@ -188,7 +209,7 @@ private fun MacAddressApDialog(
                 enabled = bssidError == null && persistentRandomizedMacError == null,
                 onClick = {
                     state.macRandomization = draftRandomization
-                    state.bssid = draftBssid.text
+                    state.bssid = if (state.p2pMode) "" else draftBssid.text
                     if (persistentRandomizedMacVisible) {
                         state.persistentRandomizedMac = draftPersistentRandomizedMac.text
                     }

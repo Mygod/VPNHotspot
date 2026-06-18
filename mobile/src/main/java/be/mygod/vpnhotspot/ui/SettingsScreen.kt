@@ -130,9 +130,6 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
     val autoStart by if (inspectionMode) {
         remember { mutableStateOf(false) }
     } else rememberPreferenceBoolean(BootReceiver.KEY, false)
-    val repeaterSafeMode by if (inspectionMode) {
-        remember { mutableStateOf(true) }
-    } else rememberPreferenceBoolean(RepeaterService.KEY_SAFE_MODE, true)
     val useSystemTempHotspot by if (inspectionMode) {
         remember { mutableStateOf(false) }
     } else rememberPreferenceBoolean(LocalOnlyHotspotService.KEY_USE_SYSTEM, false)
@@ -161,8 +158,6 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
             onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
         }
     }
-    val showRepeaterSafeMode = inspectionMode || (Services.p2p != null && RepeaterService.safeModeConfigurable)
-
     SettingsList {
         preferenceGroup(key = R.string.settings_service_clean) {
             row(R.string.settings_service_clean) {
@@ -332,17 +327,6 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                             app.pref.edit { putBoolean(BootReceiver.KEY, enabled) }
                             scope.launch { BootReceiver.onUserSettingUpdated(enabled) }
                         }
-                    },
-                )
-            }
-            if (showRepeaterSafeMode) row(R.string.settings_service_repeater_safe_mode) {
-                SwitchPreferenceRow(
-                    icon = R.drawable.ic_health_and_safety,
-                    title = R.string.settings_service_repeater_safe_mode,
-                    summary = stringResource(R.string.settings_service_repeater_safe_mode_summary),
-                    checked = repeaterSafeMode,
-                    onCheckedChange = {
-                        if (!inspectionMode) app.pref.edit { putBoolean(RepeaterService.KEY_SAFE_MODE, it) }
                     },
                 )
             }

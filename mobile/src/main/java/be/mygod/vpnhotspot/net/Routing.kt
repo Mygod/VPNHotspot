@@ -15,6 +15,7 @@ import be.mygod.vpnhotspot.net.monitor.TrafficRecorder
 import be.mygod.vpnhotspot.net.monitor.Upstream
 import be.mygod.vpnhotspot.net.monitor.Upstreams
 import be.mygod.vpnhotspot.room.AppDatabase
+import be.mygod.vpnhotspot.root.IpSecForwardPolicyCommand
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.daemon.ClientConfig
 import be.mygod.vpnhotspot.root.daemon.DaemonController
@@ -137,13 +138,8 @@ class Routing(private val caller: Any, private val downstream: String) {
                         event.ipsec_forward_policy?.let {
                             try {
                                 RootManager.use { server ->
-                                    server.execute(IpSecForwardPolicyCommand(
-                                        uid = it.uid,
-                                        sourceAddress = it.source_address,
-                                        destinationAddress = it.destination_address,
-                                        markValue = it.mark_value,
-                                        xfrmInterfaceId = it.xfrm_interface_id,
-                                    ))
+                                    server.execute(IpSecForwardPolicyCommand(it.uid, it.source_address,
+                                        it.destination_address, it.mark_value, it.xfrm_interface_id))
                                 }
                             } catch (e: CancellationException) {
                                 throw e

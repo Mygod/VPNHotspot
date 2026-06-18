@@ -22,7 +22,6 @@
   <string name="repeater_create_group_failure">បរាជ័យក្នុងការបង្កើតក្រុម P2P (ហេតុផល: %s)</string>
   <string name="repeater_remove_group_failure">បរាជ័យក្នុងការដកក្រុម P2P (ហេតុផល: %s)</string>
   <string name="repeater_remove_old_group_failure">បរាជ័យក្នុងការដកក្រុម P2P ចាស់ (ហេតុផល: %s)</string>
-  <string name="repeater_set_oc_failure">បរាជ័យក្នុងការកំណត់ឆានែលដំណើរការ (ហេតុផល: %s)</string>
   <string name="repeater_set_vendor_elements_failure">បរាជ័យក្នុងការកំណត់ធាតុអ្នកផ្គត់ផ្គង់ (ហេតុផល: %s)</string>
   <string name="repeater_failure_reason_error">កំហុសខាងក្នុង</string>
   <string name="repeater_failure_reason_p2p_unsupported">មិនគាំទ្រ Wi‑Fi Direct</string>
@@ -221,9 +220,6 @@
   <string name="settings_service_ipv6_mode_nat_summary">កំណត់ ULA &lt;tt&gt;/64&lt;/tt&gt; deterministic ដែលជាកម្មសិទ្ធិរបស់កម្មវិធី ហើយ proxy IPv6 downstream &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; រួមជាមួយ best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; តាម root daemon។ នេះជាការងារ user space មិនមែន packet NAT ពេញលេញទេ ហើយមិន forward IPv6 next-header protocols ផ្សេងទៀតទេ។</string>
   <string name="settings_service_auto_start">ចាប់ផ្តើមសេវាដោយស្វ័យប្រវត្តិ</string>
   <string name="settings_service_auto_start_summary">ស្តារសេវាឡើងវិញ ប្រសិនបើវាកំពុងដំណើរការមុនពេលចាប់ផ្តើមឧបករណ៍ឡើងវិញ ឬធ្វើបច្ចុប្បន្នភាពកម្មវិធី។</string>
-  <string name="settings_service_repeater_safe_mode">របៀបសុវត្ថិភាពរបស់ repeater</string>
-  <string name="settings_service_repeater_safe_mode_summary">មិនផ្លាស់ប្តូរការកំណត់រចនាសម្ព័ន្ធប្រព័ន្ធរបស់អ្នកទេ ប៉ុន្តែអាចមិនដំណើរការជាមួយឈ្មោះបណ្តាញខ្លី។ របៀបមិនសុវត្ថិភាពអាចមិនដំណើរការលើឧបករណ៍របស់អ្នក ហើយអាចធ្វើឱ្យវាមិនអាចប្រើបានបណ្តោះអាសន្នក្នុងរបៀបដែលអាចស្តារឡើងវិញបាន។</string>
-  <string name="settings_service_repeater_safe_mode_warning">ឈ្មោះបណ្តាញខ្លីអាចត្រូវការបិទរបៀបសុវត្ថិភាព។</string>
   <string name="settings_service_temp_hotspot_use_system">ប្រើការកំណត់រចនាសម្ព័ន្ធប្រព័ន្ធសម្រាប់ hotspot បណ្តោះអាសន្ន</string>
   <string name="settings_service_temp_hotspot_use_system_summary">នឹងប៉ះទង្គិចជាមួយកម្មវិធីផ្សេងៗដែលប្រើ local only hotspot។ វាក៏ប្រើធនធានច្រើនជាងមុននៅផ្ទៃក្រោយ ប្រសិនបើមិនបានដំឡើងជាកម្មវិធីប្រព័ន្ធ។</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">នឹងប៉ះទង្គិចជាមួយកម្មវិធីផ្សេងៗដែលប្រើ local only hotspot។ វាក៏ប្រើធនធានច្រើនជាងមុននៅផ្ទៃក្រោយ ប្រសិនបើមិនបានដំឡើងជាកម្មវិធីប្រព័ន្ធ។ ភាគច្រើនអាចដំណើរការលើ Android 12 ឬថ្មីជាង។</string>
@@ -314,7 +310,6 @@
   <string name="wifi_mac_address_persistent_randomization">ការចៃដន្យថេរ: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">ការចៃដន្យមិនថេរ</string>
   <string name="wifi_mac_address_help">កំណត់ BSSID និងការចៃដន្យ MAC សម្រាប់ AP។ Android បដិសេធ BSSID សូន្យទាំងអស់ multicast និង broadcast។ BSSID ជាក់លាក់ត្រូវបានប្រើតែនៅពេលការចៃដន្យ MAC ត្រូវបានបិទ។</string>
-  <string name="wifi_p2p_mac_address_help">កំណត់អាសយដ្ឋានឧបករណ៍ P2P ដែលឧបករណ៍ពង្រីកសញ្ញាប្រើ។ ទុកទទេដើម្បីឱ្យ Android ជ្រើសអាសយដ្ឋាន។</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">អាសយដ្ឋាន MAC ចៃដន្យថេរ</string>
   <string name="wifi_hidden_network">បណ្តាញ​ដែល​បាន​លាក់</string>
   <string name="wifi_hidden_network_help">កុំផ្សាយ SSID</string>

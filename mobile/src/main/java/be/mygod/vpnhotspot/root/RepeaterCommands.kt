@@ -1,44 +1,26 @@
 package be.mygod.vpnhotspot.root
 
+import android.hardware.wifi.common.OuiKeyedData
+import android.hardware.wifi.supplicant.IfaceType
+import android.hardware.wifi.supplicant.KeyMgmtMask
+import android.hardware.wifi.supplicant.P2pAddGroupConfigurationParams
 import android.net.MacAddress
 import android.net.wifi.ScanResult
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Looper
 import android.os.Parcelable
-import android.system.Os
-import android.system.OsConstants
-import android.text.TextUtils
 import androidx.annotation.RequiresApi
-import androidx.core.text.isDigitsOnly
-import be.mygod.librootkotlinx.*
-import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.deletePersistentGroup
+import be.mygod.librootkotlinx.ParcelableInt
+import be.mygod.librootkotlinx.ParcelableList
+import be.mygod.librootkotlinx.ParcelableThrowable
+import be.mygod.librootkotlinx.RootCommand
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestDeviceAddress
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setVendorElements
-import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setWifiP2pChannels
 import be.mygod.vpnhotspot.util.Services
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
-import java.io.File
-import java.io.IOException
 
 object RepeaterCommands {
-    @Parcelize
-    class Deinit : RootCommandNoResult {
-        override suspend fun execute(): Parcelable? {
-            channel = null
-            return null
-        }
-    }
-
-    @Parcelize
-    data class DeletePersistentGroup(val netId: Int) : RootCommand<ParcelableInt?> {
-        override suspend fun execute() = Services.p2p!!.run {
-            deletePersistentGroup(obtainChannel(), netId)?.let { ParcelableInt(it) }
-        }
-    }
-
     @Parcelize
     class RequestDeviceAddress : RootCommand<MacAddress?> {
         override suspend fun execute() = Services.p2p!!.run { requestDeviceAddress(obtainChannel()) }
@@ -52,13 +34,6 @@ object RepeaterCommands {
     }
 
     @Parcelize
-    data class SetChannel(private val oc: Int) : RootCommand<ParcelableInt?> {
-        override suspend fun execute() = Services.p2p!!.run {
-            setWifiP2pChannels(obtainChannel(), 0, oc)?.let { ParcelableInt(it) }
-        }
-    }
-
-    @Parcelize
     @RequiresApi(33)
     data class SetVendorElements(private val ve: List<ScanResult.InformationElement>) : RootCommand<ParcelableInt?> {
         override suspend fun execute() = Services.p2p!!.run {
@@ -66,51 +41,79 @@ object RepeaterCommands {
         }
     }
 
+    /**
+     * What the live supplicant backend can carry, so the UI can disable unrepresentable options and group creation
+     * can fail with a specific error. [aidlVersion] is the AIDL `interfaceVersion`, or null when only the legacy
+     * HIDL HAL is present. WPA3 key management, the 6 GHz band shorthand and vendor data all arrived in AIDL v3.
+     */
     @Parcelize
-    data class WriteP2pConfig(val data: String, val legacy: Boolean) : RootCommandNoResult {
-        override suspend fun execute(): Parcelable? = withContext(Dispatchers.IO) {
-            File(if (legacy) CONF_PATH_LEGACY else CONF_PATH_TREBLE).writeText(data)
-            for (process in File("/proc").listFiles { _, name -> name.isDigitsOnly() }!!) {
-                val cmdline = try {
-                    File(process, "cmdline").inputStream().bufferedReader().use { it.readText() }
-                } catch (_: IOException) {
-                    continue
+    data class SupplicantCapability(val aidlVersion: Int?) : Parcelable {
+        inline val aidlV3 get() = aidlVersion != null && aidlVersion >= 3
+        val label get() = if (aidlVersion == null) "HIDL" else "AIDL v$aidlVersion"
+    }
+
+    @Parcelize
+    class QuerySupplicantCapability : RootCommand<SupplicantCapability> {
+        override suspend fun execute() = SupplicantCapability(SupplicantAidl.instance?.interfaceVersion)
+    }
+
+    @Parcelize
+    class AddPersistentGroupWithConfig(
+        private val ssid: ByteArray,
+        private val passphrase: String,
+        private val frequency: Int,
+        private val keyMgmtMask: Int,
+        private val randomizeMac: Boolean,
+        private val vendorData: Array<OuiKeyedData>,
+    ) : RootCommand<ParcelableThrowable?> {
+        override suspend fun execute(): ParcelableThrowable? {
+            val aidl = SupplicantAidl.instance
+            val capability = SupplicantCapability(aidl?.interfaceVersion)
+            if (!capability.aidlV3) {
+                require(keyMgmtMask == KeyMgmtMask.WPA_PSK) {
+                    "WPA3 is not supported by the ${capability.label} supplicant backend"
                 }
-                if (File(cmdline.split(Char.MIN_VALUE, limit = 2).first()).name == "wpa_supplicant") {
-                    Os.kill(process.name.toInt(), OsConstants.SIGTERM)
+                require(frequency != 6) {
+                    "6 GHz automatic channel is not supported by the ${capability.label} supplicant backend"
+                }
+                require(vendorData.isEmpty()) {
+                    "Vendor data is not supported by the ${capability.label} supplicant backend"
                 }
             }
-            null
+            if (aidl == null) return SupplicantP2pIface.addGroup(ssid, passphrase, frequency, randomizeMac)
+            val p2pIface = aidl.listInterfaces().firstOrNull { it.type == IfaceType.P2P }?.let {
+                aidl.getP2pInterface(it.name)
+            } ?: error("No framework-owned P2P supplicant interface")
+            val macRandomizationError = try {   // best-effort, matching Framework mode's MAC randomization behaviour
+                p2pIface.setMacRandomization(randomizeMac)
+                null
+            } catch (e: Exception) {
+                e
+            }
+            try {
+                if (p2pIface.interfaceVersion < 3) @Suppress("DEPRECATION") {
+                    p2pIface.addGroupWithConfig(ssid, passphrase, true, frequency, ByteArray(6), false)
+                } else p2pIface.addGroupWithConfigurationParams(P2pAddGroupConfigurationParams().also {
+                    it.ssid = ssid
+                    it.passphrase = passphrase
+                    it.isPersistent = true
+                    it.frequencyMHzOrBand = frequency
+                    it.goInterfaceAddress = ByteArray(6)
+                    it.keyMgmtMask = keyMgmtMask
+                    if (vendorData.isNotEmpty()) it.vendorData = vendorData
+                })
+                return macRandomizationError?.let { ParcelableThrowable(it) }
+            } catch (e: Throwable) {
+                macRandomizationError?.let { e.addSuppressed(it) }
+                throw e
+            }
         }
     }
 
-    @Parcelize
-    class ReadP2pConfig : RootCommand<WriteP2pConfig> {
-        private fun test(path: String) = File(path).run {
-            if (canRead()) readText() else null
-        }
-
-        override suspend fun execute(): WriteP2pConfig = withContext(Dispatchers.IO) {
-            test(CONF_PATH_TREBLE)?.let { WriteP2pConfig(it, false) }
-                    ?: test(CONF_PATH_LEGACY)?.let { WriteP2pConfig(it, true) }
-                    ?: error("p2p config file not found")
-        }
-    }
-
-    private const val CONF_PATH_TREBLE = "/data/vendor/wifi/wpa/p2p_supplicant.conf"
-    private const val CONF_PATH_LEGACY = "/data/misc/wifi/p2p_supplicant.conf"
     private var channel: WifiP2pManager.Channel? = null
-
     private fun WifiP2pManager.obtainChannel(): WifiP2pManager.Channel {
         channel?.let { return it }
-        val uninitializer = object : WifiP2pManager.ChannelListener {
-            var target: WifiP2pManager.Channel? = null
-            override fun onChannelDisconnected() {
-                if (target == channel) channel = null
-            }
-        }
-        return initialize(Services.context, Looper.getMainLooper(), uninitializer).also {
-            uninitializer.target = it
+        return initialize(Services.context, Looper.getMainLooper()) { channel = null }.also {
             channel = it    // cache the instance until invalidated
         }
     }

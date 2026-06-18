@@ -13,6 +13,7 @@ import android.content.res.Configuration
 import android.location.LocationManager
 import android.os.Build
 import android.os.StrictMode
+import android.os.SystemProperties
 import android.os.ext.SdkExtensions
 import android.provider.Settings
 import android.system.Os
@@ -87,6 +88,7 @@ class App : Application() {
                 setCustomKey("git", BuildGit.VALUE)
                 setCustomKey("uname.release", Os.uname().release)
                 setCustomKey("build", Build.DISPLAY)
+                setCustomKey("ro.vendor.api_level", SystemProperties.get("ro.vendor.api_level", ""))
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     setCustomKey("extension_s", SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S))
                 }

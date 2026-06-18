@@ -22,7 +22,6 @@
   <string name="repeater_create_group_failure">P2P গ্রুপ তৈরি করা যায়নি (কারণ: %s)</string>
   <string name="repeater_remove_group_failure">P2P গ্রুপ সরানো যায়নি (কারণ: %s)</string>
   <string name="repeater_remove_old_group_failure">পুরোনো P2P গ্রুপ সরানো যায়নি (কারণ: %s)</string>
-  <string name="repeater_set_oc_failure">অপারেটিং চ্যানেল সেট করা যায়নি (কারণ: %s)</string>
   <string name="repeater_set_vendor_elements_failure">সরবরাহকারী উপাদান সেট করা যায়নি (কারণ: %s)</string>
   <string name="repeater_failure_reason_error">অভ্যন্তরীণ ত্রুটি</string>
   <string name="repeater_failure_reason_p2p_unsupported">Wi‑Fi Direct সমর্থিত নয়</string>
@@ -227,9 +226,6 @@
   <string name="settings_service_ipv6_mode_nat_summary">অ্যাপ-মালিকানাধীন নির্ধারিত ULA &lt;tt&gt;/64&lt;/tt&gt; বরাদ্দ করে এবং root daemon-এর মাধ্যমে downstream IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; ও best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; proxy করে। এটি userspace কাজ, পূর্ণ packet NAT নয়, এবং অন্য IPv6 next-header protocols ফরওয়ার্ড করে না।</string>
   <string name="settings_service_auto_start">পরিষেবাগুলি স্বয়ংক্রিয়ভাবে শুরু করুন</string>
   <string name="settings_service_auto_start_summary">ডিভাইস রিবুট বা অ্যাপ আপডেটের আগে চালু থাকা পরিষেবাগুলি পুনরুদ্ধার করুন।</string>
-  <string name="settings_service_repeater_safe_mode">রিপিটার নিরাপদ মোড</string>
-  <string name="settings_service_repeater_safe_mode_summary">আপনার সিস্টেম কনফিগারেশনে কোনো পরিবর্তন করে না, তবে ছোট নেটওয়ার্ক নামের সঙ্গে কাজ নাও করতে পারে। অনিরাপদ মোড আপনার ডিভাইসে কাজ নাও করতে পারে এবং পুনরুদ্ধারযোগ্যভাবে সেটিকে সাময়িক অচল করতে পারে।</string>
-  <string name="settings_service_repeater_safe_mode_warning">ছোট নেটওয়ার্ক নামের জন্য নিরাপদ মোড বন্ধ করতে হতে পারে।</string>
   <string name="settings_service_temp_hotspot_use_system">অস্থায়ী হটস্পটের জন্য সিস্টেম কনফিগারেশন ব্যবহার করুন</string>
   <string name="settings_service_temp_hotspot_use_system_summary">local only hotspot ব্যবহারকারী অন্য অ্যাপের সঙ্গে বিরোধ করবে। সিস্টেম অ্যাপ হিসেবে ইনস্টল না থাকলে ব্যাকগ্রাউন্ডে বেশি রিসোর্সও ব্যবহার করে।</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">local only hotspot ব্যবহারকারী অন্য অ্যাপের সঙ্গে বিরোধ করবে। সিস্টেম অ্যাপ হিসেবে ইনস্টল না থাকলে ব্যাকগ্রাউন্ডে বেশি রিসোর্সও ব্যবহার করে। সম্ভবত Android 12 বা নতুন সংস্করণে কার্যকর।</string>
@@ -323,7 +319,6 @@
   <string name="wifi_mac_address_persistent_randomization">স্থায়ী র‍্যান্ডমাইজেশন: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">অস্থায়ী র‍্যান্ডমাইজেশন</string>
   <string name="wifi_mac_address_help">AP-এর জন্য BSSID এবং MAC র‍্যান্ডমাইজেশন কনফিগার করুন। Android সব-শূন্য, multicast এবং broadcast BSSID প্রত্যাখ্যান করে। স্পষ্ট BSSID কেবল MAC র‍্যান্ডমাইজেশন বন্ধ থাকলে ব্যবহৃত হয়।</string>
-  <string name="wifi_p2p_mac_address_help">রিপিটার যে P2P ডিভাইস ঠিকানা ব্যবহার করে তা কনফিগার করুন। Android-কে ঠিকানা বেছে নিতে দিতে খালি রাখুন।</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">স্থায়ী র‍্যান্ডমাইজড MAC ঠিকানা</string>
   <string name="wifi_hidden_network">লুকানো নেটওয়ার্ক</string>
   <string name="wifi_hidden_network_help">SSID সম্প্রচার করবেন না</string>

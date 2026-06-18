@@ -81,7 +81,9 @@ Routing, firewall, address, route, and daemon changes should be reversible witho
 ## Platform API Reflection, Hidden API & Root Changes
 Do not hand-wave platform API reflection, hidden API, or root behavior.
 
-- Every reflected Android platform API must be documented, including `sdk/system-api/test-api`.
+- Every reflected Android platform API and direct non-SDK framework API must be documented, including
+  `sdk/system-api/test-api`; for direct references, a documented compile-only stub in
+  `mobile/src/hiddenApiStubs/java` can satisfy this requirement.
 - Ground documentation in actual code usage in this repo. Check call sites, API guards, and whether the old path is still used.
 - README API qualifiers reflect when this app uses the API, not when Android introduced it. If usage spans all supported API levels, omit the qualifier.
 - Do not add normal `sdk/public-api` entries to `README.md` just because code now touches them. Document only reflected hidden APIs, blocked APIs, or non-obvious platform assumptions.
@@ -92,7 +94,11 @@ Do not hand-wave platform API reflection, hidden API, or root behavior.
 - Never guess or synthesize hiddenapi flag suffixes. The suffix after the descriptor, such as `blocked`, `unsupported`, or `sdk,system-api,test-api`, must come from an exact descriptor match in `../hiddenapi/hiddenapi-flags.csv`.
 - AOSP API signature files such as `current.txt`, `system-current.txt`, annotations such as `@SystemApi`/`@FlaggedApi`, and SDK stubs may support API-surface or availability conclusions, but they do not prove hiddenapi flags. If the exact descriptor is absent from `../hiddenapi/hiddenapi-flags.csv`, do not append a flag suffix; document the absence explicitly when it matters.
 - Treat `public-api` as a stop sign for `Hidden whitelisted APIs` and `Private APIs used / Assumptions for Android customizations` unless this app also uses a different non-public member with its own descriptor.
-- Update the correct `README.md` bucket: blocked/private/internal APIs go in `Private APIs used / Assumptions for Android customizations`, reflected `sdk/system-api/test-api` goes in `Hidden whitelisted APIs`, and non-descriptor platform assumptions or AOSP behavior notes go under `Other`.
+- Update the correct documentation bucket: blocked/private/internal APIs go in `README.md` under
+  `Private APIs used / Assumptions for Android customizations`; reflected or directly referenced
+  `sdk/system-api/test-api` APIs go in `mobile/src/hiddenApiStubs/README.md` unless a documented compile-only stub in
+  `mobile/src/hiddenApiStubs/java` already gives the call-site context; and non-descriptor platform
+  assumptions or AOSP behavior notes go in `README.md` under `Other`.
 - Treat `README.md` as a compatibility-hazard index for assumptions that matter if violated.
   - Only put platform behavior under `Other` when this app would misbehave, leak state, or lose required functionality if that behavior differs. Do not document optional fast paths, runtime capability probes, implementation details, public SDK/NDK contracts, essential Linux/kernel facilities, or standard protocol constants when an existing fallback or normal platform contract preserves correctness.
   - Hardcoded AOSP-derived constants/values must be documented inline. Represent them in `README.md` only when they map to a hidden/private platform symbol or to a non-obvious compatibility assumption that would break app behavior if changed.

@@ -37,7 +37,7 @@ class RepeaterTileService : KillableTileService() {
                     this@RepeaterTileService.binder = binder
                     if (binder == null) return@collectLatest
                     resolveTapPending()
-                    merge(binder.status, binder.group).collect { updateTile() }
+                    merge(binder.active, binder.group).collect { updateTile() }
                 }
             } finally {
                 // explicit unbind does not trigger onServiceDisconnected, so clear the stale binder ourselves
@@ -54,16 +54,11 @@ class RepeaterTileService : KillableTileService() {
 
     override fun onClick() {
         val binder = binder
-        if (binder == null) tapPending = true else when (binder.status.value) {
-            RepeaterService.Status.ACTIVE -> {
-                RepeaterService.dismissHandle = dismissHandle
+        if (binder == null) tapPending = true else {
+            RepeaterService.dismissHandle = dismissHandle
+            if (binder.active.value) {
                 binder.shutdown()
-            }
-            RepeaterService.Status.IDLE -> {
-                RepeaterService.dismissHandle = dismissHandle
-                startForegroundServiceCompat(Intent(this, RepeaterService::class.java))
-            }
-            else -> { }
+            } else startForegroundServiceCompat(Intent(this, RepeaterService::class.java))
         }
     }
 
@@ -76,23 +71,16 @@ class RepeaterTileService : KillableTileService() {
         val binder = binder ?: return
         qsTile?.run {
             subtitle = null
-            when (binder.status.value) {
-                RepeaterService.Status.IDLE -> {
-                    state = Tile.STATE_INACTIVE
-                    label = getText(R.string.title_repeater)
-                }
-                RepeaterService.Status.ACTIVE -> {
-                    state = Tile.STATE_ACTIVE
-                    val group = binder.group.value
-                    label = group?.networkName
-                    val size = group?.clientList?.size ?: 0
-                    if (size > 0) subtitle = resources.getQuantityString(
-                            R.plurals.quick_settings_hotspot_secondary_label_num_devices, size, size)
-                }
-                else -> {   // STARTING, STOPPING, or DESTROYED, which should never occur
-                    state = Tile.STATE_UNAVAILABLE
-                    label = getText(R.string.title_repeater)
-                }
+            if (binder.active.value) {
+                state = Tile.STATE_ACTIVE
+                val group = binder.group.value
+                label = group?.networkName?.takeIf { it.isNotEmpty() } ?: getText(R.string.title_repeater)
+                val size = group?.clientList?.size ?: 0
+                if (size > 0) subtitle = resources.getQuantityString(
+                    R.plurals.quick_settings_hotspot_secondary_label_num_devices, size, size)
+            } else {
+                state = Tile.STATE_INACTIVE
+                label = getText(R.string.title_repeater)
             }
             icon = tile
             updateTile()

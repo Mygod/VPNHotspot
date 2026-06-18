@@ -22,7 +22,6 @@
   <string name="repeater_create_group_failure">P2P සමූහය සෑදීමට අසමත් විය (හේතුව: %s)</string>
   <string name="repeater_remove_group_failure">P2P සමූහය ඉවත් කිරීමට අසමත් විය (හේතුව: %s)</string>
   <string name="repeater_remove_old_group_failure">පැරණි P2P සමූහය ඉවත් කිරීමට අසමත් විය (හේතුව: %s)</string>
-  <string name="repeater_set_oc_failure">ක්‍රියාකාරී නාලිකාව සකසීමට අසමත් විය (හේතුව: %s)</string>
   <string name="repeater_set_vendor_elements_failure">සපයන්නාගේ element සකසීමට අසමත් විය (හේතුව: %s)</string>
   <string name="repeater_failure_reason_error">අභ්‍යන්තර දෝෂයක්</string>
   <string name="repeater_failure_reason_p2p_unsupported">Wi‑Fi Direct සහය නොදක්වයි</string>
@@ -227,9 +226,6 @@
   <string name="settings_service_ipv6_mode_nat_summary">යෙදුමට අයත් deterministic ULA &lt;tt&gt;/64&lt;/tt&gt; පවරා root daemon හරහා downstream IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; සහ best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; proxy කරයි. මෙය userspace වැඩක්, සම්පූර්ණ packet NAT නොවේ, සහ වෙනත් IPv6 next-header protocols forward නොකරයි.</string>
   <string name="settings_service_auto_start">සේවා ස්වයංක්‍රීයව ආරම්භ කරන්න</string>
   <string name="settings_service_auto_start_summary">උපාංගය reboot වීමකට හෝ app update වීමට පෙර services ක්‍රියාත්මකව තිබුණේ නම් ඒවා restore කරන්න.</string>
-  <string name="settings_service_repeater_safe_mode">Repeater ආරක්ෂිත mode</string>
-  <string name="settings_service_repeater_safe_mode_summary">ඔබගේ system configuration වෙනස් නොකරයි, නමුත් කෙටි network names සමඟ ක්‍රියා නොකරනු ඇත. unsafe mode ඔබගේ device එකේ ක්‍රියා නොකරනු ඇති අතර recover කළ හැකි ආකාරයකින් device එක තාවකාලිකව භාවිතා කළ නොහැකි තත්වයකට පත් කළ හැක.</string>
-  <string name="settings_service_repeater_safe_mode_warning">කෙටි network names සඳහා safe mode off කළ යුතු විය හැක.</string>
   <string name="settings_service_temp_hotspot_use_system">Temporary hotspot සඳහා system configuration භාවිත කරන්න</string>
   <string name="settings_service_temp_hotspot_use_system_summary">local only hotspot භාවිත කරන වෙනත් apps සමඟ conflict වේ. system app ලෙස install කර නොමැති නම් background හි වැඩි resources ද භාවිත කරයි.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">local only hotspot භාවිත කරන වෙනත් apps සමඟ conflict වේ. system app ලෙස install කර නොමැති නම් background හි වැඩි resources ද භාවිත කරයි. බොහෝ විට Android 12 හෝ නවතම මත ක්‍රියා කරයි.</string>
@@ -323,7 +319,6 @@
   <string name="wifi_mac_address_persistent_randomization">ස්ථිර අහඹුකරණය: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">ස්ථිර නොවන අහඹුකරණය</string>
   <string name="wifi_mac_address_help">AP සඳහා BSSID සහ MAC අහඹුකරණය වින්‍යාස කරන්න. Android සියලු-ශූන්‍ය, multicast සහ broadcast BSSID ප්‍රතික්ෂේප කරයි. පැහැදිලි BSSID භාවිත වන්නේ MAC අහඹුකරණය අක්‍රිය විට පමණි.</string>
-  <string name="wifi_p2p_mac_address_help">රිපීටරය භාවිත කරන P2P උපාංග ලිපිනය වින්‍යාස කරන්න. Android ලිපිනය තෝරාගැනීමට හිස්ව තබන්න.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">ස්ථිර සසම්භාවී MAC ලිපිනය</string>
   <string name="wifi_hidden_network">සඟවන ලද ජාලය</string>
   <string name="wifi_hidden_network_help">SSID විකාශනය නොකරන්න</string>

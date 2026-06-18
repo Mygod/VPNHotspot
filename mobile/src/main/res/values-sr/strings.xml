@@ -22,7 +22,6 @@
   <string name="repeater_create_group_failure">Креирање P2P групе није успело (разлог: %s)</string>
   <string name="repeater_remove_group_failure">Уклањање P2P групе није успело (разлог: %s)</string>
   <string name="repeater_remove_old_group_failure">Уклањање старе P2P групе није успело (разлог: %s)</string>
-  <string name="repeater_set_oc_failure">Подешавање радног канала није успело (разлог: %s)</string>
   <string name="repeater_set_vendor_elements_failure">Подешавање елемената добављача није успело (разлог: %s)</string>
   <string name="repeater_failure_reason_error">унутрашња грешка</string>
   <string name="repeater_failure_reason_p2p_unsupported">Wi‑Fi Direct није подржан</string>
@@ -233,9 +232,6 @@
   <string name="settings_service_ipv6_mode_nat_summary">Додељује детерминистички ULA &lt;tt&gt;/64&lt;/tt&gt; у власништву апликације и проксира низводни IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; плус best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; кроз root daemon. Ово је рад у корисничком простору, није пуни packet NAT и не прослеђује друге IPv6 next-header протоколе.</string>
   <string name="settings_service_auto_start">Аутоматски покрени услуге</string>
   <string name="settings_service_auto_start_summary">Врати услуге ако су биле покренуте пре поновног покретања уређаја или ажурирања апликације.</string>
-  <string name="settings_service_repeater_safe_mode">Безбедни режим репетитора</string>
-  <string name="settings_service_repeater_safe_mode_summary">Не мења системску конфигурацију, али можда неће радити са кратким именима мреже. Небезбедни режим можда неће радити на уређају и може га привремено онеспособити на начин који се може опоравити.</string>
-  <string name="settings_service_repeater_safe_mode_warning">Кратка имена мреже могу захтевати искључивање безбедног режима.</string>
   <string name="settings_service_temp_hotspot_use_system">Користи системску конфигурацију за привремени hotspot</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Сукобиће се са другим апликацијама које користе локални hotspot. Такође користи више ресурса у позадини осим ако је инсталирана као системска апликација.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Сукобиће се са другим апликацијама које користе локални hotspot. Такође користи више ресурса у позадини осим ако је инсталирана као системска апликација. Највероватније ради на Android-у 12 или новијем.</string>
@@ -332,7 +328,6 @@
   <string name="wifi_mac_address_persistent_randomization">Трајна рандомизација: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Нетрајна рандомизација</string>
   <string name="wifi_mac_address_help">Подесите BSSID и MAC рандомизацију за AP. Android одбија BSSID са свим нулама, multicast и broadcast BSSID. Изричит BSSID се користи само када је MAC рандомизација искључена.</string>
-  <string name="wifi_p2p_mac_address_help">Подесите адресу P2P уређаја коју користи репетитор. Оставите празно да Android изабере адресу.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Трајна насумична MAC адреса</string>
   <string name="wifi_hidden_network">Скривена мрежа</string>
   <string name="wifi_hidden_network_help">Не емитује SSID</string>

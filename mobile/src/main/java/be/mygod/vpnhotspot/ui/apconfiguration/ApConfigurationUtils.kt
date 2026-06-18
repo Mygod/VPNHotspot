@@ -13,7 +13,6 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.ui.channelBandwidthLabel
 import be.mygod.vpnhotspot.util.RangeInput
@@ -102,11 +101,7 @@ fun ChannelOption.label(context: Context): String {
     } else "${SoftApConfigurationCompat.channelToFrequency(band, channel)} MHz ($channel)"
 }
 
-fun currentChannelOptions(p2pMode: Boolean): List<ChannelOption> = when {
-    !p2pMode -> SOFT_AP_OPTIONS
-    RepeaterService.safeMode -> P2P_SAFE_OPTIONS
-    else -> P2P_UNSAFE_OPTIONS
-}
+fun currentChannelOptions(p2pMode: Boolean): List<ChannelOption> = if (p2pMode) P2P_OPTIONS else SOFT_AP_OPTIONS
 
 fun locate(
     channels: SparseIntArray,
@@ -118,7 +113,7 @@ fun locate(
     val band = channels.keyAt(index)
     val channel = channels.valueAt(index)
     return options.firstOrNull { it.band == band && it.channel == channel } ?: run {
-        val msg = "Unable to locate $band, $channel, ${p2pMode && !RepeaterService.safeMode}"
+        val msg = "Unable to locate $band, $channel"
         if (pasted || p2pMode) Timber.w(msg) else Timber.w(Exception(msg))
         options.first()
     }
@@ -152,11 +147,7 @@ private val CHANNELS_6G by lazy {
     if (Build.VERSION.SDK_INT >= 30) c5g + (1..253).map { ChannelOption(SoftApConfiguration.BAND_6GHZ, it) }
     else c5g
 }
-private val P2P_UNSAFE_OPTIONS by lazy {
-    listOf(ChannelOption(SoftApConfigurationCompat.BAND_LEGACY)) +
-            CHANNELS_2G + (15..165).map { ChannelOption(SoftApConfiguration.BAND_5GHZ, it) }
-}
-private val P2P_SAFE_OPTIONS by lazy {
+private val P2P_OPTIONS by lazy {
     (if (Build.VERSION.SDK_INT >= 36) listOf(
         ChannelOption(SoftApConfigurationCompat.BAND_ANY_30),
         ChannelOption(SoftApConfiguration.BAND_2GHZ),
@@ -168,5 +159,5 @@ private val SOFT_AP_OPTIONS by lazy {
     if (Build.VERSION.SDK_INT >= 30) {
         genAutoOptions(SoftApConfigurationCompat.BAND_ANY_31) + CHANNELS_6G +
                 (1..6).map { ChannelOption(SoftApConfiguration.BAND_60GHZ, it) }
-    } else P2P_SAFE_OPTIONS
+    } else P2P_OPTIONS
 }

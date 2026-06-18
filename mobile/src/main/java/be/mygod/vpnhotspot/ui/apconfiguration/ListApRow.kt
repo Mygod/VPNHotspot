@@ -21,6 +21,7 @@ fun <T> ListApRow(
     entryLabel: (T) -> String,
     selectedLabel: String,
     description: AnnotatedString? = null,
+    entrySummary: (T) -> AnnotatedString? = { null },
     onSelect: (T) -> Unit,
 ) {
     var selecting by rememberSaveable { mutableStateOf(false) }
@@ -35,6 +36,7 @@ fun <T> ListApRow(
         entryCount = entries.size,
         selectedIndex = entries.indexOf(selected),
         entryLabel = { entryLabel(entries[it]) },
+        entrySummary = { entrySummary(entries[it]) },
         description = description,
         onDismissRequest = { selecting = false },
         onSelect = { onSelect(entries[it]) },

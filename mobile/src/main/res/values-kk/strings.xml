@@ -22,7 +22,6 @@
   <string name="repeater_create_group_failure">P2P тобын жасау мүмкін болмады (себеп: %s)</string>
   <string name="repeater_remove_group_failure">P2P тобын жою мүмкін болмады (себеп: %s)</string>
   <string name="repeater_remove_old_group_failure">Ескі P2P тобын жою мүмкін болмады (себеп: %s)</string>
-  <string name="repeater_set_oc_failure">Жұмыс арнасын орнату мүмкін болмады (себеп: %s)</string>
   <string name="repeater_set_vendor_elements_failure">Жеткізуші элементтерін орнату мүмкін болмады (себеп: %s)</string>
   <string name="repeater_failure_reason_error">ішкі қате</string>
   <string name="repeater_failure_reason_p2p_unsupported">Wi‑Fi Direct қолдау көрсетілмейді</string>
@@ -227,9 +226,6 @@
   <string name="settings_service_ipv6_mode_nat_summary">Қолданбаға тиесілі deterministic ULA &lt;tt&gt;/64&lt;/tt&gt; тағайындайды және root daemon арқылы төменгі IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; және best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; proxy жасайды. Бұл пайдаланушы кеңістігіндегі жұмыс, толық packet NAT емес және басқа IPv6 next-header protocols жібермейді.</string>
   <string name="settings_service_auto_start">Қызметтерді автоматты бастау</string>
   <string name="settings_service_auto_start_summary">Құрылғы қайта іске қосылмас бұрын немесе қолданба жаңартылмас бұрын жұмыс істеп тұрған қызметтерді қалпына келтіру.</string>
-  <string name="settings_service_repeater_safe_mode">Қайталағыштың қауіпсіз режимі</string>
-  <string name="settings_service_repeater_safe_mode_summary">Жүйе конфигурациясын өзгертпейді, бірақ қысқа желі атауларымен жұмыс істемеуі мүмкін. Қауіпсіз емес режим құрылғыңызда жұмыс істемеуі мүмкін және оны қалпына келтіруге болатын түрде уақытша жарамсыз етуі мүмкін.</string>
-  <string name="settings_service_repeater_safe_mode_warning">Қысқа желі атаулары қауіпсіз режимді өшіруді талап етуі мүмкін.</string>
   <string name="settings_service_temp_hotspot_use_system">Уақытша hotspot үшін жүйе конфигурациясын пайдалану</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Тек жергілікті hotspot пайдаланатын басқа қолданбалармен қайшылыққа түседі. Жүйелік қолданба ретінде орнатылмаса, фондық режимде көбірек ресурстар да пайдаланады.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Тек жергілікті hotspot пайдаланатын басқа қолданбалармен қайшылыққа түседі. Жүйелік қолданба ретінде орнатылмаса, фондық режимде көбірек ресурстар да пайдаланады. Android 12 немесе жаңарақ нұсқада жұмыс істеуі ықтимал.</string>
@@ -323,7 +319,6 @@
   <string name="wifi_mac_address_persistent_randomization">Тұрақты рандомизация: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Тұрақты емес рандомизация</string>
   <string name="wifi_mac_address_help">AP үшін BSSID және MAC рандомизациясын баптаңыз. Android барлық-нөл, multicast және broadcast BSSID-терді қабылдамайды. Нақты BSSID тек MAC рандомизациясы өшірулі кезде қолданылады.</string>
-  <string name="wifi_p2p_mac_address_help">Қайталағыш пайдаланатын P2P құрылғы мекенжайын баптаңыз. Android мекенжайды таңдасын десеңіз, бос қалдырыңыз.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Тұрақты кездейсоқ MAC мекенжайы</string>
   <string name="wifi_hidden_network">Жасырын желі</string>
   <string name="wifi_hidden_network_help">SSID таратпау</string>

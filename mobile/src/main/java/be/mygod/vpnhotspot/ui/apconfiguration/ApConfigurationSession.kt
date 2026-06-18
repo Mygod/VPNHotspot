@@ -1,6 +1,5 @@
 package be.mygod.vpnhotspot.ui.apconfiguration
 
-import android.net.MacAddress
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.p2p.WifiP2pGroup
 import android.os.Build
@@ -10,7 +9,6 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.net.monitor.TetherTimeoutMonitor
-import be.mygod.vpnhotspot.net.wifi.P2pSupplicantConfiguration
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat.Companion.toCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
@@ -21,9 +19,6 @@ import be.mygod.vpnhotspot.ui.showLongSnackbar
 import be.mygod.vpnhotspot.util.getRootCause
 import be.mygod.vpnhotspot.util.readableMessage
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
@@ -33,8 +28,6 @@ data class ApConfigurationSession(
     val initial: SoftApConfigurationCompat,
     val target: ApConfigurationTarget,
     val readOnly: Boolean = false,
-    @IgnoredOnParcel
-    val repeaterMaster: P2pSupplicantConfiguration? = null,
 ) : Parcelable
 
 enum class ApConfigurationTarget {
@@ -127,122 +120,38 @@ suspend fun applySystemApConfiguration(
     return false
 }
 
-suspend fun loadRepeaterApConfiguration(
-    binder: RepeaterService.Binder?,
-    snackbarHostState: SnackbarHostState,
-): ApConfigurationSession? {
-    if (RepeaterService.safeMode) {
-        val networkName = RepeaterService.networkName
-        val passphrase = RepeaterService.passphrase
-        if (networkName != null && passphrase != null) {
-            val config = SoftApConfigurationCompat(
-                ssid = networkName,
-                passphrase = passphrase,
-                securityType = RepeaterService.securityType,
-                isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
-                shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis,
-                macRandomizationSetting = if (WifiApManager.p2pMacRandomizationSupported) {
-                    SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT
-                } else SoftApConfigurationCompat.RANDOMIZATION_NONE,
-                vendorElements = RepeaterService.vendorElements,
-            ).apply {
-                bssid = RepeaterService.deviceAddress
-                setChannel(RepeaterService.operatingChannel, RepeaterService.operatingBand)
-            }
-            return ApConfigurationSession(config, ApConfigurationTarget.Repeater)
-        }
-    } else if (binder != null) {
-        val group = binder.group.value ?: binder.fetchPersistentGroup().let { binder.group.value }
-        if (group != null) {
-            var readOnly = false
-            var master: P2pSupplicantConfiguration? = null
-            val config = SoftApConfigurationCompat(
-                ssid = WifiSsidCompat.fromUtf8Text(group.networkName),
-                securityType = if (Build.VERSION.SDK_INT >= 36) when (group.securityType) {
-                    WifiP2pGroup.SECURITY_TYPE_WPA3_COMPATIBILITY -> SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION
-                    WifiP2pGroup.SECURITY_TYPE_WPA3_SAE -> SoftApConfiguration.SECURITY_TYPE_WPA3_SAE
-                    else -> SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
-                } else SoftApConfiguration.SECURITY_TYPE_WPA2_PSK,
-                isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
-                shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis,
-                macRandomizationSetting = if (WifiApManager.p2pMacRandomizationSupported) {
-                    SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT
-                } else SoftApConfigurationCompat.RANDOMIZATION_NONE,
-                vendorElements = RepeaterService.vendorElements,
-            ).apply {
-                setChannel(RepeaterService.operatingChannel)
-                try {
-                    val parsed = P2pSupplicantConfiguration(group).also {
-                        it.init(binder.obtainDeviceAddress()?.toString())
-                    }
-                    master = parsed
-                    passphrase = parsed.psk
-                    bssid = parsed.bssid
-                } catch (e: Exception) {
-                    if (e is P2pSupplicantConfiguration.LoggedException) Timber.d(e)
-                    else if (e !is CancellationException) Timber.w(e)
-                    readOnly = true
-                    passphrase = group.passphrase
-                    try {
-                        bssid = group.owner?.deviceAddress?.let(MacAddress::fromString)
-                    } catch (_: IllegalArgumentException) { }
-                }
-            }
-            return ApConfigurationSession(
-                config,
-                ApConfigurationTarget.Repeater,
-                readOnly = readOnly,
-                repeaterMaster = master,
-            )
-        }
+suspend fun loadRepeaterApConfiguration(binder: RepeaterService.Binder?): ApConfigurationSession {
+    // nothing persisted yet: adopt the persistent group the framework would reuse on a direct start
+    val adopted = if (RepeaterService.networkName == null) binder?.obtainGroup() else null
+    val config = SoftApConfigurationCompat(
+        ssid = adopted?.let { WifiSsidCompat.fromUtf8Text(it.networkName) } ?: RepeaterService.networkName,
+        passphrase = adopted?.passphrase ?: RepeaterService.passphrase,
+        securityType = if (adopted != null && Build.VERSION.SDK_INT >= 36) {
+            adopted.securityType + SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
+        } else RepeaterService.securityType,
+        isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
+        shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis,
+        macRandomizationSetting = if (RepeaterService.randomizeMac && WifiApManager.p2pMacRandomizationSupported) {
+            SoftApConfigurationCompat.RANDOMIZATION_NON_PERSISTENT
+        } else SoftApConfigurationCompat.RANDOMIZATION_NONE,
+        vendorElements = RepeaterService.vendorElements,
+        vendorData = RepeaterService.vendorData,
+    ).apply {
+        setChannel(RepeaterService.operatingChannel, RepeaterService.operatingBand)
     }
-    snackbarHostState.showLongSnackbar(app.getString(R.string.repeater_configure_failure))
-    return null
+    return ApConfigurationSession(config, ApConfigurationTarget.Repeater)
 }
 
-suspend fun applyRepeaterApConfiguration(
-    binder: RepeaterService.Binder?,
+fun applyRepeaterApConfiguration(
     config: SoftApConfigurationCompat,
-    snackbarHostState: SnackbarHostState,
-    master: P2pSupplicantConfiguration? = null,
+    useFramework: Boolean,
 ): Boolean {
-    if (RepeaterService.safeMode) {
-        RepeaterService.networkName = config.ssid
-        RepeaterService.deviceAddress = config.bssid
-        RepeaterService.passphrase = config.passphrase
-        RepeaterService.securityType = config.securityType
-        applyRepeaterCommonConfiguration(config)
-        return true
-    }
-    if (binder == null && master == null) {
-        snackbarHostState.showLongSnackbar(app.getString(R.string.repeater_configure_failure))
-        return false
-    }
-    val group = binder?.group?.value ?: binder?.fetchPersistentGroup()?.let { binder.group.value }
-    if (group == null && master == null) {
-        snackbarHostState.showLongSnackbar(app.getString(R.string.repeater_configure_failure))
-        return false
-    }
-    val parsed = master ?: try {
-        P2pSupplicantConfiguration(group).also { it.init(binder?.obtainDeviceAddress()?.toString()) }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        if (e is P2pSupplicantConfiguration.LoggedException) Timber.d(e) else Timber.w(e)
-        snackbarHostState.showLongSnackbar(e.readableMessage)
-        return false
-    }
-    val mayBeModified = parsed.psk != config.passphrase || parsed.bssid != config.bssid || config.ssid.run {
-        if (this != null) decode().let { it == null || group?.networkName != it }
-        else group?.networkName != null
-    }
-    if (mayBeModified) try {
-        withContext(Dispatchers.Default) { parsed.update(config.ssid!!, config.passphrase!!, config.bssid) }
-        binder?.clearGroup()
-    } catch (e: Exception) {
-        Timber.w(e)
-        snackbarHostState.showLongSnackbar(e.readableMessage)
-    }
+    RepeaterService.useFramework = useFramework
+    RepeaterService.networkName = config.ssid
+    RepeaterService.randomizeMac = config.macRandomizationSetting != SoftApConfigurationCompat.RANDOMIZATION_NONE
+    RepeaterService.passphrase = config.passphrase
+    RepeaterService.securityType = config.securityType
+    RepeaterService.vendorData = config.vendorData
     applyRepeaterCommonConfiguration(config)
     return true
 }

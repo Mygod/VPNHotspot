@@ -1,4 +1,4 @@
-package be.mygod.vpnhotspot.net
+package be.mygod.vpnhotspot.root
 
 import android.os.Parcelable
 import android.system.OsConstants

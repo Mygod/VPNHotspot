@@ -22,9 +22,6 @@
     boolean getRECOVER_STACK_TRACES() return true;
 }
 
-# Keep blocked direct-link calls in a separate class so UnblockCentral installs exemptions first.
--keep class be.mygod.vpnhotspot.util.UnblockCentralLinking { *; }
-
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile

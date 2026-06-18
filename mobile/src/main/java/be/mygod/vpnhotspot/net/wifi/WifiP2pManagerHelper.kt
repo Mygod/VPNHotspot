@@ -30,26 +30,6 @@ object WifiP2pManagerHelper {
 
     const val UNSUPPORTED = -2
 
-    /**
-     * Available since Android 4.4.
-     *
-     * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.4_r1/wifi/java/android/net/wifi/p2p/WifiP2pManager.java#994
-     * Implementation: https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/d72d2f4/service/java/com/android/server/wifi/p2p/SupplicantP2pIfaceHal.java#1159
-     */
-    private val setWifiP2pChannels by lazy {
-        WifiP2pManager::class.java.getDeclaredMethod("setWifiP2pChannels", WifiP2pManager.Channel::class.java,
-                Int::class.java, Int::class.java, WifiP2pManager.ActionListener::class.java)
-    }
-    /**
-     * Requires one of NETWORK_SETTING, NETWORK_STACK, or OVERRIDE_WIFI_CONFIG permission since API 30.
-     */
-    suspend fun WifiP2pManager.setWifiP2pChannels(c: WifiP2pManager.Channel, lc: Int, oc: Int): Int? = try {
-        actionListener { setWifiP2pChannels(this, c, lc, oc, it) }
-    } catch (_: NoSuchMethodException) {
-        app.logEvent("NoSuchMethod_setWifiP2pChannels")
-        UNSUPPORTED
-    }
-
     @SuppressLint("MissingPermission")  // this method will fail correctly if permission is missing
     @RequiresApi(33)
     suspend fun WifiP2pManager.setVendorElements(c: WifiP2pManager.Channel,
@@ -88,45 +68,6 @@ object WifiP2pManagerHelper {
     suspend fun WifiP2pManager.removeGroup(c: WifiP2pManager.Channel): Int? =
         actionListener { removeGroup(c, it) }
 
-    /**
-     * Available since Android 4.2.
-     *
-     * Source: https://android.googlesource.com/platform/frameworks/base/+/android-4.2_r1/wifi/java/android/net/wifi/p2p/WifiP2pManager.java#1353
-     */
-    private val deletePersistentGroup by lazy {
-        WifiP2pManager::class.java.getDeclaredMethod("deletePersistentGroup",
-                WifiP2pManager.Channel::class.java, Int::class.java, WifiP2pManager.ActionListener::class.java)
-    }
-    /**
-     * Requires one of NETWORK_SETTING, NETWORK_STACK, or READ_WIFI_CREDENTIAL permission since API 30.
-     */
-    suspend fun WifiP2pManager.deletePersistentGroup(c: WifiP2pManager.Channel, netId: Int): Int? = try {
-        actionListener { deletePersistentGroup(this, c, netId, it) }
-    } catch (_: NoSuchMethodException) {
-        app.logEvent("NoSuchMethod_deletePersistentGroup")
-        UNSUPPORTED
-    }
-
-    private val requestPersistentGroupInfo by lazy {
-        WifiP2pManager::class.java.getDeclaredMethod("requestPersistentGroupInfo",
-            WifiP2pManager.Channel::class.java, `WifiP2pManager$PersistentGroupInfoListener`::class.java)
-    }
-    /**
-     * Request a list of all the persistent p2p groups stored in system.
-     *
-     * Requires one of NETWORK_SETTING, NETWORK_STACK, or READ_WIFI_CREDENTIAL permission since API 30.
-     *
-     * @param c is the channel created at {@link #initialize}
-     */
-    suspend fun WifiP2pManager.requestPersistentGroupInfo(c: WifiP2pManager.Channel) =
-        suspendCancellableCoroutine { cont ->
-            requestPersistentGroupInfo(this, c, object : `WifiP2pManager$PersistentGroupInfoListener` {
-                override fun onPersistentGroupInfoAvailable(groups: WifiP2pGroupList) {
-                    cont.resume(groups.groupList)
-                }
-            })
-        }
-
     suspend fun WifiP2pManager.requestConnectionInfo(c: WifiP2pManager.Channel) =
         suspendCancellableCoroutine { cont -> requestConnectionInfo(c) { cont.resume(it) } }
     @SuppressLint("MissingPermission")  // missing permission simply leads to null result
@@ -139,6 +80,35 @@ object WifiP2pManagerHelper {
     @SuppressLint("MissingPermission")  // missing permission simply leads to null result
     suspend fun WifiP2pManager.requestGroupInfo(c: WifiP2pManager.Channel) =
         suspendCancellableCoroutine { cont -> requestGroupInfo(c) { cont.resume(it) } }
+    private val requestPersistentGroupInfo by lazy {
+        WifiP2pManager::class.java.getDeclaredMethod("requestPersistentGroupInfo",
+            WifiP2pManager.Channel::class.java, `WifiP2pManager$PersistentGroupInfoListener`::class.java)
+    }
+    /**
+     * Request a list of all the persistent p2p groups stored in the system, so an already-present group can be
+     * adopted when the app has nothing persisted yet. We only read this; we never delete persistent groups.
+     * Supplicant mode may also ignore the returned list and use this as a framework-owned P2P setup pulse: AOSP
+     * `needsActiveP2p` does not exempt `REQUEST_PERSISTENT_GROUP_INFO`, so the framework calls `setupInterface()`
+     * before permission-gated handling can return an empty list.
+     *
+     * Requires one of NETWORK_SETTING, NETWORK_STACK, or READ_WIFI_CREDENTIAL permission since API 30 for the group
+     * list contents.
+     *
+     * Sources:
+     * - https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/tags/android-16.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2114
+     * - https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/tags/android-16.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2358
+     * - https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/tags/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2147
+     * - https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/tags/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2391
+     * - https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/tags/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#3178
+     */
+    suspend fun WifiP2pManager.requestPersistentGroupInfo(c: WifiP2pManager.Channel) =
+        suspendCancellableCoroutine { cont ->
+            requestPersistentGroupInfo(this, c, object : `WifiP2pManager$PersistentGroupInfoListener` {
+                override fun onPersistentGroupInfoAvailable(groups: WifiP2pGroupList) {
+                    cont.resume(groups.groupList)
+                }
+            })
+        }
     suspend fun WifiP2pManager.requestP2pState(c: WifiP2pManager.Channel) =
         suspendCancellableCoroutine { cont -> requestP2pState(c) { cont.resume(it) } }
 }

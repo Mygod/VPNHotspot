@@ -22,7 +22,6 @@
   <string name="repeater_create_group_failure">P2P જૂથ બનાવવામાં નિષ્ફળ (કારણ: %s)</string>
   <string name="repeater_remove_group_failure">P2P જૂથ દૂર કરવામાં નિષ્ફળ (કારણ: %s)</string>
   <string name="repeater_remove_old_group_failure">જૂનું P2P જૂથ દૂર કરવામાં નિષ્ફળ (કારણ: %s)</string>
-  <string name="repeater_set_oc_failure">ઓપરેટિંગ ચેનલ સેટ કરવામાં નિષ્ફળ (કારણ: %s)</string>
   <string name="repeater_set_vendor_elements_failure">વિક્રેતા ઘટકો સેટ કરવામાં નિષ્ફળ (કારણ: %s)</string>
   <string name="repeater_failure_reason_error">આંતરિક ભૂલ</string>
   <string name="repeater_failure_reason_p2p_unsupported">Wi‑Fi Direct સપોર્ટેડ નથી</string>
@@ -227,9 +226,6 @@
   <string name="settings_service_ipv6_mode_nat_summary">ઍપની માલિકીની deterministic ULA &lt;tt&gt;/64&lt;/tt&gt; સોંપે છે અને root daemon દ્વારા downstream IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; તથા best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; proxy કરે છે. આ વપરાશકર્તા જગ્યા કાર્ય છે, સંપૂર્ણ packet NAT નથી, અને અન્ય IPv6 next-header protocols આગળ મોકલતું નથી.</string>
   <string name="settings_service_auto_start">સેવાઓ આપમેળે શરૂ કરો</string>
   <string name="settings_service_auto_start_summary">ડિવાઇસ રીબૂટ અથવા એપ અપડેટ પહેલા સેવાઓ ચાલી રહી હોય તો તેને પુનઃસ્થાપિત કરો.</string>
-  <string name="settings_service_repeater_safe_mode">રીપીટર સુરક્ષિત મોડ</string>
-  <string name="settings_service_repeater_safe_mode_summary">તમારી સિસ્ટમ કન્ફિગરેશનમાં કોઈ ફેરફાર કરતું નથી, પરંતુ ટૂંકા નેટવર્ક નામો સાથે કામ ન કરી શકે. અસુરક્ષિત મોડ તમારા ડિવાઇસ પર કામ ન કરી શકે અને તેને પુનઃપ્રાપ્ય રીતે તાત્કાલિક અઉપયોગી બનાવી શકે.</string>
-  <string name="settings_service_repeater_safe_mode_warning">ટૂંકા નેટવર્ક નામો માટે સુરક્ષિત મોડ બંધ કરવો પડી શકે.</string>
   <string name="settings_service_temp_hotspot_use_system">તાત્કાલિક hotspot માટે સિસ્ટમ કન્ફિગરેશન વાપરો</string>
   <string name="settings_service_temp_hotspot_use_system_summary">local only hotspot વાપરતી અન્ય એપ્સ સાથે સંઘર્ષ કરશે. સિસ્ટમ એપ તરીકે ઇન્સ્ટોલ ન હોય તો પૃષ્ઠભૂમિમાં વધુ સંસાધનો પણ વાપરે છે.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">local only hotspot વાપરતી અન્ય એપ્સ સાથે સંઘર્ષ કરશે. સિસ્ટમ એપ તરીકે ઇન્સ્ટોલ ન હોય તો પૃષ્ઠભૂમિમાં વધુ સંસાધનો પણ વાપરે છે. શક્ય છે કે Android 12 અથવા નવા પર જ કામ કરે.</string>
@@ -325,7 +321,6 @@
   <string name="wifi_mac_address_persistent_randomization">સતત રેન્ડમાઇઝેશન: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">અસતત રેન્ડમાઇઝેશન</string>
   <string name="wifi_mac_address_help">AP માટે BSSID અને MAC રેન્ડમાઇઝેશન ગોઠવો. Android બધા-શૂન્ય, multicast અને broadcast BSSID નકારે છે. સ્પષ્ટ BSSID માત્ર MAC રેન્ડમાઇઝેશન બંધ હોય ત્યારે વપરાય છે.</string>
-  <string name="wifi_p2p_mac_address_help">રીપીટર દ્વારા વપરાતું P2P ઉપકરણ સરનામું ગોઠવો. Android સરનામું પસંદ કરે તે માટે ખાલી રાખો.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">સ્થાયી રેન્ડમાઇઝ્ડ MAC સરનામું</string>
   <string name="wifi_hidden_network">છુપાયેલું નેટવર્ક</string>
   <string name="wifi_hidden_network_help">SSID પ્રસારિત કરશો નહીં</string>

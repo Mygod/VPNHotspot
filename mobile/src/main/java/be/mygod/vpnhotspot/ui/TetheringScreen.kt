@@ -83,12 +83,11 @@ import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.root.WifiApCommands
-import be.mygod.vpnhotspot.ui.apconfiguration.VendorData
+import be.mygod.vpnhotspot.net.wifi.VendorData
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -107,7 +106,7 @@ data class TetheringServiceState(
 @Composable
 fun TetheringScreen(
     snackbarHostState: SnackbarHostState,
-    repeaterStatus: RepeaterService.Status?,
+    repeaterActive: Boolean?,
     repeaterGroup: WifiP2pGroup?,
     localOnlyIface: String?,
     tetherStates: TetherStates,
@@ -237,8 +236,7 @@ fun TetheringScreen(
         launcher::launch
     }
     val showRepeater = inspectionMode || Services.p2p != null
-    val showRepeaterWps = (repeaterStatus == RepeaterService.Status.STARTING ||
-            repeaterStatus == RepeaterService.Status.ACTIVE) && WifiP2pManagerHelper.startWps != null
+    val showRepeaterWps = repeaterActive == true && WifiP2pManagerHelper.startWps != null
     val showBluetooth = inspectionMode || (context.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH) &&
             bluetoothTethering != null)
     val bluetoothActive = remember(showBluetooth, bluetoothTethering, bluetoothVersion, tetherStates.tethered) {
@@ -257,24 +255,18 @@ fun TetheringScreen(
         SettingsList {
             preferenceGroup(key = "active_tethering") {
                 if (showRepeater) {
-                    val active = repeaterStatus == RepeaterService.Status.ACTIVE
-                    val switchEnabled = repeaterStatus == RepeaterService.Status.IDLE || active
+                    val active = repeaterActive == true
                     val toggleRepeater: () -> Unit = {
-                        when (repeaterStatus) {
-                            RepeaterService.Status.IDLE -> startRepeater(if (Build.VERSION.SDK_INT >= 33) {
-                                Manifest.permission.NEARBY_WIFI_DEVICES
-                            } else Manifest.permission.ACCESS_FINE_LOCATION)
-                            RepeaterService.Status.ACTIVE -> onStopRepeater()
-                            else -> { }
-                        }
+                        if (active) onStopRepeater() else startRepeater(if (Build.VERSION.SDK_INT >= 33) {
+                            Manifest.permission.NEARBY_WIFI_DEVICES
+                        } else Manifest.permission.ACCESS_FINE_LOCATION)
                     }
                     row(R.string.title_repeater) {
                         TetheringRow(
                             icon = R.drawable.ic_router,
                             title = stringResource(R.string.title_repeater),
                             summary = repeaterSummary(context, repeaterGroup, ifaceLookup, linkStyles),
-                            checked = repeaterStatus == RepeaterService.Status.STARTING || active,
-                            switchEnabled = switchEnabled,
+                            checked = active,
                             onClick = onConfigureRepeater,
                             onCheckedChange = toggleRepeater,
                         )
@@ -679,7 +671,7 @@ private fun TetheringPreview() {
     VpnHotspotPreviewSurface {
         TetheringScreen(
             snackbarHostState = remember { SnackbarHostState() },
-            repeaterStatus = null,
+            repeaterActive = true,
             repeaterGroup = null,
             localOnlyIface = null,
             tetherStates = TetherStates(),
