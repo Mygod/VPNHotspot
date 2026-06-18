@@ -7,6 +7,7 @@ import android.net.wifi.OuiKeyedData
 import android.net.wifi.ScanResult
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.SoftApInfo
+import android.net.wifi.WifiConfiguration
 import android.os.Build
 import android.os.Parcelable
 import android.util.SparseIntArray
@@ -106,11 +107,6 @@ data class SoftApConfigurationCompat(
         fun isLegacyEitherBand(band: Int) = band and BAND_LEGACY == BAND_LEGACY
 
         /**
-         * [android.net.wifi.WifiConfiguration.KeyMgmt.WPA2_PSK]
-         */
-        private const val LEGACY_WPA2_PSK = 4
-
-        /**
          * Based on:
          * https://elixir.bootlin.com/linux/v5.12.8/source/net/wireless/util.c#L75
          * https://cs.android.com/android/platform/superproject/+/master:packages/modules/Wifi/framework/java/android/net/wifi/ScanResult.java;l=789;drc=71d758698c45984d3f8de981bf98e56902480f16
@@ -153,16 +149,14 @@ data class SoftApConfigurationCompat(
          *
          * https://android.googlesource.com/platform/frameworks/base/+/android-6.0.0_r1/wifi/java/android/net/wifi/WifiConfiguration.java#242
          */
-        @Suppress("DEPRECATION")
         /**
          * The band which AP resides on
          * -1:Any 0:2G 1:5G
          * By default, 2G is chosen
          */
         private val apBand by lazy @SuppressLint("DiscouragedPrivateApi") {
-            android.net.wifi.WifiConfiguration::class.java.getDeclaredField("apBand")
+            WifiConfiguration::class.java.getDeclaredField("apBand")
         }
-        @Suppress("DEPRECATION")
         /**
          * The channel which AP resides on
          * 2G  1-11
@@ -170,7 +164,7 @@ data class SoftApConfigurationCompat(
          * 0 - find a random available channel according to the apBand
          */
         private val apChannel by lazy @SuppressLint("DiscouragedPrivateApi") {
-            android.net.wifi.WifiConfiguration::class.java.getDeclaredField("apChannel")
+            WifiConfiguration::class.java.getDeclaredField("apChannel")
         }
 
         @get:RequiresApi(33)
@@ -366,9 +360,7 @@ data class SoftApConfigurationCompat(
             SoftApConfiguration.Builder::class.java.getDeclaredMethod("setVendorData", List::class.java)
         }
 
-        @Deprecated("Class deprecated in framework")
-        @Suppress("DEPRECATION")
-        fun android.net.wifi.WifiConfiguration.toCompat() = SoftApConfigurationCompat(
+        fun WifiConfiguration.toCompat() = SoftApConfigurationCompat(
                 WifiSsidCompat.fromUtf8Text(SSID, true),
                 BSSID?.let { MacAddress.fromString(it) },
                 preSharedKey,
@@ -388,17 +380,16 @@ data class SoftApConfigurationCompat(
                     }
                     when (if (selected < 0) -1 else selected) {
                         -1,     // getAuthType returns NONE if nothing is selected
-                        android.net.wifi.WifiConfiguration.KeyMgmt.NONE -> SoftApConfiguration.SECURITY_TYPE_OPEN
-                        android.net.wifi.WifiConfiguration.KeyMgmt.WPA_PSK,
-                        LEGACY_WPA2_PSK,
+                        WifiConfiguration.KeyMgmt.NONE -> SoftApConfiguration.SECURITY_TYPE_OPEN
+                        WifiConfiguration.KeyMgmt.WPA_PSK,
+                        WifiConfiguration.KeyMgmt.WPA2_PSK,
                         6,      // FT_PSK
                         11 -> { // WPA_PSK_SHA256
                             SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
                         }
-                        android.net.wifi.WifiConfiguration.KeyMgmt.SAE -> SoftApConfiguration.SECURITY_TYPE_WPA3_SAE
-                        android.net.wifi.WifiConfiguration.KeyMgmt.OWE -> SoftApConfiguration.SECURITY_TYPE_WPA3_OWE
-                        else -> android.net.wifi.WifiConfiguration.KeyMgmt.strings
-                                .getOrElse<String>(selected) { "?" }.let {
+                        WifiConfiguration.KeyMgmt.SAE -> SoftApConfiguration.SECURITY_TYPE_WPA3_SAE
+                        WifiConfiguration.KeyMgmt.OWE -> SoftApConfiguration.SECURITY_TYPE_WPA3_OWE
+                        else -> WifiConfiguration.KeyMgmt.strings.getOrElse<String>(selected) { "?" }.let {
                             throw IllegalArgumentException("Unrecognized key management $it ($selected)")
                         }
                     }
@@ -506,12 +497,10 @@ data class SoftApConfigurationCompat(
      * https://android.googlesource.com/platform/frameworks/base/+/92c8f59/wifi/java/android/net/wifi/SoftApConfiguration.java#511
      */
     @SuppressLint("NewApi") // https://android.googlesource.com/platform/frameworks/base/+/android-5.0.0_r1/wifi/java/android/net/wifi/WifiConfiguration.java#1385
-    @Deprecated("Class deprecated in framework, use toPlatform().toWifiConfiguration()")
-    @Suppress("DEPRECATION")
-    fun toWifiConfiguration(): android.net.wifi.WifiConfiguration {
+    fun toWifiConfiguration(): WifiConfiguration {
         val (band, channel) = requireSingleBand(channels)
-        val wc = underlying as? android.net.wifi.WifiConfiguration
-        val result = if (wc == null) android.net.wifi.WifiConfiguration() else android.net.wifi.WifiConfiguration(wc)
+        val wc = underlying as? WifiConfiguration
+        val result = if (wc == null) WifiConfiguration() else WifiConfiguration(wc)
         val original = wc?.toCompat()
         result.SSID = ssid?.toString()
         result.preSharedKey = passphrase
@@ -528,18 +517,18 @@ data class SoftApConfigurationCompat(
         if (original?.securityType != securityType) {
             result.allowedKeyManagement.clear()
             result.allowedKeyManagement.set(when (securityType) {
-                SoftApConfiguration.SECURITY_TYPE_OPEN -> android.net.wifi.WifiConfiguration.KeyMgmt.NONE
+                SoftApConfiguration.SECURITY_TYPE_OPEN -> WifiConfiguration.KeyMgmt.NONE
                 // not actually used on API 30-
-                SoftApConfiguration.SECURITY_TYPE_WPA2_PSK -> LEGACY_WPA2_PSK
+                SoftApConfiguration.SECURITY_TYPE_WPA2_PSK -> WifiConfiguration.KeyMgmt.WPA2_PSK
                 // CHANGED: not actually converted in framework-wifi
                 SoftApConfiguration.SECURITY_TYPE_WPA3_SAE,
-                SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION -> android.net.wifi.WifiConfiguration.KeyMgmt.SAE
+                SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION -> WifiConfiguration.KeyMgmt.SAE
                 SoftApConfiguration.SECURITY_TYPE_WPA3_OWE,
-                SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION -> android.net.wifi.WifiConfiguration.KeyMgmt.OWE
+                SoftApConfiguration.SECURITY_TYPE_WPA3_OWE_TRANSITION -> WifiConfiguration.KeyMgmt.OWE
                 else -> throw IllegalArgumentException("Convert fail, unsupported security type :$securityType")
             })
             result.allowedAuthAlgorithms.clear()
-            result.allowedAuthAlgorithms.set(android.net.wifi.WifiConfiguration.AuthAlgorithm.OPEN)
+            result.allowedAuthAlgorithms.set(WifiConfiguration.AuthAlgorithm.OPEN)
         }
         // CHANGED: not actually converted in framework-wifi
         if (bssid != original?.bssid) result.BSSID = bssid?.toString()

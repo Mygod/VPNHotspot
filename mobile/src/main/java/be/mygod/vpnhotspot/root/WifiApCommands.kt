@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot.root
 
 import android.net.wifi.SoftApConfiguration
+import android.net.wifi.WifiConfiguration
 import android.os.Build
 import android.os.IBinder
 import androidx.annotation.RequiresApi
@@ -307,9 +308,7 @@ object WifiApCommands {
         }
 
     @Parcelize
-    @Deprecated("Use GetConfiguration instead", ReplaceWith("GetConfiguration"))
-    @Suppress("DEPRECATION")
-    class GetConfigurationLegacy : RootCommand<android.net.wifi.WifiConfiguration?> {
+    class GetConfigurationLegacy : RootCommand<WifiConfiguration?> {
         override suspend fun execute() = WifiApManager.configurationLegacy
     }
     @Parcelize
@@ -319,11 +318,7 @@ object WifiApCommands {
     }
 
     @Parcelize
-    @Deprecated("Use SetConfiguration instead", ReplaceWith("SetConfiguration"))
-    @Suppress("DEPRECATION")
-    data class SetConfigurationLegacy(
-        val configuration: android.net.wifi.WifiConfiguration?,
-    ) : RootCommand<ParcelableBoolean> {
+    data class SetConfigurationLegacy(val configuration: WifiConfiguration?) : RootCommand<ParcelableBoolean> {
         override suspend fun execute() = ParcelableBoolean(WifiApManager.setConfiguration(configuration))
     }
     @Parcelize

@@ -13,6 +13,7 @@ import android.net.wifi.SoftApCapability
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.SoftApInfo
 import android.net.wifi.WifiClient
+import android.net.wifi.WifiConfiguration
 import android.net.wifi.WifiManager
 import android.net.wifi.`WifiManager$SoftApCallback`
 import android.os.Build
@@ -184,8 +185,7 @@ object WifiApManager {
     private val getWifiApConfiguration by lazy { WifiManager::class.java.getDeclaredMethod("getWifiApConfiguration") }
     @Suppress("DEPRECATION")
     private val setWifiApConfiguration by lazy {
-        WifiManager::class.java.getDeclaredMethod("setWifiApConfiguration",
-                android.net.wifi.WifiConfiguration::class.java)
+        WifiManager::class.java.getDeclaredMethod("setWifiApConfiguration", WifiConfiguration::class.java)
     }
     @get:RequiresApi(30)
     private val getSoftApConfiguration by lazy { WifiManager::class.java.getDeclaredMethod("getSoftApConfiguration") }
@@ -197,18 +197,13 @@ object WifiApManager {
     /**
      * Requires NETWORK_SETTINGS permission (or root) on API 30+, and OVERRIDE_WIFI_CONFIG on API 29.
      */
-    @Deprecated("Use configuration instead", ReplaceWith("configuration"))
-    @Suppress("DEPRECATION")
-    val configurationLegacy get() = getWifiApConfiguration(Services.wifi) as android.net.wifi.WifiConfiguration?
+    val configurationLegacy get() = getWifiApConfiguration(Services.wifi) as WifiConfiguration?
     /**
      * Requires NETWORK_SETTINGS permission (or root).
      */
     @get:RequiresApi(30)
     val configuration get() = getSoftApConfiguration(Services.wifi) as SoftApConfiguration
-    @Deprecated("Use SoftApConfiguration instead")
-    @Suppress("DEPRECATION")
-    fun setConfiguration(value: android.net.wifi.WifiConfiguration?) =
-        setWifiApConfiguration(Services.wifi, value) as Boolean
+    fun setConfiguration(value: WifiConfiguration?) = setWifiApConfiguration(Services.wifi, value) as Boolean
     fun setConfiguration(value: SoftApConfiguration) = setSoftApConfiguration(Services.wifi, value) as Boolean
 
     val failureReasonLookup = ConstantLookup<WifiManager>("SAP_START_FAILURE_", "GENERAL", "NO_CHANNEL")
