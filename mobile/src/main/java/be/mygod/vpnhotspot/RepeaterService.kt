@@ -484,41 +484,15 @@ class RepeaterService : Service(), CoroutineScope {
         }
         try {
             when {
-                !useFramework -> {
-                    if (ssid == null || psk.isNullOrEmpty()) {
-                        throw StartFailure(getString(R.string.repeater_configure_failure))
+                ssid == null || psk.isNullOrEmpty() -> {    // no credentials configured: let the framework pick them, then adopt them as ours
+                    createFrameworkGroup(channel, null)
+                    ready.await().also { group ->
+                        networkName = WifiSsidCompat.fromUtf8Text(group.networkName)
+                        passphrase = group.passphrase
+                        if (Build.VERSION.SDK_INT >= 36) pccModeConnectionType = group.securityType
                     }
-                    p2pManager.requestPersistentGroupInfo(channel)
-                    RootManager.use {
-                        it.execute(RepeaterCommands.AddPersistentGroupWithConfig(ssid.bytes, psk,
-                            when (val oc = operatingChannel) {
-                                0 -> when (operatingBand) {
-                                    SoftApConfiguration.BAND_2GHZ -> 2
-                                    SoftApConfiguration.BAND_5GHZ -> 5
-                                    SoftApConfiguration.BAND_6GHZ -> 6
-                                    else -> 0
-                                }
-                                else -> SoftApConfigurationCompat.channelToFrequency(operatingBand, oc)
-                            },
-                            when (securityType) {
-                                SoftApConfiguration.SECURITY_TYPE_WPA3_SAE -> KeyMgmtMask.SAE
-                                SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION ->
-                                    KeyMgmtMask.WPA_PSK or KeyMgmtMask.SAE
-                                else -> KeyMgmtMask.WPA_PSK
-                            }, randomizeMac, vendorData.map { data ->
-                                android.hardware.wifi.common.OuiKeyedData().apply {
-                                    oui = data.oui
-                                    vendorData = data.data
-                                }
-                            }.toTypedArray()))
-                    }?.let {
-                        val macRandomizationError = it.unwrap()
-                        Timber.w(macRandomizationError)
-                        SmartSnackbar.make(macRandomizationError).show()
-                    }
-                    ready.await()
                 }
-                ssid != null && !psk.isNullOrEmpty() -> {
+                useFramework -> {
                     createFrameworkGroup(channel, WifiP2pConfig.Builder().apply {
                         val networkName = ssid.toString()
                         try {   // bypass networkName check
@@ -542,13 +516,42 @@ class RepeaterService : Service(), CoroutineScope {
                     }.build())
                     ready.await()
                 }
-                else -> {   // no credentials configured: let the framework pick them, then adopt them as ours
-                    createFrameworkGroup(channel, null)
-                    ready.await().also { group ->
-                        networkName = WifiSsidCompat.fromUtf8Text(group.networkName)
-                        passphrase = group.passphrase
-                        if (Build.VERSION.SDK_INT >= 36) pccModeConnectionType = group.securityType
+                else -> {
+                    try {
+                        p2pManager.requestPersistentGroupInfo(channel)
+                        RootManager.use {
+                            it.execute(RepeaterCommands.AddPersistentGroupWithConfig(ssid.bytes, psk,
+                                when (val oc = operatingChannel) {
+                                    0 -> when (operatingBand) {
+                                        SoftApConfiguration.BAND_2GHZ -> 2
+                                        SoftApConfiguration.BAND_5GHZ -> 5
+                                        SoftApConfiguration.BAND_6GHZ -> 6
+                                        else -> 0
+                                    }
+                                    else -> SoftApConfigurationCompat.channelToFrequency(operatingBand, oc)
+                                },
+                                when (securityType) {
+                                    SoftApConfiguration.SECURITY_TYPE_WPA3_SAE -> KeyMgmtMask.SAE
+                                    SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION ->
+                                        KeyMgmtMask.WPA_PSK or KeyMgmtMask.SAE
+                                    else -> KeyMgmtMask.WPA_PSK
+                                }, randomizeMac, vendorData.map { data ->
+                                    android.hardware.wifi.common.OuiKeyedData().apply {
+                                        oui = data.oui
+                                        vendorData = data.data
+                                    }
+                                }.toTypedArray()))
+                        }?.let {
+                            val macRandomizationError = it.unwrap()
+                            Timber.w(macRandomizationError)
+                            SmartSnackbar.make(macRandomizationError).show()
+                        }
+                    } catch (e: Exception) {
+                        Timber.w(e)
+                        SmartSnackbar.make(e).show()
+                        createFrameworkGroup(channel, null) // possibly HIDL <1.2, start default group instead
                     }
+                    ready.await()
                 }
             }
         } finally {
