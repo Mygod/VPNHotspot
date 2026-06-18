@@ -107,8 +107,10 @@ class ApConfigurationState(
         }
     private val ssidHexToggleable get() = if (p2pMode) !useFramework else Build.VERSION.SDK_INT >= 33
     private var hexSsid = false
+    private val p2pWpa3Supported get() =
+        if (useFramework) Build.VERSION.SDK_INT >= 36 else supplicantCapability?.aidlV3 == true
     val securityEntries get() = when {
-        p2pMode && Build.VERSION.SDK_INT >= 36 -> buildList {
+        p2pMode && p2pWpa3Supported -> buildList {
             add(SecurityOption(R.string.wifi_security_wpa2_personal, SoftApConfiguration.SECURITY_TYPE_WPA2_PSK))
             add(SecurityOption(R.string.wifi_security_wpa3_personal_transition,
                 SoftApConfiguration.SECURITY_TYPE_WPA3_SAE_TRANSITION))
@@ -210,9 +212,8 @@ class ApConfigurationState(
     } catch (e: Exception) {
         e.readableMessage
     } else null
-    private val selectedSecurityType get() = if (p2pMode && Build.VERSION.SDK_INT < 36) {
-        SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
-    } else securityType
+    val selectedSecurityType get() =
+        if (p2pMode && !p2pWpa3Supported) SoftApConfiguration.SECURITY_TYPE_WPA2_PSK else securityType
 
     fun copyError(context: Context) = generateConfigError(context, requirePassword = false, checkChannels = false)
     fun saveError(context: Context) = if (readOnly) null else generateConfigError(

@@ -74,7 +74,7 @@ class RepeaterTileService : KillableTileService() {
             if (binder.active.value) {
                 state = Tile.STATE_ACTIVE
                 val group = binder.group.value
-                label = group?.networkName
+                label = group?.networkName?.takeIf { it.isNotEmpty() } ?: getText(R.string.title_repeater)
                 val size = group?.clientList?.size ?: 0
                 if (size > 0) subtitle = resources.getQuantityString(
                     R.plurals.quick_settings_hotspot_secondary_label_num_devices, size, size)

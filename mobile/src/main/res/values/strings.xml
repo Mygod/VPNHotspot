@@ -29,7 +29,7 @@
     <string name="repeater_configuration_method_framework">Framework</string>
     <string name="repeater_configuration_method_supplicant">Supplicant</string>
     <string name="repeater_configuration_method_framework_summary">Creates the network through Android framework APIs. Some framework restrictions still apply</string>
-    <string name="repeater_configuration_method_supplicant_summary">Creates the network through &lt;tt&gt;wpa_supplicant&lt;/tt&gt; directly. Android may persist the network in system storage. Supplicant version: %s</string>
+    <string name="repeater_configuration_method_supplicant_summary">Creates the network through &lt;tt&gt;wpa_supplicant&lt;/tt&gt; directly. Android may persist the network in system storage.&lt;br&gt;Supplicant version: %s</string>
     <string name="repeater_clean_pog_failure">Failed to remove redundant P2P group (reason: %s)</string>
 
     <string name="repeater_p2p_unavailable">Wi\u2011Fi direct unavailable, please enable Wi\u2011Fi</string>
@@ -409,7 +409,7 @@
     <string name="wifi_mac_address_persistent_randomization">Persistent randomization: %s</string>
     <string name="wifi_mac_address_non_persistent_randomization">Non-persistent randomization</string>
     <string name="wifi_mac_address_help">Configure BSSID and MAC randomization for the AP. Android rejects all-zero, multicast, and broadcast BSSIDs. An explicit BSSID is used only when MAC randomization is disabled.</string>
-    <string name="wifi_p2p_mac_address_help">Choose whether Supplicant mode keeps a stable P2P MAC address or requests non-persistent randomization.</string>
+    <string name="wifi_p2p_mac_address_help">Choose whether Supplicant mode keeps a stable MAC address or requests non-persistent randomization.</string>
     <string name="wifi_advanced_mac_address_persistent_randomized">Persistent Randomized MAC address</string>
     <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:2239 -->
     <string name="wifi_hidden_network">Hidden network</string>

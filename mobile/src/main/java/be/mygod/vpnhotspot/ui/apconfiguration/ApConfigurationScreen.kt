@@ -120,12 +120,12 @@ fun ApConfigurationScreen(
             }
             if (!state.p2pMode || Build.VERSION.SDK_INT >= 36) row(R.string.wifi_security) {
                 val entries = state.securityEntries
-                val selected = entries.firstOrNull { it.value == state.securityType }
+                val selected = entries.firstOrNull { it.value == state.selectedSecurityType }
                 ListApRow(
                     icon = R.drawable.ic_encrypted,
                     title = R.string.wifi_security,
                     selected = selected,
-                    selectedLabel = selected?.label(context) ?: state.securityType.toString(),
+                    selectedLabel = selected?.label(context) ?: state.selectedSecurityType.toString(),
                     entries = entries,
                     entryLabel = { it.label(context) },
                     onSelect = { state.securityType = it.value },

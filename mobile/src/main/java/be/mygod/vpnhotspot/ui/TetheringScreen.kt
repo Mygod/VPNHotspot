@@ -235,7 +235,7 @@ fun TetheringScreen(
         )
         launcher::launch
     }
-    val showRepeater = inspectionMode || repeaterActive != null && Services.p2p != null
+    val showRepeater = inspectionMode || Services.p2p != null
     val showRepeaterWps = repeaterActive == true && WifiP2pManagerHelper.startWps != null
     val showBluetooth = inspectionMode || (context.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH) &&
             bluetoothTethering != null)

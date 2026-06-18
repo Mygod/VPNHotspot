@@ -362,7 +362,12 @@ class RepeaterService : Service(), CoroutineScope {
                 updateGroup(null)
                 ServiceNotification.stopForeground(this@RepeaterService)
                 active.value = false
-                if (destroyed) this@RepeaterService.cancel() else stopSelf()
+                if (destroyed) try {
+                    channel?.close()
+                } finally {
+                    channel = null
+                    this@RepeaterService.cancel()
+                } else stopSelf()
             }
         }
         session = job
@@ -453,6 +458,8 @@ class RepeaterService : Service(), CoroutineScope {
         if (reason == WifiP2pManager.ERROR) {
             val rootReason = try {
                 RootManager.use { it.execute(RepeaterCommands.SetVendorElements(ve)) } ?: return
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Timber.w(e)
                 SmartSnackbar.make(e).show()
@@ -546,6 +553,8 @@ class RepeaterService : Service(), CoroutineScope {
                             Timber.w(macRandomizationError)
                             SmartSnackbar.make(macRandomizationError).show()
                         }
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         Timber.w(e)
                         SmartSnackbar.make(e).show()
@@ -591,15 +600,18 @@ class RepeaterService : Service(), CoroutineScope {
     override fun onDestroy() {
         binder.detach()
         destroyed = true
-        // Cancel the live lifespan; its settle() drops the shared notification, keeps the boot entry and ends the scope
+        // Cancel the live lifespan; its settle() drops the shared notification, closes the P2P channel and ends the scope
         // once its own teardown finishes. With nothing running, do that wind-down here instead.
         val current = session
         if (current == null) {
             ServiceNotification.stopForeground(this)
-            cancel()
+            try {
+                channel?.close()
+            } finally {
+                channel = null
+                cancel()
+            }
         } else current.cancel()
-        channel?.close()
-        channel = null
         super.onDestroy()
     }
 }
