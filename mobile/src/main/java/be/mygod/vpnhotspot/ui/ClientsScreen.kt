@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.ui
 
 import android.content.Context
 import android.content.res.Configuration
+import android.os.Build
 import android.os.SystemClock
 import android.text.format.Formatter
 import androidx.annotation.DrawableRes
@@ -189,6 +190,9 @@ private fun ClientRow(
         client.ifaces.forEach {
             if (it == client.iface) return@forEach
             line { appendClientAddress(client, it, linkStyles) }
+        }
+        if (Build.VERSION.SDK_INT >= 37) client.wifiP2pConnectionInfo?.let { info ->
+            wifiP2pConnectionInfoLabel(context, info)?.let { line { append(it) } }
         }
         client.ip.entries.forEach { (ip, info) ->
             line {

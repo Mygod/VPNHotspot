@@ -907,6 +907,12 @@ private fun repeaterSummary(
                 append(context.getString(R.string.tethering_manage_wifi_vendor_data, data))
             }
         }
+        if (Build.VERSION.SDK_INT >= 37) group.wifiP2pGroupClientConnectionInfo?.let { info ->
+            wifiP2pConnectionInfoLabel(context, info)?.let {
+                if (length > 0) append('\n')
+                append(it)
+            }
+        }
     }
     return if (summary.text.isEmpty()) null else summary
 }

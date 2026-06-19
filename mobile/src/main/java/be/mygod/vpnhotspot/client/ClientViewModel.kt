@@ -252,6 +252,7 @@ class ClientViewModel : ViewModel(), DefaultLifecycleObserver {
                 getClient(addr, p2pInterface, TetherType.WIFI_P2P).apply {
                     addSource(p2pInterface)
                     active = true
+                    if (Build.VERSION.SDK_INT >= 37) wifiP2pConnectionInfo = client.wifiP2pConnectionInfo
                     // WiFi mainline module might be backported to API 30
                     if (Build.VERSION.SDK_INT >= 30) try {
                         client.ipAddress

@@ -401,6 +401,14 @@
     <string name="wifi_channel_width_mhz">%d MHz</string>
     <string name="wifi_channel_width_20mhz_no_ht">20 MHz (no HT)</string>
     <string name="wifi_channel_width_160mhz_80_plus_80">160 MHz (80 + 80 MHz)</string>
+    <string name="wifi_standard_generation">Wi\u2011Fi %d</string>
+    <string name="wifi_standard_legacy">Legacy Wi\u2011Fi</string>
+    <string name="wifi_standard_wigig">WiGig</string>
+    <string name="wifi_p2p_connection_info_separator">,\u0020</string>
+    <string name="wifi_p2p_connection_info_nss">%1$d\u00d7%2$d</string>
+    <string name="wifi_p2p_connection_info_tx_nss">Tx%d</string>
+    <string name="wifi_p2p_connection_info_rx_nss">Rx%d</string>
+    <string name="wifi_p2p_connection_info_tx_rx_nss">Tx%1$d/Rx%2$d</string>
     <string name="wifi_hotspot_access_control_title">Access Control</string>
     <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:2227 -->
     <string name="wifi_hotspot_ap_advanced_title">Advanced options</string>

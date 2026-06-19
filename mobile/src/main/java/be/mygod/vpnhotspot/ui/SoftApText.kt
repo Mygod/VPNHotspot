@@ -1,12 +1,15 @@
 package be.mygod.vpnhotspot.ui
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.icu.text.DecimalFormat
 import android.icu.text.DecimalFormatSymbols
 import android.net.TetheringManager
+import android.net.wifi.ScanResult
 import android.net.wifi.SoftApCapability
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.SoftApInfo
+import android.net.wifi.p2p.WifiP2pConnectionInfo
 import androidx.annotation.RequiresApi
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
@@ -14,6 +17,9 @@ import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.softApChannelWidthLookup
 import be.mygod.vpnhotspot.util.LongConstantLookup
+import timber.log.Timber
+
+private const val WIFI_P2P_CONNECTION_INFO_UNSPECIFIED = 0
 
 fun channelBandwidthLabel(
     context: Context,
@@ -35,6 +41,85 @@ fun channelBandwidthLabel(
     11 -> context.getString(R.string.wifi_channel_width_mhz, 320)
     else -> fallback
 }
+
+@SuppressLint("InlinedApi")
+internal fun wifiP2pConnectionInfoLabel(
+    context: Context,
+    wifiStandard: Int,
+    channelWidth: Int,
+    txNss: Int,
+    rxNss: Int,
+) = wifiP2pConnectionInfoLabel(wifiStandard, channelWidth, txNss, rxNss) { id, args ->
+    when (args.size) {
+        0 -> context.getString(id)
+        1 -> context.getString(id, args[0])
+        2 -> context.getString(id, args[0], args[1])
+        else -> error("Unsupported argument count ${args.size}")
+    }
+}
+
+@SuppressLint("InlinedApi")
+internal fun wifiP2pConnectionInfoLabel(
+    wifiStandard: Int,
+    channelWidth: Int,
+    txNss: Int,
+    rxNss: Int,
+    string: (Int, List<Int>) -> String,
+): String? {
+    val labels = ArrayList<String>(3)
+    when (wifiStandard) {
+        ScanResult.WIFI_STANDARD_UNKNOWN -> { }
+        ScanResult.WIFI_STANDARD_LEGACY -> labels.add(string(R.string.wifi_standard_legacy, emptyList()))
+        ScanResult.WIFI_STANDARD_11N -> labels.add(string(R.string.wifi_standard_generation, listOf(4)))
+        ScanResult.WIFI_STANDARD_11AC -> labels.add(string(R.string.wifi_standard_generation, listOf(5)))
+        ScanResult.WIFI_STANDARD_11AX -> labels.add(string(R.string.wifi_standard_generation, listOf(6)))
+        ScanResult.WIFI_STANDARD_11AD -> labels.add(string(R.string.wifi_standard_wigig, emptyList()))
+        ScanResult.WIFI_STANDARD_11BE -> labels.add(string(R.string.wifi_standard_generation, listOf(7)))
+        else -> unexpectedWifiP2pConnectionInfo("wifiStandard", wifiStandard)
+    }
+    when (channelWidth) {
+        // ScanResult.CHANNEL_WIDTH_20MHZ is also WifiP2pConnectionInfo.UNSPECIFIED.
+        ScanResult.CHANNEL_WIDTH_20MHZ -> labels.add(string(R.string.wifi_channel_width_mhz, listOf(20)))
+        ScanResult.CHANNEL_WIDTH_40MHZ -> labels.add(string(R.string.wifi_channel_width_mhz, listOf(40)))
+        ScanResult.CHANNEL_WIDTH_80MHZ -> labels.add(string(R.string.wifi_channel_width_mhz, listOf(80)))
+        ScanResult.CHANNEL_WIDTH_160MHZ -> labels.add(string(R.string.wifi_channel_width_mhz, listOf(160)))
+        ScanResult.CHANNEL_WIDTH_80MHZ_PLUS_MHZ -> {
+            labels.add(string(R.string.wifi_channel_width_160mhz_80_plus_80, emptyList()))
+        }
+        ScanResult.CHANNEL_WIDTH_320MHZ -> labels.add(string(R.string.wifi_channel_width_mhz, listOf(320)))
+        else -> unexpectedWifiP2pConnectionInfo("channelWidth", channelWidth)
+    }
+    val tx = validWifiP2pNss("txNss", txNss)
+    val rx = validWifiP2pNss("rxNss", rxNss)
+    when {
+        tx == null && rx == null -> { }
+        tx != null && rx != null -> labels.add(string(
+            if (tx == rx) R.string.wifi_p2p_connection_info_nss else R.string.wifi_p2p_connection_info_tx_rx_nss,
+            listOf(tx, rx),
+        ))
+        tx != null -> labels.add(string(R.string.wifi_p2p_connection_info_tx_nss, listOf(tx)))
+        rx != null -> labels.add(string(R.string.wifi_p2p_connection_info_rx_nss, listOf(rx)))
+    }
+    return labels.takeIf { it.isNotEmpty() }?.joinToString(
+        separator = string(R.string.wifi_p2p_connection_info_separator, emptyList()),
+    )
+}
+
+@RequiresApi(37)
+fun wifiP2pConnectionInfoLabel(context: Context, info: WifiP2pConnectionInfo) =
+    wifiP2pConnectionInfoLabel(context, info.wifiStandard, info.channelWidth, info.txNss, info.rxNss)
+
+private fun validWifiP2pNss(field: String, value: Int) = when (value) {
+    WIFI_P2P_CONNECTION_INFO_UNSPECIFIED -> null
+    in 1..4 -> value
+    else -> {
+        unexpectedWifiP2pConnectionInfo(field, value)
+        null
+    }
+}
+
+private fun unexpectedWifiP2pConnectionInfo(field: String, value: Int) =
+    Timber.w(Exception("Unexpected Wi-Fi P2P connection info $field: $value"))
 
 fun softApBandLabel(
     context: Context,
