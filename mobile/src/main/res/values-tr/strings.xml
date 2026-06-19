@@ -16,6 +16,9 @@
   <string name="repeater_wps_success_keypad">PIN kaydedildi</string>
   <string name="repeater_wps_failure">WPS başlatılamadı (neden: %s)</string>
   <string name="repeater_configure_failure">Geçerli yapılandırma bulunamadı. Önce tekrarlayıcıyı başlatın.</string>
+  <string name="repeater_configuration_method">Yapılandırma yöntemi</string>
+  <string name="repeater_configuration_method_framework_summary">Ağı Android framework API\'leri üzerinden oluşturur. Bazı framework kısıtlamaları hâlâ geçerlidir</string>
+  <string name="repeater_configuration_method_supplicant_summary">Ağı doğrudan &lt;tt&gt;wpa_supplicant&lt;/tt&gt; üzerinden oluşturur. Android ağı sistem depolamasında tutabilir.&lt;br&gt;Supplicant sürümü: %s</string>
   <string name="repeater_clean_pog_failure">Gereksiz P2P grubu kaldırılamadı (neden: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct kullanılamıyor, Wi‑Fi\'yi etkinleştirin</string>
   <string name="repeater_p2p_unavailable_enable">Etkinleştir</string>
@@ -226,6 +229,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Uygulamaya ait deterministik bir ULA &lt;tt&gt;/64&lt;/tt&gt; atar ve root daemon üzerinden aşağı akış IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; ile best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; proxyler. Bu kullanıcı alanı işidir, tam paket NAT değildir ve diğer IPv6 next-header protokollerini iletmez.</string>
   <string name="settings_service_auto_start">Hizmetleri otomatik başlat</string>
   <string name="settings_service_auto_start_summary">Cihaz yeniden başlatılmadan veya uygulama güncellenmeden önce çalışıyorsa hizmetleri geri yükle.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Kısa ağ adları Supplicant modunu gerektirebilir</string>
   <string name="settings_service_temp_hotspot_use_system">Geçici hotspot için sistem yapılandırmasını kullan</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Yalnızca yerel hotspot kullanan diğer uygulamalarla çakışır. Sistem uygulaması olarak yüklü değilse arka planda daha fazla kaynak da kullanır.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Yalnızca yerel hotspot kullanan diğer uygulamalarla çakışır. Sistem uygulaması olarak yüklü değilse arka planda daha fazla kaynak da kullanır. Büyük olasılıkla Android 12 veya daha yenisinde çalışır.</string>
@@ -312,12 +316,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Soft AP kanal bant genişliğini sınırlar. Auto, Androidin cihazda ulaşılabilen en yüksek bant genişliğini kullanmasını sağlar.</string>
   <string name="wifi_channel_width_auto">Otomatik</string>
   <string name="wifi_channel_width_invalid">Geçersiz</string>
+  <string name="wifi_standard_legacy">Eski Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">Erişim denetimi</string>
   <string name="wifi_hotspot_ap_advanced_title">Gelişmiş seçenekler</string>
   <string name="wifi_advanced_mac_address_title">MAC adresi</string>
   <string name="wifi_mac_address_persistent_randomization">Kalıcı rastgeleleştirme: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Kalıcı olmayan rastgeleleştirme</string>
   <string name="wifi_mac_address_help">AP için BSSID ve MAC rastgeleleştirmesini yapılandırın. Android tümü sıfır, multicast ve broadcast BSSID\'leri reddeder. Açık BSSID yalnızca MAC rastgeleleştirmesi kapalıyken kullanılır.</string>
+  <string name="wifi_p2p_mac_address_help">Supplicant modunun kararlı bir MAC adresi tutmasını mı yoksa kalıcı olmayan rastgeleleştirme istemesini mi istediğinizi seçin.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Kalıcı rastgele MAC adresi</string>
   <string name="wifi_hidden_network">Gizli ağ</string>
   <string name="wifi_hidden_network_help">SSID yayınlama</string>

@@ -16,6 +16,9 @@
   <string name="repeater_wps_success_keypad">PIN பதிவு செய்யப்பட்டது</string>
   <string name="repeater_wps_failure">WPS தொடங்க முடியவில்லை (காரணம்: %s)</string>
   <string name="repeater_configure_failure">சரியான கட்டமைப்பு கிடைக்கவில்லை. முதலில் ரிப்பீட்டரை தொடங்கவும்.</string>
+  <string name="repeater_configuration_method">உள்ளமைவு முறை</string>
+  <string name="repeater_configuration_method_framework_summary">Android framework API-கள் மூலம் network உருவாக்குகிறது. சில framework கட்டுப்பாடுகள் இன்னும் பொருந்தும்</string>
+  <string name="repeater_configuration_method_supplicant_summary">&lt;tt&gt;wpa_supplicant&lt;/tt&gt; மூலம் network-ஐ நேரடியாக உருவாக்குகிறது. Android network-ஐ system storage-இல் வைத்திருக்கலாம்.&lt;br&gt;Supplicant பதிப்பு: %s</string>
   <string name="repeater_clean_pog_failure">அதிகப்படியான P2P குழுவை அகற்ற முடியவில்லை (காரணம்: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct கிடைக்கவில்லை, Wi‑Fi ஐ இயக்கவும்</string>
   <string name="repeater_p2p_unavailable_enable">இயக்கு</string>
@@ -226,6 +229,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">ஆப்புக்குச் சொந்தமான deterministic ULA &lt;tt&gt;/64&lt;/tt&gt; ஒதுக்கி, root daemon மூலம் downstream IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; மற்றும் best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; proxy செய்கிறது. இது userspace வேலை, முழு packet NAT அல்ல, மற்றும் பிற IPv6 next-header protocols forward செய்யாது.</string>
   <string name="settings_service_auto_start">சேவைகளை தானாக தொடங்கு</string>
   <string name="settings_service_auto_start_summary">device reboot அல்லது app update முன் services running இருந்தால் அவற்றை restore செய்யவும்.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">குறுகிய network names-க்கு Supplicant mode தேவைப்படலாம்</string>
   <string name="settings_service_temp_hotspot_use_system">Temporary hotspot-க்கு system configuration பயன்படுத்தவும்</string>
   <string name="settings_service_temp_hotspot_use_system_summary">local only hotspot பயன்படுத்தும் மற்ற apps-களுடன் conflict ஆகும். system app ஆக install செய்யப்படாதிருந்தால் background-ல் கூடுதல் resources பயன்படுத்தும்.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">local only hotspot பயன்படுத்தும் மற்ற apps-களுடன் conflict ஆகும். system app ஆக install செய்யப்படாதிருந்தால் background-ல் கூடுதல் resources பயன்படுத்தும். Android 12 அல்லது புதிதில் அதிக வாய்ப்பாக இயங்கும்.</string>
@@ -313,12 +317,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Soft AP சேனல் அகலத்தை வரையறுக்கிறது. Auto சாதனத்தில் கிடைக்கக்கூடிய அதிகபட்ச அகலத்தை Android பயன்படுத்த அனுமதிக்கிறது.</string>
   <string name="wifi_channel_width_auto">தானியங்கு</string>
   <string name="wifi_channel_width_invalid">தவறானது</string>
+  <string name="wifi_standard_legacy">பழைய Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">அணுகல் கட்டுப்பாடு</string>
   <string name="wifi_hotspot_ap_advanced_title">மேம்பட்ட விருப்பங்கள்</string>
   <string name="wifi_advanced_mac_address_title">MAC முகவரி</string>
   <string name="wifi_mac_address_persistent_randomization">நிலையான சீரற்றாக்கம்: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">நிலையற்ற சீரற்றாக்கம்</string>
   <string name="wifi_mac_address_help">AP க்கான BSSID மற்றும் MAC சீரற்றாக்கத்தை அமைக்கவும். அனைத்தும் பூஜ்யம், multicast மற்றும் broadcast BSSID களை Android நிராகரிக்கும். MAC சீரற்றாக்கம் முடக்கப்பட்டிருக்கும்போது மட்டுமே வெளிப்படையான BSSID பயன்படுத்தப்படும்.</string>
+  <string name="wifi_p2p_mac_address_help">Supplicant mode நிலையான MAC முகவரியை வைத்திருக்க வேண்டுமா அல்லது non-persistent randomization கோர வேண்டுமா என்பதைத் தேர்வுசெய்க.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">நிலையான சீரற்ற MAC முகவரி</string>
   <string name="wifi_hidden_network">மறைக்கப்பட்ட நெட்வொர்க்</string>
   <string name="wifi_hidden_network_help">SSID ஐ ஒளிபரப்ப வேண்டாம்</string>

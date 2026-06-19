@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">PIN бүртгэгдлээ</string>
   <string name="repeater_wps_failure">WPS эхлүүлж чадсангүй (шалтгаан: %s)</string>
   <string name="repeater_configure_failure">Хүчинтэй тохиргоо олдсонгүй. Эхлээд давтагчийг эхлүүлнэ үү.</string>
+  <string name="repeater_configuration_method">Тохиргооны арга</string>
+  <string name="repeater_configuration_method_framework">Фреймворк</string>
+  <string name="repeater_configuration_method_framework_summary">Сүлжээг Android framework API-уудаар үүсгэнэ. Зарим framework хязгаарлалт хэвээр үйлчилнэ</string>
+  <string name="repeater_configuration_method_supplicant_summary">Сүлжээг &lt;tt&gt;wpa_supplicant&lt;/tt&gt;-ээр шууд үүсгэнэ. Android сүлжээг системийн хадгалах санд хадгалж магадгүй.&lt;br&gt;Supplicant хувилбар: %s</string>
   <string name="repeater_clean_pog_failure">Илүүдэл P2P бүлгийг устгаж чадсангүй (шалтгаан: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct боломжгүй байна, Wi‑Fi-г асаана уу</string>
   <string name="repeater_p2p_unavailable_enable">Идэвхжүүлэх</string>
@@ -226,6 +230,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Аппын эзэмшдэг deterministic ULA &lt;tt&gt;/64&lt;/tt&gt; оноож, root daemon-аар доод IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; болон best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt;-г proxy хийнэ. Энэ нь хэрэглэгчийн орон зайн ажил, бүтэн packet NAT биш бөгөөд бусад IPv6 next-header protocols дамжуулахгүй.</string>
   <string name="settings_service_auto_start">Үйлчилгээг автоматаар эхлүүлэх</string>
   <string name="settings_service_auto_start_summary">Төхөөрөмж дахин асах эсвэл апп шинэчлэгдэхээс өмнө ажиллаж байсан үйлчилгээнүүдийг сэргээх.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Богино сүлжээний нэр нь Supplicant горимыг шаардаж магадгүй</string>
   <string name="settings_service_temp_hotspot_use_system">Түр hotspot-д системийн тохиргоог ашиглах</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Зөвхөн орон нутгийн hotspot ашигладаг бусад апптай зөрчилдөнө. Системийн апп болгон суулгаагүй бол background-д илүү олон нөөц ашиглана.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Зөвхөн орон нутгийн hotspot ашигладаг бусад апптай зөрчилдөнө. Системийн апп болгон суулгаагүй бол background-д илүү олон нөөц ашиглана. Android 12 эсвэл түүнээс шинэ дээр ажиллах магадлал өндөр.</string>
@@ -315,12 +320,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Soft AP сувгийн зурвасын өргөнийг хязгаарлана. Auto нь төхөөрөмж дээр боломжтой дээд зурвасын өргөнийг Android ашиглахыг зөвшөөрнө.</string>
   <string name="wifi_channel_width_auto">Автомат</string>
   <string name="wifi_channel_width_invalid">Буруу</string>
+  <string name="wifi_standard_legacy">Хуучин Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">Хандалтын хяналт</string>
   <string name="wifi_hotspot_ap_advanced_title">Дэлгэрэнгүй сонголтууд</string>
   <string name="wifi_advanced_mac_address_title">MAC хаяг</string>
   <string name="wifi_mac_address_persistent_randomization">Тогтвортой санамсаргүйжүүлэлт: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Тогтворгүй санамсаргүйжүүлэлт</string>
   <string name="wifi_mac_address_help">AP-ийн BSSID ба MAC санамсаргүйжүүлэлтийг тохируулна. Android бүх-тэг, multicast, broadcast BSSID-ийг татгалзана. Ил BSSID нь MAC санамсаргүйжүүлэлт унтраалттай үед л хэрэглэгдэнэ.</string>
+  <string name="wifi_p2p_mac_address_help">Supplicant горим тогтвортой MAC хаяг хадгалах уу эсвэл тогтмол бус санамсаргүйжүүлэлт хүсэх үү гэдгийг сонгоно уу.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Тогтмол санамсаргүй MAC хаяг</string>
   <string name="wifi_hidden_network">Нуугдсан сүлжээ</string>
   <string name="wifi_hidden_network_help">SSID-г цацахгүй</string>

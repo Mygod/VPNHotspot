@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">PIN დარეგისტრირდა</string>
   <string name="repeater_wps_failure">WPS-ის გაშვება ვერ მოხერხდა (მიზეზი: %s)</string>
   <string name="repeater_configure_failure">სწორი კონფიგურაცია ვერ მოიძებნა. ჯერ გაუშვით გამეორებელი.</string>
+  <string name="repeater_configuration_method">კონფიგურაციის მეთოდი</string>
+  <string name="repeater_configuration_method_framework">ფრეიმვორკი</string>
+  <string name="repeater_configuration_method_framework_summary">ქმნის ქსელს Android framework API-ების მეშვეობით. framework-ის ზოგი შეზღუდვა კვლავ მოქმედებს</string>
+  <string name="repeater_configuration_method_supplicant_summary">ქმნის ქსელს პირდაპირ &lt;tt&gt;wpa_supplicant&lt;/tt&gt;-ის მეშვეობით. Android-მა შეიძლება ქსელი სისტემურ საცავში შეინარჩუნოს.&lt;br&gt;Supplicant-ის ვერსია: %s</string>
   <string name="repeater_clean_pog_failure">ზედმეტი P2P ჯგუფის წაშლა ვერ მოხერხდა (მიზეზი: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct მიუწვდომელია, ჩართეთ Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">ჩართვა</string>
@@ -226,6 +230,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">ანიჭებს დეტერმინისტულ აპის საკუთრებაში არსებულ ULA &lt;tt&gt;/64&lt;/tt&gt;-ს და root daemon-ის მეშვეობით proxy-ს უკეთებს ქვედა IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt;-ს plus best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt;. ეს არის მომხმარებლის სივრცის სამუშაო, არა სრული packet NAT, და სხვა IPv6 next-header პროტოკოლებს არ გადაამისამართებს.</string>
   <string name="settings_service_auto_start">სერვისების ავტომატური გაშვება</string>
   <string name="settings_service_auto_start_summary">აღადგინეთ სერვისები, თუ ისინი მუშაობდა მოწყობილობის გადატვირთვამდე ან აპის განახლებამდე.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">მოკლე ქსელის სახელებს შეიძლება Supplicant რეჟიმი დასჭირდეთ</string>
   <string name="settings_service_temp_hotspot_use_system">სისტემის კონფიგურაციის გამოყენება დროებითი hotspot-ისთვის</string>
   <string name="settings_service_temp_hotspot_use_system_summary">კონფლიქტში შევა სხვა აპებთან, რომლებიც იყენებენ მხოლოდ ლოკალურ hotspot-ს. ასევე უფრო მეტ რესურსს იყენებს ფონში, თუ სისტემურ აპად არ არის დაყენებული.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">კონფლიქტში შევა სხვა აპებთან, რომლებიც იყენებენ მხოლოდ ლოკალურ hotspot-ს. ასევე უფრო მეტ რესურსს იყენებს ფონში, თუ სისტემურ აპად არ არის დაყენებული. დიდი ალბათობით მუშაობს Android 12-ზე ან უფრო ახალზე.</string>
@@ -313,12 +318,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">ზღუდავს Soft AP არხის გამტარობას. Auto Android-ს აძლევს მოწყობილობაზე მიღწევადი მაქსიმალური გამტარობის გამოყენების უფლებას.</string>
   <string name="wifi_channel_width_auto">ავტომატური</string>
   <string name="wifi_channel_width_invalid">არასწორი</string>
+  <string name="wifi_standard_legacy">ძველი Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">წვდომის კონტროლი</string>
   <string name="wifi_hotspot_ap_advanced_title">დამატებითი პარამეტრები</string>
   <string name="wifi_advanced_mac_address_title">MAC მისამართი</string>
   <string name="wifi_mac_address_persistent_randomization">მუდმივი რანდომიზაცია: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">არამუდმივი რანდომიზაცია</string>
   <string name="wifi_mac_address_help">დააკონფიგურირეთ BSSID და MAC რანდომიზაცია AP-სთვის. Android უარყოფს ნულოვან, multicast და broadcast BSSID-ებს. მითითებული BSSID გამოიყენება მხოლოდ მაშინ, როცა MAC რანდომიზაცია გამორთულია.</string>
+  <string name="wifi_p2p_mac_address_help">აირჩიეთ, Supplicant რეჟიმმა შეინარჩუნოს სტაბილური MAC მისამართი თუ მოითხოვოს არამდგრადი რანდომიზაცია.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">მუდმივი შემთხვევითი MAC მისამართი</string>
   <string name="wifi_hidden_network">დამალული ქსელი</string>
   <string name="wifi_hidden_network_help">SSID არ გადაიცეს</string>

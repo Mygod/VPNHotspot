@@ -15,6 +15,10 @@
   <string name="repeater_wps_success_keypad">PIN registrat</string>
   <string name="repeater_wps_failure">No s\'ha pogut iniciar WPS (motiu: %s)</string>
   <string name="repeater_configure_failure">No s’ha trobat cap configuració vàlida. Inicieu primer el repetidor.</string>
+  <string name="repeater_configuration_method">Mètode de configuració</string>
+  <string name="repeater_configuration_method_framework">Marc de treball</string>
+  <string name="repeater_configuration_method_framework_summary">Crea la xarxa mitjançant les API del marc de treball d’Android. Algunes restriccions del marc encara s’apliquen</string>
+  <string name="repeater_configuration_method_supplicant_summary">Crea la xarxa directament mitjançant &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android pot conservar la xarxa a l’emmagatzematge del sistema.&lt;br&gt;Versió de Supplicant: %s</string>
   <string name="repeater_clean_pog_failure">No s\'ha pogut eliminar el grup P2P redundant (motiu: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct no està disponible; activa el Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Activa</string>
@@ -233,6 +237,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Assigna una ULA &lt;tt&gt;/64&lt;/tt&gt; determinista propietat de l’app i fa proxy de l’IPv6 descendent &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; més &lt;tt&gt;ICMPv6&lt;/tt&gt; de millor esforç mitjançant el daemon root. És treball en espai d’usuari, no NAT complet de paquets, i no reenvia altres protocols IPv6 next-header.</string>
   <string name="settings_service_auto_start">Inicia els serveis automàticament</string>
   <string name="settings_service_auto_start_summary">Restaura els serveis si s’estaven executant abans de reiniciar el dispositiu o actualitzar l’aplicació.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Els noms de xarxa curts poden requerir el mode Supplicant</string>
   <string name="settings_service_temp_hotspot_use_system">Utilitza la configuració del sistema per al punt d’accés temporal</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Entrarà en conflicte amb altres aplicacions que utilitzin un punt d’accés només local. També utilitza més recursos en segon pla tret que estigui instal·lada com a aplicació del sistema.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Entrarà en conflicte amb altres aplicacions que utilitzin un punt d’accés només local. També utilitza més recursos en segon pla tret que estigui instal·lada com a aplicació del sistema. El més probable és que funcioni a Android 12 o posterior.</string>
@@ -322,12 +327,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Limita l’amplada del canal del Soft AP. Auto permet que Android utilitzi l’amplada màxima possible al dispositiu.</string>
   <string name="wifi_channel_width_auto">Automàtic</string>
   <string name="wifi_channel_width_invalid">No vàlid</string>
+  <string name="wifi_standard_legacy">Wi‑Fi heretat</string>
   <string name="wifi_hotspot_access_control_title">Control d’accés</string>
   <string name="wifi_hotspot_ap_advanced_title">Opcions avançades</string>
   <string name="wifi_advanced_mac_address_title">Adreça MAC</string>
   <string name="wifi_mac_address_persistent_randomization">Aleatorització persistent: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Aleatorització no persistent</string>
   <string name="wifi_mac_address_help">Configureu el BSSID i l’aleatorització de MAC per a l’AP. Android rebutja BSSID de tot zeros, multicast i broadcast. Un BSSID explícit només s’utilitza quan l’aleatorització de MAC està desactivada.</string>
+  <string name="wifi_p2p_mac_address_help">Trieu si el mode Supplicant conserva una adreça MAC estable o sol·licita aleatorització no persistent.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Adreça MAC aleatòria persistent</string>
   <string name="wifi_hidden_network">Xarxa amagada</string>
   <string name="wifi_hidden_network_help">No difondre l’SSID</string>

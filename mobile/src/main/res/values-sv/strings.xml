@@ -15,6 +15,10 @@
   <string name="repeater_wps_success_keypad">PIN registrerad</string>
   <string name="repeater_wps_failure">Det gick inte att starta WPS (orsak: %s)</string>
   <string name="repeater_configure_failure">Ingen giltig konfiguration hittades. Starta repeatern först.</string>
+  <string name="repeater_configuration_method">Konfigurationsmetod</string>
+  <string name="repeater_configuration_method_framework">Ramverk</string>
+  <string name="repeater_configuration_method_framework_summary">Skapar nätverket via Android-ramverkets API:er. Vissa ramverksbegränsningar gäller fortfarande</string>
+  <string name="repeater_configuration_method_supplicant_summary">Skapar nätverket direkt via &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android kan behålla nätverket i systemlagringen.&lt;br&gt;Supplicant-version: %s</string>
   <string name="repeater_clean_pog_failure">Det gick inte att ta bort redundant P2P-grupp (orsak: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct är inte tillgängligt, aktivera Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Aktivera</string>
@@ -224,6 +228,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Tilldelar en deterministisk appägd ULA &lt;tt&gt;/64&lt;/tt&gt; och proxyar nedströms IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; plus best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; genom root-daemonen. Detta är användarrymdsarbete, inte full paket-NAT, och vidarebefordrar inte andra IPv6 next-header-protokoll.</string>
   <string name="settings_service_auto_start">Starta tjänster automatiskt</string>
   <string name="settings_service_auto_start_summary">Återställ tjänster om de kördes före omstart av enheten eller appuppdatering.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Korta nätverksnamn kan kräva Supplicant-läge</string>
   <string name="settings_service_temp_hotspot_use_system">Använd systemkonfiguration för tillfällig hotspot</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Kommer att komma i konflikt med andra appar som använder lokal hotspot. Använder också mer resurser i bakgrunden om den inte är installerad som systemapp.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Kommer att komma i konflikt med andra appar som använder lokal hotspot. Använder också mer resurser i bakgrunden om den inte är installerad som systemapp. Fungerar troligen på Android 12 eller nyare.</string>
@@ -310,12 +315,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Begränsar kanalbandbredden för Soft AP. Auto låter Android använda maximal bandbredd som är möjlig på enheten.</string>
   <string name="wifi_channel_width_auto">Automatisk</string>
   <string name="wifi_channel_width_invalid">Ogiltig</string>
+  <string name="wifi_standard_legacy">Äldre Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">Åtkomstkontroll</string>
   <string name="wifi_hotspot_ap_advanced_title">Avancerade alternativ</string>
   <string name="wifi_advanced_mac_address_title">MAC-adress</string>
   <string name="wifi_mac_address_persistent_randomization">Beständig randomisering: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Icke-beständig randomisering</string>
   <string name="wifi_mac_address_help">Konfigurera BSSID och MAC-randomisering för AP. Android avvisar BSSID med bara nollor, multicast och broadcast. En uttrycklig BSSID används bara när MAC-randomisering är avstängd.</string>
+  <string name="wifi_p2p_mac_address_help">Välj om Supplicant-läge behåller en stabil MAC-adress eller begär icke-beständig randomisering.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Beständig randomiserad MAC-adress</string>
   <string name="wifi_hidden_network">Dolt nätverk</string>
   <string name="wifi_hidden_network_help">Sänd inte SSID</string>

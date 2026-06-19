@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">PIN кодът е регистриран</string>
   <string name="repeater_wps_failure">WPS не можа да бъде стартиран (причина: %s)</string>
   <string name="repeater_configure_failure">Не е намерена валидна конфигурация. Първо стартирайте ретранслатора.</string>
+  <string name="repeater_configuration_method">Метод за конфигуриране</string>
+  <string name="repeater_configuration_method_framework">Фреймуърк</string>
+  <string name="repeater_configuration_method_framework_summary">Създава мрежата чрез API на Android framework. Някои ограничения на framework все още важат</string>
+  <string name="repeater_configuration_method_supplicant_summary">Създава мрежата директно чрез &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android може да запази мрежата в системното хранилище.&lt;br&gt;Версия на Supplicant: %s</string>
   <string name="repeater_clean_pog_failure">Неуспешно премахване на излишна P2P група (причина: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct не е наличен, включете Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Активиране</string>
@@ -227,6 +231,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Задава детерминистичен ULA &lt;tt&gt;/64&lt;/tt&gt;, собственост на приложението, и проксира downstream IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; плюс best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; през root daemon. Това е работа в потребителско пространство, не пълен packet NAT, и не препраща други IPv6 next-header protocols.</string>
   <string name="settings_service_auto_start">Автоматично стартиране на услуги</string>
   <string name="settings_service_auto_start_summary">Възстановява услугите, ако са работили преди рестартиране на устройството или обновяване на приложението.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Кратките имена на мрежи може да изискват режим Supplicant</string>
   <string name="settings_service_temp_hotspot_use_system">Използване на системната конфигурация за временна точка за достъп</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Ще влезе в конфликт с други приложения, използващи локална точка за достъп. Освен това използва повече ресурси във фонов режим, освен ако не е инсталирано като системно приложение.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Ще влезе в конфликт с други приложения, използващи локална точка за достъп. Освен това използва повече ресурси във фонов режим, освен ако не е инсталирано като системно приложение. Най-вероятно работи на Android 12 или по-нов.</string>
@@ -314,12 +319,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Ограничава ширината на канала на Soft AP. Auto позволява на Android да използва максималната ширина, постижима на устройството.</string>
   <string name="wifi_channel_width_auto">Автом.</string>
   <string name="wifi_channel_width_invalid">Невалидно</string>
+  <string name="wifi_standard_legacy">Остарял Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">Контрол на достъпа</string>
   <string name="wifi_hotspot_ap_advanced_title">Разширени опции</string>
   <string name="wifi_advanced_mac_address_title">MAC адрес</string>
   <string name="wifi_mac_address_persistent_randomization">Постоянна рандомизация: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Непостоянна рандомизация</string>
   <string name="wifi_mac_address_help">Настройте BSSID и MAC рандомизация за AP. Android отхвърля BSSID с всички нули, multicast и broadcast. Изричен BSSID се използва само когато MAC рандомизацията е изключена.</string>
+  <string name="wifi_p2p_mac_address_help">Изберете дали режим Supplicant да запазва стабилен MAC адрес или да заявява непостоянна рандомизация.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Постоянен рандомизиран MAC адрес</string>
   <string name="wifi_hidden_network">Скрита мрежа</string>
   <string name="wifi_hidden_network_help">Не излъчвай SSID</string>

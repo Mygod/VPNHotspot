@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">PIN geregistreer</string>
   <string name="repeater_wps_failure">Kon nie WPS begin nie (rede: %s)</string>
   <string name="repeater_configure_failure">Geldige opstelling nie gevind nie. Begin eers die herhaler.</string>
+  <string name="repeater_configuration_method">Konfigurasiemetode</string>
+  <string name="repeater_configuration_method_framework">Raamwerk</string>
+  <string name="repeater_configuration_method_framework_summary">Skep die netwerk deur Android-raamwerk-API\'s. Sommige raamwerkbeperkings geld steeds</string>
+  <string name="repeater_configuration_method_supplicant_summary">Skep die netwerk direk deur &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android kan die netwerk in stelselberging behou.&lt;br&gt;Supplicant-weergawe: %s</string>
   <string name="repeater_clean_pog_failure">Kon nie oortollige P2P-groep verwyder nie (rede: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct is nie beskikbaar nie; skakel Wi‑Fi aan</string>
   <string name="repeater_p2p_unavailable_enable">Aktiveer</string>
@@ -226,6 +230,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Ken ’n deterministiese app-beheerde ULA &lt;tt&gt;/64&lt;/tt&gt; toe en proxy stroomaf IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; plus beste-poging &lt;tt&gt;ICMPv6&lt;/tt&gt; deur die root-daemon. Dit is gebruikersruimtewerk, nie volle pakket-NAT nie, en stuur nie ander IPv6 next-header-protokolle aan nie.</string>
   <string name="settings_service_auto_start">Begin dienste outomaties</string>
   <string name="settings_service_auto_start_summary">Herstel dienste as hulle voor die toestel herbegin het of die app opgedateer is, aan die loop was.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Kort netwerkname kan Supplicant-modus vereis</string>
   <string name="settings_service_temp_hotspot_use_system">Gebruik stelselkonfigurasie vir tydelike warmkol</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Sal bots met ander apps wat ’n plaaslike-net warmkol gebruik. Gebruik ook meer hulpbronne in die agtergrond tensy dit as ’n stelselapp geïnstalleer is.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Sal bots met ander apps wat ’n plaaslike-net warmkol gebruik. Gebruik ook meer hulpbronne in die agtergrond tensy dit as ’n stelselapp geïnstalleer is. Werk waarskynlik net op Android 12 of nuwer.</string>
@@ -314,12 +319,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Beperk Soft AP-kanaalbandwydte. Auto laat Android die maksimum bandwydte gebruik wat op die toestel haalbaar is.</string>
   <string name="wifi_channel_width_auto">Outo</string>
   <string name="wifi_channel_width_invalid">Ongeldig</string>
+  <string name="wifi_standard_legacy">Ouer Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">Toegangsbeheer</string>
   <string name="wifi_hotspot_ap_advanced_title">Gevorderde opsies</string>
   <string name="wifi_advanced_mac_address_title">MAC-adres</string>
   <string name="wifi_mac_address_persistent_randomization">Aanhoudende randomisering: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Nie-aanhoudende randomisering</string>
   <string name="wifi_mac_address_help">Stel BSSID en MAC-randomisering vir die AP op. Android weier BSSID\'s wat nul, multicast of broadcast is. ’n Eksplisiete BSSID word net gebruik wanneer MAC-randomisering afgeskakel is.</string>
+  <string name="wifi_p2p_mac_address_help">Kies of Supplicant-modus ’n stabiele MAC-adres behou of nie-aanhoudende randomisering versoek.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Aanhoudend ewekansige MAC-adres</string>
   <string name="wifi_hidden_network">Versteekte netwerk</string>
   <string name="wifi_hidden_network_help">Moenie die SSID uitsaai nie</string>

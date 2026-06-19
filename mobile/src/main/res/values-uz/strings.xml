@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">PIN ro‘yxatdan o‘tkazildi</string>
   <string name="repeater_wps_failure">WPS ishga tushmadi (sabab: %s)</string>
   <string name="repeater_configure_failure">Yaroqli konfiguratsiya topilmadi. Avval takrorlagichni ishga tushiring.</string>
+  <string name="repeater_configuration_method">Konfiguratsiya usuli</string>
+  <string name="repeater_configuration_method_framework">Freymvork</string>
+  <string name="repeater_configuration_method_framework_summary">Tarmoqni Android framework APIlari orqali yaratadi. Baʼzi framework cheklovlari hali ham amal qiladi</string>
+  <string name="repeater_configuration_method_supplicant_summary">Tarmoqni bevosita &lt;tt&gt;wpa_supplicant&lt;/tt&gt; orqali yaratadi. Android tarmoqni tizim xotirasida saqlab qolishi mumkin.&lt;br&gt;Supplicant versiyasi: %s</string>
   <string name="repeater_clean_pog_failure">Ortiqcha P2P guruhini olib tashlab bo‘lmadi (sabab: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct mavjud emas, Wi‑Fi-ni yoqing</string>
   <string name="repeater_p2p_unavailable_enable">Yoqish</string>
@@ -226,6 +230,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Ilovaga tegishli deterministik ULA &lt;tt&gt;/64&lt;/tt&gt; tayinlaydi va root daemon orqali quyi IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; hamda best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; proxy qiladi. Bu foydalanuvchi maydonidagi ish, to‘liq packet NAT emas, va boshqa IPv6 next-header protocols yo‘naltirilmaydi.</string>
   <string name="settings_service_auto_start">Xizmatlarni avtomatik boshlash</string>
   <string name="settings_service_auto_start_summary">Qurilma qayta ishga tushishi yoki ilova yangilanishidan oldin ishlayotgan xizmatlarni tiklash.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Qisqa tarmoq nomlariga Supplicant rejimi kerak bo‘lishi mumkin</string>
   <string name="settings_service_temp_hotspot_use_system">Vaqtinchalik hotspot uchun tizim konfiguratsiyasidan foydalanish</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Faqat mahalliy hotspot ishlatadigan boshqa ilovalar bilan ziddiyatga kiradi. Tizim ilovasi sifatida o‘rnatilmagan bo‘lsa, fonda ko‘proq resurs ham ishlatadi.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Faqat mahalliy hotspot ishlatadigan boshqa ilovalar bilan ziddiyatga kiradi. Tizim ilovasi sifatida o‘rnatilmagan bo‘lsa, fonda ko‘proq resurs ham ishlatadi. Ehtimol Android 12 yoki yangiroqda ishlaydi.</string>
@@ -312,12 +317,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Soft AP kanal o‘tkazish kengligini cheklaydi. Auto Androidga qurilmada erishiladigan eng katta kenglikdan foydalanishga imkon beradi.</string>
   <string name="wifi_channel_width_auto">Avto</string>
   <string name="wifi_channel_width_invalid">Yaroqsiz</string>
+  <string name="wifi_standard_legacy">Eski Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">Kirish nazorati</string>
   <string name="wifi_hotspot_ap_advanced_title">Kengaytirilgan sozlamalar</string>
   <string name="wifi_advanced_mac_address_title">MAC manzil</string>
   <string name="wifi_mac_address_persistent_randomization">Doimiy tasodifiylashtirish: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Doimiy bo‘lmagan tasodifiylashtirish</string>
   <string name="wifi_mac_address_help">AP uchun BSSID va MAC tasodifiylashtirishni sozlang. Android hammasi nol, multicast va broadcast BSSIDlarni rad etadi. Aniq BSSID faqat MAC tasodifiylashtirish o‘chirilganda ishlatiladi.</string>
+  <string name="wifi_p2p_mac_address_help">Supplicant rejimi barqaror MAC manzilni saqlaydimi yoki doimiy bo‘lmagan tasodifiylashtirishni so‘raydimi, tanlang.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Doimiy tasodifiy MAC manzil</string>
   <string name="wifi_hidden_network">Yashirin tarmoq</string>
   <string name="wifi_hidden_network_help">SSID-ni tarqatmaslik</string>

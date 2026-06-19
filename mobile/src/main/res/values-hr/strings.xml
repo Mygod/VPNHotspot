@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">PIN je registriran</string>
   <string name="repeater_wps_failure">Pokretanje WPS-a nije uspjelo (razlog: %s)</string>
   <string name="repeater_configure_failure">Valjana konfiguracija nije pronađena. Najprije pokrenite repetitor.</string>
+  <string name="repeater_configuration_method">Metoda konfiguracije</string>
+  <string name="repeater_configuration_method_framework">Okvir</string>
+  <string name="repeater_configuration_method_framework_summary">Stvara mrežu putem API-ja Android okvira. Neka ograničenja okvira i dalje vrijede</string>
+  <string name="repeater_configuration_method_supplicant_summary">Stvara mrežu izravno putem &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android može zadržati mrežu u sistemskoj pohrani.&lt;br&gt;Verzija Supplicant-a: %s</string>
   <string name="repeater_clean_pog_failure">Uklanjanje suvišne P2P grupe nije uspjelo (razlog: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct nije dostupan, uključite Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Omogući</string>
@@ -233,6 +237,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Dodjeljuje deterministički ULA &lt;tt&gt;/64&lt;/tt&gt; u vlasništvu aplikacije i proksira nizvodni IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; plus best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; kroz root daemon. To je rad u korisničkom prostoru, ne puni packet NAT, i ne prosljeđuje druge IPv6 next-header protokole.</string>
   <string name="settings_service_auto_start">Automatski pokreni usluge</string>
   <string name="settings_service_auto_start_summary">Vrati servise ako su bili pokrenuti prije ponovnog pokretanja uređaja ili ažuriranja aplikacije.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Kratki nazivi mreže mogu zahtijevati Supplicant način</string>
   <string name="settings_service_temp_hotspot_use_system">Koristi konfiguraciju sustava za privremenu pristupnu točku</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Sukobit će se s drugim aplikacijama koje koriste samo lokalnu pristupnu točku. Također koristi više resursa u pozadini osim ako je instalirana kao sistemska aplikacija.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Sukobit će se s drugim aplikacijama koje koriste samo lokalnu pristupnu točku. Također koristi više resursa u pozadini osim ako je instalirana kao sistemska aplikacija. Najvjerojatnije radi na Androidu 12 ili novijem.</string>
@@ -322,12 +327,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Ograničava širinu kanala Soft AP-a. Auto dopušta Androidu da koristi najveću širinu dostupnu na uređaju.</string>
   <string name="wifi_channel_width_auto">Autom.</string>
   <string name="wifi_channel_width_invalid">Nevažeće</string>
+  <string name="wifi_standard_legacy">Zastarjeli Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">Kontrola pristupa</string>
   <string name="wifi_hotspot_ap_advanced_title">Napredne opcije</string>
   <string name="wifi_advanced_mac_address_title">MAC adresa</string>
   <string name="wifi_mac_address_persistent_randomization">Trajna randomizacija: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Netrajna randomizacija</string>
   <string name="wifi_mac_address_help">Konfigurirajte BSSID i MAC randomizaciju za AP. Android odbija BSSID s nulama, multicast i broadcast BSSID. Izričiti BSSID koristi se samo kada je MAC randomizacija isključena.</string>
+  <string name="wifi_p2p_mac_address_help">Odaberite hoće li Supplicant način zadržati stabilnu MAC adresu ili zatražiti nepostojanu randomizaciju.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Trajna nasumična MAC adresa</string>
   <string name="wifi_hidden_network">Skrivena mreža</string>
   <string name="wifi_hidden_network_help">Ne emitiraj SSID</string>

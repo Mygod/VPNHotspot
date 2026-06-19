@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">PIN тіркелді</string>
   <string name="repeater_wps_failure">WPS іске қосылмады (себебі: %s)</string>
   <string name="repeater_configure_failure">Жарамды конфигурация табылмады. Алдымен қайталағышты іске қосыңыз.</string>
+  <string name="repeater_configuration_method">Конфигурация әдісі</string>
+  <string name="repeater_configuration_method_framework">Фреймворк</string>
+  <string name="repeater_configuration_method_framework_summary">Желіні Android framework API-лері арқылы жасайды. Кейбір framework шектеулері әлі де қолданылады</string>
+  <string name="repeater_configuration_method_supplicant_summary">Желіні тікелей &lt;tt&gt;wpa_supplicant&lt;/tt&gt; арқылы жасайды. Android желіні жүйе жадында сақтап қалуы мүмкін.&lt;br&gt;Supplicant нұсқасы: %s</string>
   <string name="repeater_clean_pog_failure">Артық P2P тобын жою мүмкін болмады (себеп: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct қолжетімсіз, Wi‑Fi қосыңыз</string>
   <string name="repeater_p2p_unavailable_enable">Қосу</string>
@@ -226,6 +230,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Қолданбаға тиесілі deterministic ULA &lt;tt&gt;/64&lt;/tt&gt; тағайындайды және root daemon арқылы төменгі IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; және best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; proxy жасайды. Бұл пайдаланушы кеңістігіндегі жұмыс, толық packet NAT емес және басқа IPv6 next-header protocols жібермейді.</string>
   <string name="settings_service_auto_start">Қызметтерді автоматты бастау</string>
   <string name="settings_service_auto_start_summary">Құрылғы қайта іске қосылмас бұрын немесе қолданба жаңартылмас бұрын жұмыс істеп тұрған қызметтерді қалпына келтіру.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Қысқа желі атауларына Supplicant режимі қажет болуы мүмкін</string>
   <string name="settings_service_temp_hotspot_use_system">Уақытша hotspot үшін жүйе конфигурациясын пайдалану</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Тек жергілікті hotspot пайдаланатын басқа қолданбалармен қайшылыққа түседі. Жүйелік қолданба ретінде орнатылмаса, фондық режимде көбірек ресурстар да пайдаланады.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Тек жергілікті hotspot пайдаланатын басқа қолданбалармен қайшылыққа түседі. Жүйелік қолданба ретінде орнатылмаса, фондық режимде көбірек ресурстар да пайдаланады. Android 12 немесе жаңарақ нұсқада жұмыс істеуі ықтимал.</string>
@@ -313,12 +318,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Soft AP арнасының өткізу жолағын шектейді. Auto Android-ке құрылғыда қолжетімді ең үлкен өткізу жолағын пайдалануға мүмкіндік береді.</string>
   <string name="wifi_channel_width_auto">Авто</string>
   <string name="wifi_channel_width_invalid">Жарамсыз</string>
+  <string name="wifi_standard_legacy">Ескі Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">Қатынасты басқару</string>
   <string name="wifi_hotspot_ap_advanced_title">Қосымша опциялар</string>
   <string name="wifi_advanced_mac_address_title">MAC мекенжайы</string>
   <string name="wifi_mac_address_persistent_randomization">Тұрақты рандомизация: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Тұрақты емес рандомизация</string>
   <string name="wifi_mac_address_help">AP үшін BSSID және MAC рандомизациясын баптаңыз. Android барлық-нөл, multicast және broadcast BSSID-терді қабылдамайды. Нақты BSSID тек MAC рандомизациясы өшірулі кезде қолданылады.</string>
+  <string name="wifi_p2p_mac_address_help">Supplicant режимі тұрақты MAC мекенжайын сақтай ма, әлде тұрақсыз рандомизация сұрай ма, соны таңдаңыз.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Тұрақты кездейсоқ MAC мекенжайы</string>
   <string name="wifi_hidden_network">Жасырын желі</string>
   <string name="wifi_hidden_network_help">SSID таратпау</string>

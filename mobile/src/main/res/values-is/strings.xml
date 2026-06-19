@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">PIN skráð</string>
   <string name="repeater_wps_failure">Mistókst að ræsa WPS (ástæða: %s)</string>
   <string name="repeater_configure_failure">Gild stilling fannst ekki. Ræstu endurvarpann fyrst.</string>
+  <string name="repeater_configuration_method">Stillingaraðferð</string>
+  <string name="repeater_configuration_method_framework">Kerfi</string>
+  <string name="repeater_configuration_method_framework_summary">Býr til netið í gegnum API Android-kerfisins. Sumar kerfistakmarkanir gilda enn</string>
+  <string name="repeater_configuration_method_supplicant_summary">Býr til netið beint í gegnum &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android getur haldið netinu í kerfisgeymslu.&lt;br&gt;Supplicant-útgáfa: %s</string>
   <string name="repeater_clean_pog_failure">Mistókst að fjarlægja óþarfa P2P-hóp (ástæða: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct er ekki tiltækt, kveiktu á Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Gera virkt</string>
@@ -227,6 +231,7 @@ Sent %1$s</string>
   <string name="settings_service_ipv6_mode_nat_summary">Úthlutar determinísku app-eignuðu ULA &lt;tt&gt;/64&lt;/tt&gt; og proxyar niðurstreymis IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; ásamt best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; í gegnum root-daemon. Þetta er notendarýmisvinna, ekki fullt packet NAT, og framsendir ekki önnur IPv6 next-header samskiptareglur.</string>
   <string name="settings_service_auto_start">Ræsa þjónustur sjálfkrafa</string>
   <string name="settings_service_auto_start_summary">Endurheimta þjónustur ef þær voru í gangi áður en tækið endurræstist eða appið var uppfært.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Stutt netnöfn geta krafist Supplicant-stillingar</string>
   <string name="settings_service_temp_hotspot_use_system">Nota kerfisstillingu fyrir tímabundinn heitan reit</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Mun rekast á önnur öpp sem nota staðbundinn heitan reit eingöngu. Notar líka meiri tilföng í bakgrunni nema það sé sett upp sem kerfisapp.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Mun rekast á önnur öpp sem nota staðbundinn heitan reit eingöngu. Notar líka meiri tilföng í bakgrunni nema það sé sett upp sem kerfisapp. Virkar líklegast á Android 12 eða nýrra.</string>
@@ -313,12 +318,14 @@ Sent %1$s</string>
   <string name="wifi_hotspot_max_channel_bandwidth_help">Takmarkar rásarbandbreidd Soft AP. Auto leyfir Android að nota mestu bandbreidd sem tækið getur náð.</string>
   <string name="wifi_channel_width_auto">Sjálfvirkt</string>
   <string name="wifi_channel_width_invalid">Ógilt</string>
+  <string name="wifi_standard_legacy">Eldra Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">Aðgangsstýring</string>
   <string name="wifi_hotspot_ap_advanced_title">Ítarlegri valkostir</string>
   <string name="wifi_advanced_mac_address_title">MAC-vistfang</string>
   <string name="wifi_mac_address_persistent_randomization">Viðvarandi slembun: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Óviðvarandi slembun</string>
   <string name="wifi_mac_address_help">Stilltu BSSID og MAC-slembun fyrir AP. Android hafnar BSSID sem eru aðeins núll, multicast eða broadcast. Skýrt BSSID er aðeins notað þegar slökkt er á MAC-slembun.</string>
+  <string name="wifi_p2p_mac_address_help">Veldu hvort Supplicant-stilling heldur stöðugu MAC-vistfangi eða biður um óvaranlega slembingu.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Varanlegt slembið MAC-vistfang</string>
   <string name="wifi_hidden_network">Falið net</string>
   <string name="wifi_hidden_network_help">Ekki senda út SSID</string>

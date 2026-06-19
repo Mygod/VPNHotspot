@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">PIN ପଞ୍ଜିକୃତ ହେଲା</string>
   <string name="repeater_wps_failure">WPS ଆରମ୍ଭ କରିବାରେ ବିଫଳ (କାରଣ: %s)</string>
   <string name="repeater_configure_failure">ବୈଧ କନଫିଗ ମିଳିଲା ନାହିଁ। ପ୍ରଥମେ ରିପିଟର ଆରମ୍ଭ କରନ୍ତୁ।</string>
+  <string name="repeater_configuration_method">କନଫିଗରେସନ ପଦ୍ଧତି</string>
+  <string name="repeater_configuration_method_framework">ଫ୍ରେମୱର୍କ</string>
+  <string name="repeater_configuration_method_framework_summary">Android framework API ମାଧ୍ୟମରେ network ତିଆରି କରେ। କିଛି framework ସୀମାବଦ୍ଧତା ଏଯାବତ୍ ଲାଗୁ ରହେ</string>
+  <string name="repeater_configuration_method_supplicant_summary">ସିଧାସଳଖ &lt;tt&gt;wpa_supplicant&lt;/tt&gt; ମାଧ୍ୟମରେ network ତିଆରି କରେ। Android network କୁ system storage ରେ ରଖିପାରେ।&lt;br&gt;Supplicant ସଂସ୍କରଣ: %s</string>
   <string name="repeater_clean_pog_failure">ଅତିରିକ୍ତ P2P ଗ୍ରୁପ୍ କାଢ଼ିବାରେ ବିଫଳ (କାରଣ: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct ଉପଲବ୍ଧ ନାହିଁ, Wi‑Fi ଚାଲୁ କରନ୍ତୁ</string>
   <string name="repeater_p2p_unavailable_enable">ସକ୍ଷମ କରନ୍ତୁ</string>
@@ -226,6 +230,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">ଆପ୍-ମାଲିକାନା deterministic ULA &lt;tt&gt;/64&lt;/tt&gt; ନିଯୁକ୍ତ କରି root daemon ମାଧ୍ୟମରେ downstream IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; ସହ best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; proxy କରେ। ଏହା userspace କାମ, ପୂର୍ଣ୍ଣ packet NAT ନୁହେଁ, ଏବଂ ଅନ୍ୟ IPv6 next-header protocols forward କରେନାହିଁ।</string>
   <string name="settings_service_auto_start">ସେବାଗୁଡ଼ିକ ସ୍ୱୟଂଚାଳିତ ଭାବେ ଆରମ୍ଭ କରନ୍ତୁ</string>
   <string name="settings_service_auto_start_summary">ଡିଭାଇସ reboot କିମ୍ବା app update ପୂର୍ବରୁ services ଚାଲୁଥିଲେ ସେଗୁଡ଼ିକୁ restore କରନ୍ତୁ।</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">ଛୋଟ network names ପାଇଁ Supplicant mode ଆବଶ୍ୟକ ହୋଇପାରେ</string>
   <string name="settings_service_temp_hotspot_use_system">Temporary hotspot ପାଇଁ system configuration ବ୍ୟବହାର କରନ୍ତୁ</string>
   <string name="settings_service_temp_hotspot_use_system_summary">local only hotspot ବ୍ୟବହାର କରୁଥିବା ଅନ୍ୟ apps ସହ conflict ହେବ। system app ଭାବେ install ନହେଲେ background ରେ ଅଧିକ resources ବ୍ୟବହାର କରେ।</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">local only hotspot ବ୍ୟବହାର କରୁଥିବା ଅନ୍ୟ apps ସହ conflict ହେବ। system app ଭାବେ install ନହେଲେ background ରେ ଅଧିକ resources ବ୍ୟବହାର କରେ। ସମ୍ଭବତଃ Android 12 କିମ୍ବା ନୂତନରେ କାମ କରେ।</string>
@@ -313,12 +318,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Soft AP ଚ୍ୟାନେଲ ବ୍ୟାଣ୍ଡୱିଡ୍ଥ ସୀମିତ କରେ। Auto Android କୁ ଡିଭାଇସରେ ସମ୍ଭବ ସର୍ବାଧିକ ବ୍ୟାଣ୍ଡୱିଡ୍ଥ ବ୍ୟବହାର କରିବାକୁ ଦିଏ।</string>
   <string name="wifi_channel_width_auto">ସ୍ଵଚାଳିତ</string>
   <string name="wifi_channel_width_invalid">ଅବୈଧ</string>
+  <string name="wifi_standard_legacy">ପୁରୁଣା Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">ପ୍ରବେଶ ନିୟନ୍ତ୍ରଣ</string>
   <string name="wifi_hotspot_ap_advanced_title">ଉନ୍ନତ ବିକଳ୍ପ</string>
   <string name="wifi_advanced_mac_address_title">MAC ଠିକଣା</string>
   <string name="wifi_mac_address_persistent_randomization">ସ୍ଥାୟୀ ରାଣ୍ଡମାଇଜେସନ: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">ଅସ୍ଥାୟୀ ରାଣ୍ଡମାଇଜେସନ</string>
   <string name="wifi_mac_address_help">AP ପାଇଁ BSSID ଏବଂ MAC ରାଣ୍ଡମାଇଜେସନ କନଫିଗର କରନ୍ତୁ। Android ସମସ୍ତ-ଶୂନ୍ୟ, multicast ଏବଂ broadcast BSSID ନାକଚ କରେ। ସ୍ପଷ୍ଟ BSSID କେବଳ MAC ରାଣ୍ଡମାଇଜେସନ ବନ୍ଦ ଥିଲେ ବ୍ୟବହୃତ ହୁଏ।</string>
+  <string name="wifi_p2p_mac_address_help">Supplicant mode ସ୍ଥିର MAC ଠିକଣା ରଖିବ କି non-persistent randomization ଅନୁରୋଧ କରିବ ଚୟନ କରନ୍ତୁ।</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">ସ୍ଥାୟୀ ର୍ୟାଣ୍ଡମ୍ MAC ଠିକଣା</string>
   <string name="wifi_hidden_network">ଲୁକ୍କାୟିତ ନେଟୱାର୍କ</string>
   <string name="wifi_hidden_network_help">SSID ପ୍ରସାରଣ କରନ୍ତୁ ନାହିଁ</string>

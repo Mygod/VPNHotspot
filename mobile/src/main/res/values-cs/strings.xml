@@ -16,6 +16,9 @@
   <string name="repeater_wps_success_keypad">PIN zaregistrován</string>
   <string name="repeater_wps_failure">Nepodařilo se spustit WPS (důvod: %s)</string>
   <string name="repeater_configure_failure">Platná konfigurace nebyla nalezena. Nejprve spusťte opakovač.</string>
+  <string name="repeater_configuration_method">Způsob konfigurace</string>
+  <string name="repeater_configuration_method_framework_summary">Vytvoří síť přes rozhraní API frameworku Androidu. Některá omezení frameworku stále platí</string>
+  <string name="repeater_configuration_method_supplicant_summary">Vytvoří síť přímo přes &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android může síť zachovat v systémovém úložišti.&lt;br&gt;Verze Supplicant: %s</string>
   <string name="repeater_clean_pog_failure">Nepodařilo se odstranit nadbytečnou skupinu P2P (důvod: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct není k dispozici, zapněte Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Aktivovat</string>
@@ -242,6 +245,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Přiřadí deterministickou ULA &lt;tt&gt;/64&lt;/tt&gt; vlastněnou aplikací a přes root daemon proxyuje downstream IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; plus best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt;. Je to práce v uživatelském prostoru, ne plný paketový NAT, a nepřeposílá jiné protokoly IPv6 next-header.</string>
   <string name="settings_service_auto_start">Automaticky spouštět služby</string>
   <string name="settings_service_auto_start_summary">Obnoví služby, pokud běžely před restartem zařízení nebo aktualizací aplikace.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Krátké názvy sítí mohou vyžadovat režim Supplicant</string>
   <string name="settings_service_temp_hotspot_use_system">Použít systémovou konfiguraci pro dočasný hotspot</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Bude kolidovat s jinými aplikacemi používajícími pouze místní hotspot. Také používá více prostředků na pozadí, pokud není nainstalována jako systémová aplikace.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Bude kolidovat s jinými aplikacemi používajícími pouze místní hotspot. Také používá více prostředků na pozadí, pokud není nainstalována jako systémová aplikace. S největší pravděpodobností funguje na Androidu 12 nebo novějším.</string>
@@ -335,12 +339,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Omezí šířku kanálu Soft AP. Auto umožní Androidu použít nejvyšší šířku dosažitelnou na zařízení.</string>
   <string name="wifi_channel_width_auto">Automaticky</string>
   <string name="wifi_channel_width_invalid">Neplatné</string>
+  <string name="wifi_standard_legacy">Starší Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">Řízení přístupu</string>
   <string name="wifi_hotspot_ap_advanced_title">Rozšířené možnosti</string>
   <string name="wifi_advanced_mac_address_title">Adresa MAC</string>
   <string name="wifi_mac_address_persistent_randomization">Trvalá randomizace: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Netrvalá randomizace</string>
   <string name="wifi_mac_address_help">Nastavte BSSID a randomizaci MAC pro AP. Android odmítá BSSID se samými nulami, multicast a broadcast. Výslovný BSSID se použije jen při vypnuté randomizaci MAC.</string>
+  <string name="wifi_p2p_mac_address_help">Zvolte, zda režim Supplicant zachová stabilní MAC adresu, nebo požádá o nepersistentní randomizaci.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Trvale randomizovaná MAC adresa</string>
   <string name="wifi_hidden_network">Skrytá síť</string>
   <string name="wifi_hidden_network_help">Nevysílat SSID</string>

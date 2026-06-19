@@ -16,6 +16,9 @@
   <string name="repeater_wps_success_keypad">ລົງທະບຽນ PIN ແລ້ວ</string>
   <string name="repeater_wps_failure">ເລີ່ມ WPS ບໍ່ສຳເລັດ (ເຫດຜົນ: %s)</string>
   <string name="repeater_configure_failure">ບໍ່ພົບການກຳນົດຄ່າທີ່ຖືກຕ້ອງ. ເລີ່ມຕົວທວນສັນຍານກ່ອນ.</string>
+  <string name="repeater_configuration_method">ວິທີກຳນົດຄ່າ</string>
+  <string name="repeater_configuration_method_framework_summary">ສ້າງເຄືອຂ່າຍຜ່ານ Android framework API. ຂໍ້ຈຳກັດບາງຢ່າງຂອງ framework ຍັງຄົງໃຊ້ຢູ່</string>
+  <string name="repeater_configuration_method_supplicant_summary">ສ້າງເຄືອຂ່າຍໂດຍກົງຜ່ານ &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android ອາດເກັບເຄືອຂ່າຍໄວ້ໃນທີ່ເກັບລະບົບ.&lt;br&gt;ເວີຊັນ Supplicant: %s</string>
   <string name="repeater_clean_pog_failure">ລຶບກຸ່ມ P2P ທີ່ເກີນບໍ່ສຳເລັດ (ເຫດຜົນ: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct ບໍ່ພ້ອມໃຊ້, ກະລຸນາເປີດ Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">ເປີດນຳໃຊ້</string>
@@ -218,6 +221,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">ກຳນົດ ULA &lt;tt&gt;/64&lt;/tt&gt; ແບບ deterministic ທີ່ແອັບເປັນເຈົ້າຂອງ ແລະ proxy IPv6 downstream &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; ພ້ອມ best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; ຜ່ານ root daemon. ນີ້ແມ່ນວຽກ user space, ບໍ່ແມ່ນ packet NAT ເຕັມ, ແລະບໍ່ forward IPv6 next-header protocols ອື່ນ.</string>
   <string name="settings_service_auto_start">ເລີ່ມບໍລິການອັດຕະໂນມັດ</string>
   <string name="settings_service_auto_start_summary">ກູ້ຄືນບໍລິການຖ້າມັນກຳລັງເຮັດວຽກກ່ອນອຸປະກອນ restart ຫຼື app update.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">ຊື່ເຄືອຂ່າຍສັ້ນອາດຕ້ອງໃຊ້ໂໝດ Supplicant</string>
   <string name="settings_service_temp_hotspot_use_system">ໃຊ້ system configuration ສຳລັບ hotspot ຊົ່ວຄາວ</string>
   <string name="settings_service_temp_hotspot_use_system_summary">ຈະຂັດກັບແອັບອື່ນທີ່ໃຊ້ local only hotspot. ຍັງໃຊ້ຊັບພະຍາກອນໃນ background ຫຼາຍຂຶ້ນ ຖ້າບໍ່ໄດ້ install ເປັນ system app.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">ຈະຂັດກັບແອັບອື່ນທີ່ໃຊ້ local only hotspot. ຍັງໃຊ້ຊັບພະຍາກອນໃນ background ຫຼາຍຂຶ້ນ ຖ້າບໍ່ໄດ້ install ເປັນ system app. ໜ້າຈະເຮັດວຽກໃນ Android 12 ຫຼືໃໝ່ກວ່າ.</string>
@@ -302,12 +306,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">ຈຳກັດແບນວິດຊ່ອງ Soft AP. Auto ໃຫ້ Android ໃຊ້ແບນວິດສູງສຸດທີ່ອຸປະກອນເຮັດໄດ້.</string>
   <string name="wifi_channel_width_auto">ອັດຕະໂນມັດ</string>
   <string name="wifi_channel_width_invalid">ບໍ່ຖືກຕ້ອງ</string>
+  <string name="wifi_standard_legacy">Wi‑Fi ເກົ່າ</string>
   <string name="wifi_hotspot_access_control_title">ການຄວບຄຸມການເຂົ້າເຖິງ</string>
   <string name="wifi_hotspot_ap_advanced_title">​ໂຕ​ເລືອກ​ຂັ້ນ​ສູງ</string>
   <string name="wifi_advanced_mac_address_title">ທີ່ຢູ່ MAC</string>
   <string name="wifi_mac_address_persistent_randomization">ການສຸ່ມແບບຄົງທີ່: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">ການສຸ່ມແບບບໍ່ຄົງທີ່</string>
   <string name="wifi_mac_address_help">ກຳນົດ BSSID ແລະການສຸ່ມ MAC ສຳລັບ AP. Android ປະຕິເສດ BSSID ທີ່ເປັນສູນທັງໝົດ, multicast ແລະ broadcast. BSSID ທີ່ລະບຸຊັດເຈນໃຊ້ເມື່ອປິດການສຸ່ມ MAC ເທົ່ານັ້ນ.</string>
+  <string name="wifi_p2p_mac_address_help">ເລືອກວ່າໂໝດ Supplicant ຈະຮັກສາທີ່ຢູ່ MAC ທີ່ຄົງທີ່ ຫຼື ຂໍ non-persistent randomization.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">ທີ່ຢູ່ MAC ສຸ່ມແບບຄົງຢູ່</string>
   <string name="wifi_hidden_network">ເຄືອຂ່າຍທີ່ຖືກເຊື່ອງ</string>
   <string name="wifi_hidden_network_help">ຢ່າອອກອາກາດ SSID</string>

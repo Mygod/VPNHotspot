@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">Το PIN καταχωρίστηκε</string>
   <string name="repeater_wps_failure">Αποτυχία εκκίνησης WPS (αιτία: %s)</string>
   <string name="repeater_configure_failure">Δεν βρέθηκε έγκυρη διαμόρφωση. Ξεκινήστε πρώτα τον αναμεταδότη.</string>
+  <string name="repeater_configuration_method">Μέθοδος διαμόρφωσης</string>
+  <string name="repeater_configuration_method_framework">Πλαίσιο</string>
+  <string name="repeater_configuration_method_framework_summary">Δημιουργεί το δίκτυο μέσω API του πλαισίου Android. Ορισμένοι περιορισμοί του πλαισίου εξακολουθούν να ισχύουν</string>
+  <string name="repeater_configuration_method_supplicant_summary">Δημιουργεί το δίκτυο απευθείας μέσω &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Το Android μπορεί να διατηρήσει το δίκτυο στον αποθηκευτικό χώρο του συστήματος.&lt;br&gt;Έκδοση Supplicant: %s</string>
   <string name="repeater_clean_pog_failure">Αποτυχία αφαίρεσης περιττής ομάδας P2P (λόγος: %s)</string>
   <string name="repeater_p2p_unavailable">Το Wi‑Fi Direct δεν είναι διαθέσιμο, ενεργοποιήστε το Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Ενεργοποίηση</string>
@@ -226,6 +230,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Εκχωρεί ένα ντετερμινιστικό ULA &lt;tt&gt;/64&lt;/tt&gt; ιδιοκτησίας της εφαρμογής και κάνει proxy το downstream IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; μαζί με best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; μέσω του root daemon. Είναι εργασία χώρου χρήστη, όχι πλήρες packet NAT, και δεν προωθεί άλλα IPv6 next-header πρωτόκολλα.</string>
   <string name="settings_service_auto_start">Αυτόματη εκκίνηση υπηρεσιών</string>
   <string name="settings_service_auto_start_summary">Επαναφορά υπηρεσιών αν εκτελούνταν πριν την επανεκκίνηση της συσκευής ή την ενημέρωση της εφαρμογής.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Τα σύντομα ονόματα δικτύου μπορεί να απαιτούν λειτουργία Supplicant</string>
   <string name="settings_service_temp_hotspot_use_system">Χρήση ρύθμισης συστήματος για προσωρινό hotspot</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Θα συγκρουστεί με άλλες εφαρμογές που χρησιμοποιούν hotspot μόνο τοπικά. Χρησιμοποιεί επίσης περισσότερους πόρους στο παρασκήνιο εκτός αν έχει εγκατασταθεί ως εφαρμογή συστήματος.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Θα συγκρουστεί με άλλες εφαρμογές που χρησιμοποιούν hotspot μόνο τοπικά. Χρησιμοποιεί επίσης περισσότερους πόρους στο παρασκήνιο εκτός αν έχει εγκατασταθεί ως εφαρμογή συστήματος. Πιθανότατα λειτουργεί σε Android 12 ή νεότερο.</string>
@@ -314,12 +319,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Περιορίζει το εύρος καναλιού του Soft AP. Το Auto επιτρέπει στο Android να χρησιμοποιεί το μέγιστο εφικτό εύρος στη συσκευή.</string>
   <string name="wifi_channel_width_auto">Αυτόματα</string>
   <string name="wifi_channel_width_invalid">Μη έγκυρο</string>
+  <string name="wifi_standard_legacy">Παλιό Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">Έλεγχος πρόσβασης</string>
   <string name="wifi_hotspot_ap_advanced_title">Σύνθετες επιλογές</string>
   <string name="wifi_advanced_mac_address_title">Διεύθυνση MAC</string>
   <string name="wifi_mac_address_persistent_randomization">Μόνιμη τυχαιοποίηση: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Μη μόνιμη τυχαιοποίηση</string>
   <string name="wifi_mac_address_help">Ρυθμίστε το BSSID και την τυχαιοποίηση MAC για το AP. Το Android απορρίπτει BSSID με μόνο μηδενικά, multicast και broadcast. Ένα ρητό BSSID χρησιμοποιείται μόνο όταν η τυχαιοποίηση MAC είναι απενεργοποιημένη.</string>
+  <string name="wifi_p2p_mac_address_help">Επιλέξτε αν η λειτουργία Supplicant διατηρεί σταθερή διεύθυνση MAC ή ζητά μη μόνιμη τυχαιοποίηση.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Μόνιμη τυχαία διεύθυνση MAC</string>
   <string name="wifi_hidden_network">Κρυφό δίκτυο</string>
   <string name="wifi_hidden_network_help">Να μην εκπέμπεται το SSID</string>

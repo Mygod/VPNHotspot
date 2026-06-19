@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">PIN 已註冊</string>
   <string name="repeater_wps_failure">無法啟動 WPS（原因：%s）</string>
   <string name="repeater_configure_failure">找不到有效設定。請先啟動中繼器。</string>
+  <string name="repeater_configuration_method">設定方法</string>
+  <string name="repeater_configuration_method_framework">框架</string>
+  <string name="repeater_configuration_method_framework_summary">透過 Android 框架 API 建立網絡。部分框架限制仍然適用</string>
+  <string name="repeater_configuration_method_supplicant_summary">直接透過 &lt;tt&gt;wpa_supplicant&lt;/tt&gt; 建立網絡。Android 可能會將此網絡保留在系統儲存空間。&lt;br&gt;Supplicant 版本：%s</string>
   <string name="repeater_clean_pog_failure">無法移除多餘的 P2P 群組（原因：%s）</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct 無法使用，請啟用 Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">啟用</string>
@@ -222,6 +226,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">指派一個確定性的應用程式自有 ULA &lt;tt&gt;/64&lt;/tt&gt;，並透過 root daemon 代理下游 IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; 以及 best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt;。這是使用者空間工作，不是完整封包 NAT，也不會轉發其他 IPv6 next-header 協定。</string>
   <string name="settings_service_auto_start">自動啟動服務</string>
   <string name="settings_service_auto_start_summary">如果服務在裝置重新啟動或應用程式更新前正在執行，則恢復這些服務。</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">較短的網絡名稱可能需要 Supplicant 模式</string>
   <string name="settings_service_temp_hotspot_use_system">臨時熱點使用系統設定</string>
   <string name="settings_service_temp_hotspot_use_system_summary">會與其他使用僅限本機熱點的應用程式衝突。除非安裝為系統應用程式，否則亦會在背景使用更多資源。</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">會與其他使用僅限本機熱點的應用程式衝突。除非安裝為系統應用程式，否則亦會在背景使用更多資源。很可能只在 Android 12 或更新版本上可用。</string>
@@ -307,12 +312,15 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">限制 Soft AP 頻道頻寬。Auto 允許 Android 使用裝置可達到的最大頻寬。</string>
   <string name="wifi_channel_width_auto">自動</string>
   <string name="wifi_channel_width_invalid">無效</string>
+  <string name="wifi_standard_legacy">舊版 Wi‑Fi</string>
+  <string name="wifi_p2p_connection_info_separator">， </string>
   <string name="wifi_hotspot_access_control_title">存取控制</string>
   <string name="wifi_hotspot_ap_advanced_title">進階選項</string>
   <string name="wifi_advanced_mac_address_title">MAC 位址</string>
   <string name="wifi_mac_address_persistent_randomization">持久隨機化：%s</string>
   <string name="wifi_mac_address_non_persistent_randomization">非持久隨機化</string>
   <string name="wifi_mac_address_help">設定 AP 的 BSSID 和 MAC 隨機化。Android 會拒絕全零、multicast 和 broadcast BSSID。只有在停用 MAC 隨機化時，才會使用明確的 BSSID。</string>
+  <string name="wifi_p2p_mac_address_help">選擇 Supplicant 模式要保留穩定的 MAC 位址，還是要求非持久隨機化。</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">持久隨機 MAC 位址</string>
   <string name="wifi_hidden_network">隱藏的網絡</string>
   <string name="wifi_hidden_network_help">不要廣播 SSID</string>

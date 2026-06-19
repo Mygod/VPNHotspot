@@ -16,6 +16,9 @@
   <string name="repeater_wps_success_keypad">Đã đăng ký PIN</string>
   <string name="repeater_wps_failure">Không khởi động được WPS (lý do: %s)</string>
   <string name="repeater_configure_failure">Không tìm thấy cấu hình hợp lệ. Hãy khởi động bộ lặp trước.</string>
+  <string name="repeater_configuration_method">Phương thức cấu hình</string>
+  <string name="repeater_configuration_method_framework_summary">Tạo mạng thông qua các API framework Android. Một số giới hạn của framework vẫn áp dụng</string>
+  <string name="repeater_configuration_method_supplicant_summary">Tạo mạng trực tiếp thông qua &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android có thể giữ mạng trong bộ nhớ hệ thống.&lt;br&gt;Phiên bản Supplicant: %s</string>
   <string name="repeater_clean_pog_failure">Không xóa được nhóm P2P dư thừa (lý do: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct không khả dụng, hãy bật Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Bật</string>
@@ -220,6 +223,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Gán một ULA &lt;tt&gt;/64&lt;/tt&gt; xác định do ứng dụng sở hữu và proxy IPv6 downstream &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; cùng best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; qua root daemon. Đây là công việc trong không gian người dùng, không phải NAT gói đầy đủ, và không chuyển tiếp các giao thức IPv6 next-header khác.</string>
   <string name="settings_service_auto_start">Tự động khởi động dịch vụ</string>
   <string name="settings_service_auto_start_summary">Khôi phục các dịch vụ nếu chúng đang chạy trước khi thiết bị khởi động lại hoặc ứng dụng cập nhật.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Tên mạng ngắn có thể yêu cầu chế độ Supplicant</string>
   <string name="settings_service_temp_hotspot_use_system">Dùng cấu hình hệ thống cho hotspot tạm thời</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Sẽ xung đột với các ứng dụng khác dùng hotspot chỉ cục bộ. Cũng dùng nhiều tài nguyên hơn trong nền trừ khi được cài làm ứng dụng hệ thống.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Sẽ xung đột với các ứng dụng khác dùng hotspot chỉ cục bộ. Cũng dùng nhiều tài nguyên hơn trong nền trừ khi được cài làm ứng dụng hệ thống. Có nhiều khả năng hoạt động trên Android 12 trở lên.</string>
@@ -303,12 +307,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Giới hạn băng thông kênh Soft AP. Auto cho phép Android dùng băng thông tối đa có thể đạt được trên thiết bị.</string>
   <string name="wifi_channel_width_auto">Tự động</string>
   <string name="wifi_channel_width_invalid">Không hợp lệ</string>
+  <string name="wifi_standard_legacy">Wi‑Fi cũ</string>
   <string name="wifi_hotspot_access_control_title">Kiểm soát truy cập</string>
   <string name="wifi_hotspot_ap_advanced_title">Tùy chọn nâng cao</string>
   <string name="wifi_advanced_mac_address_title">Địa chỉ MAC</string>
   <string name="wifi_mac_address_persistent_randomization">Ngẫu nhiên hóa cố định: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Ngẫu nhiên hóa không cố định</string>
   <string name="wifi_mac_address_help">Cấu hình BSSID và ngẫu nhiên hóa MAC cho AP. Android từ chối BSSID toàn số 0, multicast và broadcast. BSSID rõ ràng chỉ được dùng khi tắt ngẫu nhiên hóa MAC.</string>
+  <string name="wifi_p2p_mac_address_help">Chọn xem chế độ Supplicant giữ địa chỉ MAC ổn định hay yêu cầu ngẫu nhiên hóa không liên tục.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Địa chỉ MAC ngẫu nhiên cố định</string>
   <string name="wifi_hidden_network">Mạng ẩn</string>
   <string name="wifi_hidden_network_help">Không phát SSID</string>

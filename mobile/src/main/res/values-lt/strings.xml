@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">PIN užregistruotas</string>
   <string name="repeater_wps_failure">Nepavyko paleisti WPS (priežastis: %s)</string>
   <string name="repeater_configure_failure">Tinkama konfigūracija nerasta. Pirmiausia paleiskite kartotuvą.</string>
+  <string name="repeater_configuration_method">Konfigūravimo būdas</string>
+  <string name="repeater_configuration_method_framework">Sistema</string>
+  <string name="repeater_configuration_method_framework_summary">Sukuria tinklą per Android sistemos API. Kai kurie sistemos apribojimai vis dar taikomi</string>
+  <string name="repeater_configuration_method_supplicant_summary">Sukuria tinklą tiesiogiai per &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android gali išlaikyti tinklą sistemos saugykloje.&lt;br&gt;Supplicant versija: %s</string>
   <string name="repeater_clean_pog_failure">Nepavyko pašalinti perteklinės P2P grupės (priežastis: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct nepasiekiamas, įjunkite Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Įgalinti</string>
@@ -240,6 +244,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Priskiria deterministinę programai priklausančią ULA &lt;tt&gt;/64&lt;/tt&gt; ir per root daemon proxyina žemynkryptį IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; bei best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt;. Tai naudotojo erdvės darbas, ne pilnas paketų NAT, ir neperduoda kitų IPv6 next-header protokolų.</string>
   <string name="settings_service_auto_start">Automatiškai paleisti paslaugas</string>
   <string name="settings_service_auto_start_summary">Atkurti paslaugas, jei jos veikė prieš įrenginio paleidimą iš naujo arba programos atnaujinimą.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Trumpiems tinklo pavadinimams gali reikėti Supplicant režimo</string>
   <string name="settings_service_temp_hotspot_use_system">Naudoti sistemos konfigūraciją laikinam viešosios interneto prieigos taškui</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Konfliktuos su kitomis programomis, naudojančiomis tik vietinį hotspot. Taip pat fone naudoja daugiau išteklių, nebent įdiegta kaip sistemos programa.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Konfliktuos su kitomis programomis, naudojančiomis tik vietinį hotspot. Taip pat fone naudoja daugiau išteklių, nebent įdiegta kaip sistemos programa. Greičiausiai veikia Android 12 arba naujesnėje versijoje.</string>
@@ -333,12 +338,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Apriboja Soft AP kanalo pralaidumą. Auto leidžia Android naudoti didžiausią įrenginyje pasiekiamą pralaidumą.</string>
   <string name="wifi_channel_width_auto">Autom.</string>
   <string name="wifi_channel_width_invalid">Netinkama</string>
+  <string name="wifi_standard_legacy">Senasis Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">Prieigos valdymas</string>
   <string name="wifi_hotspot_ap_advanced_title">Išplėstinės parinktys</string>
   <string name="wifi_advanced_mac_address_title">MAC adresas</string>
   <string name="wifi_mac_address_persistent_randomization">Nuolatinis atsitiktinimas: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Nenuolatinis atsitiktinimas</string>
   <string name="wifi_mac_address_help">Sukonfigūruokite AP BSSID ir MAC atsitiktinimą. Android atmeta vien iš nulių sudarytus, multicast ir broadcast BSSID. Aiškus BSSID naudojamas tik išjungus MAC atsitiktinimą.</string>
+  <string name="wifi_p2p_mac_address_help">Pasirinkite, ar Supplicant režimas išlaiko stabilų MAC adresą, ar prašo nepastovios randomizacijos.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Nuolatinis atsitiktinis MAC adresas</string>
   <string name="wifi_hidden_network">Paslėptas tinklas</string>
   <string name="wifi_hidden_network_help">Netransliuoti SSID</string>

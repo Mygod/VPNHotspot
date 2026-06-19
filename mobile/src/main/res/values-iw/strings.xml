@@ -16,6 +16,9 @@
   <string name="repeater_wps_success_keypad">ה-PIN נרשם</string>
   <string name="repeater_wps_failure">הפעלת WPS נכשלה (סיבה: %s)</string>
   <string name="repeater_configure_failure">לא נמצאה תצורה תקינה. יש להפעיל קודם את המשחזר.</string>
+  <string name="repeater_configuration_method">שיטת הגדרה</string>
+  <string name="repeater_configuration_method_framework_summary">יוצר את הרשת דרך ממשקי ה-API של Android framework. חלק מהמגבלות של framework עדיין חלות</string>
+  <string name="repeater_configuration_method_supplicant_summary">יוצר את הרשת ישירות דרך &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android עשוי לשמור את הרשת באחסון המערכת.&lt;br&gt;גרסת Supplicant: %s</string>
   <string name="repeater_clean_pog_failure">הסרת קבוצת P2P עודפת נכשלה (סיבה: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct לא זמין, יש להפעיל Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">הפעלה</string>
@@ -242,6 +245,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">מקצה ULA &lt;tt&gt;/64&lt;/tt&gt; דטרמיניסטי בבעלות האפליקציה ומבצע proxy ל-IPv6 downstream ‏&lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; וגם &lt;tt&gt;ICMPv6&lt;/tt&gt; best-effort דרך root daemon. זו עבודה במרחב משתמש, לא packet NAT מלא, והיא לא מעבירה פרוטוקולי IPv6 next-header אחרים.</string>
   <string name="settings_service_auto_start">הפעלת שירותים אוטומטית</string>
   <string name="settings_service_auto_start_summary">שחזור שירותים אם הם פעלו לפני הפעלה מחדש של המכשיר או עדכון האפליקציה.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">שמות רשת קצרים עשויים לדרוש מצב Supplicant</string>
   <string name="settings_service_temp_hotspot_use_system">שימוש בתצורת המערכת עבור hotspot זמני</string>
   <string name="settings_service_temp_hotspot_use_system_summary">יתנגש עם אפליקציות אחרות המשתמשות ב-hotspot מקומי בלבד. גם משתמש ביותר משאבים ברקע אלא אם הוא מותקן כאפליקציית מערכת.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">יתנגש עם אפליקציות אחרות המשתמשות ב-hotspot מקומי בלבד. גם משתמש ביותר משאבים ברקע אלא אם הוא מותקן כאפליקציית מערכת. סביר שיעבוד ב-Android 12 ומעלה.</string>
@@ -335,12 +339,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">מגביל את רוחב הערוץ של Soft AP. Auto מאפשר ל-Android להשתמש ברוחב המרבי האפשרי במכשיר.</string>
   <string name="wifi_channel_width_auto">אוטומטי</string>
   <string name="wifi_channel_width_invalid">לא תקין</string>
+  <string name="wifi_standard_legacy">Wi‑Fi ישן</string>
   <string name="wifi_hotspot_access_control_title">בקרת גישה</string>
   <string name="wifi_hotspot_ap_advanced_title">אפשרויות מתקדמות</string>
   <string name="wifi_advanced_mac_address_title">כתובת MAC</string>
   <string name="wifi_mac_address_persistent_randomization">אקראיות מתמשכת: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">אקראיות לא מתמשכת</string>
   <string name="wifi_mac_address_help">הגדרת BSSID ואקראיות MAC עבור ה-AP. Android דוחה BSSID שכולו אפסים, multicast ו-broadcast. BSSID מפורש משמש רק כאשר אקראיות MAC כבויה.</string>
+  <string name="wifi_p2p_mac_address_help">יש לבחור אם מצב Supplicant ישמור כתובת MAC יציבה או יבקש רנדומיזציה לא קבועה.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">כתובת MAC אקראית קבועה</string>
   <string name="wifi_hidden_network">רשת מוסתרת</string>
   <string name="wifi_hidden_network_help">לא לשדר את ה-SSID</string>

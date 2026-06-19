@@ -16,6 +16,9 @@
   <string name="repeater_wps_success_keypad">PIN înregistrat</string>
   <string name="repeater_wps_failure">Nu s-a putut porni WPS (motiv: %s)</string>
   <string name="repeater_configure_failure">Nu s-a găsit o configurație validă. Porniți mai întâi repetorul.</string>
+  <string name="repeater_configuration_method">Metodă de configurare</string>
+  <string name="repeater_configuration_method_framework_summary">Creează rețeaua prin API-urile frameworkului Android. Unele restricții ale frameworkului încă se aplică</string>
+  <string name="repeater_configuration_method_supplicant_summary">Creează rețeaua direct prin &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android poate păstra rețeaua în stocarea sistemului.&lt;br&gt;Versiune Supplicant: %s</string>
   <string name="repeater_clean_pog_failure">Eliminarea grupului P2P redundant a eșuat (motiv: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct nu este disponibil, activează Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Activați</string>
@@ -235,6 +238,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Atribuie o ULA &lt;tt&gt;/64&lt;/tt&gt; deterministă deținută de aplicație și proxy pentru IPv6 downstream &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; plus &lt;tt&gt;ICMPv6&lt;/tt&gt; best-effort prin root daemon. Este lucru în spațiu utilizator, nu NAT complet de pachete, și nu redirecționează alte protocoale IPv6 next-header.</string>
   <string name="settings_service_auto_start">Pornește automat serviciile</string>
   <string name="settings_service_auto_start_summary">Restabilește serviciile dacă rulau înainte de repornirea dispozitivului sau actualizarea aplicației.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Numele scurte de rețea pot necesita modul Supplicant</string>
   <string name="settings_service_temp_hotspot_use_system">Folosește configurația sistemului pentru hotspotul temporar</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Va intra în conflict cu alte aplicații care folosesc hotspot local-only. De asemenea folosește mai multe resurse în fundal dacă nu este instalată ca aplicație de sistem.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Va intra în conflict cu alte aplicații care folosesc hotspot local-only. De asemenea folosește mai multe resurse în fundal dacă nu este instalată ca aplicație de sistem. Cel mai probabil funcționează pe Android 12 sau mai nou.</string>
@@ -324,12 +328,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Limitează lățimea canalului Soft AP. Auto permite Android să folosească lățimea maximă posibilă pe dispozitiv.</string>
   <string name="wifi_channel_width_auto">Automat</string>
   <string name="wifi_channel_width_invalid">Nevalid</string>
+  <string name="wifi_standard_legacy">Wi‑Fi vechi</string>
   <string name="wifi_hotspot_access_control_title">Control acces</string>
   <string name="wifi_hotspot_ap_advanced_title">Opțiuni avansate</string>
   <string name="wifi_advanced_mac_address_title">Adresă MAC</string>
   <string name="wifi_mac_address_persistent_randomization">Randomizare persistentă: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Randomizare nepersistentă</string>
   <string name="wifi_mac_address_help">Configurați BSSID și randomizarea MAC pentru AP. Android respinge BSSID-uri numai cu zerouri, multicast și broadcast. Un BSSID explicit este folosit doar când randomizarea MAC este dezactivată.</string>
+  <string name="wifi_p2p_mac_address_help">Alegeți dacă modul Supplicant păstrează o adresă MAC stabilă sau solicită randomizare nepersistentă.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Adresă MAC aleatorie persistentă</string>
   <string name="wifi_hidden_network">Rețea ascunsă</string>
   <string name="wifi_hidden_network_help">Nu difuza SSID-ul</string>

@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">PIN이 등록됨</string>
   <string name="repeater_wps_failure">WPS를 시작하지 못했습니다(이유: %s)</string>
   <string name="repeater_configure_failure">유효한 구성을 찾을 수 없습니다. 먼저 리피터를 시작하세요.</string>
+  <string name="repeater_configuration_method">구성 방법</string>
+  <string name="repeater_configuration_method_framework">프레임워크</string>
+  <string name="repeater_configuration_method_framework_summary">Android 프레임워크 API를 통해 네트워크를 만듭니다. 일부 프레임워크 제한은 계속 적용됩니다</string>
+  <string name="repeater_configuration_method_supplicant_summary">&lt;tt&gt;wpa_supplicant&lt;/tt&gt;를 통해 직접 네트워크를 만듭니다. Android가 네트워크를 시스템 저장소에 유지할 수 있습니다.&lt;br&gt;Supplicant 버전: %s</string>
   <string name="repeater_clean_pog_failure">중복 P2P 그룹 제거 실패(이유: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct를 사용할 수 없습니다. Wi‑Fi를 사용 설정하세요</string>
   <string name="repeater_p2p_unavailable_enable">사용</string>
@@ -219,6 +223,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">앱 소유의 결정적 ULA &lt;tt&gt;/64&lt;/tt&gt;를 할당하고 root daemon을 통해 다운스트림 IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; 및 best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt;를 프록시합니다. 이는 사용자 공간 작업이며 전체 패킷 NAT가 아니고 다른 IPv6 next-header protocols는 전달하지 않습니다.</string>
   <string name="settings_service_auto_start">서비스 자동 시작</string>
   <string name="settings_service_auto_start_summary">기기 재부팅 또는 앱 업데이트 전에 실행 중이던 서비스를 복원합니다.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">짧은 네트워크 이름은 Supplicant 모드가 필요할 수 있습니다</string>
   <string name="settings_service_temp_hotspot_use_system">임시 핫스팟에 시스템 구성 사용</string>
   <string name="settings_service_temp_hotspot_use_system_summary">로컬 전용 핫스팟을 사용하는 다른 앱과 충돌합니다. 시스템 앱으로 설치되어 있지 않으면 백그라운드에서 더 많은 리소스도 사용합니다.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">로컬 전용 핫스팟을 사용하는 다른 앱과 충돌합니다. 시스템 앱으로 설치되어 있지 않으면 백그라운드에서 더 많은 리소스도 사용합니다. Android 12 이상에서 작동할 가능성이 높습니다.</string>
@@ -303,12 +308,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Soft AP 채널 대역폭을 제한합니다. Auto는 Android가 기기에서 가능한 최대 대역폭을 사용하도록 합니다.</string>
   <string name="wifi_channel_width_auto">자동</string>
   <string name="wifi_channel_width_invalid">잘못됨</string>
+  <string name="wifi_standard_legacy">레거시 Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">접근 제어</string>
   <string name="wifi_hotspot_ap_advanced_title">고급 옵션</string>
   <string name="wifi_advanced_mac_address_title">MAC 주소</string>
   <string name="wifi_mac_address_persistent_randomization">영구 무작위화: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">비영구 무작위화</string>
   <string name="wifi_mac_address_help">AP의 BSSID와 MAC 무작위화를 구성합니다. Android는 모두 0인 BSSID, multicast 및 broadcast BSSID를 거부합니다. 명시적 BSSID는 MAC 무작위화가 꺼져 있을 때만 사용됩니다.</string>
+  <string name="wifi_p2p_mac_address_help">Supplicant 모드가 안정적인 MAC 주소를 유지할지, 비영구 무작위 지정을 요청할지 선택합니다.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">영구 무작위 MAC 주소</string>
   <string name="wifi_hidden_network">숨겨진 네트워크</string>
   <string name="wifi_hidden_network_help">SSID를 브로드캐스트하지 않음</string>

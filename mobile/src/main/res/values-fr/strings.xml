@@ -16,6 +16,9 @@
   <string name="repeater_wps_success_keypad">PIN enregistré</string>
   <string name="repeater_wps_failure">Impossible de démarrer WPS (motif : %s)</string>
   <string name="repeater_configure_failure">Configuration valide introuvable. Démarrez d’abord le répéteur.</string>
+  <string name="repeater_configuration_method">Méthode de configuration</string>
+  <string name="repeater_configuration_method_framework_summary">Crée le réseau via les API du framework Android. Certaines restrictions du framework s’appliquent toujours</string>
+  <string name="repeater_configuration_method_supplicant_summary">Crée le réseau directement via &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android peut conserver le réseau dans le stockage système.&lt;br&gt;Version de Supplicant : %s</string>
   <string name="repeater_clean_pog_failure">Impossible de supprimer le groupe P2P redondant (raison : %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct indisponible, activez le Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Activer</string>
@@ -235,6 +238,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Attribue une ULA &lt;tt&gt;/64&lt;/tt&gt; déterministe appartenant à l’app et relaie l’IPv6 descendant &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; ainsi que &lt;tt&gt;ICMPv6&lt;/tt&gt; en best-effort via le démon root. C’est du travail en espace utilisateur, pas un NAT complet de paquets, et les autres protocoles IPv6 next-header ne sont pas transférés.</string>
   <string name="settings_service_auto_start">Démarrer les services automatiquement</string>
   <string name="settings_service_auto_start_summary">Restaurer les services s’ils étaient en cours d’exécution avant le redémarrage de l’appareil ou la mise à jour de l’app.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Les noms de réseau courts peuvent nécessiter le mode Supplicant</string>
   <string name="settings_service_temp_hotspot_use_system">Utiliser la configuration système pour le point d’accès temporaire</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Entrera en conflit avec les autres apps utilisant un point d’accès local uniquement. Utilise aussi plus de ressources en arrière-plan sauf si installé comme app système.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Entrera en conflit avec les autres apps utilisant un point d’accès local uniquement. Utilise aussi plus de ressources en arrière-plan sauf si installé comme app système. Fonctionne très probablement sur Android 12 ou plus récent.</string>
@@ -319,12 +323,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Limite la largeur de canal du Soft AP. Auto permet à Android d’utiliser la largeur maximale disponible sur l’appareil.</string>
   <string name="wifi_channel_width_auto">Automatique</string>
   <string name="wifi_channel_width_invalid">Non valide</string>
+  <string name="wifi_standard_legacy">Wi‑Fi hérité</string>
   <string name="wifi_hotspot_access_control_title">Contrôle d’accès</string>
   <string name="wifi_hotspot_ap_advanced_title">Options avancées</string>
   <string name="wifi_advanced_mac_address_title">Adresse MAC</string>
   <string name="wifi_mac_address_persistent_randomization">Randomisation persistante : %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Randomisation non persistante</string>
   <string name="wifi_mac_address_help">Configurez le BSSID et la randomisation MAC du point d’accès. Android refuse les BSSID tout à zéro, multicast et broadcast. Un BSSID explicite n’est utilisé que lorsque la randomisation MAC est désactivée.</string>
+  <string name="wifi_p2p_mac_address_help">Choisissez si le mode Supplicant conserve une adresse MAC stable ou demande une randomisation non persistante.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Adresse MAC aléatoire persistante</string>
   <string name="wifi_hidden_network">Réseau masqué</string>
   <string name="wifi_hidden_network_help">Ne pas diffuser le SSID</string>

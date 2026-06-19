@@ -17,6 +17,9 @@
   <string name="repeater_wps_success_keypad">PIN registrado</string>
   <string name="repeater_wps_failure">Não foi possível iniciar o WPS (motivo: %s)</string>
   <string name="repeater_configure_failure">Não foi encontrada uma configuração válida. Por favor, inicie o repetidor primeiro.</string>
+  <string name="repeater_configuration_method">Método de configuração</string>
+  <string name="repeater_configuration_method_framework_summary">Cria a rede pelas APIs do framework Android. Algumas restrições do framework ainda se aplicam</string>
+  <string name="repeater_configuration_method_supplicant_summary">Cria a rede diretamente por &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. O Android pode manter a rede no armazenamento do sistema.&lt;br&gt;Versão do Supplicant: %s</string>
   <string name="repeater_clean_pog_failure">Falha ao remover grupo P2P redundante (motivo: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct indisponível, ative o Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Ativar</string>
@@ -238,6 +241,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Atribui uma ULA &lt;tt&gt;/64&lt;/tt&gt; determinística da app e faz proxy de IPv6 downstream &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; mais &lt;tt&gt;ICMPv6&lt;/tt&gt; best-effort pelo daemon root. É trabalho em espaço de usuário, não NAT completo de pacotes, e não encaminha outros protocolos IPv6 next-header.</string>
   <string name="settings_service_auto_start">Auto inicialização de serviços</string>
   <string name="settings_service_auto_start_summary">Restaurar os serviços se estavam em execução antes da reinicialização do dispositivo ou atualização do app.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Nomes de rede curtos podem exigir o modo Supplicant</string>
   <string name="settings_service_temp_hotspot_use_system">Usar a configuração do sistema para o hotspot temporário</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Entrará em conflito com outros apps que usam hotspot apenas local. Também usa mais recursos em segundo plano, a menos que esteja instalado como app do sistema.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Entrará em conflito com outros apps que usam hotspot apenas local. Também usa mais recursos em segundo plano, a menos que esteja instalado como app do sistema. Muito provavelmente funciona no Android 12 ou mais recente.</string>
@@ -327,12 +331,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Limita a largura do canal do Soft AP. Auto permite que o Android use a largura máxima possível no dispositivo.</string>
   <string name="wifi_channel_width_auto">Automático</string>
   <string name="wifi_channel_width_invalid">Inválido</string>
+  <string name="wifi_standard_legacy">Wi‑Fi legado</string>
   <string name="wifi_hotspot_access_control_title">Controle de acesso</string>
   <string name="wifi_hotspot_ap_advanced_title">Opções avançadas</string>
   <string name="wifi_advanced_mac_address_title">Endereço MAC</string>
   <string name="wifi_mac_address_persistent_randomization">Aleatorização persistente: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Aleatorização não persistente</string>
   <string name="wifi_mac_address_help">Configure o BSSID e a aleatorização de MAC do AP. O Android rejeita BSSID só com zeros, multicast e broadcast. Um BSSID explícito só é usado quando a aleatorização de MAC está desativada.</string>
+  <string name="wifi_p2p_mac_address_help">Escolha se o modo Supplicant mantém um endereço MAC estável ou solicita aleatorização não persistente.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Endereço MAC aleatório persistente</string>
   <string name="wifi_hidden_network">Rede oculta</string>
   <string name="wifi_hidden_network_help">Não transmitir o SSID</string>

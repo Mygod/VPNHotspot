@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">PIN ir reģistrēts</string>
   <string name="repeater_wps_failure">Neizdevās palaist WPS (iemesls: %s)</string>
   <string name="repeater_configure_failure">Derīga konfigurācija nav atrasta. Vispirms palaidiet atkārtotāju.</string>
+  <string name="repeater_configuration_method">Konfigurācijas metode</string>
+  <string name="repeater_configuration_method_framework">Ietvars</string>
+  <string name="repeater_configuration_method_framework_summary">Izveido tīklu, izmantojot Android ietvara API. Daži ietvara ierobežojumi joprojām ir spēkā</string>
+  <string name="repeater_configuration_method_supplicant_summary">Izveido tīklu tieši, izmantojot &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android var saglabāt tīklu sistēmas krātuvē.&lt;br&gt;Supplicant versija: %s</string>
   <string name="repeater_clean_pog_failure">Neizdevās noņemt lieko P2P grupu (iemesls: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct nav pieejams, ieslēdziet Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Iespējot</string>
@@ -233,6 +237,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Piešķir deterministisku lietotnei piederošu ULA &lt;tt&gt;/64&lt;/tt&gt; un caur root daemon proxy lejupplūsmas IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; plus best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt;. Tas ir lietotāja telpas darbs, nevis pilns packet NAT, un nepārsūta citus IPv6 next-header protokolus.</string>
   <string name="settings_service_auto_start">Automātiski palaist pakalpojumus</string>
   <string name="settings_service_auto_start_summary">Atjaunot pakalpojumus, ja tie darbojās pirms ierīces restartēšanas vai lietotnes atjaunināšanas.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Īsiem tīkla nosaukumiem var būt nepieciešams Supplicant režīms</string>
   <string name="settings_service_temp_hotspot_use_system">Izmantot sistēmas konfigurāciju pagaidu tīklājam</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Konfliktēs ar citām lietotnēm, kas izmanto tikai lokālu hotspot. Ja nav instalēta kā sistēmas lietotne, fonā izmanto arī vairāk resursu.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Konfliktēs ar citām lietotnēm, kas izmanto tikai lokālu hotspot. Ja nav instalēta kā sistēmas lietotne, fonā izmanto arī vairāk resursu. Visticamāk darbojas Android 12 vai jaunākā versijā.</string>
@@ -323,12 +328,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Ierobežo Soft AP kanāla joslas platumu. Auto ļauj Android izmantot maksimālo ierīcē sasniedzamo joslas platumu.</string>
   <string name="wifi_channel_width_auto">Autom.</string>
   <string name="wifi_channel_width_invalid">Nederīgs</string>
+  <string name="wifi_standard_legacy">Vecais Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">Piekļuves kontrole</string>
   <string name="wifi_hotspot_ap_advanced_title">Papildu opcijas</string>
   <string name="wifi_advanced_mac_address_title">MAC adrese</string>
   <string name="wifi_mac_address_persistent_randomization">Pastāvīga nejaušošana: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Nepastāvīga nejaušošana</string>
   <string name="wifi_mac_address_help">Konfigurējiet AP BSSID un MAC nejaušošanu. Android noraida tikai nulles saturošus, multicast un broadcast BSSID. Tieši norādīts BSSID tiek izmantots tikai tad, kad MAC nejaušošana ir izslēgta.</string>
+  <string name="wifi_p2p_mac_address_help">Izvēlieties, vai Supplicant režīms saglabā stabilu MAC adresi vai pieprasa nepastāvīgu nejaušināšanu.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Pastāvīga nejaušināta MAC adrese</string>
   <string name="wifi_hidden_network">Slēpts tīkls</string>
   <string name="wifi_hidden_network_help">Nepārraidīt SSID</string>

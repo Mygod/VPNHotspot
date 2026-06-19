@@ -16,6 +16,9 @@
   <string name="repeater_wps_success_keypad">PIN terdaftar</string>
   <string name="repeater_wps_failure">Gagal memulai WPS (alasan: %s)</string>
   <string name="repeater_configure_failure">Konfigurasi valid tidak ditemukan. Mulai pengulang terlebih dahulu.</string>
+  <string name="repeater_configuration_method">Metode konfigurasi</string>
+  <string name="repeater_configuration_method_framework_summary">Membuat jaringan melalui API framework Android. Beberapa pembatasan framework tetap berlaku</string>
+  <string name="repeater_configuration_method_supplicant_summary">Membuat jaringan secara langsung melalui &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android dapat mempertahankan jaringan di penyimpanan sistem.&lt;br&gt;Versi Supplicant: %s</string>
   <string name="repeater_clean_pog_failure">Gagal menghapus grup P2P redundan (alasan: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct tidak tersedia, aktifkan Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Aktifkan</string>
@@ -220,6 +223,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Menetapkan ULA &lt;tt&gt;/64&lt;/tt&gt; deterministik milik aplikasi dan mem-proxy IPv6 downstream &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; plus best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; melalui root daemon. Ini pekerjaan ruang pengguna, bukan NAT paket penuh, dan tidak meneruskan protokol IPv6 next-header lain.</string>
   <string name="settings_service_auto_start">Mulai layanan otomatis</string>
   <string name="settings_service_auto_start_summary">Pulihkan layanan jika layanan tersebut berjalan sebelum perangkat dimulai ulang atau aplikasi diperbarui.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Nama jaringan pendek mungkin memerlukan mode Supplicant</string>
   <string name="settings_service_temp_hotspot_use_system">Gunakan konfigurasi sistem untuk hotspot sementara</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Akan bentrok dengan aplikasi lain yang memakai hotspot lokal saja. Juga memakai lebih banyak resource di latar belakang kecuali diinstal sebagai aplikasi sistem.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Akan bentrok dengan aplikasi lain yang memakai hotspot lokal saja. Juga memakai lebih banyak resource di latar belakang kecuali diinstal sebagai aplikasi sistem. Kemungkinan besar berfungsi di Android 12 atau lebih baru.</string>
@@ -303,12 +307,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Membatasi bandwidth kanal Soft AP. Auto memungkinkan Android memakai bandwidth maksimum yang dapat dicapai di perangkat.</string>
   <string name="wifi_channel_width_auto">Otomatis</string>
   <string name="wifi_channel_width_invalid">Tidak valid</string>
+  <string name="wifi_standard_legacy">Wi‑Fi lama</string>
   <string name="wifi_hotspot_access_control_title">Kontrol akses</string>
   <string name="wifi_hotspot_ap_advanced_title">Opsi lanjutan</string>
   <string name="wifi_advanced_mac_address_title">Alamat MAC</string>
   <string name="wifi_mac_address_persistent_randomization">Pengacakan persisten: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Pengacakan non-persisten</string>
   <string name="wifi_mac_address_help">Konfigurasikan BSSID dan pengacakan MAC untuk AP. Android menolak BSSID semua nol, multicast, dan broadcast. BSSID eksplisit hanya dipakai saat pengacakan MAC dinonaktifkan.</string>
+  <string name="wifi_p2p_mac_address_help">Pilih apakah mode Supplicant mempertahankan alamat MAC stabil atau meminta pengacakan non-persisten.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Alamat MAC acak persisten</string>
   <string name="wifi_hidden_network">Jaringan tersembunyi</string>
   <string name="wifi_hidden_network_help">Jangan siarkan SSID</string>

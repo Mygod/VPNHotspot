@@ -16,6 +16,9 @@
   <string name="repeater_wps_success_keypad">PIN ලියාපදිංචි විය</string>
   <string name="repeater_wps_failure">WPS ආරම්භ කිරීමට අසමත් විය (හේතුව: %s)</string>
   <string name="repeater_configure_failure">වලංගු වින්‍යාසයක් හමු නොවීය. පළමුව රිපීටරය ආරම්භ කරන්න.</string>
+  <string name="repeater_configuration_method">වින්‍යාස ක්‍රමය</string>
+  <string name="repeater_configuration_method_framework_summary">Android framework API හරහා network එක සාදයි. framework සීමා කිහිපයක් තවමත් බලපායි</string>
+  <string name="repeater_configuration_method_supplicant_summary">&lt;tt&gt;wpa_supplicant&lt;/tt&gt; හරහා සෘජුව network එක සාදයි. Android network එක system storage තුළ තබාගත හැක.&lt;br&gt;Supplicant අනුවාදය: %s</string>
   <string name="repeater_clean_pog_failure">අතිරික්ත P2P සමූහය ඉවත් කිරීමට අසමත් විය (හේතුව: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct නොමැත, Wi‑Fi සක්‍රිය කරන්න</string>
   <string name="repeater_p2p_unavailable_enable">සක්‍රීය කරන්න</string>
@@ -226,6 +229,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">යෙදුමට අයත් deterministic ULA &lt;tt&gt;/64&lt;/tt&gt; පවරා root daemon හරහා downstream IPv6 &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; සහ best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; proxy කරයි. මෙය userspace වැඩක්, සම්පූර්ණ packet NAT නොවේ, සහ වෙනත් IPv6 next-header protocols forward නොකරයි.</string>
   <string name="settings_service_auto_start">සේවා ස්වයංක්‍රීයව ආරම්භ කරන්න</string>
   <string name="settings_service_auto_start_summary">උපාංගය reboot වීමකට හෝ app update වීමට පෙර services ක්‍රියාත්මකව තිබුණේ නම් ඒවා restore කරන්න.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">කෙටි network names සඳහා Supplicant mode අවශ්‍ය විය හැක</string>
   <string name="settings_service_temp_hotspot_use_system">Temporary hotspot සඳහා system configuration භාවිත කරන්න</string>
   <string name="settings_service_temp_hotspot_use_system_summary">local only hotspot භාවිත කරන වෙනත් apps සමඟ conflict වේ. system app ලෙස install කර නොමැති නම් background හි වැඩි resources ද භාවිත කරයි.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">local only hotspot භාවිත කරන වෙනත් apps සමඟ conflict වේ. system app ලෙස install කර නොමැති නම් background හි වැඩි resources ද භාවිත කරයි. බොහෝ විට Android 12 හෝ නවතම මත ක්‍රියා කරයි.</string>
@@ -313,12 +317,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Soft AP නාලිකා පළල සීමා කරයි. Auto Android හට උපාංගයේ ලබාගත හැකි උපරිම පළල භාවිත කිරීමට ඉඩ දෙයි.</string>
   <string name="wifi_channel_width_auto">ස්වයං</string>
   <string name="wifi_channel_width_invalid">වලංගු නොවේ</string>
+  <string name="wifi_standard_legacy">පැරණි Wi‑Fi</string>
   <string name="wifi_hotspot_access_control_title">ප්‍රවේශ පාලනය</string>
   <string name="wifi_hotspot_ap_advanced_title">උසස් විකල්ප</string>
   <string name="wifi_advanced_mac_address_title">MAC ලිපිනය</string>
   <string name="wifi_mac_address_persistent_randomization">ස්ථිර අහඹුකරණය: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">ස්ථිර නොවන අහඹුකරණය</string>
   <string name="wifi_mac_address_help">AP සඳහා BSSID සහ MAC අහඹුකරණය වින්‍යාස කරන්න. Android සියලු-ශූන්‍ය, multicast සහ broadcast BSSID ප්‍රතික්ෂේප කරයි. පැහැදිලි BSSID භාවිත වන්නේ MAC අහඹුකරණය අක්‍රිය විට පමණි.</string>
+  <string name="wifi_p2p_mac_address_help">Supplicant mode ස්ථිර MAC ලිපිනයක් තබාගන්නවාද නැතහොත් non-persistent randomization ඉල්ලනවාද තෝරන්න.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">ස්ථිර සසම්භාවී MAC ලිපිනය</string>
   <string name="wifi_hidden_network">සඟවන ලද ජාලය</string>
   <string name="wifi_hidden_network_help">SSID විකාශනය නොකරන්න</string>

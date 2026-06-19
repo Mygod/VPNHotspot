@@ -16,6 +16,10 @@
   <string name="repeater_wps_success_keypad">PIN imesajiliwa</string>
   <string name="repeater_wps_failure">Imeshindwa kuanzisha WPS (sababu: %s)</string>
   <string name="repeater_configure_failure">Usanidi halali haukupatikana. Anzisha kirudia kwanza.</string>
+  <string name="repeater_configuration_method">Mbinu ya usanidi</string>
+  <string name="repeater_configuration_method_framework">Mfumo</string>
+  <string name="repeater_configuration_method_framework_summary">Huunda mtandao kupitia API za mfumo wa Android. Baadhi ya vizuizi vya mfumo bado vinatumika</string>
+  <string name="repeater_configuration_method_supplicant_summary">Huunda mtandao moja kwa moja kupitia &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android inaweza kuhifadhi mtandao kwenye hifadhi ya mfumo.&lt;br&gt;Toleo la Supplicant: %s</string>
   <string name="repeater_clean_pog_failure">Imeshindwa kuondoa kikundi cha P2P kisichohitajika (sababu: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct haipatikani, washa Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Washa</string>
@@ -226,6 +230,7 @@
   <string name="settings_service_ipv6_mode_nat_summary">Huweka ULA &lt;tt&gt;/64&lt;/tt&gt; ya programu iliyo deterministic na ku-proxy IPv6 ya downstream &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; pamoja na best-effort &lt;tt&gt;ICMPv6&lt;/tt&gt; kupitia root daemon. Hii ni kazi ya nafasi ya mtumiaji, si packet NAT kamili, na haisambazi IPv6 next-header protocols nyingine.</string>
   <string name="settings_service_auto_start">Anzisha huduma kiotomatiki</string>
   <string name="settings_service_auto_start_summary">Rejesha huduma ikiwa zilikuwa zinaendeshwa kabla ya kifaa kuwashwa upya au programu kusasishwa.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Majina mafupi ya mtandao yanaweza kuhitaji hali ya Supplicant</string>
   <string name="settings_service_temp_hotspot_use_system">Tumia usanidi wa mfumo kwa hotspot ya muda</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Itagongana na programu nyingine zinazotumia hotspot ya ndani pekee. Pia hutumia rasilimali zaidi chinichini isipokuwa imesakinishwa kama programu ya mfumo.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Itagongana na programu nyingine zinazotumia hotspot ya ndani pekee. Pia hutumia rasilimali zaidi chinichini isipokuwa imesakinishwa kama programu ya mfumo. Huenda ikafanya kazi kwenye Android 12 au mpya zaidi.</string>
@@ -312,12 +317,14 @@
   <string name="wifi_hotspot_max_channel_bandwidth_help">Hupunguza upana wa kituo cha Soft AP. Auto huruhusu Android kutumia upana wa juu unaowezekana kwenye kifaa.</string>
   <string name="wifi_channel_width_auto">Otomatiki</string>
   <string name="wifi_channel_width_invalid">Si halali</string>
+  <string name="wifi_standard_legacy">Wi‑Fi ya zamani</string>
   <string name="wifi_hotspot_access_control_title">Udhibiti wa ufikiaji</string>
   <string name="wifi_hotspot_ap_advanced_title">Chaguo za kina</string>
   <string name="wifi_advanced_mac_address_title">Anwani ya MAC</string>
   <string name="wifi_mac_address_persistent_randomization">Uwekaji nasibu endelevu: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Uwekaji nasibu usio endelevu</string>
   <string name="wifi_mac_address_help">Sanidi BSSID na uwekaji nasibu wa MAC kwa AP. Android hukataa BSSID za sufuri zote, multicast na broadcast. BSSID iliyo wazi hutumiwa tu wakati uwekaji nasibu wa MAC umezimwa.</string>
+  <string name="wifi_p2p_mac_address_help">Chagua kama hali ya Supplicant ihifadhi anwani thabiti ya MAC au iombe ubadilishaji nasibu usio wa kudumu.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Anwani ya MAC nasibu endelevu</string>
   <string name="wifi_hidden_network">Mtandao uliofichwa</string>
   <string name="wifi_hidden_network_help">Usitangaze SSID</string>

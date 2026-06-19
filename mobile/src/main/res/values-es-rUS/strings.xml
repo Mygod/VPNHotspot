@@ -16,6 +16,9 @@
   <string name="repeater_wps_success_keypad">PIN registrado</string>
   <string name="repeater_wps_failure">No se pudo iniciar WPS (motivo: %s)</string>
   <string name="repeater_configure_failure">No se encontró una configuración válida. Inicia primero el repetidor.</string>
+  <string name="repeater_configuration_method">Método de configuración</string>
+  <string name="repeater_configuration_method_framework_summary">Crea la red mediante las API del framework de Android. Algunas restricciones del framework aún se aplican</string>
+  <string name="repeater_configuration_method_supplicant_summary">Crea la red directamente mediante &lt;tt&gt;wpa_supplicant&lt;/tt&gt;. Android puede conservar la red en el almacenamiento del sistema.&lt;br&gt;Versión de Supplicant: %s</string>
   <string name="repeater_clean_pog_failure">No se pudo eliminar el grupo P2P redundante (motivo: %s)</string>
   <string name="repeater_p2p_unavailable">Wi‑Fi Direct no está disponible; activa Wi‑Fi</string>
   <string name="repeater_p2p_unavailable_enable">Habilitar</string>
@@ -235,6 +238,7 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
   <string name="settings_service_ipv6_mode_nat_summary">Asigna una ULA &lt;tt&gt;/64&lt;/tt&gt; determinista propiedad de la app y proxy IPv6 descendente &lt;tt&gt;TCP&lt;/tt&gt;/&lt;tt&gt;UDP&lt;/tt&gt; más &lt;tt&gt;ICMPv6&lt;/tt&gt; de mejor esfuerzo mediante el daemon root. Es trabajo en espacio de usuario, no NAT completo de paquetes, y no reenvía otros protocolos IPv6 next-header.</string>
   <string name="settings_service_auto_start">Inicio automático de servicios</string>
   <string name="settings_service_auto_start_summary">Restaurar los servicios si se estaban ejecutando antes de reiniciar el dispositivo o actualizar la app.</string>
+  <string name="settings_service_repeater_supplicant_mode_warning">Los nombres de red cortos pueden requerir el modo Supplicant</string>
   <string name="settings_service_temp_hotspot_use_system">Usar la configuración del sistema para el hotspot temporal</string>
   <string name="settings_service_temp_hotspot_use_system_summary">Entrará en conflicto con otras apps que usen hotspot solo local. También usa más recursos en segundo plano salvo que esté instalada como app del sistema.</string>
   <string name="settings_service_temp_hotspot_use_system_summary_api30">Entrará en conflicto con otras apps que usen hotspot solo local. También usa más recursos en segundo plano salvo que esté instalada como app del sistema. Lo más probable es que funcione en Android 12 o posterior.</string>
@@ -326,12 +330,14 @@ ancho de banda de %3$s, tiempo de espera de inactividad desactivado</string>
   <string name="wifi_hotspot_max_channel_bandwidth_help">Limita el ancho de canal del Soft AP. Auto permite que Android use el ancho máximo posible en el dispositivo.</string>
   <string name="wifi_channel_width_auto">Automático</string>
   <string name="wifi_channel_width_invalid">No válido</string>
+  <string name="wifi_standard_legacy">Wi‑Fi heredado</string>
   <string name="wifi_hotspot_access_control_title">Control de acceso</string>
   <string name="wifi_hotspot_ap_advanced_title">Opciones avanzadas</string>
   <string name="wifi_advanced_mac_address_title">Dirección MAC</string>
   <string name="wifi_mac_address_persistent_randomization">Aleatorización persistente: %s</string>
   <string name="wifi_mac_address_non_persistent_randomization">Aleatorización no persistente</string>
   <string name="wifi_mac_address_help">Configura BSSID y aleatorización de MAC para el AP. Android rechaza BSSID de solo ceros, multicast y broadcast. Un BSSID explícito solo se usa cuando la aleatorización de MAC está desactivada.</string>
+  <string name="wifi_p2p_mac_address_help">Elige si el modo Supplicant conserva una dirección MAC estable o solicita aleatorización no persistente.</string>
   <string name="wifi_advanced_mac_address_persistent_randomized">Dirección MAC aleatoria persistente</string>
   <string name="wifi_hidden_network">Red oculta</string>
   <string name="wifi_hidden_network_help">No transmitir el SSID</string>
