@@ -1,5 +1,5 @@
 [versions]
-lifecycle = "2.11.0-rc01"
+lifecycle = "2.11.0"
 room = "2.8.4"
 wire = "6.4.0"
 
@@ -7,7 +7,7 @@ wire = "6.4.0"
 activity-compose = "androidx.activity:activity-compose:1.13.0"
 annotation-jvm = "androidx.annotation:annotation-jvm:1.10.0"
 browser = "androidx.browser:browser:1.10.0"
-compose-bom = "androidx.compose:compose-bom-alpha:2026.05.02"
+compose-bom = "androidx.compose:compose-bom-alpha:2026.06.00"
 core = "androidx.core:core:1.19.0"
 espresso-core = "androidx.test.espresso:espresso-core:3.7.0"
 firebase-analytics = "com.google.firebase:firebase-analytics:23.2.0"
@@ -19,7 +19,7 @@ kotlinx-collections-immutable = "org.jetbrains.kotlinx:kotlinx-collections-immut
 kotlinx-coroutines-android = "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0"
 ktor-io-jvm = "io.ktor:ktor-io-jvm:3.5.0"
 leakcanary-android = "com.squareup.leakcanary:leakcanary-android:2.14"
-librootkotlinx = "be.mygod.librootkotlinx:librootkotlinx:2.0.0-alpha13"
+librootkotlinx = "be.mygod.librootkotlinx:librootkotlinx:2.0.0-alpha14"
 lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 navigation-compose = "androidx.navigation:navigation-compose:2.9.8"
@@ -38,7 +38,7 @@ android-application = "com.android.application:9.2.1"
 ben-manes-versions = "com.github.ben-manes.versions:0.54.0"
 compose-compiler = "org.jetbrains.kotlin.plugin.compose:2.4.0"
 crashlytics = "com.google.firebase.crashlytics:3.0.7"
-google-services = "com.google.gms.google-services:4.4.4"
+google-services = "com.google.gms.google-services:4.5.0"
 kotlin-parcelize = "org.jetbrains.kotlin.plugin.parcelize:2.4.0"
 ksp = "com.google.devtools.ksp:2.3.9"
 wire = { id = "com.squareup.wire", version.ref = "wire" }

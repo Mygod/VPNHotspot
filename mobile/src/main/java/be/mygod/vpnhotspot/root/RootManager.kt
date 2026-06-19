@@ -1,19 +1,21 @@
 package be.mygod.vpnhotspot.root
 
 import android.annotation.SuppressLint
-import android.os.ParcelFileDescriptor
 import android.os.Parcelable
 import android.util.Log
 import be.mygod.librootkotlinx.Logger
 import be.mygod.librootkotlinx.ParcelableThrowable
 import be.mygod.librootkotlinx.RootFlow
+import be.mygod.librootkotlinx.RootProcess
 import be.mygod.librootkotlinx.RootServer
 import be.mygod.librootkotlinx.RootSession
 import be.mygod.librootkotlinx.io.awaitExit
+import be.mygod.librootkotlinx.io.pid
 import be.mygod.librootkotlinx.systemContext
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
@@ -27,7 +29,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
-import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.time.Duration.Companion.seconds
 
@@ -91,21 +92,21 @@ object RootManager : RootSession(), Logger {
     override fun w(m: String?, t: Throwable?) = Timber.w(t, m)
 
     override val rootLifecycleCoroutineContext get() = EmptyCoroutineContext
-    override suspend fun handleRootLifecycle(
-        process: Process,
-        stdin: ParcelFileDescriptor,
-        stdout: ParcelFileDescriptor,
-        stderr: ParcelFileDescriptor,
-    ) = try {
-        super.handleRootLifecycle(process, stdin, stdout, stderr)
+    override suspend fun handleRootLifecycle(rootProcess: RootProcess) = try {
+        FirebaseCrashlytics.getInstance().apply {
+            setCustomKey("root.connectedGid", rootProcess.peerCredentials.gid)
+            setCustomKey("root.connectedPid", rootProcess.peerCredentials.pid)
+            setCustomKey("root.launchedPid", rootProcess.process.pid)
+        }
+        super.handleRootLifecycle(rootProcess)
     } finally {
         GlobalScope.launch {
-            var exit = withTimeoutOrNull(10.seconds) { process.awaitExit() }
+            var exit = withTimeoutOrNull(10.seconds) { rootProcess.process.awaitExit() }
             if (exit == null) {
-                process.destroy()
-                exit = withTimeoutOrNull(5.seconds) { process.awaitExit() }
+                rootProcess.process.destroy()
+                exit = withTimeoutOrNull(5.seconds) { rootProcess.process.awaitExit() }
                 Timber.w(Exception(if (exit == null) {
-                    process.destroyForcibly()
+                    rootProcess.process.destroyForcibly()
                     "Root JVM refused to exit"
                 } else "Root JVM exited with $exit and timeout"))
             } else if (exit != 0) Timber.w(Exception("Root JVM unexpectedly exited with $exit"))

@@ -266,8 +266,8 @@ android {
     lint.warning += "UnsafeOptInUsageError"
     sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
 }
-val hiddenApiStubAnnotations by configurations.creating
-val compileHiddenApiStubs by tasks.registering(JavaCompile::class) {
+val hiddenApiStubAnnotations = configurations.create("hiddenApiStubAnnotations")
+val compileHiddenApiStubs = tasks.register<JavaCompile>("compileHiddenApiStubs") {
     source("src/hiddenApiStubs/java")
     classpath = files(androidComponents.sdkComponents.bootClasspath) + hiddenApiStubAnnotations
     destinationDirectory.set(layout.buildDirectory.dir("intermediates/hiddenApiStubs/classes"))
@@ -277,7 +277,7 @@ val compileHiddenApiStubs by tasks.registering(JavaCompile::class) {
 }
 val hiddenApiStubsClasses = files(compileHiddenApiStubs.flatMap { it.destinationDirectory })
     .builtBy(compileHiddenApiStubs)
-val hiddenApiStubsJar by tasks.registering(Jar::class) {
+val hiddenApiStubsJar = tasks.register<Jar>("hiddenApiStubsJar") {
     from(hiddenApiStubsClasses)
     archiveFileName.set("hidden-api-stubs.jar")
 }
