@@ -93,7 +93,7 @@ fun ApConfigurationScreen(
                     state.supplicantCapability?.label.orEmpty(),
                 )
                 ListApRow(
-                    icon = R.drawable.ic_health_and_safety,
+                    icon = R.drawable.ic_rocket_launch,
                     title = R.string.repeater_configuration_method,
                     selected = state.useFramework,
                     entries = listOf(true, false),
