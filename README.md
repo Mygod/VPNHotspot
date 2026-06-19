@@ -1,7 +1,7 @@
 # VPN Hotspot
 
 [![Releases](https://img.shields.io/github/downloads/Mygod/VPNHotspot/total.svg)](https://github.com/Mygod/VPNHotspot/releases)
-[![Android 10-16.1](https://img.shields.io/badge/Android-10--16.1-3DDC84?logo=android&logoColor=white)](mobile/build.gradle.kts)
+[![Android 10-17](https://img.shields.io/badge/Android-10--17-3DDC84?logo=android&logoColor=white)](mobile/build.gradle.kts)
 
 [![Get it on Obtainium](https://github.com/ImranR98/Obtainium/raw/main/assets/graphics/badge_obtainium.png)](https://apps.obtainium.imranr.dev/redirect.html?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522be.mygod.vpnhotspot%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FMygod%252FVPNHotspot%2522%252C%2522author%2522%253A%2522%2522%252C%2522name%2522%253A%2522%2522%252C%2522additionalSettings%2522%253A%2522%257B%255C%2522includeZips%255C%2522%253Atrue%252C%255C%2522apkFilterRegEx%255C%2522%253A%255C%2522zip%255C%2522%257D%2522%257D)
 ([Pre-release channel](https://apps.obtainium.imranr.dev/redirect.html?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522be.mygod.vpnhotspot%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FMygod%252FVPNHotspot%2522%252C%2522author%2522%253A%2522%2522%252C%2522name%2522%253A%2522%2522%252C%2522additionalSettings%2522%253A%2522%257B%255C%2522includePrereleases%255C%2522%253Atrue%252C%255C%2522includeZips%255C%2522%253Atrue%252C%255C%2522apkFilterRegEx%255C%2522%253A%255C%2522zip%255C%2522%257D%2522%257D))

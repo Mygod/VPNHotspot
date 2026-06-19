@@ -229,7 +229,7 @@ android {
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 29
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 2007
         versionName = "3.0.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
