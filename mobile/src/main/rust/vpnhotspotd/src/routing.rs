@@ -27,13 +27,13 @@ use static_addresses::clean_ip;
 
 pub(crate) use static_addresses::replace_static_addresses;
 
-// AOSP local-network/tethering priorities are 20000/21000 since Android 12 and 17000/18000
-// on API 29..30. Keep VPNHotspot rules inside that gap.
+// AOSP local-network/tethering priorities are 20000/21000 since Android 12 and
+// 17000/18000 on Android 10/11. Keep VPNHotspot rules inside that gap.
 // This also works for Wi-Fi direct where there's no system tethering rule to override.
 //
 // Sources:
 // https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/RouteController.cpp#65
-// https://android.googlesource.com/platform/system/netd/+/e11b8688b1f99292ade06f89f957c1f7e76ceae9/server/RouteController.h#51
+// https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.h#49
 const RULE_PRIORITY_DAEMON_BASE: u32 = 20600;
 const RULE_PRIORITY_UPSTREAM_BASE: u32 = 20700;
 const RULE_PRIORITY_UPSTREAM_FALLBACK_BASE: u32 = 20800;
