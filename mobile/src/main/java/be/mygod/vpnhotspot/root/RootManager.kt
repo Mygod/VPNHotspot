@@ -15,6 +15,7 @@ import be.mygod.librootkotlinx.systemContext
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -99,18 +100,23 @@ object RootManager : RootSession(), Logger {
             setCustomKey("root.launchedPid", rootProcess.process.pid)
         }
         super.handleRootLifecycle(rootProcess)
+        unexpectedLifecycle("stdout/stderr closed unexpectedly")
     } finally {
         GlobalScope.launch {
             var exit = withTimeoutOrNull(10.seconds) { rootProcess.process.awaitExit() }
             if (exit == null) {
                 rootProcess.process.destroy()
                 exit = withTimeoutOrNull(5.seconds) { rootProcess.process.awaitExit() }
-                Timber.w(Exception(if (exit == null) {
+                unexpectedLifecycle(if (exit == null) {
                     rootProcess.process.destroyForcibly()
                     "Root JVM refused to exit"
-                } else "Root JVM exited with $exit and timeout"))
-            } else if (exit != 0) Timber.w(Exception("Root JVM unexpectedly exited with $exit"))
+                } else "Root JVM exited with $exit and timeout")
+            } else if (exit != 0) unexpectedLifecycle("Root JVM unexpectedly exited with $exit")
         }
+    }
+    private fun unexpectedLifecycle(message: String) {
+        Timber.w(Exception(message))
+        SmartSnackbar.make(message).show()
     }
 
     override suspend fun initServer(server: RootServer) {

@@ -372,7 +372,10 @@ object DaemonController {
             } catch (_: CancellationException) {
             } catch (e: Exception) {
                 lock.withLock {
-                    if (!daemonStdioClosing) Timber.w(e)
+                    if (!daemonStdioClosing) {
+                        Timber.w(e)
+                        SmartSnackbar.make(e).show()
+                    }
                     closeAndClearStateLocked(cancelReader = false, cause = e)
                 }
             }
