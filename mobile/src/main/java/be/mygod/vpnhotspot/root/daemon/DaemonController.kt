@@ -21,17 +21,17 @@ import dalvik.system.BaseDexClassLoader
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.ByteWriteChannel
 import io.ktor.utils.io.readLineTo
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ClosedReceiveChannelException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.flow
@@ -40,14 +40,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
-import timber.log.Timber
 import okio.ByteString.Companion.toByteString
+import timber.log.Timber
 import java.io.EOFException
 import java.io.IOException
-import java.net.InetAddress
 import kotlin.random.Random
-import kotlin.time.Duration.Companion.seconds
 
 object DaemonController {
     private const val BINARY_NAME = "vpnhotspotd"
@@ -169,31 +166,26 @@ object DaemonController {
                     }
                 }
                 var acceptedDaemon: ALocalSocket? = null
-                withTimeoutOrNull(10.seconds) {
-                    while (acceptedDaemon == null) {
-                        val accepted = serverSocket.accept()
-                        var acceptedByDaemon = false
-                        try {
-                            val uid = accepted.socket.peerCredentials.uid
-                            if (uid == 0) {
-                                acceptedByDaemon = true
-                                acceptedDaemon = accepted
-                            } else Timber.w("Rejected $BINARY_NAME connection from uid=$uid")
-                        } finally {
-                            if (!acceptedByDaemon) try {
-                                accepted.close()
-                            } catch (e: IOException) {
-                                Timber.w(e, "Failed to close rejected $BINARY_NAME connection")
-                            }
+                while (acceptedDaemon == null) {
+                    val accepted = serverSocket.accept()
+                    var acceptedByDaemon = false
+                    try {
+                        val uid = accepted.socket.peerCredentials.uid
+                        if (uid == 0) {
+                            acceptedByDaemon = true
+                            acceptedDaemon = accepted
+                        } else Timber.w("Rejected $BINARY_NAME connection from uid=$uid")
+                    } finally {
+                        if (!acceptedByDaemon) try {
+                            accepted.close()
+                        } catch (e: IOException) {
+                            Timber.w(e, "Failed to close rejected $BINARY_NAME connection")
                         }
                     }
                 }
-                val daemonSocket = acceptedDaemon ?: throw IOException(
-                    "Timed out waiting for root $BINARY_NAME to connect",
-                )
-                socket = daemonSocket
-                input = daemonSocket.openReadChannel()
-                output = daemonSocket.openWriteChannel()
+                socket = acceptedDaemon
+                input = acceptedDaemon.openReadChannel()
+                output = acceptedDaemon.openWriteChannel()
                 startReaderLocked(input!!)
                 Timber.d("Started $BINARY_NAME")
             }
