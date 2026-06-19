@@ -124,6 +124,7 @@ These additional reflected whitelisted/system API are listed below:
 * (since API 33) `Landroid/net/wifi/WifiManager;->unregisterLocalOnlyHotspotSoftApCallback(Landroid/net/wifi/WifiManager$SoftApCallback;)V,sdk,system-api,test-api`
 * `Landroid/net/wifi/WifiManager;->unregisterSoftApCallback(Landroid/net/wifi/WifiManager$SoftApCallback;)V,sdk,system-api,test-api`
 * (since API 35) `Landroid/net/wifi/p2p/WifiP2pGroup;->getVendorData()Ljava/util/List;,sdk,system-api,test-api`
+* (API 29 has a legacy `Collection` return type preventing the use of linking) `Landroid/net/wifi/p2p/WifiP2pGroupList;->getGroupList()Ljava/util/List;,sdk,system-api,test-api`
 * `Landroid/net/wifi/p2p/WifiP2pManager;->requestPersistentGroupInfo(Landroid/net/wifi/p2p/WifiP2pManager$Channel;Landroid/net/wifi/p2p/WifiP2pManager$PersistentGroupInfoListener;)V,sdk,system-api,test-api`
 * `Landroid/provider/Settings$Global;->TETHER_OFFLOAD_DISABLED:Ljava/lang/String;,sdk,system-api,test-api`
 * (since API 30) `Landroid/provider/Settings;->ACTION_TETHER_SETTINGS:Ljava/lang/String;,sdk,system-api,test-api`

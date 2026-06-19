@@ -5,6 +5,7 @@ import android.net.MacAddress
 import android.net.wifi.ScanResult
 import android.net.wifi.WpsInfo
 import android.net.wifi.p2p.WifiP2pConfig
+import android.net.wifi.p2p.WifiP2pGroup
 import android.net.wifi.p2p.WifiP2pGroupList
 import android.net.wifi.p2p.WifiP2pManager
 import android.net.wifi.p2p.`WifiP2pManager$PersistentGroupInfoListener`
@@ -84,6 +85,7 @@ object WifiP2pManagerHelper {
         WifiP2pManager::class.java.getDeclaredMethod("requestPersistentGroupInfo",
             WifiP2pManager.Channel::class.java, `WifiP2pManager$PersistentGroupInfoListener`::class.java)
     }
+    private val getPersistentGroupList by lazy { WifiP2pGroupList::class.java.getDeclaredMethod("getGroupList") }
     /**
      * Request a list of all the persistent p2p groups stored in the system, so an already-present group can be
      * adopted when the app has nothing persisted yet. We only read this; we never delete persistent groups.
@@ -104,9 +106,8 @@ object WifiP2pManagerHelper {
     suspend fun WifiP2pManager.requestPersistentGroupInfo(c: WifiP2pManager.Channel) =
         suspendCancellableCoroutine { cont ->
             requestPersistentGroupInfo(this, c, object : `WifiP2pManager$PersistentGroupInfoListener` {
-                override fun onPersistentGroupInfoAvailable(groups: WifiP2pGroupList) {
-                    cont.resume(groups.groupList)
-                }
+                override fun onPersistentGroupInfoAvailable(groups: WifiP2pGroupList) =
+                    @Suppress("UNCHECKED_CAST") cont.resume(getPersistentGroupList(groups) as Collection<WifiP2pGroup>)
             })
         }
     suspend fun WifiP2pManager.requestP2pState(c: WifiP2pManager.Channel) =

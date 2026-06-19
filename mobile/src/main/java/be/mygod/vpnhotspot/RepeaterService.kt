@@ -203,7 +203,7 @@ class RepeaterService : Service(), CoroutineScope {
             group.value?.let { return it }
             val service = service ?: return null
             val deviceAddress = obtainDeviceAddress()?.toString()
-            fun List<WifiP2pGroup>.pick() = firstOrNull {
+            fun Iterable<WifiP2pGroup>.pick() = firstOrNull {
                 if (!it.isGroupOwner) return@firstOrNull false
                 val ownerAddress = it.owner?.deviceAddress
                 if (ownerAddress.isNullOrEmpty()) true
