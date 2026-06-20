@@ -251,8 +251,28 @@ object WifiApManager {
         data class OnClientsDisconnected(val info: SoftApInfo, val clients: List<WifiClient>) : Event()
     }
 
-    @RequiresApi(30)
-    fun softApCallback(push: (Event) -> Boolean) = object : `WifiManager$SoftApCallback` {
+    fun softApCallback(push: (Event) -> Boolean) = if (Build.VERSION.SDK_INT < 30) Proxy.newProxyInstance(
+        `WifiManager$SoftApCallback`::class.java.classLoader,
+        arrayOf(`WifiManager$SoftApCallback`::class.java),
+        object : InvocationHandler {
+            override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?) = when {
+                method.matches("onStateChanged", Integer.TYPE, Integer.TYPE) -> null.also {
+                    push(Event.OnStateChanged(args!![0] as Int, args[1] as Int))
+                }
+                method.matches("onNumClientsChanged", Integer.TYPE) -> null.also {
+                    push(Event.OnNumClientsChanged(args!![0] as Int))
+                }
+                else -> try {
+                    callSuper(`WifiManager$SoftApCallback`::class.java, proxy, method, args)
+                } catch (e: Throwable) {
+                    // Legacy SoftApCallback is a hidden interface with no default implementations
+                    // OEM Android 10 builds may add abstract callbacks like onStaConnected/onStaDisconnected
+                    Timber.w(e)
+                    null
+                }
+            }
+        },
+    ) else object : `WifiManager$SoftApCallback` {
         override fun onStateChanged(state: Int, failureReason: Int) {
             push(Event.OnStateChanged(state, failureReason))
         }
@@ -302,28 +322,7 @@ object WifiApManager {
         if (directSoftApCallbackCapability == SoftApCallbackCapability.Unavailable) {
             throw SoftApCallbackUnavailableException()
         }
-        val callback = if (Build.VERSION.SDK_INT < 30) Proxy.newProxyInstance(
-            `WifiManager$SoftApCallback`::class.java.classLoader,
-            arrayOf(`WifiManager$SoftApCallback`::class.java),
-            object : InvocationHandler {
-                override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?) = when {
-                    method.matches("onStateChanged", Integer.TYPE, Integer.TYPE) -> null.also {
-                        push(Event.OnStateChanged(args!![0] as Int, args[1] as Int))
-                    }
-                    method.matches("onNumClientsChanged", Integer.TYPE) -> null.also {
-                        push(Event.OnNumClientsChanged(args!![0] as Int))
-                    }
-                    else -> try {
-                        callSuper(`WifiManager$SoftApCallback`::class.java, proxy, method, args)
-                    } catch (e: Throwable) {
-                        // Legacy SoftApCallback is a hidden interface. OEM Android 10 builds may add abstract callbacks
-                        // like onStaConnected/onStaDisconnected, so the proxy must tolerate runtime-only void methods.
-                        Timber.w(e)
-                        null
-                    }
-                }
-            },
-        ) else softApCallback(::push)
+        val callback = softApCallback(::push)
         try {
             if (Build.VERSION.SDK_INT >= 30) {
                 registerSoftApCallback(Services.wifi, InPlaceExecutor, callback)
@@ -384,14 +383,28 @@ object WifiApManager {
         }
     }
 
-    @get:RequiresApi(31)
     private val iWifiManager by lazy { UnblockCentral.WifiManager_mService.get(Services.wifi) as IWifiManager }
-    @RequiresApi(31)
-    fun registerSoftApCallback(callback: IBinder) =
-        iWifiManager.registerSoftApCallback(ISoftApCallback.Stub.asInterface(callback))
-    @RequiresApi(31)
-    fun unregisterSoftApCallback(callback: IBinder) =
-        iWifiManager.unregisterSoftApCallback(ISoftApCallback.Stub.asInterface(callback))
+    val registerSoftApCallbackBinder: (IBinder, Int) -> Unit by lazy {
+        try {
+            val method = IWifiManager::class.java.getMethod("registerSoftApCallback", ISoftApCallback::class.java);
+            { callback, _ -> method(iWifiManager, ISoftApCallback.Stub.asInterface(callback)) }
+        } catch (e: NoSuchMethodException) {
+            if (Build.VERSION.SDK_INT >= 31) Timber.w(e)
+            val method = IWifiManager::class.java.getMethod("registerSoftApCallback", IBinder::class.java,
+                ISoftApCallback::class.java, Integer.TYPE);
+            { callback, id -> method(iWifiManager, callback, ISoftApCallback.Stub.asInterface(callback), id) }
+        }
+    }
+    val unregisterSoftApCallbackBinder: (IBinder, Int) -> Unit by lazy {
+        try {
+            val method = IWifiManager::class.java.getMethod("unregisterSoftApCallback", ISoftApCallback::class.java);
+            { callback, _ -> method(iWifiManager, ISoftApCallback.Stub.asInterface(callback)) }
+        } catch (e: NoSuchMethodException) {
+            if (Build.VERSION.SDK_INT >= 31) Timber.w(e)
+            val method = IWifiManager::class.java.getMethod("unregisterSoftApCallback", Integer.TYPE);
+            { _, id -> method(iWifiManager, id) }
+        }
+    }
     @RequiresApi(33)
     fun registerLocalOnlyHotspotSoftApCallback(callback: IBinder) =
         iWifiManager.registerLocalOnlyHotspotSoftApCallback(ISoftApCallback.Stub.asInterface(callback), Bundle().apply {

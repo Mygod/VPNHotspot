@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.root
 
 import android.net.wifi.SoftApConfiguration
 import android.net.wifi.WifiConfiguration
-import android.os.Build
 import android.os.IBinder
 import androidx.annotation.RequiresApi
 import androidx.collection.mutableScatterMapOf
@@ -15,15 +14,15 @@ import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.binderCallbackFlow
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.SendChannel
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
@@ -150,9 +149,7 @@ object WifiApCommands {
 
     private val softApCallbackRelay = SoftApCallbackRelay {
         var failure = collect(WifiApManager.softApCallbackFlow) ?: return@SoftApCallbackRelay
-        if (Build.VERSION.SDK_INT >= 31) {
-            failure = collectRoot(softApCallbackBinderFlow, failure) ?: return@SoftApCallbackRelay
-        }
+        failure = collectRoot(softApCallbackBinderFlow, failure) ?: return@SoftApCallbackRelay
         if (hasExpensiveSubscribers()) failure = (collectRoot(flow {
             RootManager.use { emitAll(it.flow(SoftApCallbackFlow())) }
         }, failure) ?: return@SoftApCallbackRelay)
@@ -184,14 +181,14 @@ object WifiApCommands {
     }
 
     @Parcelize
-    @RequiresApi(31)
-    data class RegisterSoftApCallback(val callback: IBinder) : RootCommandNoResult {
-        override suspend fun execute() = null.also { WifiApManager.registerSoftApCallback(callback) }
+    data class RegisterSoftApCallback(val callback: IBinder, val callbackIdentifier: Int) : RootCommandNoResult {
+        override suspend fun execute() =
+            null.also { WifiApManager.registerSoftApCallbackBinder(callback, callbackIdentifier) }
     }
     @Parcelize
-    @RequiresApi(31)
-    data class UnregisterSoftApCallback(val callback: IBinder) : RootCommandNoResult {
-        override suspend fun execute() = null.also { WifiApManager.unregisterSoftApCallback(callback) }
+    data class UnregisterSoftApCallback(val callback: IBinder, val callbackIdentifier: Int) : RootCommandNoResult {
+        override suspend fun execute() =
+            null.also { WifiApManager.unregisterSoftApCallbackBinder(callback, callbackIdentifier) }
     }
     @Parcelize
     @RequiresApi(33)
@@ -203,7 +200,6 @@ object WifiApCommands {
     data class UnregisterLocalOnlyHotspotSoftApCallback(val callback: IBinder) : RootCommandNoResult {
         override suspend fun execute() = null.also { WifiApManager.unregisterLocalOnlyHotspotSoftApCallback(callback) }
     }
-    @RequiresApi(31)
     private val softApCallbackBinderFlow = binderCallbackFlow("Soft AP binder callback") {
         if (binderSoftApCallbackCapability == SoftApCallbackCapability.Unavailable) {
             throw WifiApManager.SoftApCallbackUnavailableException()
@@ -224,18 +220,19 @@ object WifiApCommands {
             binderSoftApCallbackCapability = SoftApCallbackCapability.Unavailable
             throw WifiApManager.SoftApCallbackUnavailableException(e)
         }
+        val callbackIdentifier = System.identityHashCode(callback)
         var registered = false
         try {
             RootManager.use { root ->
                 withContext(NonCancellable) {
-                    root.execute(RegisterSoftApCallback(callback))
+                    root.execute(RegisterSoftApCallback(callback, callbackIdentifier))
                     registered = true
                 }
             }
             binderSoftApCallbackCapability = SoftApCallbackCapability.Available
         } catch (e: CancellationException) {
             withContext(NonCancellable) {
-                if (registered) RootManager.use { it.execute(UnregisterSoftApCallback(callback)) }
+                if (registered) RootManager.use { it.execute(UnregisterSoftApCallback(callback, callbackIdentifier)) }
             }
             throw e
         } catch (e: NoShellException) {
@@ -245,7 +242,7 @@ object WifiApCommands {
         }
         return@binderCallbackFlow {
             try {
-                if (registered) RootManager.use { it.execute(UnregisterSoftApCallback(callback)) }
+                if (registered) RootManager.use { it.execute(UnregisterSoftApCallback(callback, callbackIdentifier)) }
             } catch (_: CancellationException) {
             } catch (e: Exception) {
                 Timber.w(e)

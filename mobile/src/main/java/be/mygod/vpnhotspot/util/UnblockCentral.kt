@@ -12,6 +12,7 @@ import android.net.wifi.`WifiManager$SoftApCallback`
 import android.net.wifi.p2p.WifiP2pConfig
 import android.os.Build
 import android.os.IBinder
+import android.os.Looper
 import android.service.quicksettings.TileService
 import androidx.annotation.RequiresApi
 import org.lsposed.hiddenapibypass.HiddenApiBypass
@@ -60,13 +61,11 @@ object UnblockCentral {
         TileService::class.java.getDeclaredField("mToken").apply { isAccessible = true }
     }
 
-    @get:RequiresApi(31)
     val WifiManager_mService by lazy {
         init
         WifiManager::class.java.getDeclaredField("mService").apply { isAccessible = true }
     }
-    @get:RequiresApi(31)
-    val WifiManager_SoftApCallbackProxy: (`WifiManager$SoftApCallback`, Int) -> IBinder by lazy {
+    val WifiManager_SoftApCallbackProxy: (Any, Int) -> IBinder by lazy {
         init
         val clazz = Class.forName("android.net.wifi.WifiManager\$SoftApCallbackProxy")
         try {
@@ -76,10 +75,18 @@ object UnblockCentral {
             { callback, mode -> constructor.newInstance(Services.wifi, InPlaceExecutor, callback, mode) as IBinder }
         } catch (e: NoSuchMethodException) {
             if (Build.VERSION.SDK_INT >= 33) Timber.w(e)
-            val constructor = clazz.getDeclaredConstructor(WifiManager::class.java, Executor::class.java,
-                `WifiManager$SoftApCallback`::class.java)
-            constructor.isAccessible = true;
-            { callback, _ -> constructor.newInstance(Services.wifi, InPlaceExecutor, callback) as IBinder }
+            try {
+                val constructor = clazz.getDeclaredConstructor(WifiManager::class.java, Executor::class.java,
+                    `WifiManager$SoftApCallback`::class.java)
+                constructor.isAccessible = true;
+                { callback, _ -> constructor.newInstance(Services.wifi, InPlaceExecutor, callback) as IBinder }
+            } catch (e: NoSuchMethodException) {
+                if (Build.VERSION.SDK_INT >= 30) Timber.w(e)
+                val constructor = clazz.getDeclaredConstructor(WifiManager::class.java, Looper::class.java,
+                    `WifiManager$SoftApCallback`::class.java)
+                constructor.isAccessible = true;
+                { callback, _ -> constructor.newInstance(Services.wifi, Looper.getMainLooper(), callback) as IBinder }
+            }
         }
     }
 

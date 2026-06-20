@@ -107,10 +107,12 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 33) `Landroid/net/wifi/SoftApConfiguration$Builder;->setRandomizedMacAddress(Landroid/net/MacAddress;)Landroid/net/wifi/SoftApConfiguration$Builder;,blocked`
 * (since API 31) `Landroid/net/wifi/SoftApConfiguration;->BAND_TYPES:[I,blocked`
 * (since API 31) `Landroid/net/wifi/SoftApInfo;->getApInstanceIdentifier()Ljava/lang/String;,blocked`
-* (since API 31) `Landroid/net/wifi/ISoftApCallback$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/wifi/ISoftApCallback;,lo-prio,max-target-o`
+* `Landroid/net/wifi/ISoftApCallback$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/wifi/ISoftApCallback;,lo-prio,max-target-o`
 * (since API 33) `Landroid/net/wifi/IWifiManager;->registerLocalOnlyHotspotSoftApCallback(Landroid/net/wifi/ISoftApCallback;Landroid/os/Bundle;)V,blocked`
+* (prior to API 31) `Landroid/net/wifi/IWifiManager;->registerSoftApCallback(Landroid/os/IBinder;Landroid/net/wifi/ISoftApCallback;I)V,max-target-o`
 * (since API 31) `Landroid/net/wifi/IWifiManager;->registerSoftApCallback(Landroid/net/wifi/ISoftApCallback;)V,blocked`
 * (since API 33) `Landroid/net/wifi/IWifiManager;->unregisterLocalOnlyHotspotSoftApCallback(Landroid/net/wifi/ISoftApCallback;Landroid/os/Bundle;)V,blocked`
+* (prior to API 31) `Landroid/net/wifi/IWifiManager;->unregisterSoftApCallback(I)V,max-target-o`
 * (since API 31) `Landroid/net/wifi/IWifiManager;->unregisterSoftApCallback(Landroid/net/wifi/ISoftApCallback;)V,blocked`
 * (since API 31) `Landroid/net/wifi/WifiClient;->getApInstanceIdentifier()Ljava/lang/String;,blocked`
 * (prior to API 30) `Landroid/net/wifi/WifiConfiguration;->AP_BAND_2GHZ:I,lo-prio,max-target-o`
@@ -120,12 +122,13 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (prior to API 30) `Landroid/net/wifi/WifiConfiguration;->apChannel:I,unsupported`
 * (since API 30) `Landroid/net/wifi/WifiContext;->ACTION_RESOURCES_APK:Ljava/lang/String;,blocked`
 * (since API 30) `Landroid/net/wifi/WifiContext;-><init>(Landroid/content/Context;)V,blocked`
-* (since API 31, prior to API 33) `Landroid/net/wifi/WifiManager$SoftApCallbackProxy;-><init>(Landroid/net/wifi/WifiManager;Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;)V,blocked`
+* (prior to API 30) `Landroid/net/wifi/WifiManager$SoftApCallbackProxy;-><init>(Landroid/os/Looper;Landroid/net/wifi/WifiManager$SoftApCallback;)V,max-target-o`
+* (since API 30, prior to API 33) `Landroid/net/wifi/WifiManager$SoftApCallbackProxy;-><init>(Landroid/net/wifi/WifiManager;Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;)V,blocked`
 * (since API 33) `Landroid/net/wifi/WifiManager$SoftApCallbackProxy;-><init>(Landroid/net/wifi/WifiManager;Ljava/util/concurrent/Executor;Landroid/net/wifi/WifiManager$SoftApCallback;I)V,blocked`
 * (prior to API 30) `Landroid/net/wifi/WifiManager$SoftApCallback;->onNumClientsChanged(I)V,greylist-max-o`
 * (since API 33) `Landroid/net/wifi/WifiManager;->EXTRA_PARAM_KEY_ATTRIBUTION_SOURCE:Ljava/lang/String;,blocked`
 * `Landroid/net/wifi/WifiManager;->cancelLocalOnlyHotspotRequest()V,unsupported`
-* (since API 31) `Landroid/net/wifi/WifiManager;->mService:Landroid/net/wifi/IWifiManager;,unsupported`
+* `Landroid/net/wifi/WifiManager;->mService:Landroid/net/wifi/IWifiManager;,unsupported`
 * `Landroid/net/wifi/p2p/WifiP2pConfig$Builder;->MAC_ANY_ADDRESS:Landroid/net/MacAddress;,blocked`
 * `Landroid/net/wifi/p2p/WifiP2pConfig$Builder;->mNetworkName:Ljava/lang/String;,blocked`
 * (since API 30) `Landroid/net/wifi/p2p/WifiP2pGroup;->interfaceAddress:[B,unsupported`
