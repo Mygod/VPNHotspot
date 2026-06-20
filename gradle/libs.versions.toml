@@ -19,7 +19,7 @@ kotlinx-collections-immutable = "org.jetbrains.kotlinx:kotlinx-collections-immut
 kotlinx-coroutines-android = "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0"
 ktor-io-jvm = "io.ktor:ktor-io-jvm:3.5.0"
 leakcanary-android = "com.squareup.leakcanary:leakcanary-android:2.14"
-librootkotlinx = "be.mygod.librootkotlinx:librootkotlinx:2.0.0-alpha14"
+librootkotlinx = "be.mygod.librootkotlinx:librootkotlinx:2.0.0-alpha15"
 lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 navigation-compose = "androidx.navigation:navigation-compose:2.9.8"
