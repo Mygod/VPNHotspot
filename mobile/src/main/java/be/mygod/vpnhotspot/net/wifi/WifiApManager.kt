@@ -35,11 +35,16 @@ import be.mygod.vpnhotspot.util.ConstantLookup
 import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
-import be.mygod.vpnhotspot.util.findIdentifier
 import be.mygod.vpnhotspot.util.binderCallbackFlow
+import be.mygod.vpnhotspot.util.callSuper
+import be.mygod.vpnhotspot.util.findIdentifier
+import be.mygod.vpnhotspot.util.matches
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
+import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
+import java.lang.reflect.Method
+import java.lang.reflect.Proxy
 import java.util.concurrent.Executor
 
 object WifiApManager {
@@ -297,14 +302,28 @@ object WifiApManager {
         if (directSoftApCallbackCapability == SoftApCallbackCapability.Unavailable) {
             throw SoftApCallbackUnavailableException()
         }
-        val callback = if (Build.VERSION.SDK_INT < 30) object : `WifiManager$SoftApCallback` {
-            override fun onStateChanged(state: Int, failureReason: Int) {
-                push(Event.OnStateChanged(state, failureReason))
-            }
-            override fun onNumClientsChanged(numClients: Int) {
-                push(Event.OnNumClientsChanged(numClients))
-            }
-        } else softApCallback(::push)
+        val callback = if (Build.VERSION.SDK_INT < 30) Proxy.newProxyInstance(
+            `WifiManager$SoftApCallback`::class.java.classLoader,
+            arrayOf(`WifiManager$SoftApCallback`::class.java),
+            object : InvocationHandler {
+                override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?) = when {
+                    method.matches("onStateChanged", Integer.TYPE, Integer.TYPE) -> null.also {
+                        push(Event.OnStateChanged(args!![0] as Int, args[1] as Int))
+                    }
+                    method.matches("onNumClientsChanged", Integer.TYPE) -> null.also {
+                        push(Event.OnNumClientsChanged(args!![0] as Int))
+                    }
+                    else -> try {
+                        callSuper(`WifiManager$SoftApCallback`::class.java, proxy, method, args)
+                    } catch (e: Throwable) {
+                        // Legacy SoftApCallback is a hidden interface. OEM Android 10 builds may add abstract callbacks
+                        // like onStaConnected/onStaDisconnected, so the proxy must tolerate runtime-only void methods.
+                        Timber.w(e)
+                        null
+                    }
+                }
+            },
+        ) else softApCallback(::push)
         try {
             if (Build.VERSION.SDK_INT >= 30) {
                 registerSoftApCallback(Services.wifi, InPlaceExecutor, callback)
