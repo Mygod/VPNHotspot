@@ -26,6 +26,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import be.mygod.vpnhotspot.R
@@ -47,15 +49,16 @@ fun PasswordApRow(state: ApConfigurationState) {
     var visible by rememberSaveable(editing) { mutableStateOf(false) }
     val password = draft.text.toString()
     val error = state.passwordError(password, context)
+    val title = stringResource(R.string.wifi_password)
     PreferenceRow(
         icon = R.drawable.ic_wifi_lock,
-        title = stringResource(R.string.wifi_password),
+        title = title,
         summary = if (state.password.isEmpty()) "" else "\u2022".repeat(8),
         onClick = { editing = true },
     )
     if (editing) AlertDialog(
         onDismissRequest = { editing = false },
-        title = { Text(stringResource(R.string.wifi_password)) },
+        title = { Text(title) },
         text = {
             val focusRequester = rememberDialogFocusRequester()
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -68,7 +71,8 @@ fun PasswordApRow(state: ApConfigurationState) {
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(focusRequester)
-                        .contentType(ContentType("wifiPassword") + ContentType.Password),
+                        .contentType(ContentType("wifiPassword") + ContentType.Password)
+                        .semantics { contentDescription = title },
                     inputTransformation = if (maxLength) InputTransformation.maxLength(63) else null,
                     isError = error != null,
                     shape = OutlinedTextFieldDefaults.roundedShape,

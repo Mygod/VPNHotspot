@@ -11,7 +11,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
@@ -31,6 +30,7 @@ import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
 import be.mygod.vpnhotspot.ui.DialogConfirmButton
 import be.mygod.vpnhotspot.ui.DialogDismissButton
 import be.mygod.vpnhotspot.ui.PreferenceGroup
+import be.mygod.vpnhotspot.ui.PreferenceRadioRow
 import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.annotatedStringResource
 import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
@@ -236,22 +236,23 @@ private fun MacRandomizationOptionRow(
     onSelect: () -> Unit,
     content: @Composable (() -> Unit)? = null,
 ) {
-    PreferenceRow(
-        titleContent = { Text(title) },
-        summaryContent = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(description)
-                content?.invoke()
-            }
-        },
-        iconContent = if (showRadio) {
-            {
-                RadioButton(
-                    selected = selected,
-                    onClick = null,
-                )
-            }
-        } else null,
-        onClick = if (showRadio) onSelect else null,
-    )
+    val summaryContent: @Composable () -> Unit = {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(description)
+            content?.invoke()
+        }
+    }
+    if (showRadio) {
+        PreferenceRadioRow(
+            selected = selected,
+            titleContent = { Text(title) },
+            summaryContent = summaryContent,
+            onClick = onSelect,
+        )
+    } else {
+        PreferenceRow(
+            titleContent = { Text(title) },
+            summaryContent = summaryContent,
+        )
+    }
 }

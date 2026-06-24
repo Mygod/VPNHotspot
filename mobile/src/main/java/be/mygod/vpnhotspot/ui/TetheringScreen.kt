@@ -52,6 +52,11 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
@@ -344,15 +349,10 @@ fun TetheringScreen(
                             )
                         }
                         if (vpnTethering || watch) row("watch_reconnect") {
-                            PreferenceRow(
+                            PreferenceSwitchRow(
                                 title = stringResource(R.string.tethering_watch_reconnect),
-                                trailing = {
-                                    PreferenceSwitch(
-                                        checked = watch,
-                                        onCheckedChange = null,
-                                    )
-                                },
-                                onClick = {
+                                checked = watch,
+                                onCheckedChange = {
                                     if (watch) context.startService(Intent(context, TetheringService::class.java)
                                         .putExtra(TetheringService.EXTRA_REMOVE_INTERFACE_MONITOR, iface))
                                     else context.startForegroundService(Intent(context, TetheringService::class.java)
@@ -438,11 +438,12 @@ fun TetheringScreen(
         } catch (e: InvocationTargetException) {
             e.readableMessage
         }
+        val staticIpTitle = stringResource(R.string.tethering_static_ip)
         AlertDialog(
             onDismissRequest = {
                 staticIpDraft = null
             },
-            title = { Text(stringResource(R.string.tethering_static_ip)) },
+            title = { Text(staticIpTitle) },
             text = {
                 val scrollState = rememberScrollState()
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -459,7 +460,8 @@ fun TetheringScreen(
                                 state = scrollState.scrollIndicatorState,
                                 orientation = Orientation.Vertical,
                                 isFadeEnabled = false,
-                            ),
+                            )
+                            .semantics { contentDescription = staticIpTitle },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                         lineLimits = TextFieldLineLimits.MultiLine(
                             minHeightInLines = 2,
@@ -474,6 +476,10 @@ fun TetheringScreen(
                                 Text(
                                     text = it,
                                     color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.semantics {
+                                        liveRegion = LiveRegionMode.Polite
+                                        error(it)
+                                    },
                                 )
                             }
                         },
@@ -502,16 +508,18 @@ fun TetheringScreen(
     }
     if (wpsDialog) {
         val focusRequester = rememberDialogFocusRequester()
+        val wpsTitle = stringResource(R.string.repeater_wps_dialog_title)
         AlertDialog(
             onDismissRequest = { wpsDialog = false },
-            title = { Text(stringResource(R.string.repeater_wps_dialog_title)) },
+            title = { Text(wpsTitle) },
             text = {
                 OutlinedTextField(
                     value = wpsPin,
                     onValueChange = { wpsPin = it },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusRequester(focusRequester),
+                        .focusRequester(focusRequester)
+                        .semantics { contentDescription = wpsTitle },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     shape = OutlinedTextFieldDefaults.roundedShape,
@@ -628,34 +636,39 @@ private fun TetheringRow(
     onClick: () -> Unit,
     onCheckedChange: (() -> Unit)? = null,
 ) {
-    PreferenceRow(
-        icon = icon,
-        title = title,
-        summaryContent = summary?.takeIf { it.text.isNotEmpty() }?.let {
-            {
-                RowSelectionContainer {
-                    Text(it)
-                }
+    val summaryContent: (@Composable () -> Unit)? = summary?.takeIf { it.text.isNotEmpty() }?.let {
+        {
+            RowSelectionContainer {
+                Text(it)
             }
-        },
-        enabled = enabled,
-        trailing = {
-            if (onCheckedChange == null) {
-                PreferenceSwitch(
-                    checked = checked,
-                    enabled = switchEnabled,
-                    onCheckedChange = null,
-                )
-            } else {
+        }
+    }
+    if (onCheckedChange == null) {
+        PreferenceSwitchRow(
+            icon = icon,
+            title = title,
+            summaryContent = summaryContent,
+            checked = checked,
+            enabled = enabled && switchEnabled,
+            onCheckedChange = { onClick() },
+        )
+    } else {
+        PreferenceRow(
+            icon = icon,
+            title = title,
+            summaryContent = summaryContent,
+            enabled = enabled,
+            trailing = {
                 PreferenceSplitSwitch(
+                    label = title,
                     checked = checked,
                     enabled = switchEnabled,
                     onCheckedChange = { onCheckedChange() },
                 )
-            }
-        },
-        onClick = onClick,
-    )
+            },
+            onClick = onClick,
+        )
+    }
 }
 
 @Preview(name = "Tethering", showBackground = true, widthDp = 420, heightDp = 720)

@@ -294,6 +294,7 @@ private fun ClientRow(
         ) {
             mutableStateOf(TextFieldValue(initialNickname, TextRange(initialNickname.length)))
         }
+        val nicknameHint = stringResource(R.string.clients_nickname_hint)
         AlertDialog(
             onDismissRequest = { editingNickname = false },
             title = { Text(stringResource(R.string.clients_nickname_title, client.mac)) },
@@ -303,8 +304,9 @@ private fun ClientRow(
                     onValueChange = { nicknameDraft = it },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .focusRequester(focusRequester),
-                    placeholder = { Text(stringResource(R.string.clients_nickname_hint)) },
+                        .focusRequester(focusRequester)
+                        .semantics { contentDescription = nicknameHint },
+                    placeholder = { Text(nicknameHint) },
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Words,
                         imeAction = ImeAction.Done,

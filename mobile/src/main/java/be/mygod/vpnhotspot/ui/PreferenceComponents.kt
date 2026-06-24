@@ -67,11 +67,18 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import be.mygod.vpnhotspot.R
@@ -231,27 +238,93 @@ fun PreferenceRow(
 ) {
     val position = LocalPreferenceRowPosition.current
     SegmentedListItem(
-        selected = false,
         onClick = onClick ?: {},
-        shapes = when {
-            position == null -> ListItemDefaults.shapes()
-            position.count == 1 -> ListItemDefaults.shapes(shape = MaterialTheme.shapes.large)
-            else -> ListItemDefaults.segmentedShapes(position.index, position.count)
-        },
+        shapes = preferenceRowShapes(position),
         modifier = modifier.fillMaxWidth(),
         enabled = enabled,
         leadingContent = iconContent,
         trailingContent = trailing,
         supportingContent = summaryContent ?: summary?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
         verticalAlignment = Alignment.CenterVertically,
-        colors = if (position == null) {
-            ListItemDefaults.colors()
-        } else {
-            ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
-        },
+        colors = preferenceRowColors(position),
     ) {
         titleContent()
     }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+fun PreferenceRadioRow(
+    selected: Boolean,
+    titleContent: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    summaryContent: (@Composable () -> Unit)? = null,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    val position = LocalPreferenceRowPosition.current
+    SegmentedListItem(
+        selected = selected,
+        onClick = onClick,
+        shapes = preferenceRowShapes(position),
+        modifier = modifier.fillMaxWidth(),
+        enabled = enabled,
+        leadingContent = { RadioButton(selected = selected, onClick = null) },
+        supportingContent = summaryContent,
+        verticalAlignment = Alignment.CenterVertically,
+        colors = preferenceRowColors(position),
+    ) {
+        titleContent()
+    }
+}
+
+@Composable
+fun PreferenceSwitchRow(
+    checked: Boolean,
+    @DrawableRes icon: Int? = null,
+    title: String,
+    modifier: Modifier = Modifier,
+    summary: String? = null,
+    summaryContent: (@Composable () -> Unit)? = null,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    PreferenceRow(
+        icon = icon,
+        title = title,
+        modifier = modifier.semantics(mergeDescendants = true) {
+            toggleableState = ToggleableState(checked)
+            role = Role.Switch
+        },
+        summary = summary,
+        summaryContent = summaryContent,
+        enabled = enabled,
+        trailing = {
+            PreferenceSwitch(
+                checked = checked,
+                modifier = Modifier.clearAndSetSemantics { },
+                enabled = enabled,
+                onCheckedChange = null,
+            )
+        },
+        onClick = { if (enabled) onCheckedChange(!checked) },
+    )
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+private fun preferenceRowShapes(position: PreferenceRowPosition?) = when {
+    position == null -> ListItemDefaults.shapes()
+    position.count == 1 -> ListItemDefaults.shapes(shape = MaterialTheme.shapes.large)
+    else -> ListItemDefaults.segmentedShapes(position.index, position.count)
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+private fun preferenceRowColors(position: PreferenceRowPosition?) = if (position == null) {
+    ListItemDefaults.colors()
+} else {
+    ListItemDefaults.segmentedColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
 }
 
 private class PreferenceRowPosition(val index: Int, val count: Int)
@@ -284,6 +357,7 @@ fun PreferenceSwitch(
 
 @Composable
 fun PreferenceSplitSwitch(
+    label: String,
     checked: Boolean,
     enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
@@ -312,7 +386,18 @@ fun PreferenceSplitSwitch(
                     enabled = enabled,
                     role = Role.Switch,
                     onValueChange = onCheckedChange,
-                ),
+                )
+                .clearAndSetSemantics {
+                    contentDescription = label
+                    toggleableState = ToggleableState(checked)
+                    role = Role.Switch
+                    if (enabled) {
+                        onClick {
+                            onCheckedChange(!checked)
+                            true
+                        }
+                    } else disabled()
+                },
             contentAlignment = Alignment.Center,
         ) {
             PreferenceSwitch(
@@ -413,10 +498,10 @@ fun PreferenceSelectionRow(
     onClick: () -> Unit,
 ) {
     CompositionLocalProvider(LocalPreferenceRowPosition provides PreferenceRowPosition(index, count)) {
-        PreferenceRow(
+        PreferenceRadioRow(
+            selected = selected,
             titleContent = { Text(title) },
             summaryContent = summary?.let { { Text(it) } },
-            iconContent = { RadioButton(selected = selected, onClick = null) },
             onClick = onClick,
         )
     }

@@ -26,6 +26,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -54,15 +56,16 @@ fun TextApRow(
     }
     val text = draft.text.toString()
     val error = validator(text)
+    val titleText = stringResource(title)
     PreferenceRow(
         icon = icon,
-        title = stringResource(title),
+        title = titleText,
         summary = value,
         onClick = { editing = true },
     )
     if (editing) AlertDialog(
         onDismissRequest = { editing = false },
-        title = { Text(stringResource(title)) },
+        title = { Text(titleText) },
         text = {
             val focusRequester = rememberDialogFocusRequester()
             val multiline = minLines > 1
@@ -85,7 +88,8 @@ fun TextApRow(
                                     isFadeEnabled = false,
                                 )
                             } else Modifier
-                        ),
+                        )
+                        .semantics { contentDescription = titleText },
                     inputTransformation = maxLength?.let { InputTransformation.maxLength(it) },
                     keyboardOptions = keyboardOptions,
                     lineLimits = if (multiline) TextFieldLineLimits.MultiLine(

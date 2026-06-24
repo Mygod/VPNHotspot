@@ -29,6 +29,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -67,9 +69,10 @@ fun TextSwitchApRow(
     }
     val text = draft.text.toString()
     val error = validator(text)
+    val titleText = stringResource(title)
     PreferenceRow(
         icon = icon,
-        title = stringResource(title),
+        title = titleText,
         summaryContent = if (summary == null && valueSummary.isEmpty()) null else {
             {
                 Column {
@@ -80,6 +83,7 @@ fun TextSwitchApRow(
         },
         trailing = {
             PreferenceSplitSwitch(
+                label = titleText,
                 checked = checked,
                 onCheckedChange = onCheckedChange,
             )
@@ -96,11 +100,12 @@ fun TextSwitchApRow(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = stringResource(title),
+                        text = titleText,
                         modifier = Modifier.weight(1f),
                     )
                     PreferenceSwitch(
                         checked = checked,
+                        modifier = Modifier.semantics { contentDescription = titleText },
                         onCheckedChange = onCheckedChange,
                     )
                 }

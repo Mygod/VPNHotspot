@@ -46,6 +46,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.fromHtml
@@ -449,12 +451,13 @@ private fun TextPreferenceRow(
     val filteredSuggestions = remember(suggestions, draft.text) {
         suggestions.filter { draft.text.isBlank() || it.contains(draft.text, ignoreCase = true) }
     }
+    val titleText = stringResource(title)
     LaunchedEffect(editing, suggestions) {
         if (editing && suggestions.isNotEmpty()) suggestionsExpanded = true
     }
     PreferenceRow(
         icon = icon,
-        title = stringResource(title),
+        title = titleText,
         summaryContent = { Text(summary) },
         onClick = { editing = true },
     )
@@ -462,7 +465,7 @@ private fun TextPreferenceRow(
         val focusRequester = rememberDialogFocusRequester()
         AlertDialog(
             onDismissRequest = { editing = false },
-            title = { Text(stringResource(title)) },
+            title = { Text(titleText) },
             text = {
                 val menuExpanded = suggestionsExpanded && filteredSuggestions.isNotEmpty()
                 val menuScrollState = rememberScrollState()
@@ -484,7 +487,8 @@ private fun TextPreferenceRow(
                             modifier = Modifier
                                 .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable)
                                 .fillMaxWidth()
-                                .focusRequester(focusRequester),
+                                .focusRequester(focusRequester)
+                                .semantics { contentDescription = titleText },
                             placeholder = { Text(placeholder) },
                             trailingIcon = {
                                 ExposedDropdownMenuDefaults.TrailingIcon(
@@ -597,19 +601,13 @@ private fun SwitchPreferenceRow(
     enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    PreferenceRow(
+    PreferenceSwitchRow(
         icon = icon,
         title = stringResource(title),
         summary = summary,
+        checked = checked,
         enabled = enabled,
-        trailing = {
-            PreferenceSwitch(
-                checked = checked,
-                enabled = enabled,
-                onCheckedChange = if (enabled) onCheckedChange else null,
-            )
-        },
-        onClick = { onCheckedChange(!checked) },
+        onCheckedChange = onCheckedChange,
     )
 }
 

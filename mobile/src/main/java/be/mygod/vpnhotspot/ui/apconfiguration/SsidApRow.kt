@@ -29,6 +29,8 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -55,9 +57,10 @@ fun SsidApRow(
     var error by remember(editing) { mutableStateOf<String?>(null) }
     val draftError = error ?: state.ssidError(draft.text, draftHex, context)
     val draftByteCount = state.ssidByteCount(draft.text, draftHex)
+    val title = stringResource(R.string.wifi_ssid)
     PreferenceRow(
         icon = R.drawable.ic_network_wifi,
-        title = stringResource(R.string.wifi_ssid),
+        title = title,
         summaryContent = {
             Column {
                 Text(state.ssid)
@@ -95,7 +98,7 @@ fun SsidApRow(
     )
     if (editing) AlertDialog(
         onDismissRequest = { editing = false },
-        title = { Text(stringResource(R.string.wifi_ssid)) },
+        title = { Text(title) },
         text = {
             val focusRequester = rememberDialogFocusRequester()
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -112,7 +115,8 @@ fun SsidApRow(
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(focusRequester)
-                        .contentType(ContentType.NewUsername + ContentType.Username),
+                        .contentType(ContentType.NewUsername + ContentType.Username)
+                        .semantics { contentDescription = title },
                     singleLine = true,
                     isError = draftError != null,
                     shape = OutlinedTextFieldDefaults.roundedShape,

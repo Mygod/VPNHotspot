@@ -6,8 +6,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
-import be.mygod.vpnhotspot.ui.PreferenceRow
-import be.mygod.vpnhotspot.ui.PreferenceSwitch
+import be.mygod.vpnhotspot.ui.PreferenceSwitchRow
 
 @Composable
 fun SwitchApRow(
@@ -17,16 +16,11 @@ fun SwitchApRow(
     summary: AnnotatedString? = null,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    PreferenceRow(
+    PreferenceSwitchRow(
         icon = icon,
         title = stringResource(title),
+        checked = checked,
         summaryContent = summary?.let { { Text(it) } },
-        trailing = {
-            PreferenceSwitch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-            )
-        },
-        onClick = { onCheckedChange(!checked) },
+        onCheckedChange = onCheckedChange,
     )
 }

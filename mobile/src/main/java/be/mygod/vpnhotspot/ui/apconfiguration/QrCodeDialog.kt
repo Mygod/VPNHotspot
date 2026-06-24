@@ -61,7 +61,7 @@ fun QrCodeDialog(value: String, onDismiss: () -> Unit) {
             if (bitmap == null) Text(stringResource(R.string.configuration_share))
             else Image(
                 bitmap = bitmap.asImageBitmap(),
-                contentDescription = stringResource(R.string.configuration_share),
+                contentDescription = stringResource(R.string.configuration_view),
                 modifier = Modifier.size(size),
             )
         },
