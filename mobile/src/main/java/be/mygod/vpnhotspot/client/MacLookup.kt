@@ -82,7 +82,7 @@ object MacLookup {
                         match.groupValues[1].toRegionalIndicatorFlagOrNull()?.let { "$it $company" } ?: company
                     } else company
                 } else null
-                Timber.d("$mac -> $result")
+//                Timber.d("$mac -> $result")
                 AppDatabase.instance.clientRecordDao.upsert(mac) {
                     if (result != null) nickname = AnnotatedString(result)
                     macLookupPending = false

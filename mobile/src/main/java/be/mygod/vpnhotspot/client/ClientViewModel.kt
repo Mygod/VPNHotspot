@@ -194,7 +194,6 @@ class ClientViewModel : ViewModel(), DefaultLifecycleObserver {
                         var name = macAddress.toString()
                         event.client.apInstanceIdentifierOrNull?.let { name += "%$it" }
                         val reason = softApClientBlockReasonLabel(app, event.blockedReason)
-                        Timber.i("$name blocked from connecting: $reason (${event.blockedReason})")
                         SmartSnackbar.make(
                             app.getString(R.string.tethering_manage_wifi_client_blocked, name, reason),
                         ).apply {
@@ -208,7 +207,6 @@ class ClientViewModel : ViewModel(), DefaultLifecycleObserver {
                         var name = macAddress.toString()
                         client.apInstanceIdentifierOrNull?.let { name += "%$it" }
                         val reason = softApClientDisconnectReasonLabel(app, client.disconnectReason)
-                        Timber.i("$client disconnected: $reason")
                         SmartSnackbar.make(
                             app.getString(R.string.tethering_manage_wifi_client_disconnected, name, reason),
                         ).apply {

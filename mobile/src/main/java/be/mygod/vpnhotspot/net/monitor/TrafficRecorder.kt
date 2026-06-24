@@ -63,12 +63,12 @@ object TrafficRecorder {
         check(records[key] == null)
         val record = TrafficRecord(mac = mac, ip = ip, downstream = downstream)
         AppDatabase.instance.trafficRecordDao.insert(record)
-        Timber.d("Registering $key")
+//        Timber.d("Registering $key")
         check(records.put(key, record) == null)
         scheduleUpdateLocked()
     }
     suspend fun register(mac: MacAddress, downstream: String) = updateMutex.withLock {
-        Timber.d("Registering ${ClientKey(mac, downstream)}")
+//        Timber.d("Registering ${ClientKey(mac, downstream)}")
         activeClients.add(ClientKey(mac, downstream))
         scheduleUpdateLocked()
     }
