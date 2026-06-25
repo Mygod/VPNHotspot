@@ -3,27 +3,34 @@ package be.mygod.vpnhotspot.widget
 import android.annotation.SuppressLint
 import android.os.Looper
 import android.widget.Toast
+import androidx.annotation.MainThread
 import androidx.annotation.StringRes
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
-import java.util.concurrent.atomic.AtomicReference
 
 class SmartSnackbar private constructor(
     private val text: CharSequence,
-    private val preferCompose: Boolean,
 ) {
+    internal class Request(
+        val text: CharSequence,
+        val actionText: CharSequence?,
+        val action: (() -> Unit)?,
+    )
+
     companion object {
-        private val composeHandler = AtomicReference<((CharSequence, CharSequence?, (() -> Unit)?) -> Unit)?>()
+        private var composeHandler: ((Request) -> Boolean)? = null
 
         fun make(@StringRes text: Int): SmartSnackbar = make(app.getText(text))
-        fun make(text: CharSequence = "") = SmartSnackbar(text, composeHandler.get() != null)
+        fun make(text: CharSequence = "") = SmartSnackbar(text)
         fun make(e: Throwable) = make(e.readableMessage)
 
-        fun registerComposeHandler(
-            handler: (CharSequence, CharSequence?, (() -> Unit)?) -> Unit,
+        @MainThread
+        internal fun registerComposeHandler(
+            handler: (Request) -> Boolean,
         ): AutoCloseable {
-            composeHandler.set(handler)
-            return AutoCloseable { composeHandler.compareAndSet(handler, null) }
+            composeHandler = handler
+            return AutoCloseable { if (composeHandler === handler) composeHandler = null }
         }
     }
 
@@ -32,24 +39,23 @@ class SmartSnackbar private constructor(
     private var toastDuration = Toast.LENGTH_LONG
 
     fun show() {
-        val handler = if (preferCompose) composeHandler.get() else null
-        if (handler == null) {
+        if (Looper.myLooper() == Looper.getMainLooper()) showOnMain() else Services.mainHandler.post(::showOnMain)
+    }
+
+    @MainThread
+    private fun showOnMain() {
+        if (composeHandler?.invoke(Request(text, actionText, action)) != true) {
             @SuppressLint("ShowToast")
-            if (Looper.myLooper() == null) Looper.prepare()
             Toast.makeText(app, text, toastDuration).show()
-        } else {
-            handler(text, actionText, action)
         }
     }
 
     fun action(@StringRes id: Int, listener: () -> Unit) {
-        if (preferCompose) {
-            actionText = app.getText(id)
-            action = listener
-        }
+        actionText = app.getText(id)
+        action = listener
     }
 
     fun shortToast() = apply {
-        if (!preferCompose) toastDuration = Toast.LENGTH_SHORT
+        toastDuration = Toast.LENGTH_SHORT
     }
 }

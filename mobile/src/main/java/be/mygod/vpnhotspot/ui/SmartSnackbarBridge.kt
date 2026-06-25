@@ -5,13 +5,14 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import be.mygod.vpnhotspot.widget.SmartSnackbar
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.Channel
 
 suspend fun SnackbarHostState.showLongSnackbar(message: String) {
     showSnackbar(message = message, duration = SnackbarDuration.Long)
@@ -20,20 +21,26 @@ suspend fun SnackbarHostState.showLongSnackbar(message: String) {
 @Composable
 fun SmartSnackbarBridge(snackbarHostState: SnackbarHostState) {
     val lifecycleOwner = LocalLifecycleOwner.current
-    val scope = rememberCoroutineScope()
-    DisposableEffect(snackbarHostState, lifecycleOwner, scope) {
+    val requests = remember { Channel<SmartSnackbar.Request>(Channel.UNLIMITED) }
+    LaunchedEffect(snackbarHostState, requests) {
+        for (request in requests) {
+            val result = snackbarHostState.showSnackbar(
+                message = request.text.toString(),
+                actionLabel = request.actionText?.toString(),
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.ActionPerformed) request.action?.invoke()
+        }
+    }
+    DisposableEffect(requests) {
+        onDispose { requests.close() }
+    }
+    DisposableEffect(lifecycleOwner, requests) {
         var registration: AutoCloseable? = null
         fun register() {
             if (registration != null) return
-            registration = SmartSnackbar.registerComposeHandler { text, actionText, action ->
-                scope.launch {
-                    val result = snackbarHostState.showSnackbar(
-                        message = text.toString(),
-                        actionLabel = actionText?.toString(),
-                        duration = SnackbarDuration.Long,
-                    )
-                    if (result == SnackbarResult.ActionPerformed) action?.invoke()
-                }
+            registration = SmartSnackbar.registerComposeHandler { request ->
+                requests.trySend(request).isSuccess
             }
         }
         fun unregister() {
