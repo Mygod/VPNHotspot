@@ -7,6 +7,7 @@ import androidx.annotation.MainThread
 import androidx.compose.ui.text.AnnotatedString
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toOui36String
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.util.connectCancellable
 import be.mygod.vpnhotspot.util.toRegionalIndicatorFlagOrNull
@@ -30,8 +31,7 @@ import java.util.regex.Pattern
 object MacLookup {
     class UnexpectedError(val mac: MacAddress, val error: String) : JSONException("") {
         private fun formatMessage(context: Context) =
-            context.getString(R.string.clients_mac_lookup_unexpected_error,
-                mac.toByteArray().toHexString(0, 5).substring(0, 9), error)
+            context.getString(R.string.clients_mac_lookup_unexpected_error, mac.toOui36String(), error)
         override val message get() = formatMessage(app.english)
         override fun getLocalizedMessage() = formatMessage(app)
 
@@ -59,7 +59,7 @@ object MacLookup {
         macLookupBusy[mac] = scope.launch(Dispatchers.IO) {
             var response: String? = null
             try {
-                response = connectCancellable("https://macaddress.io/macaddress/$mac") { conn ->
+                response = connectCancellable("https://macaddress.io/macaddress/${mac.toOui36String()}") { conn ->
                     when (val responseCode = conn.responseCode) {
                         200 -> conn.inputStream.use {
                             Scanner(it).run {

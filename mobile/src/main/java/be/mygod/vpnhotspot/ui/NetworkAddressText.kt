@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.ui
 
+import android.net.MacAddress
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -10,6 +11,7 @@ import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withLink
 import be.mygod.vpnhotspot.App.Companion.app
+import be.mygod.vpnhotspot.net.MacAddressCompat.Companion.toOui36String
 import be.mygod.vpnhotspot.util.isBogon
 import java.net.InetAddress
 
@@ -23,7 +25,12 @@ fun rememberNetworkAddressLinkStyles(): TextLinkStyles {
 }
 
 fun AnnotatedString.Builder.appendMacAddress(mac: String, linkStyles: TextLinkStyles) {
-    appendLinkedText(mac, "https://macaddress.io/macaddress/$mac", linkStyles)
+    val prefix = try {
+        MacAddress.fromString(mac).toOui36String()
+    } catch (_: IllegalArgumentException) {
+        return append(mac)
+    }
+    appendLinkedText(mac, "https://macaddress.io/macaddress/$prefix", linkStyles)
 }
 
 fun AnnotatedString.Builder.appendIpAddress(ip: InetAddress, linkStyles: TextLinkStyles) {
