@@ -334,6 +334,9 @@ NAT66 startup is best effort across these pieces:
   USB/NCM tether transmit queue, and is logged to stderr instead of reported as
   a structured nonfatal. Other RA send failures remain structured nonfatals
   because they can indicate socket, privilege, or platform state problems.
+- RA withdrawal socket bind `EADDRNOTAVAIL` means the downstream link-local
+  router address disappeared before cleanup could send a zero-lifetime RA. It
+  is logged as skipped cleanup rather than reported as a structured nonfatal.
 - ICMP registration failure is nonfatal; NAT66 continues without ICMP Echo
   interception. The known transparent raw IPv6 bind `EADDRNOTAVAIL` failure is
   reported only when `uname.release` parses as Linux 5.11.14 or newer.

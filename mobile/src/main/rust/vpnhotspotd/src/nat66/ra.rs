@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures_util::{pin_mut, TryStreamExt};
-use libc::{ENOBUFS, MSG_DONTWAIT};
+use libc::{EADDRNOTAVAIL, ENOBUFS, MSG_DONTWAIT};
 use rtnetlink::packet_route::{
     address::{AddressAttribute, AddressMessage},
     AddressFamily,
@@ -347,6 +347,14 @@ async fn withdraw_prefixes_once_with_router(
     }
     let fd = match create_send_socket(&config.downstream, config.reply_mark, router) {
         Ok(fd) => fd,
+        Err(e) if e.raw_os_error() == Some(EADDRNOTAVAIL) => {
+            report::stdout!(
+                "ra withdraw skipped: link-local router address {} no longer available on {}",
+                router.address,
+                config.downstream
+            );
+            return;
+        }
         Err(e) => {
             report::io_with_details(
                 "nat66.ra_withdraw_socket",
