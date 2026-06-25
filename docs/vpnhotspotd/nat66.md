@@ -330,6 +330,10 @@ NAT66 startup is best effort across these pieces:
   without that MAC/protocol interception when other capabilities started.
 - RA task setup failure is nonfatal; existing NAT66 interception may continue,
   but clients may need other configuration to discover the gateway.
+- RA transmit `ENOBUFS` is downstream link backpressure, such as a full
+  USB/NCM tether transmit queue, and is logged to stderr instead of reported as
+  a structured nonfatal. Other RA send failures remain structured nonfatals
+  because they can indicate socket, privilege, or platform state problems.
 - ICMP registration failure is nonfatal; NAT66 continues without ICMP Echo
   interception. The known transparent raw IPv6 bind `EADDRNOTAVAIL` failure is
   reported only when `uname.release` parses as Linux 5.11.14 or newer.

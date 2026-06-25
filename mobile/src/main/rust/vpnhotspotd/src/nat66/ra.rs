@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures_util::{pin_mut, TryStreamExt};
-use libc::MSG_DONTWAIT;
+use libc::{ENOBUFS, MSG_DONTWAIT};
 use rtnetlink::packet_route::{
     address::{AddressAttribute, AddressMessage},
     AddressFamily,
@@ -44,6 +44,11 @@ enum RaRequest {
 struct Router {
     address: Ipv6Addr,
     interface_index: u32,
+}
+
+enum RaSendError {
+    Setup(io::Error),
+    Transmit(io::Error),
 }
 
 pub(crate) fn spawn_loop(
@@ -211,7 +216,16 @@ pub(crate) fn spawn_loop(
                 if send_current || router_changed || send_address_changed || next_ra <= now {
                     match send_ra(&current, router, None, mtu).await {
                         Ok(()) => advertising_current_prefix = true,
-                        Err(e) => {
+                        Err(RaSendError::Transmit(e))
+                            if is_downstream_transmit_backpressure(&e) =>
+                        {
+                            report::stderr!(
+                                "nat66.ra_send_current: downstream transmit buffer full: interface={} error={}",
+                                current.downstream,
+                                e
+                            );
+                        }
+                        Err(RaSendError::Setup(e)) | Err(RaSendError::Transmit(e)) => {
                             report::io_with_details(
                                 "nat66.ra_send_current",
                                 e,
@@ -247,7 +261,18 @@ pub(crate) fn spawn_loop(
                                 if let Some(router) = router {
                                     match send_ra(&current, router, Some(source), mtu).await {
                                         Ok(()) => advertising_current_prefix = true,
-                                        Err(e) => {
+                                        Err(RaSendError::Transmit(e))
+                                            if is_downstream_transmit_backpressure(&e) =>
+                                        {
+                                            report::stderr!(
+                                                "nat66.ra_send_solicited: downstream transmit buffer full: interface={} target={} error={}",
+                                                current.downstream,
+                                                source,
+                                                e
+                                            );
+                                        }
+                                        Err(RaSendError::Setup(e))
+                                        | Err(RaSendError::Transmit(e)) => {
                                             report::io_with_details(
                                                 "nat66.ra_send_solicited",
                                                 e,
@@ -333,16 +358,29 @@ async fn withdraw_prefixes_once_with_router(
     };
     for prefix in prefixes.iter().cloned() {
         if let Err(e) = send_zero_lifetime_ra(&fd, router, prefix, keep_router, mtu).await {
-            report::io_with_details(
-                "nat66.ra_withdraw_send",
-                e,
-                [
-                    ("interface", config.downstream.clone()),
-                    ("prefix", prefix.to_string()),
-                ],
-            );
+            if is_downstream_transmit_backpressure(&e) {
+                report::stderr!(
+                    "nat66.ra_withdraw_send: downstream transmit buffer full: interface={} prefix={} error={}",
+                    config.downstream,
+                    prefix,
+                    e
+                );
+            } else {
+                report::io_with_details(
+                    "nat66.ra_withdraw_send",
+                    e,
+                    [
+                        ("interface", config.downstream.clone()),
+                        ("prefix", prefix.to_string()),
+                    ],
+                );
+            }
         }
     }
+}
+
+fn is_downstream_transmit_backpressure(error: &io::Error) -> bool {
+    error.raw_os_error() == Some(ENOBUFS)
 }
 
 fn create_recv_socket(interface: &str, mark: u32) -> io::Result<Socket> {
@@ -518,15 +556,19 @@ async fn send_ra(
     router: Router,
     target: Option<SocketAddrV6>,
     mtu: u32,
-) -> io::Result<()> {
+) -> Result<(), RaSendError> {
     let ipv6_nat = config
         .ipv6_nat
         .as_ref()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing ipv6 NAT config"))?;
-    let fd = create_send_socket(&config.downstream, config.reply_mark, router)?;
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing ipv6 NAT config"))
+        .map_err(RaSendError::Setup)?;
+    let fd = create_send_socket(&config.downstream, config.reply_mark, router)
+        .map_err(RaSendError::Setup)?;
     let destination = router_advertisement_destination(target, router.interface_index);
     let packet = make_current_ra_packet(ipv6_nat.gateway, mtu);
-    send_packet_to(&fd, &packet, SockAddr::from(destination)).await
+    send_packet_to(&fd, &packet, SockAddr::from(destination))
+        .await
+        .map_err(RaSendError::Transmit)
 }
 
 async fn send_zero_lifetime_ra(
