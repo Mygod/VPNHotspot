@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -53,10 +54,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
@@ -118,6 +123,8 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
     val snackbarHostState = remember { SnackbarHostState() }
     SmartSnackbarBridge(snackbarHostState)
     val scope = rememberCoroutineScope()
+    var snackbarStartPadding by remember { mutableStateOf(0.dp) }
+    var snackbarBottomPadding by remember { mutableStateOf(0.dp) }
     var savedApSession by rememberSaveable { mutableStateOf<ApConfigurationSession?>(null) }
     var apConfigurationLoading by remember { mutableStateOf(false) }
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -195,119 +202,148 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
         (appContext as? Activity)?.finish()
     }
     val navFadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
-    NavHost(
-        navController = navController,
-        startDestination = RootDestination.Tethering.route,
-        modifier = Modifier
+    Box(
+        Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
-        enterTransition = { fadeIn(navFadeSpec) },
-        exitTransition = { fadeOut(navFadeSpec) },
-        popEnterTransition = { fadeIn(navFadeSpec) },
-        popExitTransition = { fadeOut(navFadeSpec) },
     ) {
-        composable(RootDestination.Tethering.route) {
-            var tetheringInterfaceRefreshVersion by remember { mutableIntStateOf(0) }
-            val localOnlyIface by (localOnlyBinder?.iface)?.collectAsStateWithLifecycle(null)
-                ?: remember { mutableStateOf(null) }
-            val repeaterActive by (repeaterBinder?.active)?.collectAsStateWithLifecycle(null)
-                ?: remember { mutableStateOf(null) }
-            val repeaterGroup by (repeaterBinder?.group)?.collectAsStateWithLifecycle(null)
-                ?: remember { mutableStateOf(null) }
-            RootDestinationScaffold(
-                title = R.string.app_name,
-                selectedDestination = RootDestination.Tethering,
-                navController = navController,
-                validClientCount = validClientCount,
-                snackbarHostState = snackbarHostState,
-                showSnackbarHost = route == RootDestination.Tethering.route,
-            ) {
-                TetheringScreen(
-                    snackbarHostState,
-                    repeaterActive,
-                    repeaterGroup,
-                    localOnlyIface,
-                    tetherStates,
-                    tetheringServiceState,
-                    interfaceRefreshVersion = tetheringInterfaceRefreshVersion,
-                    onRefresh = { tetheringInterfaceRefreshVersion++ },
-                    onConfigureRepeater = {
-                        if (!apConfigurationLoading) {
-                            apConfigurationLoading = true
-                            scope.launch {
-                                try {
-                                    savedApSession = loadRepeaterApConfiguration(repeaterBinderState.value)
-                                    navController.navigate(AppDestination.RepeaterConfiguration.route)
-                                } finally {
-                                    apConfigurationLoading = false
-                                }
-                            }
-                        }
-                    },
-                    onConfigureTemporaryHotspot = temporaryHotspotConfiguration?.let { configuration ->
-                        {
-                            savedApSession = ApConfigurationSession(
-                                initial = configuration,
-                                target = ApConfigurationTarget.Temporary,
-                                readOnly = true,
-                            )
-                            navController.navigate(AppDestination.TemporaryHotspotConfiguration.route)
-                        }
-                    },
-                    onConfigureAp = {
-                        if (!apConfigurationLoading) {
-                            apConfigurationLoading = true
-                            scope.launch {
-                                try {
-                                    loadSystemApConfiguration(snackbarHostState)?.let { session ->
-                                        savedApSession = session
-                                        navController.navigate(AppDestination.ApConfiguration.route)
+        NavHost(
+            navController = navController,
+            startDestination = RootDestination.Tethering.route,
+            modifier = Modifier.fillMaxSize(),
+            enterTransition = { fadeIn(navFadeSpec) },
+            exitTransition = { fadeOut(navFadeSpec) },
+            popEnterTransition = { fadeIn(navFadeSpec) },
+            popExitTransition = { fadeOut(navFadeSpec) },
+        ) {
+            composable(RootDestination.Tethering.route) {
+                var tetheringInterfaceRefreshVersion by remember { mutableIntStateOf(0) }
+                val localOnlyIface by (localOnlyBinder?.iface)?.collectAsStateWithLifecycle(null)
+                    ?: remember { mutableStateOf(null) }
+                val repeaterActive by (repeaterBinder?.active)?.collectAsStateWithLifecycle(null)
+                    ?: remember { mutableStateOf(null) }
+                val repeaterGroup by (repeaterBinder?.group)?.collectAsStateWithLifecycle(null)
+                    ?: remember { mutableStateOf(null) }
+                RootDestinationScaffold(
+                    title = R.string.app_name,
+                    selectedDestination = RootDestination.Tethering,
+                    navController = navController,
+                    validClientCount = validClientCount,
+                    activeSnackbarPadding = route == RootDestination.Tethering.route,
+                    onSnackbarStartPaddingChanged = { snackbarStartPadding = it },
+                    onSnackbarBottomPaddingChanged = { snackbarBottomPadding = it },
+                ) {
+                    TetheringScreen(
+                        snackbarHostState,
+                        repeaterActive,
+                        repeaterGroup,
+                        localOnlyIface,
+                        tetherStates,
+                        tetheringServiceState,
+                        interfaceRefreshVersion = tetheringInterfaceRefreshVersion,
+                        onRefresh = { tetheringInterfaceRefreshVersion++ },
+                        onConfigureRepeater = {
+                            if (!apConfigurationLoading) {
+                                apConfigurationLoading = true
+                                scope.launch {
+                                    try {
+                                        savedApSession = loadRepeaterApConfiguration(repeaterBinderState.value)
+                                        navController.navigate(AppDestination.RepeaterConfiguration.route)
+                                    } finally {
+                                        apConfigurationLoading = false
                                     }
-                                } finally {
-                                    apConfigurationLoading = false
                                 }
                             }
-                        }
-                    },
-                    onStopRepeater = { repeaterBinderState.value?.shutdown() },
-                    onStopTemporaryHotspot = { localOnlyBinderState.value?.stop() },
-                    onStartRepeaterWps = { repeaterBinderState.value?.startWps(it) },
-                )
+                        },
+                        onConfigureTemporaryHotspot = temporaryHotspotConfiguration?.let { configuration ->
+                            {
+                                savedApSession = ApConfigurationSession(
+                                    initial = configuration,
+                                    target = ApConfigurationTarget.Temporary,
+                                    readOnly = true,
+                                )
+                                navController.navigate(AppDestination.TemporaryHotspotConfiguration.route)
+                            }
+                        },
+                        onConfigureAp = {
+                            if (!apConfigurationLoading) {
+                                apConfigurationLoading = true
+                                scope.launch {
+                                    try {
+                                        loadSystemApConfiguration(snackbarHostState)?.let { session ->
+                                            savedApSession = session
+                                            navController.navigate(AppDestination.ApConfiguration.route)
+                                        }
+                                    } finally {
+                                        apConfigurationLoading = false
+                                    }
+                                }
+                            }
+                        },
+                        onStopRepeater = { repeaterBinderState.value?.shutdown() },
+                        onStopTemporaryHotspot = { localOnlyBinderState.value?.stop() },
+                        onStartRepeaterWps = { repeaterBinderState.value?.startWps(it) },
+                    )
+                }
+            }
+            composable(RootDestination.Clients.route) {
+                RootDestinationScaffold(
+                    title = R.string.app_name,
+                    selectedDestination = RootDestination.Clients,
+                    navController = navController,
+                    validClientCount = validClientCount,
+                    activeSnackbarPadding = route == RootDestination.Clients.route,
+                    onSnackbarStartPaddingChanged = { snackbarStartPadding = it },
+                    onSnackbarBottomPaddingChanged = { snackbarBottomPadding = it },
+                ) {
+                    ClientsScreen(clientViewModel, snackbarHostState)
+                }
+            }
+            composable(RootDestination.Settings.route) {
+                RootDestinationScaffold(
+                    title = R.string.app_name,
+                    selectedDestination = RootDestination.Settings,
+                    navController = navController,
+                    validClientCount = validClientCount,
+                    activeSnackbarPadding = route == RootDestination.Settings.route,
+                    onSnackbarStartPaddingChanged = { snackbarStartPadding = it },
+                    onSnackbarBottomPaddingChanged = { snackbarBottomPadding = it },
+                ) {
+                    SettingsScreen(snackbarHostState)
+                }
+            }
+            for (destination in AppDestination.entries) {
+                composable(destination.route) {
+                    ApConfigurationRoute(
+                        route == destination.route,
+                        apState,
+                        applyApConfiguration,
+                        navController,
+                        snackbarHostState,
+                        onSnackbarStartPaddingChanged = { snackbarStartPadding = it },
+                        onSnackbarBottomPaddingChanged = { snackbarBottomPadding = it },
+                    )
+                }
             }
         }
-        composable(RootDestination.Clients.route) {
-            RootDestinationScaffold(
-                title = R.string.app_name,
-                selectedDestination = RootDestination.Clients,
-                navController = navController,
-                validClientCount = validClientCount,
-                snackbarHostState = snackbarHostState,
-                showSnackbarHost = route == RootDestination.Clients.route,
-            ) {
-                ClientsScreen(clientViewModel, snackbarHostState)
-            }
-        }
-        composable(RootDestination.Settings.route) {
-            RootDestinationScaffold(
-                title = R.string.app_name,
-                selectedDestination = RootDestination.Settings,
-                navController = navController,
-                validClientCount = validClientCount,
-                snackbarHostState = snackbarHostState,
-                showSnackbarHost = route == RootDestination.Settings.route,
-            ) {
-                SettingsScreen(snackbarHostState)
-            }
-        }
-        for (destination in AppDestination.entries) {
-            composable(destination.route) {
-                ApConfigurationRoute(
-                    route == destination.route,
-                    apState,
-                    applyApConfiguration,
-                    navController,
-                    snackbarHostState,
-                )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(start = snackbarStartPadding),
+        ) {
+            SnackbarHost(
+                snackbarHostState,
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = snackbarBottomPadding),
+            ) { data ->
+                SwipeToDismissBox(
+                    state = rememberSwipeToDismissBoxState(),
+                    backgroundContent = {},
+                    onDismiss = { data.dismiss() },
+                ) {
+                    Snackbar(data)
+                }
             }
         }
     }
@@ -363,8 +399,9 @@ private fun RootDestinationScaffold(
     selectedDestination: RootDestination,
     navController: NavHostController,
     validClientCount: Int,
-    snackbarHostState: SnackbarHostState,
-    showSnackbarHost: Boolean,
+    activeSnackbarPadding: Boolean,
+    onSnackbarStartPaddingChanged: (Dp) -> Unit,
+    onSnackbarBottomPaddingChanged: (Dp) -> Unit,
     actions: @Composable RowScope.() -> Unit = {},
     onReselect: () -> Unit = {},
     content: @Composable () -> Unit,
@@ -382,8 +419,12 @@ private fun RootDestinationScaffold(
         }
     }
     if (useNavigationRail) {
+        val density = LocalDensity.current
+        var navigationRailWidth by remember { mutableStateOf<Dp?>(null) }
         Row(Modifier.fillMaxSize()) {
-            NavigationRail {
+            NavigationRail(
+                modifier = Modifier.onSizeChanged { navigationRailWidth = with(density) { it.width.toDp() } },
+            ) {
                 for (destination in RootDestination.entries) {
                     NavigationRailItem(
                         selected = destination == selectedDestination,
@@ -396,8 +437,10 @@ private fun RootDestinationScaffold(
             DestinationScaffold(
                 title = title,
                 modifier = Modifier.weight(1f),
-                snackbarHostState = snackbarHostState,
-                showSnackbarHost = showSnackbarHost,
+                activeSnackbarPadding = activeSnackbarPadding,
+                snackbarStartPadding = navigationRailWidth,
+                onSnackbarStartPaddingChanged = onSnackbarStartPaddingChanged,
+                onSnackbarBottomPaddingChanged = onSnackbarBottomPaddingChanged,
                 actions = actions,
                 contentWindowInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom),
                 content = content,
@@ -406,8 +449,9 @@ private fun RootDestinationScaffold(
     } else {
         DestinationScaffold(
             title = title,
-            snackbarHostState = snackbarHostState,
-            showSnackbarHost = showSnackbarHost,
+            activeSnackbarPadding = activeSnackbarPadding,
+            onSnackbarStartPaddingChanged = onSnackbarStartPaddingChanged,
+            onSnackbarBottomPaddingChanged = onSnackbarBottomPaddingChanged,
             actions = actions,
             bottomBar = {
                 NavigationBar {
@@ -428,11 +472,13 @@ private fun RootDestinationScaffold(
 
 @Composable
 private fun ApConfigurationRoute(
-    showSnackbarHost: Boolean,
+    activeSnackbarPadding: Boolean,
     state: ApConfigurationState?,
     onApply: (suspend (SoftApConfigurationCompat) -> Boolean)?,
     navController: NavHostController,
     snackbarHostState: SnackbarHostState,
+    onSnackbarStartPaddingChanged: (Dp) -> Unit,
+    onSnackbarBottomPaddingChanged: (Dp) -> Unit,
 ) {
     if (state == null) LaunchedEffect(Unit) {
         navController.popBackStack()
@@ -440,8 +486,9 @@ private fun ApConfigurationRoute(
         val save = if (state.readOnly) null else onApply
         DestinationScaffold(
             title = R.string.configuration_view,
-            snackbarHostState = snackbarHostState,
-            showSnackbarHost = showSnackbarHost,
+            activeSnackbarPadding = activeSnackbarPadding,
+            onSnackbarStartPaddingChanged = onSnackbarStartPaddingChanged,
+            onSnackbarBottomPaddingChanged = onSnackbarBottomPaddingChanged,
             onNavigateUp = { navController.popBackStack() },
             actions = {
                 if (onApply != null) ApConfigurationTopBarActions(
@@ -449,13 +496,15 @@ private fun ApConfigurationRoute(
                     snackbarHostState = snackbarHostState,
                 )
             },
-            floatingActionButton = {
-                if (save != null) ApConfigurationSaveFab(
-                    state = state,
-                    onApply = save,
-                    snackbarHostState = snackbarHostState,
-                    onApplied = { navController.popBackStack() },
-                )
+            floatingActionButton = if (save == null) null else {
+                {
+                    ApConfigurationSaveFab(
+                        state = state,
+                        onApply = save,
+                        snackbarHostState = snackbarHostState,
+                        onApplied = { navController.popBackStack() },
+                    )
+                }
             },
         ) {
             ApConfigurationScreen(
@@ -472,15 +521,38 @@ private fun ApConfigurationRoute(
 private fun DestinationScaffold(
     @StringRes title: Int,
     modifier: Modifier = Modifier,
-    snackbarHostState: SnackbarHostState,
-    showSnackbarHost: Boolean,
+    activeSnackbarPadding: Boolean,
+    snackbarStartPadding: Dp? = 0.dp,
+    onSnackbarStartPaddingChanged: (Dp) -> Unit,
+    onSnackbarBottomPaddingChanged: (Dp) -> Unit,
     onNavigateUp: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
-    bottomBar: @Composable () -> Unit = {},
-    floatingActionButton: @Composable () -> Unit = {},
+    bottomBar: (@Composable () -> Unit)? = null,
+    floatingActionButton: (@Composable () -> Unit)? = null,
     contentWindowInsets: WindowInsets = WindowInsets(),
     content: @Composable () -> Unit,
 ) {
+    val density = LocalDensity.current
+    var bottomBarHeight by remember { mutableStateOf<Dp?>(null) }
+    var fabHeight by remember { mutableStateOf<Dp?>(null) }
+    val bottomContentInset = contentWindowInsets.asPaddingValues().calculateBottomPadding()
+    val snackbarBottomPadding = when {
+        floatingActionButton != null && fabHeight == null -> null
+        bottomBar != null && bottomBarHeight == null -> null
+        floatingActionButton != null -> (bottomBarHeight ?: bottomContentInset) + fabHeight!! + 16.dp
+        bottomBar != null -> bottomBarHeight ?: bottomContentInset
+        else -> bottomContentInset
+    }
+    LaunchedEffect(activeSnackbarPadding, snackbarBottomPadding) {
+        if (activeSnackbarPadding && snackbarBottomPadding != null) {
+            onSnackbarBottomPaddingChanged(snackbarBottomPadding)
+        }
+    }
+    LaunchedEffect(activeSnackbarPadding, snackbarStartPadding) {
+        if (activeSnackbarPadding && snackbarStartPadding != null) {
+            onSnackbarStartPaddingChanged(snackbarStartPadding)
+        }
+    }
     Scaffold(
         modifier = modifier,
         topBar = {
@@ -500,16 +572,17 @@ private fun DestinationScaffold(
                 actions = actions,
             )
         },
-        bottomBar = bottomBar,
-        floatingActionButton = floatingActionButton,
-        snackbarHost = {
-            if (showSnackbarHost) SnackbarHost(snackbarHostState) { data ->
-                SwipeToDismissBox(
-                    state = rememberSwipeToDismissBoxState(),
-                    backgroundContent = {},
-                    onDismiss = { data.dismiss() },
-                ) {
-                    Snackbar(data)
+        bottomBar = {
+            if (bottomBar != null) {
+                Box(Modifier.onSizeChanged { bottomBarHeight = with(density) { it.height.toDp() } }) {
+                    bottomBar()
+                }
+            }
+        },
+        floatingActionButton = {
+            if (floatingActionButton != null) {
+                Box(Modifier.onSizeChanged { fabHeight = with(density) { it.height.toDp() } }) {
+                    floatingActionButton()
                 }
             }
         },
