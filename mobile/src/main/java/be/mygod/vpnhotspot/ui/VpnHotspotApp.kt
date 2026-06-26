@@ -68,6 +68,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.withResumed
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -93,6 +94,8 @@ import be.mygod.vpnhotspot.ui.apconfiguration.applySystemApConfiguration
 import be.mygod.vpnhotspot.ui.apconfiguration.loadRepeaterApConfiguration
 import be.mygod.vpnhotspot.ui.apconfiguration.loadSystemApConfiguration
 import be.mygod.vpnhotspot.util.stopAndUnbind
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 private enum class RootDestination(
@@ -122,11 +125,9 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
     SmartSnackbarBridge(snackbarHostState)
-    val scope = rememberCoroutineScope()
     var snackbarStartPadding by remember { mutableStateOf(0.dp) }
     var snackbarBottomPadding by remember { mutableStateOf(0.dp) }
     var savedApSession by rememberSaveable { mutableStateOf<ApConfigurationSession?>(null) }
-    var apConfigurationLoading by remember { mutableStateOf(false) }
     val backStackEntry by navController.currentBackStackEntryAsState()
     val route = backStackEntry?.destination?.route
     val rootDestination = RootDestination.entries.firstOrNull { it.route == route }
@@ -217,6 +218,18 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
             popExitTransition = { fadeOut(navFadeSpec) },
         ) {
             composable(RootDestination.Tethering.route) {
+                val scope = rememberCoroutineScope()
+                val lifecycleOwner = LocalLifecycleOwner.current
+                var apConfigurationJob by remember { mutableStateOf<Job?>(null) }
+                val openApConfiguration:
+                    suspend (ApConfigurationSession, AppDestination) -> Unit = { session, destination ->
+                        lifecycleOwner.withResumed {
+                            if (navController.currentBackStackEntry?.destination?.route == RootDestination.Tethering.route) {
+                                savedApSession = session
+                                navController.navigate(destination.route)
+                            }
+                        }
+                    }
                 var tetheringInterfaceRefreshVersion by remember { mutableIntStateOf(0) }
                 val localOnlyIface by (localOnlyBinder?.iface)?.collectAsStateWithLifecycle(null)
                     ?: remember { mutableStateOf(null) }
@@ -243,14 +256,14 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
                         interfaceRefreshVersion = tetheringInterfaceRefreshVersion,
                         onRefresh = { tetheringInterfaceRefreshVersion++ },
                         onConfigureRepeater = {
-                            if (!apConfigurationLoading) {
-                                apConfigurationLoading = true
-                                scope.launch {
+                            if (apConfigurationJob == null) {
+                                apConfigurationJob = scope.launch {
                                     try {
-                                        savedApSession = loadRepeaterApConfiguration(repeaterBinderState.value)
-                                        navController.navigate(AppDestination.RepeaterConfiguration.route)
+                                        val session = loadRepeaterApConfiguration(repeaterBinderState.value)
+                                        ensureActive()
+                                        openApConfiguration(session, AppDestination.RepeaterConfiguration)
                                     } finally {
-                                        apConfigurationLoading = false
+                                        apConfigurationJob = null
                                     }
                                 }
                             }
@@ -266,16 +279,16 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
                             }
                         },
                         onConfigureAp = {
-                            if (!apConfigurationLoading) {
-                                apConfigurationLoading = true
-                                scope.launch {
+                            if (apConfigurationJob == null) {
+                                apConfigurationJob = scope.launch {
                                     try {
-                                        loadSystemApConfiguration(snackbarHostState)?.let { session ->
-                                            savedApSession = session
-                                            navController.navigate(AppDestination.ApConfiguration.route)
+                                        val session = loadSystemApConfiguration(snackbarHostState)
+                                        ensureActive()
+                                        session?.let {
+                                            openApConfiguration(it, AppDestination.ApConfiguration)
                                         }
                                     } finally {
-                                        apConfigurationLoading = false
+                                        apConfigurationJob = null
                                     }
                                 }
                             }
