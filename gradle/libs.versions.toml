@@ -1,7 +1,7 @@
 [versions]
 lifecycle = "2.11.0"
 room = "2.8.4"
-wire = "6.4.0"
+wire = "6.4.1"
 
 [libraries]
 activity-compose = "androidx.activity:activity-compose:1.13.0"
