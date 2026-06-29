@@ -270,6 +270,9 @@ The daemon allocates a rewritten Echo identifier/sequence, records the original
 client MAC, client IPv6 address, and hop limit, sends a daemon-owned upstream
 Echo Request on the selected Android network, and restores the client-visible
 identifier when the Echo Reply returns.
+If the selected network reports host- or network-unreachable during the
+upstream Echo send, the daemon logs the route loss, removes the Echo allocation,
+and drops the intercepted request without emitting a structured nonfatal.
 
 Echo upstream sockets are per Android network and shared with UDP ICMP error
 translation. They stay alive while that network has Echo allocations or UDP

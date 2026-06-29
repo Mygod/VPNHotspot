@@ -11,6 +11,7 @@ use super::raw_socket::{send_downstream_icmp, send_upstream_echo, set_upstream_e
 use super::state::EchoState;
 use super::IcmpSession;
 use crate::report;
+use crate::socket::is_route_unreachable;
 use vpnhotspotd::shared::icmp_nat::{
     classify_nat66_destination, nat66_hop_limit, EchoAllocation, Nat66Destination, Nat66HopLimit,
     ICMPV6_PACKET_TOO_BIG, ICMPV6_TIME_EXCEEDED,
@@ -485,15 +486,25 @@ async fn handle_downstream_echo(
                         }
                     }
                 }
-                report::io_with_details(
-                    "nat66.icmp_upstream_send",
-                    e,
-                    [
-                        ("client", packet.source.to_string()),
-                        ("destination", packet.destination.to_string()),
-                        ("network", network.to_string()),
-                    ],
-                );
+                if is_route_unreachable(&e) {
+                    report::stdout!(
+                        "icmp echo upstream unreachable: client={} destination={} network={}: {}",
+                        packet.source,
+                        packet.destination,
+                        network,
+                        e
+                    );
+                } else {
+                    report::io_with_details(
+                        "nat66.icmp_upstream_send",
+                        e,
+                        [
+                            ("client", packet.source.to_string()),
+                            ("destination", packet.destination.to_string()),
+                            ("network", network.to_string()),
+                        ],
+                    );
+                }
                 if let Err(e) = state.remove_allocation(network, packet.destination, id, seq) {
                     report::io("nat66.icmp_echo_remove_failed_send", e);
                 }
