@@ -4,17 +4,17 @@ set -euo pipefail
 usage() {
     cat <<'EOF'
 Usage:
-  scripts/package_obtainium_zips.sh [apk ...]
+  scripts/package_obtainium_tarballs.sh [apk ...]
 
 Environment overrides:
   JOBS=...  Maximum APKs to package at once. Defaults to nproc when available,
             otherwise the number of APKs.
 
-Creates Obtainium-compatible Deflate ZIP files for release APKs. With no
-arguments, packages every *.apk in mobile/release. With arguments, packages the
-specified APK files.
+Creates Obtainium-compatible tar.xz files for release APKs. With no arguments,
+packages every *.apk in mobile/release. With arguments, packages the specified
+APK files.
 
-The output for each APK is written next to it as <apk>.zip.
+The output for each APK is written next to it as <apk>.tar.xz.
 EOF
 }
 
@@ -23,7 +23,7 @@ if [[ ${1:-} == "-h" || ${1:-} == "--help" ]]; then
     exit 0
 fi
 
-for command in advzip basename dirname find mktemp mv rm sort unzip zip; do
+for command in basename dirname find mktemp mv rm sort tar xz; do
     if ! command -v "$command" >/dev/null; then
         echo "Missing required command: $command" >&2
         exit 2
@@ -52,11 +52,15 @@ fi
 
 package_apk() {
     local apk=$1
-    local output=$apk.zip
+    local output=$apk.tar.xz
+    local apk_dir
+    local apk_base
     local output_dir
     local output_base
     local tmp
 
+    apk_dir=$(dirname -- "$apk")
+    apk_base=$(basename -- "$apk")
     output_dir=$(dirname -- "$output")
     output_base=$(basename -- "$output")
     tmp=$(mktemp --tmpdir="$output_dir" ".$output_base.tmp.XXXXXX")
@@ -64,10 +68,9 @@ package_apk() {
     trap 'rm -f "$tmp"' EXIT
 
     echo "Packaging $apk -> $output"
-    zip -9 -X -D -j "$tmp" "$apk"
-    advzip -z4 -i 15 "$tmp"
-    advzip -t "$tmp"
-    unzip -t "$tmp"
+    tar -C "$apk_dir" -cf - "$apk_base" | xz -9 --threads=1 -c > "$tmp"
+    xz -t "$tmp"
+    tar -Jtf "$tmp" "$apk_base" >/dev/null
     mv -f "$tmp" "$output"
     trap - EXIT
 }
@@ -98,11 +101,11 @@ for apk in "${apks[@]}"; do
     ((++running))
     if (( running >= JOBS )); then
         wait -n || status=1
-        ((--running))
+        running=$((running - 1))
     fi
 done
 while (( running > 0 )); do
     wait -n || status=1
-    ((--running))
+    running=$((running - 1))
 done
 exit "$status"
