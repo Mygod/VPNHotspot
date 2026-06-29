@@ -79,36 +79,28 @@ impl ReplySocketPool {
     }
 
     fn acquire_reserved(&self, key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
-        if let Some(socket) = self.with_state(|state| state.reserved_socket(key))? {
+        let mut state = self.lock_state()?;
+        if let Some(socket) = state.reserved_socket(key) {
             return Ok(socket);
         }
         let socket = create_reply_socket(key)?;
-        self.with_state(|state| {
-            if let Some(existing) = state.reserved_socket(key) {
-                return existing;
-            }
-            if let Some(entry) = state.sockets.get_mut(&key) {
-                entry.socket = Some(socket.clone());
-            }
-            socket
-        })
+        if let Some(entry) = state.sockets.get_mut(&key) {
+            entry.socket = Some(socket.clone());
+        }
+        Ok(socket)
     }
 
     pub(super) fn retain_dns(&self, key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
-        if let Some(socket) = self.with_state(|state| state.retain_existing_dns_socket(key))? {
+        let mut state = self.lock_state()?;
+        if let Some(socket) = state.retain_existing_dns_socket(key) {
             return Ok(socket);
         }
         let socket = create_reply_socket(key)?;
-        self.with_state(|state| {
-            if let Some(existing) = state.retain_existing_dns_socket(key) {
-                return existing;
-            }
-            if let Some(entry) = state.sockets.get_mut(&key) {
-                entry.socket = Some(socket.clone());
-            }
-            state.retain_dns_socket(key, socket.clone());
-            socket
-        })
+        if let Some(entry) = state.sockets.get_mut(&key) {
+            entry.socket = Some(socket.clone());
+        }
+        state.retain_dns_socket(key, socket.clone());
+        Ok(socket)
     }
 
     fn release_user(&self, key: ReplySocketKey) -> io::Result<()> {

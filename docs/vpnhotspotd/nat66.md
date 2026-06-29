@@ -213,8 +213,11 @@ The reply socket pool separates DNS replies from user UDP associations. User
 associations reserve a reply source while alive so downstream responses can use
 the original destination as their source. DNS keeps retained reply sockets by
 source/mark because DNS requests are short child tasks rather than entries in
-the association table. Host- or network-unreachable downstream reply sends are
-treated as client reachability churn and logged. Reply socket acquisition,
+the association table. The pool serializes create-or-reuse decisions for each
+reply source/mark before committing a bound socket to DNS retention or a user
+reservation, so concurrent first replies for the same source do not race a
+duplicate transparent bind. Host- or network-unreachable downstream reply sends
+are treated as client reachability churn and logged. Reply socket acquisition,
 replacement, and other unexpected send failures are reported as structured
 nonfatals.
 
