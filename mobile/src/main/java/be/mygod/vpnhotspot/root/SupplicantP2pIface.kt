@@ -14,6 +14,8 @@ import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 
 object SupplicantP2pIface {
+    class Hidl12UnsupportedException : UnsupportedOperationException("P2P supplicant HIDL 1.2 missing")
+
     private val classLoader by lazy {
         PathClassLoader(listOf(
             // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/Android.mk#46
@@ -131,6 +133,7 @@ object SupplicantP2pIface {
                 }
             }))
         val p2pIface = castFrom(null, asInterface(null, iface!!.asBinder()))
+            ?: throw Hidl12UnsupportedException()
         val macRandomizationError = try {   // best-effort: keep group creation working even if this transaction is unavailable
             requireSuccess(setMacRandomization(p2pIface, randomizeMac), "setMacRandomization")
             null

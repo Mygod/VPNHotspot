@@ -41,6 +41,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.startWps
 import be.mygod.vpnhotspot.net.wifi.WifiSsidCompat
 import be.mygod.vpnhotspot.root.RepeaterCommands
 import be.mygod.vpnhotspot.root.RootManager
+import be.mygod.vpnhotspot.root.SupplicantP2pIface
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.util.UnblockCentral
@@ -556,7 +557,7 @@ class RepeaterService : Service(), CoroutineScope {
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        Timber.w(e)
+                        if (e.cause !is SupplicantP2pIface.Hidl12UnsupportedException) Timber.w(e)
                         SmartSnackbar.make(e).show()
                         createFrameworkGroup(channel, null) // possibly HIDL <1.2, start default group instead
                     }
