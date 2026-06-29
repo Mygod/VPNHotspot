@@ -41,6 +41,7 @@ import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.PreferenceSplitSwitch
 import be.mygod.vpnhotspot.ui.PreferenceSwitch
 import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
+import be.mygod.vpnhotspot.ui.rememberPreferenceSplitFocusModifiers
 
 @Composable
 fun TextSwitchApRow(
@@ -70,9 +71,11 @@ fun TextSwitchApRow(
     val text = draft.text.toString()
     val error = validator(text)
     val titleText = stringResource(title)
+    val (rowFocusModifier, switchFocusModifier) = rememberPreferenceSplitFocusModifiers()
     PreferenceRow(
         icon = icon,
         title = titleText,
+        modifier = rowFocusModifier,
         summaryContent = if (summary == null && valueSummary.isEmpty()) null else {
             {
                 Column {
@@ -85,6 +88,7 @@ fun TextSwitchApRow(
             PreferenceSplitSwitch(
                 label = titleText,
                 checked = checked,
+                modifier = switchFocusModifier,
                 onCheckedChange = onCheckedChange,
             )
         },

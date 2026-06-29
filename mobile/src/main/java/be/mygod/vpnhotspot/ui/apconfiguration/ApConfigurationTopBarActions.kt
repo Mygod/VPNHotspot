@@ -12,6 +12,7 @@ import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -117,7 +118,13 @@ fun ApConfigurationSaveFab(
                 }
             }
         },
-        modifier = (if (canSave) Modifier else Modifier.semantics { disabled() }).navigationBarsPadding(),
+        modifier = (if (canSave) {
+            Modifier
+        } else {
+            Modifier
+                .focusProperties { canFocus = false }
+                .semantics { disabled() }
+        }).navigationBarsPadding(),
         containerColor = containerColor,
         contentColor = contentColor,
     )

@@ -653,15 +653,18 @@ private fun TetheringRow(
             onCheckedChange = { onClick() },
         )
     } else {
+        val (rowFocusModifier, switchFocusModifier) = rememberPreferenceSplitFocusModifiers()
         PreferenceRow(
             icon = icon,
             title = title,
+            modifier = rowFocusModifier,
             summaryContent = summaryContent,
             enabled = enabled,
             trailing = {
                 PreferenceSplitSwitch(
                     label = title,
                     checked = checked,
+                    modifier = switchFocusModifier,
                     enabled = switchEnabled,
                     onCheckedChange = { onCheckedChange() },
                 )
