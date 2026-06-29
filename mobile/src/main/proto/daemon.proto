@@ -55,6 +55,7 @@ message SessionConfig {
   repeated string fallback_upstream_interfaces = 9;
   repeated ClientConfig clients = 10;
   optional Ipv6NatConfig ipv6_nat = 11;
+  uint64 upstream_generation = 12;
 }
 
 enum MasqueradeMode {

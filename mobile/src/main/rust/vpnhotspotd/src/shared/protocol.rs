@@ -301,6 +301,7 @@ pub fn read_session_config(config: daemon::SessionConfig) -> io::Result<SessionC
         fallback_network: config.fallback_network.filter(|network| *network != 0),
         primary_upstream_interfaces: config.primary_upstream_interfaces,
         fallback_upstream_interfaces: config.fallback_upstream_interfaces,
+        upstream_generation: config.upstream_generation,
         clients,
         ipv6_nat,
     })

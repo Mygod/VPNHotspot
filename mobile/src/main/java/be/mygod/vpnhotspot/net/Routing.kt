@@ -83,6 +83,7 @@ class Routing(private val caller: Any, private val downstream: String) {
 
     private val fallbackUpstream = UpstreamTracker()
     private val primaryUpstream = UpstreamTracker()
+    private var upstreamGeneration = 0L
     private val clients = MutableScatterMap<Inet4Address, MacAddress>()
     private val allowedMacs = MutableScatterSet<MacAddress>()
     private val started = AtomicBoolean()
@@ -135,19 +136,20 @@ class Routing(private val caller: Any, private val downstream: String) {
                 session = DaemonController.startSession(nextConfig())
                 launch(start = CoroutineStart.UNDISPATCHED) {
                     session.events.collect { event ->
-                        event.ipsec_forward_policy?.let {
-                            try {
-                                RootManager.use { server ->
-                                    server.execute(IpSecForwardPolicyCommand(it.uid, it.source_address,
-                                        it.destination_address, it.mark_value, it.xfrm_interface_id))
-                                }
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                Timber.w(e)
-                                SmartSnackbar.make(e).show()
+                        val ipsecForwardPolicy = event.ipsec_forward_policy ?: throw IOException(
+                                "Unexpected session event $event")
+                        try {
+                            RootManager.use { server ->
+                                server.execute(IpSecForwardPolicyCommand(ipsecForwardPolicy.uid,
+                                    ipsecForwardPolicy.source_address, ipsecForwardPolicy.destination_address,
+                                    ipsecForwardPolicy.mark_value, ipsecForwardPolicy.xfrm_interface_id))
                             }
-                        } ?: throw IOException("Unexpected session event $event")
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Timber.w(e)
+                            SmartSnackbar.make(e).show()
+                        }
                     }
                 }
                 var blockedMacs = initialBlockedMacs.await()
@@ -180,6 +182,7 @@ class Routing(private val caller: Any, private val downstream: String) {
                                 }
                             }
                         }
+                        if (upstreamChanged) ++upstreamGeneration
                         var clientSnapshot: ScatterMap<Inet4Address, MacAddress> = clients
                         var allowedMacSnapshot: ScatterSet<MacAddress> = allowedMacs
                         var nextClients: ScatterMap<Inet4Address, MacAddress>? = null
@@ -299,6 +302,8 @@ class Routing(private val caller: Any, private val downstream: String) {
         clientSnapshot: ScatterMap<Inet4Address, MacAddress> = clients,
         allowedMacSnapshot: ScatterSet<MacAddress> = allowedMacs,
     ) = MutableScatterSet<String>().let { seen ->
+        val primaryInterfaces = primaryUpstream.appendInterfaces(seen)
+        val fallbackInterfaces = fallbackUpstream.appendInterfaces(seen)
         SessionConfig(
             downstream = downstream,
             ip_forward = ipForward,
@@ -313,8 +318,9 @@ class Routing(private val caller: Any, private val downstream: String) {
                 } else null
             } ?: emptyList(),
             fallback_network = fallbackUpstream.upstream?.network?.networkHandle,
-            primary_upstream_interfaces = primaryUpstream.appendInterfaces(seen),
-            fallback_upstream_interfaces = fallbackUpstream.appendInterfaces(seen),
+            primary_upstream_interfaces = primaryInterfaces,
+            fallback_upstream_interfaces = fallbackInterfaces,
+            upstream_generation = upstreamGeneration,
             clients = buildList(allowedMacSnapshot.size) {
                 allowedMacSnapshot.forEach { mac ->
                     add(ClientConfig(

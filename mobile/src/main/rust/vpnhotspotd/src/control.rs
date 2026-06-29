@@ -225,7 +225,7 @@ impl State {
         config: &vpnhotspotd::shared::model::SessionConfig,
         sender: &ControllerSender,
     ) {
-        let entered = {
+        let probe = {
             let sessions = self.sessions.lock().await;
             if slot.cleaning.load(Ordering::Acquire)
                 || !sessions
@@ -236,30 +236,31 @@ impl State {
             }
             self.ipsec.lock().await.update_session(slot.id, config)
         };
-        if !entered.is_empty() {
+        if probe {
             let state = self.clone();
             let sender = sender.clone();
             tokio::spawn(async move {
-                let result = ipsec::scan(&entered).await;
-                state.finish_ipsec_probe(&entered, result, &sender).await;
+                let result = ipsec::scan().await;
+                state.finish_ipsec_probe(result, &sender).await;
             });
         }
     }
 
     async fn finish_ipsec_probe(
         &self,
-        interfaces: &[String],
         result: io::Result<Vec<IpSecForwardPolicyTarget>>,
         sender: &ControllerSender,
     ) {
         match result {
             Ok(targets) => {
                 let frames = {
-                    let ipsec = self.ipsec.lock().await;
+                    let mut ipsec = self.ipsec.lock().await;
+                    ipsec.finish_probe();
+                    ipsec.retain_observed_targets(&targets);
                     targets
                         .into_iter()
                         .filter_map(|target| {
-                            let id = ipsec.session_for_interface(&target.interface)?;
+                            let id = ipsec.session_for_new_target(&target)?;
                             Some(ipsec_forward_policy_frame(id, &target))
                         })
                         .collect::<Vec<_>>()
@@ -272,15 +273,8 @@ impl State {
                 }
             }
             Err(e) => {
-                let call_id = {
-                    let ipsec = self.ipsec.lock().await;
-                    interfaces
-                        .iter()
-                        .find_map(|interface| ipsec.session_for_interface(interface))
-                };
-                if let Some(call_id) = call_id {
-                    report::report_for(Some(call_id), daemon_io_error_report("ipsec.scan", e));
-                }
+                self.ipsec.lock().await.finish_probe();
+                report::report_for(None, daemon_io_error_report("ipsec.scan", e));
             }
         }
     }

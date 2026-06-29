@@ -107,6 +107,7 @@ pub struct SessionConfig {
     pub fallback_network: Option<Network>,
     pub primary_upstream_interfaces: Vec<String>,
     pub fallback_upstream_interfaces: Vec<String>,
+    pub upstream_generation: u64,
     pub clients: Vec<ClientConfig>,
     pub ipv6_nat: Option<Ipv6NatConfig>,
 }
@@ -450,6 +451,7 @@ mod tests {
             fallback_network,
             primary_upstream_interfaces: Vec::new(),
             fallback_upstream_interfaces: Vec::new(),
+            upstream_generation: 0,
             clients: Vec::new(),
             ipv6_nat: None,
         }

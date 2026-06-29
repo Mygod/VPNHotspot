@@ -122,16 +122,22 @@ the slot, drains already queued commands, stops the session runtimes, removes th
 session from daemon state, and releases any same-downstream start waiting behind
 that teardown.
 
-After the ACK, the daemon updates a process-wide aggregate of upstream interface
-names across all active sessions. On Android 12+, if an interface name enters
-that aggregate set, the daemon spawns a best-effort probe that runs
-`/system/bin/dumpsys ipsec`. When the probe completes, each matching IPv4
-tunnel forwarding-policy request is emitted to one currently active session
-call that still references the target's upstream interface. No-match is quiet;
-`dumpsys` or parser failures are structured nonfatals tied to one currently
-active session call for the probed interfaces, if any. The daemon does not
-separately supervise a stuck `dumpsys` process, and it does not track or clean
-up IPsec policy state; tunnel and policy teardown remain platform-owned.
+After the ACK, the daemon updates process-wide IPsec tracking for each active
+session's upstream interface names and upstream generation. The tracked upstream
+set is the union of primary and fallback upstream interfaces because either role
+can be used by the installed routing policy for a given packet. On Android 12+,
+if a session's upstream set or upstream generation changes, the daemon spawns a
+best-effort global probe that runs `/system/bin/dumpsys ipsec`. Probe requests
+are coalesced while one is already running; upstream churn does not queue a
+trailing probe. The probe parses every matching IPv4 tunnel forwarding-policy
+target in the dump, and the process-wide tracker emits only newly observed
+targets whose interface is still in an active session's upstream set. Repeated
+probes that observe the same target do not emit another request. No-match is
+quiet; `dumpsys` or parser failures are structured global nonfatals. The daemon
+clears its emitted-target record when the target disappears from a later probe or
+its interface leaves all session upstream sets. The daemon does not separately
+supervise a stuck `dumpsys` process, and it does not track or clean up IPsec
+policy state; tunnel and policy teardown remain platform-owned.
 
 ## Session Replacement
 
@@ -171,11 +177,12 @@ non-empty client set, later replacements keep `ipv6_nat` disabled for that
 session. An empty client set is not failure; replacement may start NAT66 when a
 later neighbour snapshot adds a MAC.
 
-After a successful replacement, the same process-wide IPsec upstream aggregate
-is updated from the session's new upstream interface set. A replacement only
-triggers an IPsec probe for interface names that enter the aggregate set; client
-changes, downstream changes, and primary/fallback role changes do not trigger a
-probe by themselves.
+After a successful replacement, the same process-wide IPsec state is updated
+from the session's new upstream interface union and upstream generation. A
+replacement triggers one IPsec probe when that interface union changes or when
+Kotlin reports that either upstream role has a new upstream snapshot, unless a
+global probe is already running. Client and downstream-only changes do not
+trigger a probe by themselves.
 
 ## Shutdown And Clean
 
