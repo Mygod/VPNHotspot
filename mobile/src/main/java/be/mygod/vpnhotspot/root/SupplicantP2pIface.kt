@@ -86,7 +86,7 @@ object SupplicantP2pIface {
     private val type by lazy { classIfaceInfo.getDeclaredField("type") }
     private val code by lazy { classSupplicantStatus.getDeclaredField("code") }
     private val debugMessage by lazy { classSupplicantStatus.getDeclaredField("debugMessage") }
-    private fun requireSuccess(status: Any?, operation: String) = code.getInt(status).let { code ->
+    private inline fun requireSuccess(status: Any?, operation: String) = code.getInt(status).let { code ->
         if (code != 0) throw RemoteException("P2P supplicant HIDL $operation failed: $code (${debugMessage[status]})")
     }
 
