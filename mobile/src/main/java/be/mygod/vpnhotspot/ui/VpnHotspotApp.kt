@@ -56,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -467,7 +468,11 @@ private fun RootDestinationScaffold(
             onSnackbarBottomPaddingChanged = onSnackbarBottomPaddingChanged,
             actions = actions,
             bottomBar = {
-                NavigationBar {
+                NavigationBar(
+                    modifier = Modifier.shadow(3.dp),
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 3.dp,
+                ) {
                     for (destination in RootDestination.entries) {
                         NavigationBarItem(
                             selected = destination == selectedDestination,
