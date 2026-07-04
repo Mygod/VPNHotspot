@@ -92,6 +92,7 @@ import be.mygod.vpnhotspot.net.wifi.VendorData
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
@@ -127,9 +128,7 @@ fun TetheringScreen(
 ) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
-    val scope = rememberCoroutineScope()
     val linkStyles = rememberNetworkAddressLinkStyles()
-    val repeaterMissingLocationPermissions = stringResource(R.string.repeater_missing_location_permissions)
     val staticIpActive by StaticIpSetter.active.collectAsStateWithLifecycle()
     val staticIpAddresses by StaticIpSetter.addresses.collectAsStateWithLifecycle()
     val staticIpApplying by StaticIpSetter.applying.collectAsStateWithLifecycle()
@@ -224,9 +223,7 @@ fun TetheringScreen(
             onResult = { granted ->
                 if (granted) {
                     app.startServiceWithLocation<RepeaterService>(context)
-                } else scope.launch {
-                    snackbarHostState.showLongSnackbar(repeaterMissingLocationPermissions)
-                }
+                } else SmartSnackbar.make(R.string.repeater_missing_location_permissions).show()
             },
         )
         launcher::launch
@@ -777,7 +774,10 @@ private fun rememberWifiSummary(
             )
         }
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            WifiApCommands.softApCallbackFlow(expensive = true).catch { e -> Timber.w(e) }.collect { event ->
+            WifiApCommands.softApCallbackFlow(expensive = true).catch { e ->
+                if (e is CancellationException) throw e
+                Timber.w(e)
+            }.collect { event ->
                 when (event) {
                     is WifiApManager.Event.OnStateChanged -> {
                         if (!WifiApManager.checkWifiApState(event.state)) return@collect

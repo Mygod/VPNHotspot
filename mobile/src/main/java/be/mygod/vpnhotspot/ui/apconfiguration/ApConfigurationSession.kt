@@ -50,8 +50,8 @@ suspend fun loadSystemApConfiguration(snackbarHostState: SnackbarHostState): ApC
                     ?: SoftApConfigurationCompat()
             } else RootManager.use { it.execute(WifiApCommands.GetConfiguration()) }.toCompat()
             ApConfigurationSession(config, ApConfigurationTarget.System)
-        } catch (_: CancellationException) {
-            null
+        } catch (e: CancellationException) {
+            throw e
         } catch (eRoot: Exception) {
             eRoot.addSuppressed(e)
             if (Build.VERSION.SDK_INT >= 30 || eRoot.getRootCause() !is SecurityException) Timber.w(eRoot)
@@ -83,8 +83,7 @@ suspend fun applySystemApConfiguration(
             try {
                 if (RootManager.use { it.execute(WifiApCommands.SetConfigurationLegacy(wc)) }.value) return true
             } catch (eCancel: CancellationException) {
-                snackbarHostState.showLongSnackbar(eCancel.readableMessage)
-                return false
+                throw eCancel
             } catch (eRoot: Exception) {
                 eRoot.addSuppressed(e)
                 Timber.w(eRoot)
@@ -106,8 +105,7 @@ suspend fun applySystemApConfiguration(
             try {
                 if (RootManager.use { it.execute(WifiApCommands.SetConfiguration(platform)) }.value) return true
             } catch (eCancel: CancellationException) {
-                snackbarHostState.showLongSnackbar(eCancel.readableMessage)
-                return false
+                throw eCancel
             } catch (eRoot: Exception) {
                 eRoot.addSuppressed(e)
                 Timber.w(eRoot)

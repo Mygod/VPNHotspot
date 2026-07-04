@@ -22,6 +22,7 @@ import be.mygod.vpnhotspot.net.wifi.apInstanceIdentifierOrNull
 import be.mygod.vpnhotspot.net.wifi.VendorData
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.ui.apconfiguration.formatTimeoutMillis
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.catch
 import timber.log.Timber
 import java.text.NumberFormat
@@ -58,7 +59,10 @@ internal fun rememberWifiSummaryApi30(
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             (if (target == SoftApCallbackTarget.LocalOnlyHotspot && Build.VERSION.SDK_INT >= 33) {
                 WifiApCommands.localOnlyHotspotSoftApCallbackFlow(expensive = true)
-            } else WifiApCommands.softApCallbackFlow(expensive = true)).catch { e -> Timber.w(e) }.collect { event ->
+            } else WifiApCommands.softApCallbackFlow(expensive = true)).catch { e ->
+                if (e is CancellationException) throw e
+                Timber.w(e)
+            }.collect { event ->
                 when (event) {
                     is WifiApManager.Event.OnStateChanged -> {
                         if (!WifiApManager.checkWifiApState(event.state)) return@collect
