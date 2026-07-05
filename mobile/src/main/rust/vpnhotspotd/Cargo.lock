@@ -743,6 +743,7 @@ version = "0.1.0"
 dependencies = [
  "cidr",
  "etherparse",
+ "futures-channel",
  "futures-util",
  "libc",
  "nfq-updated",

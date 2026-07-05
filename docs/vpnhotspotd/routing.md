@@ -29,6 +29,11 @@ recorded in `applied`, so a later reconcile can try it again.
 The `applied` list is only the current process rollback list. It is not
 persisted and is not a Clean source of truth.
 
+`routing::Runtime` owns one rtnetlink request connection for the session
+lifetime. Startup transfers the connection used for downstream discovery;
+replacement and normal stop reuse it. Request failures are reported and later
+operations remain best effort; the runtime does not reconnect.
+
 ## Session Desired Mutations
 
 [`routing/desired.rs`](../../mobile/src/main/rust/vpnhotspotd/src/routing/desired.rs)

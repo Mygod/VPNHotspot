@@ -13,9 +13,9 @@ compatibility or cleanup impact.
   interception that sends traffic to those runtimes.
 - Traffic accounting and client blocking are MAC-facing. IP addresses may be
   hidden counter selectors, but they are not the live client identity.
-- Netlink runtime owns the shared rtnetlink connection and event fan-out. It is
-  created lazily on first netlink/routing use and then remains process-wide. It
-  allows one neighbour monitor and one link monitor consumer at a time.
+- Each rtnetlink connection has one lifecycle owner. Multicast-only event
+  connections are separate from request connections; session routing retains
+  its request connection for the session lifetime and never reconnects it.
 - The process-wide ICMP dispatcher exists only for NAT66 ICMPv6 state that must
   be shared across sessions because the kernel queue is process-wide. It owns
   queue `30000` and must attribute queued Echo Requests from source

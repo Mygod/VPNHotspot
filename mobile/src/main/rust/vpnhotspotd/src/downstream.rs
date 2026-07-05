@@ -1,9 +1,6 @@
 use std::io;
-use std::sync::Arc;
 
-use futures_util::{pin_mut, TryStreamExt};
 use tokio::select;
-use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use vpnhotspotd::shared::downstream::{select_ipv4_address, DownstreamIpv4};
 use vpnhotspotd::shared::protocol::{IoErrorReportExt, IoResultReportExt};
@@ -11,14 +8,12 @@ use vpnhotspotd::shared::protocol::{IoErrorReportExt, IoResultReportExt};
 use crate::netlink;
 
 pub(crate) async fn wait_ipv4(
-    handle: &netlink::Handle,
-    changed: Arc<Notify>,
+    handle: &mut netlink::RequestConnection,
+    events: &mut netlink::EventConnection,
     downstream: &str,
     cancel: &CancellationToken,
 ) -> io::Result<DownstreamIpv4> {
     loop {
-        let changed = changed.notified();
-        pin_mut!(changed);
         let address = select! {
             result = query_ipv4(handle, downstream) => result?,
             _ = cancel.cancelled() => return Err(cancelled_error()),
@@ -27,14 +22,14 @@ pub(crate) async fn wait_ipv4(
             return Ok(address);
         }
         select! {
-            _ = &mut changed => {}
             _ = cancel.cancelled() => return Err(cancelled_error()),
+            result = events.next() => { result?; }
         }
     }
 }
 
 async fn query_ipv4(
-    handle: &netlink::Handle,
+    handle: &mut netlink::RequestConnection,
     downstream: &str,
 ) -> io::Result<Option<DownstreamIpv4>> {
     let index = match netlink::link_index(handle, downstream).await {
@@ -47,26 +42,13 @@ async fn query_ipv4(
             ));
         }
     };
-    let _dump = handle.lock_dump().await;
-    let addresses = handle
-        .raw()
-        .address()
-        .get()
-        .set_link_index_filter(index)
-        .execute();
-    pin_mut!(addresses);
-    let mut messages = Vec::new();
-    while let Some(message) = addresses
-        .try_next()
+    let messages = handle
+        .dump_addresses(index)
         .await
-        .map_err(netlink::to_io_error)
         .with_report_context_details(
             "downstream.ipv4.dump",
             [("downstream", downstream.to_owned())],
-        )?
-    {
-        messages.push(message);
-    }
+        )?;
     select_ipv4_address(&messages).map_err(|addresses| {
         io::Error::other("multiple downstream IPv4 addresses").with_report_context_details(
             "downstream.ipv4",

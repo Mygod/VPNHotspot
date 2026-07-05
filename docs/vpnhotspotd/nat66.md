@@ -34,6 +34,10 @@ or per-packet work should clone a config snapshot at the point where a stable
 decision is needed. Long-lived tasks should not keep mutable references to
 session config across awaits.
 
+ICMP registration uses the session routing request connection before routing
+takes ownership. The RA task owns separate request and IPv6-address event
+connections.
+
 ## Ownership Levels
 
 NAT66 state is split by lifetime:
@@ -42,6 +46,7 @@ NAT66 state is split by lifetime:
 | --- | --- | --- |
 | Process | `IcmpDispatcher` | NFQUEUE task on queue `30000`, ICMP session registrations, shared Echo state, upstream ICMP sockets |
 | Session | `nat66::Runtime` | committed per-MAC TCP/UDP capabilities, optional RA task, ICMP registration, cleanup prefixes, counter store |
+| RA task | `nat66/ra.rs` | IPv6-address event and request connections, raw ICMPv6 receive socket, periodic/suppression state |
 | Client | per-MAC runtime | TCP/UDP listener ports, stop token, active DNS/NAT66 tasks, source-scoped counters |
 | Listener | TCP/UDP loops | Accepted TCP connections, UDP association table, reply socket pool |
 | Flow | TCP task or UDP association task | MAC/downstream accounting context, upstream socket, downstream reply path, ICMP error registration where applicable |
@@ -311,9 +316,10 @@ When the committed client set is empty, the task suppresses current NAT66 RAs.
 If it had advertised the NAT66 prefix before the set became empty, it attempts a
 zero-lifetime withdrawal and waits for clients to reappear.
 
-On NAT66 stop, the runtime waits for the RA task and withdraws the current
-gateway prefix. During Clean or replacement cleanup, it may also withdraw older
-gateway prefixes recorded during config replacement.
+On NAT66 stop, the runtime waits for the RA task and attempts to withdraw the
+current gateway prefix through the session request connection. During Clean or
+replacement cleanup, it may also withdraw older gateway prefixes recorded during
+config replacement. Failure is reported without reconnecting.
 
 The RA task also watches existing downstream IPv6 prefixes. Non-NAT66 routable
 prefixes are temporarily advertised with zero lifetime so clients stop using
@@ -363,7 +369,8 @@ replacement instead of being treated as failed.
 
 NAT66 cleanup has two layers:
 
-- session stop cancels runtime tasks and withdraws advertised prefixes;
+- session stop cancels runtime tasks and attempts to withdraw advertised
+  prefixes;
 - routing cleanup removes deterministic routes, addresses, rules, and firewall
   state.
 

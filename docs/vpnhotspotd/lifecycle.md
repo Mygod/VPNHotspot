@@ -21,7 +21,6 @@ back to the abstract Unix socket, splits the stream, starts a writer task for
 outbound frames, initializes the nonfatal reporter, and builds process-wide
 bookkeeping:
 
-- one lazy rtnetlink runtime slot;
 - one NAT66 ICMP dispatcher shared by NAT66 sessions and bound to the
   app-owned NFQUEUE number `30000`;
 - a session map keyed by the start-session call ID;
@@ -29,11 +28,9 @@ bookkeeping:
 - one optional neighbour monitor;
 - one process-wide flag for the NAT66 firewall base chains.
 
-The rtnetlink runtime is created on the first command that needs netlink or
-routing state: session start, neighbour monitoring, static-address replacement,
-or Clean. Commands that do not need netlink, such as traffic-counter reads, do
-not open the rtnetlink connection. Once created, the runtime remains
-process-wide until daemon exit.
+Each notification consumer owns a multicast-only rtnetlink connection and a
+separate request connection where needed. Session routing retains its request
+connection for the session lifetime; one-shot commands open their own.
 
 The daemon does not listen for arbitrary clients. The app-side controller owns
 the listening socket and accepts only a peer whose Unix socket credentials have
@@ -89,21 +86,22 @@ IPv6 NAT is disabled for that session start.
 [`Session::start`](../../mobile/src/main/rust/vpnhotspotd/src/session.rs)
 constructs the session in this order:
 
-1. Ensure the process-wide rtnetlink runtime exists, then wait for a downstream
-   IPv4 address through netlink notifications and the caller's cancellation
-   token.
+1. Open a temporary link/IPv4 event connection and the request connection that
+   will ultimately belong to routing, then wait for a downstream IPv4 address.
 2. Start the DNS runtime bound to that downstream IPv4 address. TCP and UDP
    listener setup is staged per MAC and protocol as independent best-effort
    capabilities.
 3. Start NAT66 if requested. NAT66 TCP and UDP listener setup is staged per MAC
-   and protocol; RA and ICMP setup remain session-level capabilities. Failures
-   are reported as structured nonfatals tied to the start call. If the initial
-   client set is empty, NAT66 is deferred with no interception. If clients are
-   present and NAT66 produces no commit-ready TCP or UDP listener, the session
-   continues with IPv6 NAT disabled.
-4. Start routing using the staged DNS and optional NAT66 capabilities produced
-   by the runtimes. Routing applies each mutation best effort and reports setup
-   failures without rolling back unrelated successful mutations.
+   and protocol; RA and ICMP setup remain session-level capabilities. The RA
+   task owns separate IPv6-address event and request connections. Failures are
+   reported as structured nonfatals tied to the start call. If the initial client
+   set is empty, NAT66 is deferred with no interception. If clients are present
+   and NAT66 produces no commit-ready TCP or UDP listener, the session continues
+   with IPv6 NAT disabled.
+4. Transfer the startup request connection into routing beside its applied
+   mutation ledger and reconcile the staged DNS and NAT66 capabilities. Routing
+   applies each mutation best effort and reports setup failures without rolling
+   back unrelated successful mutations.
 5. Publish only capabilities whose daemon resource and routing rule both
    committed. Staged per-MAC resources whose routing rules failed are cancelled
    before the ACK. If clients are present and routing commits no NAT66 TCP or
@@ -145,7 +143,7 @@ policy state; tunnel and policy teardown remain platform-owned.
 downstream interface is immutable; replacing it is rejected because routing and
 session ownership are keyed to that interface. Replacement is ordered through
 the session-control command loop, so it cannot interleave with traffic-counter
-reads or session stop.
+reads or session stop. It reuses routing's session-owned request connection.
 
 Inside that ordered replacement, the session holds its config mutex as a commit
 gate for DNS and NAT66 readers:
@@ -188,9 +186,10 @@ trigger a probe by themselves.
 
 Normal session stop cancels the session stop token first so DNS and NAT66
 listeners normally choose shutdown over reporting teardown-time socket errors.
-Shutdown does not wait for listener or per-packet tasks to drain before removing
-routing state. It then stops NAT66, which may withdraw router-advertised
-prefixes during stop.
+It rolls routing back through the session-owned request connection without
+waiting for listener or per-packet tasks to drain, then stops NAT66, which may
+withdraw advertised prefixes through the same connection. Request failures are
+reported without replacing the connection.
 
 When the control connection closes, the daemon cancels active calls, waits for
 call tasks, stops the neighbour monitor, stops all sessions without extra
@@ -206,8 +205,9 @@ firewall base state, drops the writer, and exits.
 - stops sessions with `withdraw_cleanup = true`;
 - clears the process-wide IPsec upstream aggregate;
 - removes the process-wide NAT66 firewall base chains;
-- runs deterministic routing cleanup that reconstructs app-owned state from
-  current kernel/interface state and the prefix seed.
+- opens a scoped request connection and runs deterministic routing cleanup that
+  reconstructs app-owned state from current kernel/interface state and the
+  prefix seed.
 
 Clean must not depend on private app databases, preferences, or daemon memory.
 Anything that can outlive the process needs a deterministic cleanup path.
@@ -217,10 +217,8 @@ normal routing cleanup or deterministic Clean reconstruction.
 
 ## Neighbour Monitor
 
-The daemon allows one neighbour monitor at a time. Starting a monitor registers
-single-consumer netlink neighbour and link event slots, sends an initial dump
-with bridge topology, then streams deltas until the event call is cancelled.
-
-Stopping the monitor drops both netlink registrations and waits for the monitor
-task. Link events trigger bridge topology snapshots only when the topology
-actually changes.
+The daemon allows one neighbour monitor at a time. Starting a monitor opens a
+multicast-only neighbour/link event connection plus a separate request
+connection, sends an initial neighbour dump and bridge topology snapshot, then
+streams deltas until cancellation. Stopping drops both connections. Link events
+refresh bridge topology only when it changes.

@@ -4,6 +4,7 @@ use std::io;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use rtnetlink::MulticastGroup;
 use tokio::sync::{Mutex, Notify};
 use tokio::task::JoinHandle;
 use tokio::time::{sleep_until, Instant as TokioInstant};
@@ -48,7 +49,6 @@ pub(crate) struct Runtime {
     clients: HashMap<[u8; 6], ClientRuntime>,
     counters: Nat66Counters,
     cleanup_prefixes: Vec<Ipv6Inet>,
-    netlink: netlink::Handle,
     config_changed: Arc<Notify>,
     ra_task: Option<JoinHandle<()>>,
     _icmp_registration: Option<icmp::Registration>,
@@ -71,12 +71,11 @@ impl Runtime {
         shared: Arc<Mutex<SessionConfig>>,
         stop: CancellationToken,
         dns: dns::CounterSink,
-        netlink: &netlink::Runtime,
+        netlink: &mut netlink::RequestConnection,
         icmp: &IcmpDispatcher,
     ) -> Option<Self> {
         config.ipv6_nat.as_ref()?;
         let config_changed = Arc::new(Notify::new());
-        let netlink_handle = netlink.handle();
         let mut runtime = Self {
             call_id,
             ports: Ipv6NatPorts {
@@ -89,7 +88,6 @@ impl Runtime {
             clients: HashMap::new(),
             counters: Nat66Counters::default(),
             cleanup_prefixes: Vec::new(),
-            netlink: netlink_handle,
             config_changed: config_changed.clone(),
             ra_task: None,
             _icmp_registration: None,
@@ -104,12 +102,7 @@ impl Runtime {
             return None;
         }
         let icmp_registration = match icmp
-            .register(
-                config,
-                shared.clone(),
-                runtime.counters.clone(),
-                &runtime.netlink,
-            )
+            .register(config, shared.clone(), runtime.counters.clone(), netlink)
             .await
         {
             Ok(registration) => Some(registration),
@@ -135,14 +128,17 @@ impl Runtime {
         };
         runtime.ports.icmp_echo = icmp_registration.is_some();
         runtime._icmp_registration = icmp_registration;
-        runtime.ra_task = match ra::spawn_loop(
-            shared.clone(),
-            config_changed.clone(),
-            netlink.ipv6_address_changed(),
-            runtime.netlink.clone(),
-            runtime.stop.clone(),
-            config,
-        ) {
+        runtime.ra_task = match netlink::EventConnection::new(&[MulticastGroup::Ipv6Ifaddr])
+            .and_then(|events| {
+                ra::spawn_loop(
+                    shared.clone(),
+                    config_changed.clone(),
+                    events,
+                    netlink::RequestConnection::new()?,
+                    runtime.stop.clone(),
+                    config,
+                )
+            }) {
             Ok(task) => Some(task),
             Err(e) => {
                 report::report_for(
@@ -403,12 +399,16 @@ impl Runtime {
         }
     }
 
-    pub(crate) async fn stop(self, snapshot: &SessionConfig, withdraw_cleanup: bool) {
+    pub(crate) async fn stop(
+        self,
+        netlink: &mut netlink::RequestConnection,
+        snapshot: &SessionConfig,
+        withdraw_cleanup: bool,
+    ) {
         let Self {
             stop,
             clients,
             cleanup_prefixes,
-            netlink,
             ra_task,
             _icmp_registration,
             ..
@@ -432,7 +432,7 @@ impl Runtime {
             Vec::new()
         };
         prefixes.push(ipv6_nat.gateway);
-        ra::withdraw_prefixes_once(&netlink, snapshot, &prefixes, false).await;
+        ra::withdraw_prefixes_once(netlink, snapshot, &prefixes, false).await;
     }
 }
 

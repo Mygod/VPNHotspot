@@ -1,7 +1,6 @@
 use std::io;
 use std::sync::OnceLock;
 
-use futures_util::{pin_mut, TryStreamExt};
 use rtnetlink::{
     packet_route::{
         route::RouteHeader,
@@ -43,13 +42,17 @@ struct Ipv6NatInterceptProbeResult {
 }
 
 impl Ipv6NatInterceptMode {
-    pub(super) async fn detect(call_id: u64, handle: &netlink::Handle, downstream: &str) -> Self {
+    pub(super) async fn detect(
+        call_id: u64,
+        connection: &mut netlink::RequestConnection,
+        downstream: &str,
+    ) -> Self {
         let result = {
             let mut cached = PROBE_RESULT.get_or_init(|| Mutex::new(None)).lock().await;
             if let Some(result) = cached.as_ref() {
                 result.clone()
             } else {
-                let result = match probe_protocol_rules(handle).await {
+                let result = match probe_protocol_rules(connection).await {
                     Ok(()) => Ipv6NatInterceptProbeResult {
                         mode: Self::ProtocolRules,
                         failure: None,
@@ -96,9 +99,9 @@ impl Ipv6NatInterceptMode {
     }
 }
 
-async fn probe_protocol_rules(handle: &netlink::Handle) -> Result<(), String> {
+async fn probe_protocol_rules(connection: &mut netlink::RequestConnection) -> Result<(), String> {
     let command = probe_command(Some(IpProtocol::Tcp));
-    let result = match apply_rule_command(handle, &command).await {
+    let result = match apply_rule_command(connection, &command).await {
         Ok(()) => None,
         Err(e) if error_errno(&e) == Some(libc::EEXIST) => None,
         Err(e) => Some(Err(format!("add failed: {e}"))),
@@ -106,21 +109,21 @@ async fn probe_protocol_rules(handle: &netlink::Handle) -> Result<(), String> {
     let result = if let Some(result) = result {
         result
     } else {
-        match dump_contains_probe_rule(handle).await {
+        match dump_contains_probe_rule(connection).await {
             Ok(true) => Ok(()),
             Ok(false) => Err("probe rule dump did not echo FRA_IP_PROTO".to_owned()),
             Err(e) => Err(format!("dump failed: {e}")),
         }
     };
-    cleanup_probe_rules(handle).await;
+    cleanup_probe_rules(connection).await;
     result
 }
 
-async fn cleanup_probe_rules(handle: &netlink::Handle) {
+async fn cleanup_probe_rules(connection: &mut netlink::RequestConnection) {
     for mut command in [probe_command(Some(IpProtocol::Tcp)), probe_command(None)] {
         command.operation = IpOperation::Delete;
         loop {
-            match apply_rule_command(handle, &command).await {
+            match apply_rule_command(connection, &command).await {
                 Ok(()) => {}
                 Err(e) if is_missing(&e) => break,
                 Err(e) => {
@@ -136,16 +139,14 @@ async fn cleanup_probe_rules(handle: &netlink::Handle) {
     }
 }
 
-async fn dump_contains_probe_rule(handle: &netlink::Handle) -> io::Result<bool> {
-    let _dump = handle.lock_dump().await;
-    let rules = handle.raw().rule().get(IpVersion::V6).execute();
-    pin_mut!(rules);
-    while let Some(rule) = rules.try_next().await.map_err(netlink::to_io_error)? {
+async fn dump_contains_probe_rule(connection: &mut netlink::RequestConnection) -> io::Result<bool> {
+    let mut found = false;
+    for rule in connection.dump_rules(IpVersion::V6).await? {
         if is_probe_rule(&rule) {
-            return Ok(true);
+            found = true;
         }
     }
-    Ok(false)
+    Ok(found)
 }
 
 fn is_probe_rule(rule: &RuleMessage) -> bool {

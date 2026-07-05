@@ -9,8 +9,8 @@ IPC documentations not included and should refer to [`mobile/src/main/proto/daem
 
 - [`control.rs`](../../mobile/src/main/rust/vpnhotspotd/src/control.rs) owns the
   daemon control loop, active calls, event-style (kotlin Flow) calls that
-  remain active for sessions or monitors, session slots, neighbour monitor
-  slot, and process-wide shared runtimes.
+  remain active for sessions or monitors, session slots, and the neighbour
+  monitor slot.
 - [`session.rs`](../../mobile/src/main/rust/vpnhotspotd/src/session.rs)
   composes one session for one downstream interface from DNS, optional NAT66,
   and routing runtimes.
@@ -26,9 +26,10 @@ IPC documentations not included and should refer to [`mobile/src/main/proto/daem
   daemon traffic-counter reads and the daemon-to-Kotlin counter reporting
   boundary.
 - [`netlink.rs`](../../mobile/src/main/rust/vpnhotspotd/src/netlink.rs) owns the
-  shared rtnetlink connection, notifications, and single-consumer event slots.
+  owner-scoped rtnetlink request and multicast-only event connections.
 - [`neighbour.rs`](../../mobile/src/main/rust/vpnhotspotd/src/neighbour.rs)
-  converts netlink neighbour and bridge topology state into daemon events.
+  owns neighbour-monitor connections and converts netlink neighbour and bridge
+  topology state into daemon events.
 - [`ipsec.rs`](../../mobile/src/main/rust/vpnhotspotd/src/ipsec.rs) owns the
   optional Android 12+ IPsec forwarding-policy probe and emits session events
   for the Kotlin routing owner to perform the hidden Netd write only when
