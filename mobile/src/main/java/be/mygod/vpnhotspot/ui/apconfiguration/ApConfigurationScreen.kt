@@ -372,6 +372,16 @@ fun ApConfigurationScreen(
             if (!state.p2pMode || (!state.useFramework && WifiApManager.p2pMacRandomizationSupported)) {
                 row(R.string.wifi_advanced_mac_address_title) { MacAddressApRow(state) }
             }
+            if (state.p2pMode) row(R.string.repeater_disable_power_save) {
+                SwitchApRow(
+                    icon = R.drawable.ic_wifi_lock,
+                    title = R.string.repeater_disable_power_save,
+                    checked = state.disablePowerSave,
+                    summary = annotatedStringResource(R.string.repeater_disable_power_save_summary),
+                ) {
+                    state.disablePowerSave = it
+                }
+            }
             if (!state.p2pMode) row(R.string.wifi_hidden_network) {
                 SwitchApRow(
                     icon = R.drawable.ic_visibility_off,

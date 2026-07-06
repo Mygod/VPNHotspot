@@ -51,6 +51,7 @@ class ApConfigurationState(
     ) {
         originalUnderlying = saved.originalUnderlying
         _useFramework = saved.useFramework
+        disablePowerSave = saved.disablePowerSave
         hexSsid = saved.hexSsid
         ssid = saved.ssid
         securityType = saved.securityType
@@ -98,6 +99,7 @@ class ApConfigurationState(
             if (_useFramework == value) return
             _useFramework = value
         }
+    var disablePowerSave by mutableStateOf(if (p2pMode) RepeaterService.disablePowerSave else false)
     private var _supplicantCapability by mutableStateOf<SupplicantCapability?>(null)
     /** Best-effort live Supplicant backend capability, shown to explain which backend will receive the config. */
     var supplicantCapability: SupplicantCapability?
@@ -477,6 +479,7 @@ class ApConfigurationState(
         readOnly = readOnly,
         target = target,
         useFramework = useFramework,
+        disablePowerSave = disablePowerSave,
         hexSsid = hexSsid,
         ssid = ssid,
         securityType = securityType,
@@ -518,6 +521,7 @@ private data class SavedApConfigurationState(
     val readOnly: Boolean,
     val target: ApConfigurationTarget,
     val useFramework: Boolean,
+    val disablePowerSave: Boolean,
     val hexSsid: Boolean,
     val ssid: String,
     val securityType: Int,

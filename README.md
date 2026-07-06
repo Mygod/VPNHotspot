@@ -142,6 +142,7 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * `Landroid/hardware/wifi/supplicant/V1_0/ISupplicant$IfaceInfo;->type:I`
 * `Landroid/hardware/wifi/supplicant/V1_0/ISupplicant$listInterfacesCallback;->onValues(Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;Ljava/util/ArrayList;)V`
 * `Landroid/hardware/wifi/supplicant/V1_0/ISupplicantP2pIface;->asInterface(Landroid/os/IHwBinder;)Landroid/hardware/wifi/supplicant/V1_0/ISupplicantP2pIface;`
+* `Landroid/hardware/wifi/supplicant/V1_0/ISupplicantP2pIface;->setPowerSave(Ljava/lang/String;Z)Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;`
 * `Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;->code:I`
 * `Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;->debugMessage:Ljava/lang/String;`
 * `Landroid/hardware/wifi/supplicant/V1_2/ISupplicantP2pIface;->addGroup_1_2(Ljava/util/ArrayList;Ljava/lang/String;ZI[BZ)Landroid/hardware/wifi/supplicant/V1_0/SupplicantStatus;`
