@@ -191,7 +191,9 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
             { config: SoftApConfigurationCompat -> applySystemApConfiguration(config, snackbarHostState) }
         }
         ApConfigurationTarget.Repeater -> apState?.let { state ->
-            { config: SoftApConfigurationCompat -> applyRepeaterApConfiguration(config, state.useFramework) }
+            { config: SoftApConfigurationCompat ->
+                applyRepeaterApConfiguration(config, state.useFramework, state.disablePowerSave)
+            }
         }
         null, ApConfigurationTarget.Temporary -> null
     }

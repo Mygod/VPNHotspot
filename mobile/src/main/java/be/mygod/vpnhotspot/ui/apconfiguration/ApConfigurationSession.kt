@@ -143,6 +143,7 @@ suspend fun loadRepeaterApConfiguration(binder: RepeaterService.Binder?): ApConf
 fun applyRepeaterApConfiguration(
     config: SoftApConfigurationCompat,
     useFramework: Boolean,
+    disablePowerSave: Boolean,
 ): Boolean {
     RepeaterService.useFramework = useFramework
     RepeaterService.networkName = config.ssid
@@ -150,6 +151,7 @@ fun applyRepeaterApConfiguration(
     RepeaterService.passphrase = config.passphrase
     RepeaterService.securityType = config.securityType
     RepeaterService.vendorData = config.vendorData
+    RepeaterService.disablePowerSave = disablePowerSave
     applyRepeaterCommonConfiguration(config)
     return true
 }

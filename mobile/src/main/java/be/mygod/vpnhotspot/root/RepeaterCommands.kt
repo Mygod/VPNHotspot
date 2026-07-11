@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.root
 
 import android.hardware.wifi.common.OuiKeyedData
 import android.hardware.wifi.supplicant.IfaceType
+import android.hardware.wifi.supplicant.ISupplicant
 import android.hardware.wifi.supplicant.KeyMgmtMask
 import android.hardware.wifi.supplicant.P2pAddGroupConfigurationParams
 import android.net.MacAddress
@@ -14,6 +15,7 @@ import be.mygod.librootkotlinx.ParcelableInt
 import be.mygod.librootkotlinx.ParcelableList
 import be.mygod.librootkotlinx.ParcelableThrowable
 import be.mygod.librootkotlinx.RootCommand
+import be.mygod.librootkotlinx.RootCommandNoResult
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestDeviceAddress
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.requestPersistentGroupInfo
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper.setVendorElements
@@ -58,6 +60,14 @@ object RepeaterCommands {
     }
 
     @Parcelize
+    data class DisablePowerSave(private val groupIfName: String) : RootCommandNoResult {
+        override suspend fun execute() = null.also {
+            SupplicantAidl.instance?.requireP2pInterface()?.setPowerSave(groupIfName, false)
+                ?: SupplicantP2pIface.disablePowerSave(groupIfName)
+        }
+    }
+
+    @Parcelize
     class AddPersistentGroupWithConfig(
         private val ssid: ByteArray,
         private val passphrase: String,
@@ -81,9 +91,7 @@ object RepeaterCommands {
                 }
             }
             if (aidl == null) return SupplicantP2pIface.addGroup(ssid, passphrase, frequency, randomizeMac)
-            val p2pIface = aidl.listInterfaces().firstOrNull { it.type == IfaceType.P2P }?.let {
-                aidl.getP2pInterface(it.name)
-            } ?: error("No framework-owned P2P supplicant interface")
+            val p2pIface = aidl.requireP2pInterface()
             val macRandomizationError = try {   // best-effort, matching Framework mode's MAC randomization behaviour
                 p2pIface.setMacRandomization(randomizeMac)
                 null
@@ -109,6 +117,10 @@ object RepeaterCommands {
             }
         }
     }
+
+    private fun ISupplicant.requireP2pInterface() = listInterfaces().firstOrNull { it.type == IfaceType.P2P }?.let {
+        getP2pInterface(it.name)
+    } ?: error("No framework-owned P2P supplicant interface")
 
     private var channel: WifiP2pManager.Channel? = null
     private fun WifiP2pManager.obtainChannel(): WifiP2pManager.Channel {

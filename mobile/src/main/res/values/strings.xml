@@ -30,6 +30,8 @@
     <string name="repeater_configuration_method_supplicant">Supplicant</string>
     <string name="repeater_configuration_method_framework_summary">Creates the network through Android framework APIs. Some framework restrictions still apply</string>
     <string name="repeater_configuration_method_supplicant_summary">Creates the network through &lt;tt&gt;wpa_supplicant&lt;/tt&gt; directly. Android may persist the network in system storage.&lt;br&gt;Supplicant version: %s</string>
+    <string name="repeater_disable_power_save">Disable P2P power save</string>
+    <string name="repeater_disable_power_save_summary">May reduce battery life. Requires firmware support.</string>
     <string name="repeater_clean_pog_failure">Failed to remove redundant P2P group (reason: %s)</string>
 
     <string name="repeater_p2p_unavailable">Wi\u2011Fi direct unavailable, please enable Wi\u2011Fi</string>

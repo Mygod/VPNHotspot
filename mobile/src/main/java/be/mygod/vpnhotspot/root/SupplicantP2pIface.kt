@@ -58,6 +58,9 @@ object SupplicantP2pIface {
     private val classIfaceInfo by lazy {
         Class.forName("$packagePrefix.V1_0.ISupplicant\$IfaceInfo", true, classLoader)
     }
+    private val iSupplicantP2pIfaceV10 by lazy {
+        Class.forName("$packagePrefix.V1_0.ISupplicantP2pIface", true, classLoader)
+    }
     private val iSupplicantP2pIface by lazy {
         Class.forName("$packagePrefix.V1_2.ISupplicantP2pIface", true, classLoader)
     }
@@ -69,8 +72,7 @@ object SupplicantP2pIface {
         iSupplicant.getDeclaredMethod("getInterface", classIfaceInfo, getInterfaceCallback)
     }
     private val asInterface by lazy {
-        Class.forName("$packagePrefix.V1_0.ISupplicantP2pIface", true, classLoader).getDeclaredMethod(
-            "asInterface", IHwBinder::class.java)
+        iSupplicantP2pIfaceV10.getDeclaredMethod("asInterface", IHwBinder::class.java)
     }
     private val castFrom by lazy { iSupplicantP2pIface.getDeclaredMethod("castFrom", IHwInterface::class.java) }
     private val addGroup by lazy {
@@ -81,6 +83,10 @@ object SupplicantP2pIface {
     private val setMacRandomization by lazy {
         iSupplicantP2pIface.getDeclaredMethod("setMacRandomization", Boolean::class.javaPrimitiveType)
     }
+    private val setPowerSave by lazy {
+        iSupplicantP2pIfaceV10.getDeclaredMethod(
+            "setPowerSave", String::class.java, Boolean::class.javaPrimitiveType)
+    }
     private val getService by lazy { iSupplicant.getDeclaredMethod("getService") }
     private val name by lazy { classIfaceInfo.getDeclaredField("name") }
     private val type by lazy { classIfaceInfo.getDeclaredField("type") }
@@ -90,21 +96,7 @@ object SupplicantP2pIface {
         if (code != 0) throw RemoteException("P2P supplicant HIDL $operation failed: $code (${debugMessage[status]})")
     }
 
-    /**
-     * Android 10's named P2P group path casts to HIDL 1.2 and calls `addGroup_1_2`;
-     * older HIDL 1.0/1.1 cannot carry SSID/passphrase/frequency arguments.
-     *
-     * Android 10 packages the generated supplicant HIDL classes into `wifi-service.jar` under
-     * their original package names. Android 11+ Wi-Fi module builds jarjar the same generated
-     * classes into `com.android.wifi.x.*` inside `service-wifi.jar`.
-     *
-     * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/Android.mk#46
-     * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-11.0.0_r1/service/Android.bp#79
-     * https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/heads/android16-qpr2-release/framework/jarjar-rules.txt#141
-     * https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/heads/android16-qpr2-release/service/java/com/android/server/wifi/p2p/SupplicantP2pIfaceHalHidlImpl.java#1406
-     * https://android.googlesource.com/platform/hardware/interfaces/+/android-10.0.0_r1/wifi/supplicant/1.2/ISupplicantP2pIface.hal#68
-     */
-    fun addGroup(ssid: ByteArray, passphrase: String, frequency: Int, randomizeMac: Boolean): ParcelableThrowable? {
+    private fun getP2pIface(): IHwInterface {
         val supplicant = getService(null)
         var ifaces: ArrayList<*>? = null
         listInterfaces(supplicant, Proxy.newProxyInstance(classLoader, arrayOf(listInterfacesCallback),
@@ -132,8 +124,25 @@ object SupplicantP2pIface {
                     else -> callSuper(getInterfaceCallback, proxy, method, args)
                 }
             }))
-        val p2pIface = castFrom(null, asInterface(null, iface!!.asBinder()))
-            ?: throw Hidl12UnsupportedException()
+        return asInterface(null, iface!!.asBinder()) as IHwInterface
+    }
+
+    /**
+     * Android 10's named P2P group path casts to HIDL 1.2 and calls `addGroup_1_2`;
+     * older HIDL 1.0/1.1 cannot carry SSID/passphrase/frequency arguments.
+     *
+     * Android 10 packages the generated supplicant HIDL classes into `wifi-service.jar` under
+     * their original package names. Android 11+ Wi-Fi module builds jarjar the same generated
+     * classes into `com.android.wifi.x.*` inside `service-wifi.jar`.
+     *
+     * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/Android.mk#46
+     * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-11.0.0_r1/service/Android.bp#79
+     * https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/heads/android16-qpr2-release/framework/jarjar-rules.txt#141
+     * https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/heads/android16-qpr2-release/service/java/com/android/server/wifi/p2p/SupplicantP2pIfaceHalHidlImpl.java#1406
+     * https://android.googlesource.com/platform/hardware/interfaces/+/android-10.0.0_r1/wifi/supplicant/1.2/ISupplicantP2pIface.hal#68
+     */
+    fun addGroup(ssid: ByteArray, passphrase: String, frequency: Int, randomizeMac: Boolean): ParcelableThrowable? {
+        val p2pIface = castFrom(null, getP2pIface()) ?: throw Hidl12UnsupportedException()
         val macRandomizationError = try {   // best-effort: keep group creation working even if this transaction is unavailable
             requireSuccess(setMacRandomization(p2pIface, randomizeMac), "setMacRandomization")
             null
@@ -149,5 +158,16 @@ object SupplicantP2pIface {
             macRandomizationError?.let { e.addSuppressed(it) }
             throw e
         }
+    }
+
+    /**
+     * HIDL 1.0's P2P interface exposes the group-interface power-save toggle used by AOSP framework wrappers.
+     *
+     * Sources:
+     * - https://android.googlesource.com/platform/hardware/interfaces/+/android-8.0.0_r1/wifi/supplicant/1.0/ISupplicantP2pIface.hal#143
+     * - https://android.googlesource.com/platform/hardware/interfaces/+/0162af698935100a590b7359581ac8b1b80693e5/wifi/supplicant/1.0/ISupplicantP2pIface.hal#143
+     */
+    fun disablePowerSave(groupIfName: String) {
+        requireSuccess(setPowerSave(getP2pIface(), groupIfName, false), "setPowerSave")
     }
 }

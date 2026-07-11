@@ -97,6 +97,7 @@ class RepeaterService : Service(), CoroutineScope {
         private const val KEY_PCC_MODE_CONNECTION_TYPE = "service.repeater.pccModeConnectionType"
         private const val KEY_RANDOMIZE_MAC = "service.repeater.randomizeMac"
         private const val KEY_VENDOR_DATA = "service.repeater.vendorData"
+        private const val KEY_DISABLE_POWER_SAVE = "service.repeater.disablePowerSave"
 
         /**
          * The persisted repeater configuration method. `true` selects the Framework backend; `false` selects
@@ -142,6 +143,9 @@ class RepeaterService : Service(), CoroutineScope {
         var randomizeMac: Boolean
             get() = app.pref.getBoolean(KEY_RANDOMIZE_MAC, true)
             set(value) = app.pref.edit { putBoolean(KEY_RANDOMIZE_MAC, value) }
+        var disablePowerSave: Boolean
+            get() = app.pref.getBoolean(KEY_DISABLE_POWER_SAVE, false)
+            set(value) = app.pref.edit { putBoolean(KEY_DISABLE_POWER_SAVE, value) }
         @get:RequiresApi(33)
         @set:RequiresApi(33)
         var vendorElements: List<ScanResult.InformationElement>
@@ -395,7 +399,16 @@ class RepeaterService : Service(), CoroutineScope {
                 createGroup(channel)
             }
         }
-        val routing = RoutingManager.LocalOnly(this, initialGroup.`interface`!!)
+        val groupInterface = initialGroup.`interface`!!
+        if (disablePowerSave) try {
+            RootManager.use { it.execute(RepeaterCommands.DisablePowerSave(groupInterface)) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Timber.w(e)
+            SmartSnackbar.make(e).show()
+        }
+        val routing = RoutingManager.LocalOnly(this, groupInterface)
         check(routing.start())
         try {
             timeoutMonitor = if (isAutoShutdownEnabled) {
