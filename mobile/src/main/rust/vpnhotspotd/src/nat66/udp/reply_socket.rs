@@ -1,7 +1,7 @@
 use std::collections::{hash_map::Entry, HashMap};
 use std::io;
 use std::net::{SocketAddr, SocketAddrV6};
-use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
+use std::sync::{Arc, Mutex as StdMutex, MutexGuard, OnceLock};
 
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::net::UdpSocket as TokioUdpSocket;
@@ -9,132 +9,168 @@ use tokio::net::UdpSocket as TokioUdpSocket;
 use crate::report;
 use crate::socket::is_udp_reply_unreachable;
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub(super) struct ReplySocketKey {
-    pub(super) source: SocketAddrV6,
-    pub(super) mark: u32,
+struct ReplySocketEntry {
+    source: SocketAddrV6,
+    socket: OnceLock<TokioUdpSocket>,
 }
 
-struct ReplySocketEntry {
-    socket: Option<Arc<TokioUdpSocket>>,
+struct ReplySocketEntryState {
+    entry: Arc<ReplySocketEntry>,
     users: usize,
 }
 
-struct RetainedDnsSocket {
-    key: ReplySocketKey,
-    socket: Arc<TokioUdpSocket>,
+pub(super) struct ReplySocketLease {
+    pool: Arc<ReplySocketPool>,
+    entry: Option<Arc<ReplySocketEntry>>,
 }
 
-pub(super) struct ReplySocketReservation {
-    pub(super) pool: Arc<ReplySocketPool>,
-    pub(super) key: ReplySocketKey,
+impl ReplySocketLease {
+    pub(super) fn source(&self) -> SocketAddrV6 {
+        self.entry().source
+    }
+
+    pub(super) fn try_clone(&self) -> io::Result<Self> {
+        let entry = self.entry();
+        let mut state = self.pool.lock_state()?;
+        let current = state
+            .sockets
+            .get_mut(&entry.source)
+            .filter(|current| Arc::ptr_eq(&current.entry, entry))
+            .ok_or_else(|| io::Error::other("reply socket lease missing"))?;
+        current.users = current
+            .users
+            .checked_add(1)
+            .ok_or_else(|| io::Error::other("reply socket users overflow"))?;
+        Ok(Self {
+            pool: self.pool.clone(),
+            entry: Some(entry.clone()),
+        })
+    }
+
+    pub(super) fn prepare(&self) -> io::Result<()> {
+        self.socket().map(|_| ())
+    }
+
+    fn entry(&self) -> &Arc<ReplySocketEntry> {
+        self.entry
+            .as_ref()
+            .expect("reply socket lease entry missing")
+    }
+
+    fn socket(&self) -> io::Result<&TokioUdpSocket> {
+        let entry = self.entry();
+        if let Some(socket) = entry.socket.get() {
+            return Ok(socket);
+        }
+        let state = self.pool.lock_state()?;
+        state
+            .sockets
+            .get(&entry.source)
+            .filter(|current| Arc::ptr_eq(&current.entry, entry))
+            .ok_or_else(|| io::Error::other("reply socket lease missing"))?;
+        if let Some(socket) = entry.socket.get() {
+            return Ok(socket);
+        }
+        entry
+            .socket
+            .set(create_reply_socket(entry.source, self.pool.mark)?)
+            .map_err(|_| io::Error::other("reply socket already initialized"))?;
+        Ok(entry
+            .socket
+            .get()
+            .expect("reply socket initialization failed"))
+    }
 }
 
-impl Drop for ReplySocketReservation {
+impl Drop for ReplySocketLease {
     fn drop(&mut self) {
-        if let Err(e) = self.pool.release_user(self.key) {
-            report::io("nat66.udp_reply_release", e);
+        let Some(entry) = self.entry.take() else {
+            return;
+        };
+        let mut state = match self.pool.lock_state() {
+            Ok(state) => state,
+            Err(e) => {
+                report::io("nat66.udp_reply_release", e);
+                return;
+            }
+        };
+        let mut release_error = None;
+        let remove = match state.sockets.get_mut(&entry.source) {
+            Some(current) if Arc::ptr_eq(&current.entry, &entry) => {
+                if current.users == 0 {
+                    release_error = Some("reply socket users underflow");
+                    false
+                } else {
+                    current.users -= 1;
+                    current.users == 0
+                }
+            }
+            _ => {
+                release_error = Some("reply socket lease missing");
+                false
+            }
+        };
+        if remove {
+            let stored = state
+                .sockets
+                .remove(&entry.source)
+                .expect("reply socket entry disappeared");
+            // Close the socket before making the missing entry visible to another acquirer.
+            drop(stored);
+            drop(entry);
+        }
+        drop(state);
+        if let Some(error) = release_error {
+            report::message("nat66.udp_reply_release", error, "InvalidData");
         }
     }
 }
 
 #[derive(Default)]
 struct ReplySocketState {
-    retained_dns: Option<RetainedDnsSocket>,
-    sockets: HashMap<ReplySocketKey, ReplySocketEntry>,
+    sockets: HashMap<SocketAddrV6, ReplySocketEntryState>,
 }
 
-#[derive(Default)]
-pub(super) struct ReplySocketPool {
+pub(crate) struct ReplySocketPool {
+    mark: u32,
     state: StdMutex<ReplySocketState>,
 }
 
 impl ReplySocketPool {
-    pub(super) fn reserve_user(
-        self: &Arc<Self>,
-        key: ReplySocketKey,
-    ) -> io::Result<ReplySocketReservation> {
-        self.with_state(|state| {
-            let retained = state.retained_dns_socket(key);
-            match state.sockets.entry(key) {
-                Entry::Occupied(mut entry) => {
-                    let entry = entry.get_mut();
-                    entry.users += 1;
-                    if entry.socket.is_none() {
-                        entry.socket = retained;
-                    }
-                }
-                Entry::Vacant(entry) => {
-                    entry.insert(ReplySocketEntry {
-                        socket: retained,
-                        users: 1,
-                    });
-                }
+    pub(crate) fn new(mark: u32) -> Self {
+        Self {
+            mark,
+            state: StdMutex::default(),
+        }
+    }
+
+    pub(super) fn lease(self: &Arc<Self>, source: SocketAddrV6) -> io::Result<ReplySocketLease> {
+        let mut state = self.lock_state()?;
+        let entry = match state.sockets.entry(source) {
+            Entry::Occupied(mut current) => {
+                let current = current.get_mut();
+                current.users = current
+                    .users
+                    .checked_add(1)
+                    .ok_or_else(|| io::Error::other("reply socket users overflow"))?;
+                current.entry.clone()
             }
-        })?;
-        Ok(ReplySocketReservation {
+            Entry::Vacant(current) => {
+                let entry = Arc::new(ReplySocketEntry {
+                    source,
+                    socket: OnceLock::new(),
+                });
+                current.insert(ReplySocketEntryState {
+                    entry: entry.clone(),
+                    users: 1,
+                });
+                entry
+            }
+        };
+        Ok(ReplySocketLease {
             pool: self.clone(),
-            key,
+            entry: Some(entry),
         })
-    }
-
-    fn acquire_reserved(&self, key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
-        let mut state = self.lock_state()?;
-        if let Some(socket) = state.reserved_socket(key) {
-            return Ok(socket);
-        }
-        let socket = create_reply_socket(key)?;
-        if let Some(entry) = state.sockets.get_mut(&key) {
-            entry.socket = Some(socket.clone());
-        }
-        Ok(socket)
-    }
-
-    pub(super) fn retain_dns(&self, key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
-        let mut state = self.lock_state()?;
-        if let Some(socket) = state.retain_existing_dns_socket(key) {
-            return Ok(socket);
-        }
-        let socket = create_reply_socket(key)?;
-        if let Some(entry) = state.sockets.get_mut(&key) {
-            entry.socket = Some(socket.clone());
-        }
-        state.retain_dns_socket(key, socket.clone());
-        Ok(socket)
-    }
-
-    fn release_user(&self, key: ReplySocketKey) -> io::Result<()> {
-        self.with_state(|state| -> io::Result<()> {
-            let remove = {
-                let entry = state
-                    .sockets
-                    .get_mut(&key)
-                    .ok_or_else(|| io::Error::other("reply socket reservation missing"))?;
-                if entry.users == 0 {
-                    return Err(io::Error::other("reply socket users underflow"));
-                }
-                entry.users -= 1;
-                entry.users == 0
-            };
-            if remove {
-                state.sockets.remove(&key);
-            }
-            Ok(())
-        })?
-    }
-
-    fn replace_socket(
-        &self,
-        key: ReplySocketKey,
-        previous: &Arc<TokioUdpSocket>,
-    ) -> io::Result<Arc<TokioUdpSocket>> {
-        let socket = create_reply_socket(key)?;
-        self.with_state(|state| state.replace_socket(key, previous, socket))
-    }
-
-    fn with_state<T>(&self, f: impl FnOnce(&mut ReplySocketState) -> T) -> io::Result<T> {
-        let mut state = self.lock_state()?;
-        Ok(f(&mut state))
     }
 
     fn lock_state(&self) -> io::Result<MutexGuard<'_, ReplySocketState>> {
@@ -144,109 +180,14 @@ impl ReplySocketPool {
     }
 }
 
-impl ReplySocketState {
-    fn retained_dns_socket(&self, key: ReplySocketKey) -> Option<Arc<TokioUdpSocket>> {
-        self.retained_dns
-            .as_ref()
-            .filter(|retained| retained.key == key)
-            .map(|retained| retained.socket.clone())
-    }
-
-    fn retain_dns_socket(&mut self, key: ReplySocketKey, socket: Arc<TokioUdpSocket>) {
-        self.retained_dns = Some(RetainedDnsSocket { key, socket });
-    }
-
-    fn reserved_socket(&mut self, key: ReplySocketKey) -> Option<Arc<TokioUdpSocket>> {
-        if let Some(socket) = self
-            .sockets
-            .get(&key)
-            .and_then(|entry| entry.socket.clone())
-        {
-            return Some(socket);
-        }
-        let socket = self.retained_dns_socket(key)?;
-        if let Some(entry) = self.sockets.get_mut(&key) {
-            entry.socket = Some(socket.clone());
-        }
-        Some(socket)
-    }
-
-    fn retain_existing_dns_socket(&mut self, key: ReplySocketKey) -> Option<Arc<TokioUdpSocket>> {
-        if let Some(socket) = self.retained_dns_socket(key) {
-            return Some(socket);
-        }
-        let socket = self
-            .sockets
-            .get(&key)
-            .and_then(|entry| entry.socket.clone())?;
-        self.retain_dns_socket(key, socket.clone());
-        Some(socket)
-    }
-
-    fn replace_socket(
-        &mut self,
-        key: ReplySocketKey,
-        previous: &Arc<TokioUdpSocket>,
-        socket: Arc<TokioUdpSocket>,
-    ) -> Arc<TokioUdpSocket> {
-        let mut current = None;
-        let mut replaced = false;
-        if let Some(entry) = self.sockets.get_mut(&key) {
-            if entry
-                .socket
-                .as_ref()
-                .is_some_and(|current| Arc::ptr_eq(current, previous))
-            {
-                entry.socket = Some(socket.clone());
-                replaced = true;
-            }
-            current = entry.socket.clone();
-        }
-        if let Some(retained) = self
-            .retained_dns
-            .as_mut()
-            .filter(|retained| retained.key == key)
-        {
-            if Arc::ptr_eq(&retained.socket, previous) {
-                retained.socket = socket.clone();
-                replaced = true;
-            }
-            if current.is_none() {
-                current = Some(retained.socket.clone());
-            }
-        }
-        if replaced {
-            socket
-        } else {
-            current.unwrap_or(socket)
-        }
-    }
-}
-
 pub(super) async fn send_response(
-    reply_sockets: &ReplySocketPool,
-    key: ReplySocketKey,
-    socket: &mut Option<Arc<TokioUdpSocket>>,
+    reply_socket: &ReplySocketLease,
     target: SocketAddrV6,
     payload: &[u8],
 ) -> Result<(), SendResponseError> {
-    let current = match socket {
-        Some(socket) => socket.clone(),
-        None => {
-            let acquired = reply_sockets
-                .acquire_reserved(key)
-                .map_err(SendResponseError::Acquire)?;
-            *socket = Some(acquired.clone());
-            acquired
-        }
-    };
-    if let Err(initial) = current.send_to(payload, SocketAddr::V6(target)).await {
-        let retry = match reply_sockets.replace_socket(key, &current) {
-            Ok(socket) => socket,
-            Err(error) => return Err(SendResponseError::Replace { initial, error }),
-        };
-        *socket = Some(retry.clone());
-        retry
+    let socket = reply_socket.socket().map_err(SendResponseError::Acquire)?;
+    if let Err(initial) = socket.send_to(payload, SocketAddr::V6(target)).await {
+        socket
             .send_to(payload, SocketAddr::V6(target))
             .await
             .map_err(|error| SendResponseError::Retry { initial, error })?;
@@ -256,10 +197,6 @@ pub(super) async fn send_response(
 
 pub(super) enum SendResponseError {
     Acquire(io::Error),
-    Replace {
-        initial: io::Error,
-        error: io::Error,
-    },
     Retry {
         initial: io::Error,
         error: io::Error,
@@ -270,7 +207,6 @@ impl SendResponseError {
     fn into_report_parts(self) -> (io::Error, Option<io::Error>, &'static str) {
         match self {
             Self::Acquire(error) => (error, None, "acquire_socket"),
-            Self::Replace { initial, error } => (error, Some(initial), "replace_socket"),
             Self::Retry { initial, error } => (error, Some(initial), "retry_send"),
         }
     }
@@ -311,12 +247,12 @@ pub(super) fn report_send_response_error(
     report::io_with_details(context, error, details);
 }
 
-fn create_reply_socket(key: ReplySocketKey) -> io::Result<Arc<TokioUdpSocket>> {
+fn create_reply_socket(source: SocketAddrV6, mark: u32) -> io::Result<TokioUdpSocket> {
     let socket = Socket::new(Domain::IPV6, Type::DGRAM, Some(Protocol::UDP))?;
     socket.set_reuse_address(true)?;
-    socket.set_mark(key.mark)?;
+    socket.set_mark(mark)?;
     socket.set_ip_transparent_v6(true)?;
-    socket.bind(&SockAddr::from(key.source))?;
+    socket.bind(&SockAddr::from(source))?;
     socket.set_nonblocking(true)?;
-    Ok(Arc::new(TokioUdpSocket::from_std(socket.into())?))
+    TokioUdpSocket::from_std(socket.into())
 }

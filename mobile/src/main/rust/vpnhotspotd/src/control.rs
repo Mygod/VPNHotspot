@@ -13,6 +13,7 @@ use crate::report::{ControllerSender, ControllerSenderExt};
 use crate::session::Session;
 use crate::{ipsec, nat66, neighbour, netlink, report, routing};
 use vpnhotspotd::shared::ipsec::{IpSecForwardPolicyTarget, UpstreamTracker};
+use vpnhotspotd::shared::model::DAEMON_REPLY_MARK;
 use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::{
     ack_event_frame, ack_reply_frame, daemon_error_report_with_details, daemon_io_error_report,
@@ -36,7 +37,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     report::init(sender.clone())?;
     let state = Arc::new(State {
         ipsec: Mutex::new(UpstreamTracker::default()),
-        icmp: nat66::IcmpDispatcher::new(),
+        nat66: nat66::ProcessResources::new(DAEMON_REPLY_MARK),
         sessions: Mutex::new(HashMap::new()),
         ipv6_nat_firewall_base: Mutex::new(false),
         neighbour_monitor: Mutex::new(None),
@@ -148,7 +149,7 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
 
 struct State {
     ipsec: Mutex<UpstreamTracker>,
-    icmp: nat66::IcmpDispatcher,
+    nat66: nat66::ProcessResources,
     sessions: Mutex<HashMap<u64, Arc<SessionState>>>,
     ipv6_nat_firewall_base: Mutex<bool>,
     neighbour_monitor: Mutex<Option<MonitorState>>,
@@ -447,7 +448,7 @@ async fn start_session(
     }
     let mut guard = slot.control.lock().await;
     let ipsec_config = config.clone();
-    let session = match Session::start(id, config, &state.icmp, cancel)
+    let session = match Session::start(id, config, state.nat66.clone(), cancel)
         .await
         .with_report_context_details(
             "control.start_session",

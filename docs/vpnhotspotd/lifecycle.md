@@ -23,6 +23,8 @@ bookkeeping:
 
 - one NAT66 ICMP dispatcher shared by NAT66 sessions and bound to the
   app-owned NFQUEUE number `30000`;
+- one NAT66 UDP reply-socket registry shared by all MAC listeners and sessions,
+  using the process's immutable daemon reply mark;
 - a session map keyed by the start-session call ID;
 - one process-wide upstream-interface aggregate for optional IPsec probes;
 - one optional neighbour monitor;
@@ -189,12 +191,19 @@ listeners normally choose shutdown over reporting teardown-time socket errors.
 It rolls routing back through the session-owned request connection without
 waiting for listener or per-packet tasks to drain, then stops NAT66, which may
 withdraw advertised prefixes through the same connection. Request failures are
-reported without replacing the connection.
+reported without replacing the connection. NAT66 UDP associations and
+per-listener DNS anchors release their reply-socket leases during this teardown.
+An overlapping detached DNS task retains its own lease, so session stop or
+replacement cannot close its reply socket prematurely. The process-wide
+registry removes and closes an exact source bind when its last lease is
+released.
 
 When the control connection closes, the daemon cancels active calls, waits for
 call tasks, stops the neighbour monitor, stops all sessions without extra
 withdraw-cleanup, clears the IPsec aggregate, removes process-wide IPv6 NAT
-firewall base state, drops the writer, and exits.
+firewall base state, drops the writer, and exits. Exiting also drops the NAT66
+UDP reply-socket registry and closes any remaining file descriptors; the
+registry creates no persistent routing or firewall state for Clean to remove.
 
 `CleanRoutingCommand` is stronger than normal shutdown. It:
 

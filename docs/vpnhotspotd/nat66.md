@@ -45,11 +45,12 @@ NAT66 state is split by lifetime:
 | Lifetime | Owner | State |
 | --- | --- | --- |
 | Process | `IcmpDispatcher` | NFQUEUE task on queue `30000`, ICMP session registrations, shared Echo state, upstream ICMP sockets |
+| Process | `ReplySocketPool` | daemon reply mark, exact UDP reply-source registry, socket leases shared across sessions |
 | Session | `nat66::Runtime` | committed per-MAC TCP/UDP capabilities, optional RA task, ICMP registration, cleanup prefixes, counter store |
 | RA task | `nat66/ra.rs` | IPv6-address event and request connections, raw ICMPv6 receive socket, periodic/suppression state |
 | Client | per-MAC runtime | TCP/UDP listener ports, stop token, active DNS/NAT66 tasks, source-scoped counters |
-| Listener | TCP/UDP loops | Accepted TCP connections, UDP association table, reply socket pool |
-| Flow | TCP task or UDP association task | MAC/downstream accounting context, upstream socket, downstream reply path, ICMP error registration where applicable |
+| Listener | TCP/UDP loops | Accepted TCP connections, UDP association table, per-listener DNS reply-socket anchor |
+| Flow | TCP task, UDP association task, or UDP DNS query task | MAC/downstream accounting context, upstream socket, downstream reply path and reply-socket lease, ICMP error registration where applicable |
 
 The process-wide dispatcher exists because ICMP interception uses one NFQUEUE
 number. Sessions register by downstream interface index and committed MAC set.
@@ -198,10 +199,11 @@ responses. The listener owns downstream receives and association creation. The
 association task reports activity back to the listener, and idle associations
 are cancelled after the NAT66 idle timeout.
 
-Reply socket reservations keep the pool aware of source/mark binds while an
-association may hold a cached reply socket. Association teardown releases the
-cached socket reference before releasing the reservation, so a replacement
-association cannot race a duplicate transparent bind for the same reply source.
+Reply socket leases keep the daemon-wide pool aware of an exact reply-source
+bind while an association may send responses through it. Association teardown
+releases its lease, but the socket remains registered while another association,
+DNS anchor, or DNS query task still holds a lease. This prevents overlapping
+per-MAC listeners or sessions from racing a duplicate transparent bind.
 
 ICMP error translation for UDP is association-local and MAC-attributed. The
 association registers only while the connected upstream UDP socket is alive, and
@@ -214,17 +216,24 @@ over an internal channel. If an association closes, the listener removes it only
 when the close event matches the current association ID for that key; stale
 close events from an older task must not remove a newer association.
 
-The reply socket pool separates DNS replies from user UDP associations. User
-associations reserve a reply source while alive so downstream responses can use
-the original destination as their source. DNS keeps retained reply sockets by
-source/mark because DNS requests are short child tasks rather than entries in
-the association table. The pool serializes create-or-reuse decisions for each
-reply source/mark before committing a bound socket to DNS retention or a user
-reservation, so concurrent first replies for the same source do not race a
-duplicate transparent bind. Host- or network-unreachable downstream reply sends
-are treated as client reachability churn and logged. Reply socket acquisition,
-replacement, and other unexpected send failures are reported as structured
-nonfatals.
+The control process owns one reply socket pool for every NAT66 UDP listener in
+every session. Its reply mark is immutable, and it serializes create-or-reuse
+for each exact IPv6 source address and port. Consequently, one bound socket for
+that source and mark is shared across MAC listeners and sessions rather than
+being recreated in each listener. User associations hold leases while alive.
+Each listener also keeps a DNS anchor lease for its gateway source, and each
+short-lived DNS query task holds its own lease so listener cancellation cannot
+close the socket while a detached query is completing. The last lease removes
+the entry and closes the socket.
+
+A reply socket remains a nonblocking IPv6 UDP socket with `SO_REUSEADDR`, the
+daemon `SO_MARK`, and `IPV6_TRANSPARENT`, bound to the exact original destination
+address and port that must appear as the downstream reply source. A failed
+downstream send is retried once on the same leased file descriptor; it does not
+create a second exact bind while the original socket is still live. Host- or
+network-unreachable downstream reply sends are treated as client reachability
+churn and logged. Reply socket acquisition and other unexpected send failures
+remain structured nonfatals.
 
 UDP hop-limit behavior is part of the NAT66 contract. Missing hop-limit
 metadata is reported and the datagram is dropped. Expired hop limit produces a
@@ -377,6 +386,14 @@ NAT66 cleanup has two layers:
 Per-MAC runtime removal cancels that MAC's TCP tasks, UDP associations, Echo
 allocations, and UDP error registrations, then preserves final source counters
 long enough for one structured traffic-counter read.
+
+Reply sockets are process-owned file descriptors rather than routing or
+firewall mutations. Session stop releases listener anchors and association
+leases. A retained listener swaps its anchor on the first DNS query for a new
+gateway after reconfiguration, while overlapping detached tasks keep their
+sockets live until they finish. The last lease closes each socket, and process
+death closes any remaining descriptors. Normal stop and Clean require no
+additional kernel-state cleanup for the reply socket pool.
 
 Do not add persisted NAT66 cleanup state. If state can leak after process death,
 Clean must be able to reconstruct and delete it from deterministic identifiers,

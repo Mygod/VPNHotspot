@@ -18,7 +18,7 @@ pub(crate) struct Session {
     config: Arc<Mutex<SessionConfig>>,
     dns: dns::Runtime,
     nat66: Option<nat66::Runtime>,
-    icmp: nat66::IcmpDispatcher,
+    nat66_resources: nat66::ProcessResources,
     routing: routing::Runtime,
     downstream_ipv4: DownstreamIpv4,
     stop: CancellationToken,
@@ -28,7 +28,7 @@ impl Session {
     pub(crate) async fn start(
         call_id: u64,
         mut config: SessionConfig,
-        icmp: &nat66::IcmpDispatcher,
+        nat66_resources: nat66::ProcessResources,
         cancel: &CancellationToken,
     ) -> io::Result<Self> {
         let stop = CancellationToken::new();
@@ -61,7 +61,7 @@ impl Session {
             stop.child_token(),
             dns.counter_sink(),
             &mut routing_netlink,
-            icmp,
+            nat66_resources.clone(),
         )
         .await;
         if nat66.is_none() && has_client_scoped_ipv6_nat_demand(&config) {
@@ -104,7 +104,7 @@ impl Session {
             config: shared,
             dns,
             nat66,
-            icmp: icmp.clone(),
+            nat66_resources,
             routing,
             downstream_ipv4,
             stop,
@@ -125,7 +125,7 @@ impl Session {
                     self.stop.child_token(),
                     self.dns.counter_sink(),
                     self.routing.request_connection(),
-                    &self.icmp,
+                    self.nat66_resources.clone(),
                 )
                 .await;
             }
@@ -139,7 +139,7 @@ impl Session {
             let mut current = self.config.lock().await;
             self.dns.replace_clients(&config);
             if let Some(nat66) = self.nat66.as_mut() {
-                nat66.replace_clients(&config, &self.icmp);
+                nat66.replace_clients(&config);
             }
             let candidate_ports = SessionPorts {
                 dns: self.dns.ports(),
@@ -154,7 +154,7 @@ impl Session {
                 Err(e) => {
                     self.dns.replace_clients(&current);
                     if let Some(nat66) = self.nat66.as_mut() {
-                        nat66.replace_clients(&current, &self.icmp);
+                        nat66.replace_clients(&current);
                     }
                     return Err(e);
                 }

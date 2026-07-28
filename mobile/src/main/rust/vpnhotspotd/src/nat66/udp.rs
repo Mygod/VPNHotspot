@@ -30,10 +30,8 @@ mod reply_socket;
 mod socket_io;
 
 use icmp_error::send_packet_too_big as send_udp_packet_too_big;
-use reply_socket::{
-    report_send_response_error, send_response, ReplySocketKey, ReplySocketPool,
-    ReplySocketReservation,
-};
+pub(super) use reply_socket::ReplySocketPool;
+use reply_socket::{report_send_response_error, send_response, ReplySocketLease};
 use socket_io::{enable_recv_hop_limit, forward_udp_datagram, recv_packet, UdpForwardResult};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -61,36 +59,32 @@ struct AssociationTask {
     id: u64,
     socket: Arc<TokioUdpSocket>,
     counters: Nat66Counters,
-    reply_reservation: ReplySocketReservation,
-    reply_socket: Option<Arc<TokioUdpSocket>>,
+    reply_socket: ReplySocketLease,
     icmp_errors_registered: bool,
     stop: CancellationToken,
     association_event_tx: mpsc::UnboundedSender<UdpAssociationEvent>,
-}
-
-impl Drop for AssociationTask {
-    fn drop(&mut self) {
-        // Keep the pool aware of this bind until the task's cached socket reference is gone.
-        drop(self.reply_socket.take());
-    }
 }
 
 pub(crate) fn spawn_loop(
     listener: UdpSocket,
     config: Arc<Mutex<SessionConfig>>,
     stop: CancellationToken,
-    icmp_dispatcher: icmp::Dispatcher,
+    resources: super::ProcessResources,
     counters: Nat66Counters,
     dns: crate::dns::CounterSink,
     mac: [u8; 6],
 ) -> io::Result<()> {
+    let super::ProcessResources {
+        icmp: icmp_dispatcher,
+        reply_sockets,
+    } = resources;
     let listener = AsyncFd::new(listener)?;
     spawn(async move {
         let listener_fd = listener.get_ref().as_raw_fd();
         if let Err(e) = enable_recv_hop_limit(listener.get_ref()) {
             report::io("nat66.udp_hop_limit_setup", e);
         }
-        let reply_sockets = Arc::new(ReplySocketPool::default());
+        let mut retained_dns = None::<ReplySocketLease>;
         let mut associations = HashMap::<AssociationKey, UdpAssociation>::new();
         let (association_event_tx, mut association_event_rx) = mpsc::unbounded_channel();
         let mut next_association_id = 0u64;
@@ -158,11 +152,18 @@ pub(crate) fn spawn_loop(
                                 };
                                 if *destination.ip() == ipv6_nat.gateway.address() && destination.port() == DNS_PORT {
                                     let query = buffer[..size].to_vec();
-                                    let reply_key = ReplySocketKey {
-                                        source: destination,
-                                        mark: snapshot.reply_mark,
+                                    let reply_socket = match retained_dns.as_ref() {
+                                        Some(retained) if retained.source() == destination => {
+                                            retained.try_clone()
+                                        }
+                                        _ => reply_sockets.lease(destination).and_then(|retained| {
+                                            retained.prepare()?;
+                                            let query = retained.try_clone()?;
+                                            retained_dns = Some(retained);
+                                            Ok(query)
+                                        }),
                                     };
-                                    let reply_socket = match reply_sockets.retain_dns(reply_key) {
+                                    let reply_socket = match reply_socket {
                                         Ok(socket) => socket,
                                         Err(e) => {
                                             report::io_with_details(
@@ -176,20 +177,16 @@ pub(crate) fn spawn_loop(
                                             continue;
                                         }
                                     };
-                                    let reply_sockets = reply_sockets.clone();
                                     let query_stop = stop.child_token();
                                     let dns = dns.clone();
                                     spawn(async move {
-                                        let mut reply_socket = Some(reply_socket);
                                         select! {
                                             biased;
                                             _ = query_stop.cancelled() => {}
                                             response = resolve_or_error_counted(&snapshot, &query, &dns, mac) => {
                                                 if let Some(response) = response {
                                                     if let Err(e) = send_response(
-                                                        &reply_sockets,
-                                                        reply_key,
-                                                        &mut reply_socket,
+                                                        &reply_socket,
                                                         client,
                                                         &response,
                                                     ).await {
@@ -331,12 +328,8 @@ pub(crate) fn spawn_loop(
                                         continue;
                                     }
                                 };
-                                let reply_key = ReplySocketKey {
-                                    source: destination,
-                                    mark: snapshot.reply_mark,
-                                };
-                                let reply_reservation = match reply_sockets.reserve_user(reply_key) {
-                                    Ok(reservation) => reservation,
+                                let reply_socket = match reply_sockets.lease(destination) {
+                                    Ok(socket) => socket,
                                     Err(e) => {
                                         report::io_with_details(
                                             "nat66.udp_reply_reserve",
@@ -450,8 +443,7 @@ pub(crate) fn spawn_loop(
                                     id: association_id,
                                     socket: upstream.clone(),
                                     counters: counters.clone(),
-                                    reply_reservation,
-                                    reply_socket: None,
+                                    reply_socket,
                                     icmp_errors_registered,
                                     stop: association_stop.clone(),
                                     association_event_tx: association_event_tx.clone(),
@@ -503,7 +495,7 @@ fn log_connection_error(
 }
 
 impl AssociationTask {
-    async fn run(mut self) {
+    async fn run(self) {
         let mut buffer = [0u8; 65535];
         loop {
             select! {
@@ -519,9 +511,7 @@ impl AssociationTask {
                             report::io("nat66.udp_counter", e);
                         }
                         if let Err(e) = send_response(
-                            &self.reply_reservation.pool,
-                            self.reply_reservation.key,
-                            &mut self.reply_socket,
+                            &self.reply_socket,
                             self.key.client,
                             &buffer[..size],
                         ).await {
