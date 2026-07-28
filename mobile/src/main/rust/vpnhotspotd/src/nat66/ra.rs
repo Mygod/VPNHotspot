@@ -226,6 +226,16 @@ pub(crate) fn spawn_loop(
                 if send_current || router_changed || send_address_changed || next_ra <= now {
                     match send_ra(&current, router, None, mtu).await {
                         Ok(()) => advertising_current_prefix = true,
+                        Err(RaSendError::Setup(e)) | Err(RaSendError::Transmit(e))
+                            if is_downstream_address_unavailable(&e) =>
+                        {
+                            report::stdout!(
+                                "ra current advertisement skipped: link-local router address {} no longer available on {}: {}",
+                                router.address,
+                                current.downstream,
+                                e
+                            );
+                        }
                         Err(RaSendError::Transmit(e))
                             if is_downstream_transmit_backpressure(&e) =>
                         {
@@ -281,6 +291,18 @@ pub(crate) fn spawn_loop(
                                 if let Some(router) = router {
                                     match send_ra(&current, router, Some(source), mtu).await {
                                         Ok(()) => advertising_current_prefix = true,
+                                        Err(RaSendError::Setup(e))
+                                        | Err(RaSendError::Transmit(e))
+                                            if is_downstream_address_unavailable(&e) =>
+                                        {
+                                            report::stdout!(
+                                                "ra solicited advertisement skipped: link-local router address {} no longer available on {} while replying to {}: {}",
+                                                router.address,
+                                                current.downstream,
+                                                source,
+                                                e
+                                            );
+                                        }
                                         Err(RaSendError::Transmit(e))
                                             if is_downstream_transmit_backpressure(&e) =>
                                         {
@@ -367,7 +389,7 @@ async fn withdraw_prefixes_once_with_router(
     }
     let fd = match create_send_socket(&config.downstream, config.reply_mark, router) {
         Ok(fd) => fd,
-        Err(e) if e.raw_os_error() == Some(EADDRNOTAVAIL) => {
+        Err(e) if is_downstream_address_unavailable(&e) => {
             report::stdout!(
                 "ra withdraw skipped: link-local router address {} no longer available on {}",
                 router.address,
@@ -405,6 +427,10 @@ async fn withdraw_prefixes_once_with_router(
             }
         }
     }
+}
+
+fn is_downstream_address_unavailable(error: &io::Error) -> bool {
+    error.raw_os_error() == Some(EADDRNOTAVAIL)
 }
 
 fn is_downstream_transmit_backpressure(error: &io::Error) -> bool {

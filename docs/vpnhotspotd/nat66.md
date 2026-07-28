@@ -355,6 +355,10 @@ NAT66 startup is best effort across these pieces:
   USB/NCM tether transmit queue, and is logged to stderr instead of reported as
   a structured nonfatal. Other RA send failures remain structured nonfatals
   because they can indicate socket, privilege, or platform state problems.
+- Current or solicited RA send `EADDRNOTAVAIL` means the downstream link-local
+  router address disappeared between lookup and socket setup or transmission,
+  such as during tethering teardown. It is logged as a skipped advertisement
+  rather than reported as a structured nonfatal.
 - RA withdrawal socket bind `EADDRNOTAVAIL` means the downstream link-local
   router address disappeared before cleanup could send a zero-lifetime RA. It
   is logged as skipped cleanup rather than reported as a structured nonfatal.
