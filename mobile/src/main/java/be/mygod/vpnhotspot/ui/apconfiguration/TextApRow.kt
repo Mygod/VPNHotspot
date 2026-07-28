@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.ui.apconfiguration
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,7 +16,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,6 +33,7 @@ import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.ui.DialogConfirmButton
 import be.mygod.vpnhotspot.ui.DialogDismissButton
 import be.mygod.vpnhotspot.ui.PreferenceRow
+import be.mygod.vpnhotspot.ui.nonInteractiveVerticalScrollbar
 import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
 
 @Composable
@@ -82,11 +81,7 @@ fun TextApRow(
                         .focusRequester(focusRequester)
                         .then(
                             if (multiline) {
-                                Modifier.scrollbar(
-                                    state = scrollState.scrollIndicatorState,
-                                    orientation = Orientation.Vertical,
-                                    isFadeEnabled = false,
-                                )
+                                Modifier.nonInteractiveVerticalScrollbar(scrollState.scrollIndicatorState)
                             } else Modifier
                         )
                         .semantics { contentDescription = titleText },

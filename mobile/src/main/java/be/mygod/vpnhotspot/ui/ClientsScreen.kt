@@ -6,7 +6,6 @@ import android.os.Build
 import android.os.SystemClock
 import android.text.format.Formatter
 import androidx.annotation.DrawableRes
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,7 +25,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -236,11 +234,7 @@ private fun ClientRow(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.scrollbar(
-                state = menuScrollState.scrollIndicatorState,
-                orientation = Orientation.Vertical,
-                isFadeEnabled = false,
-            ),
+            modifier = Modifier.nonInteractiveVerticalScrollbar(menuScrollState.scrollIndicatorState),
             scrollState = menuScrollState,
         ) {
             DropdownMenuItem(
@@ -359,11 +353,7 @@ private fun ClientRow(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f, fill = false)
-                    .scrollbar(
-                        state = state.scrollIndicatorState,
-                        orientation = Orientation.Vertical,
-                        isFadeEnabled = false,
-                    ),
+                    .nonInteractiveVerticalScrollbar(state.scrollIndicatorState),
                 contentPadding = modalBottomSheetListContentPadding(),
             ) {
                 item("stats") {

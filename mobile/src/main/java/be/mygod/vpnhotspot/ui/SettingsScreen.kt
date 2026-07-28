@@ -13,7 +13,6 @@ import android.os.ext.SdkExtensions
 import android.text.Html
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,7 +28,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -503,11 +501,7 @@ private fun TextPreferenceRow(
                         ExposedDropdownMenu(
                             expanded = menuExpanded,
                             onDismissRequest = { suggestionsExpanded = false },
-                            modifier = Modifier.scrollbar(
-                                state = menuScrollState.scrollIndicatorState,
-                                orientation = Orientation.Vertical,
-                                isFadeEnabled = false,
-                            ),
+                            modifier = Modifier.nonInteractiveVerticalScrollbar(menuScrollState.scrollIndicatorState),
                             scrollState = menuScrollState,
                         ) {
                             for (suggestion in filteredSuggestions) DropdownMenuItem(
