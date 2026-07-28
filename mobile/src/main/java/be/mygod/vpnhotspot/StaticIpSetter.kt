@@ -3,9 +3,11 @@ package be.mygod.vpnhotspot
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.LinkAddress
+import android.system.OsConstants
 import androidx.core.content.edit
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.root.daemon.DaemonController
+import be.mygod.vpnhotspot.root.daemon.DaemonException
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -105,6 +107,15 @@ class StaticIpSetter : BootReceiver.Startable {
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: IllegalArgumentException) {
+                            SmartSnackbar.make(e).show()
+                            null
+                        } catch (e: DaemonException) {
+                            // Linux returns EACCES for IPv6 RTM_NEWADDR when IPv6 is disabled on the interface.
+                            if (e.report.context != "routing.address" || e.report.errno != OsConstants.EACCES ||
+                                e.report.details.none { it.key == "operation" && it.value_ == "Replace" } ||
+                                e.report.details.none { it.key == "address" && ':' in it.value_ }) {
+                                Timber.w(e)
+                            }
                             SmartSnackbar.make(e).show()
                             null
                         } catch (e: Exception) {
