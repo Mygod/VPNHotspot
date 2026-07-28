@@ -65,27 +65,45 @@ object UnblockCentral {
         init
         WifiManager::class.java.getDeclaredField("mService").apply { isAccessible = true }
     }
+
+    /**
+     * Some Google Wi-Fi Mainline releases make this proxy static, so their constructor omits the
+     * implicit outer [WifiManager] parameter. Probe the runtime shape because APEX updates are
+     * independent of the platform SDK level.
+     */
     val WifiManager_SoftApCallbackProxy: (Any, Int) -> IBinder by lazy {
         init
         val clazz = Class.forName("android.net.wifi.WifiManager\$SoftApCallbackProxy")
         try {
-            val constructor = clazz.getDeclaredConstructor(WifiManager::class.java, Executor::class.java,
+            val constructor = clazz.getDeclaredConstructor(Executor::class.java,
                 `WifiManager$SoftApCallback`::class.java, Int::class.javaPrimitiveType)
             constructor.isAccessible = true;
-            { callback, mode -> constructor.newInstance(Services.wifi, InPlaceExecutor, callback, mode) as IBinder }
-        } catch (e: NoSuchMethodException) {
-            if (Build.VERSION.SDK_INT >= 33) Timber.w(e)
+            { callback, mode -> constructor.newInstance(InPlaceExecutor, callback, mode) as IBinder }
+        } catch (staticMissing: NoSuchMethodException) {
             try {
                 val constructor = clazz.getDeclaredConstructor(WifiManager::class.java, Executor::class.java,
-                    `WifiManager$SoftApCallback`::class.java)
+                    `WifiManager$SoftApCallback`::class.java, Int::class.javaPrimitiveType)
+                if (Build.VERSION.SDK_INT >= 38) Timber.w(staticMissing)
                 constructor.isAccessible = true;
-                { callback, _ -> constructor.newInstance(Services.wifi, InPlaceExecutor, callback) as IBinder }
+                { callback, mode ->
+                    constructor.newInstance(Services.wifi, InPlaceExecutor, callback, mode) as IBinder
+                }
             } catch (e: NoSuchMethodException) {
-                if (Build.VERSION.SDK_INT >= 30) Timber.w(e)
-                val constructor = clazz.getDeclaredConstructor(WifiManager::class.java, Looper::class.java,
-                    `WifiManager$SoftApCallback`::class.java)
-                constructor.isAccessible = true;
-                { callback, _ -> constructor.newInstance(Services.wifi, Looper.getMainLooper(), callback) as IBinder }
+                if (Build.VERSION.SDK_INT >= 33) Timber.w(e)
+                try {
+                    val constructor = clazz.getDeclaredConstructor(WifiManager::class.java, Executor::class.java,
+                        `WifiManager$SoftApCallback`::class.java)
+                    constructor.isAccessible = true;
+                    { callback, _ -> constructor.newInstance(Services.wifi, InPlaceExecutor, callback) as IBinder }
+                } catch (e: NoSuchMethodException) {
+                    if (Build.VERSION.SDK_INT >= 30) Timber.w(e)
+                    val constructor = clazz.getDeclaredConstructor(WifiManager::class.java, Looper::class.java,
+                        `WifiManager$SoftApCallback`::class.java)
+                    constructor.isAccessible = true;
+                    { callback, _ ->
+                        constructor.newInstance(Services.wifi, Looper.getMainLooper(), callback) as IBinder
+                    }
+                }
             }
         }
     }
