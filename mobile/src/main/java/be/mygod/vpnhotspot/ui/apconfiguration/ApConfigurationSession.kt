@@ -125,7 +125,10 @@ suspend fun loadRepeaterApConfiguration(binder: RepeaterService.Binder?): ApConf
         ssid = adopted?.let { WifiSsidCompat.fromUtf8Text(it.networkName) } ?: RepeaterService.networkName,
         passphrase = adopted?.passphrase ?: RepeaterService.passphrase,
         securityType = if (adopted != null && Build.VERSION.SDK_INT >= 36) {
-            adopted.securityType + SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
+            (if (adopted.securityType == WifiP2pGroup.SECURITY_TYPE_UNKNOWN) {
+                Timber.w("Unknown Wi-Fi P2P group security type, using legacy-only PCC mode")
+                WifiP2pGroup.SECURITY_TYPE_WPA2_PSK
+            } else adopted.securityType) + SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
         } else RepeaterService.securityType,
         isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
         shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis,
