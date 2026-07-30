@@ -128,18 +128,8 @@ pub(super) async fn apply_iptables_batch(
 }
 
 pub(super) async fn ensure_iptables_chain(target: IptablesTarget, table: &str, chain: &str) {
-    match firewall::restore_line("-N", chain, &[]) {
-        Ok(line) => {
-            let input = firewall::restore_input(table, &[line]);
-            if let Err(e) = firewall::restore_status(target, &input).await {
-                report::io_with_details(
-                    "routing.iptables_new_chain",
-                    e,
-                    firewall::restore_details(target, &input),
-                );
-            }
-        }
-        Err(e) => report::io_with_details(
+    if let Err(e) = ensure_iptables_chain_result(target, table, chain).await {
+        report::io_with_details(
             "routing.iptables_new_chain",
             e,
             [
@@ -147,7 +137,7 @@ pub(super) async fn ensure_iptables_chain(target: IptablesTarget, table: &str, c
                 ("table", table.to_owned()),
                 ("chain", chain.to_owned()),
             ],
-        ),
+        );
     }
 }
 
@@ -157,8 +147,16 @@ pub(super) async fn ensure_iptables_chain_result(
     chain: &str,
 ) -> io::Result<()> {
     let input = firewall::restore_input(table, &[firewall::restore_line("-N", chain, &[])?]);
-    firewall::restore_status(target, &input).await?;
-    Ok(())
+    if firewall::restore_status(target, &input).await? {
+        return Ok(());
+    }
+    // A nonzero create is expected when the chain already exists. Verify that postcondition so a
+    // real creation failure does not silently leave dependent rules targeting a missing chain.
+    let input = firewall::restore_input(
+        table,
+        &[firewall::restore_line("-L", chain, &["-n".to_owned()])?],
+    );
+    firewall::restore_stdout_lines(target, &input, |_| {}).await
 }
 
 pub(super) async fn delete_iptables_repeated(

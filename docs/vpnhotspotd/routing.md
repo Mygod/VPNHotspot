@@ -14,7 +14,7 @@ represents session routing state as `RoutingMutation` values:
 
 | Mutation | External apply | Session rollback |
 | --- | --- | --- |
-| `EnsureIptablesChain` | `iptables-restore`/`ip6tables-restore` `-N <chain>` | no-op; chains are scaffold state |
+| `EnsureIptablesChain` | `iptables-restore`/`ip6tables-restore` `-N <chain>`; after a nonzero exit, verify the chain with `-L <chain> -n` | no-op; chains are scaffold state |
 | `Iptables` | `iptables-restore`/`ip6tables-restore` `-I <chain> ...` | delete the same rule with `-D <chain> ...` |
 | `IpForward` | `ndc ipfwd enable vpnhotspot_<downstream>`, or `/proc/sys/net/ipv4/ip_forward = 1` fallback | `ndc ipfwd disable vpnhotspot_<downstream>` only |
 | `Ip` | rtnetlink rule, route, or address replace | rtnetlink delete for the same rule, route, or address |
@@ -25,6 +25,12 @@ applies new desired mutations one at a time. Apply failures are structured
 nonfatal reports; successful mutations stay applied and are not rolled back only
 because a later best-effort mutation failed. A failed desired mutation is not
 recorded in `applied`, so a later reconcile can try it again.
+
+Creating an existing iptables chain normally exits nonzero. That result is only
+treated as success after the read-only list command verifies that the chain is
+present. If creation and verification both fail, the verification stderr is
+reported as a structured ensure failure; reconciliation remains best effort and
+can retry the ensure later.
 
 The `applied` list is only the current process rollback list. It is not
 persisted and is not a Clean source of truth.
