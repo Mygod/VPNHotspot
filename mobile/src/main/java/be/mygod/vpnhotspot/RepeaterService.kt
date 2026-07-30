@@ -527,7 +527,7 @@ class RepeaterService : Service(), CoroutineScope {
                 else -> {
                     try {
                         p2pManager.requestPersistentGroupInfo(channel)
-                        RootManager.use {
+                        when (val result = RootManager.use {
                             it.execute(RepeaterCommands.AddPersistentGroupWithConfig(ssid.bytes, psk,
                                 when (val oc = operatingChannel) {
                                     0 -> when (operatingBand) {
@@ -549,10 +549,16 @@ class RepeaterService : Service(), CoroutineScope {
                                         vendorData = data.data
                                     }
                                 }.toTypedArray()))
-                        }?.let {
-                            val macRandomizationError = it.unwrap()
-                            Timber.w(macRandomizationError)
-                            SmartSnackbar.make(macRandomizationError).show()
+                        }) {
+                            is RepeaterCommands.MacRandomizationResult.Applied -> Unit
+                            is RepeaterCommands.MacRandomizationResult.Unsupported -> if (result.enableRequested) {
+                                SmartSnackbar.make(R.string.softap_start_failure_unsupported_configuration).show()
+                            }
+                            is RepeaterCommands.MacRandomizationResult.Failure -> {
+                                val error = result.error.unwrap()
+                                Timber.w(error)
+                                SmartSnackbar.make(error).show()
+                            }
                         }
                     } catch (e: CancellationException) {
                         throw e

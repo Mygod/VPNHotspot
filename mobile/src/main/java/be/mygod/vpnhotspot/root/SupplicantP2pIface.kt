@@ -16,6 +16,12 @@ import java.lang.reflect.Proxy
 object SupplicantP2pIface {
     class Hidl12UnsupportedException : UnsupportedOperationException("P2P supplicant HIDL 1.2 missing")
 
+    /**
+     * Android 10's VTS treats this HIDL status as meaning that P2P MAC randomization is unsupported.
+     * https://android.googlesource.com/platform/hardware/interfaces/+/android-10.0.0_r1/wifi/supplicant/1.2/vts/functional/supplicant_p2p_iface_hidl_test.cpp#130
+     */
+    private const val FAILURE_ARGS_INVALID = 2
+
     private val classLoader by lazy {
         PathClassLoader(listOf(
             // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/Android.mk#46
@@ -104,7 +110,8 @@ object SupplicantP2pIface {
      * https://android.googlesource.com/platform/packages/modules/Wifi/+/refs/heads/android16-qpr2-release/service/java/com/android/server/wifi/p2p/SupplicantP2pIfaceHalHidlImpl.java#1406
      * https://android.googlesource.com/platform/hardware/interfaces/+/android-10.0.0_r1/wifi/supplicant/1.2/ISupplicantP2pIface.hal#68
      */
-    fun addGroup(ssid: ByteArray, passphrase: String, frequency: Int, randomizeMac: Boolean): ParcelableThrowable? {
+    fun addGroup(ssid: ByteArray, passphrase: String, frequency: Int, randomizeMac: Boolean):
+            RepeaterCommands.MacRandomizationResult {
         val supplicant = getService(null)
         var ifaces: ArrayList<*>? = null
         listInterfaces(supplicant, Proxy.newProxyInstance(classLoader, arrayOf(listInterfacesCallback),
@@ -134,19 +141,26 @@ object SupplicantP2pIface {
             }))
         val p2pIface = castFrom(null, asInterface(null, iface!!.asBinder()))
             ?: throw Hidl12UnsupportedException()
-        val macRandomizationError = try {   // best-effort: keep group creation working even if this transaction is unavailable
-            requireSuccess(setMacRandomization(p2pIface, randomizeMac), "setMacRandomization")
-            null
+        val macRandomizationResult = try {   // best-effort: keep group creation working even if this transaction is unavailable
+            val status = setMacRandomization(p2pIface, randomizeMac)
+            if (code.getInt(status) == FAILURE_ARGS_INVALID) {
+                RepeaterCommands.MacRandomizationResult.Unsupported(randomizeMac)
+            } else {
+                requireSuccess(status, "setMacRandomization")
+                RepeaterCommands.MacRandomizationResult.Applied()
+            }
         } catch (e: Exception) {
-            e
+            RepeaterCommands.MacRandomizationResult.Failure(ParcelableThrowable(e))
         }
         try {
             requireSuccess(addGroup(p2pIface,
                 ArrayList<Byte>(ssid.size).apply { for (b in ssid) add(b) },
                 passphrase, true, frequency, ByteArray(6), false), "addGroup_1_2")
-            return macRandomizationError?.let { ParcelableThrowable(it) }
+            return macRandomizationResult
         } catch (e: Throwable) {
-            macRandomizationError?.let { e.addSuppressed(it) }
+            (macRandomizationResult as? RepeaterCommands.MacRandomizationResult.Failure)?.error?.unwrap()?.let {
+                e.addSuppressed(it.cause ?: it)
+            }
             throw e
         }
     }
