@@ -60,10 +60,10 @@ object RepeaterCommands {
     }
 
     @Parcelize
-    data class DisablePowerSave(private val groupIfName: String) : RootCommandNoResult {
+    data class SetPowerSave(private val groupIfName: String, private val enable: Boolean) : RootCommandNoResult {
         override suspend fun execute() = null.also {
-            SupplicantAidl.instance?.requireP2pInterface()?.setPowerSave(groupIfName, false)
-                ?: SupplicantP2pIface.disablePowerSave(groupIfName)
+            SupplicantAidl.instance?.requireP2pInterface()?.setPowerSave(groupIfName, enable)
+                ?: SupplicantP2pIface.setPowerSave(groupIfName, enable)
         }
     }
 

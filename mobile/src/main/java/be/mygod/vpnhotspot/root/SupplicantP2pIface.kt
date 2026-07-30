@@ -184,7 +184,7 @@ object SupplicantP2pIface {
      * - https://android.googlesource.com/platform/hardware/interfaces/+/android-8.0.0_r1/wifi/supplicant/1.0/ISupplicantP2pIface.hal#143
      * - https://android.googlesource.com/platform/hardware/interfaces/+/0162af698935100a590b7359581ac8b1b80693e5/wifi/supplicant/1.0/ISupplicantP2pIface.hal#143
      */
-    fun disablePowerSave(groupIfName: String) {
-        requireSuccess(setPowerSave(getP2pIface(), groupIfName, false), "setPowerSave")
+    fun setPowerSave(groupIfName: String, enable: Boolean) {
+        requireSuccess(setPowerSave(getP2pIface(), groupIfName, enable), "setPowerSave")
     }
 }

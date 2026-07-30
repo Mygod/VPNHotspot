@@ -398,9 +398,10 @@ class RepeaterService : Service(), CoroutineScope {
      */
     private suspend fun runLifespan(channel: WifiP2pManager.Channel) = try {
         val existing = p2pManager.requestGroupInfo(channel)
+        val existingOwner = existing?.takeIf { it.isGroupOwner }
         val initialGroup = when {
             existing == null -> createGroup(channel)
-            existing.isGroupOwner -> existing
+            existingOwner != null -> existingOwner
             else -> {   // a stale non-owner group holds the interface; drop it before creating ours
                 Timber.i("Removing old group ($existing)")
                 p2pManager.removeGroup(channel)?.let {
@@ -410,41 +411,45 @@ class RepeaterService : Service(), CoroutineScope {
             }
         }
         val groupInterface = initialGroup.`interface`!!
-        if (disablePowerSave) try {
-            RootManager.use { it.execute(RepeaterCommands.DisablePowerSave(groupInterface)) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Timber.w(e)
-            SmartSnackbar.make(e).show()
-        }
-        val routing = RoutingManager.LocalOnly(this, groupInterface)
-        check(routing.start())
+        val disablePowerSaveForLifespan = disablePowerSave
         try {
-            timeoutMonitor = if (isAutoShutdownEnabled) {
-                TetherTimeoutMonitor(shutdownTimeoutMillis, currentCoroutineContext()) { binder.shutdown() }
-            } else null
-            updateGroup(initialGroup)
-            showNotification(initialGroup)
-            BootReceiver.add<RepeaterService>(Starter())
-            (if (Build.VERSION.SDK_INT in 30 until 33) merge(flow {
-                while (true) {
-                    if (p2pManager.requestP2pState(channel) == WifiP2pManager.WIFI_P2P_STATE_DISABLED) return@flow emit(
-                        null to null)
-                    if (app.location?.isLocationEnabled != true) emit(
-                        p2pManager.requestConnectionInfo(channel) to p2pManager.requestGroupInfo(channel))
-                    delay(1.seconds)
+            // A surviving GO can retain our last HAL mutation across process death, so reclaim it in either direction.
+            if (disablePowerSaveForLifespan || existingOwner != null) {
+                setPowerSave(groupInterface, enable = !disablePowerSaveForLifespan)
+            }
+            val routing = RoutingManager.LocalOnly(this, groupInterface)
+            check(routing.start())
+            try {
+                timeoutMonitor = if (isAutoShutdownEnabled) {
+                    TetherTimeoutMonitor(shutdownTimeoutMillis, currentCoroutineContext()) { binder.shutdown() }
+                } else null
+                updateGroup(initialGroup)
+                showNotification(initialGroup)
+                BootReceiver.add<RepeaterService>(Starter())
+                (if (Build.VERSION.SDK_INT in 30 until 33) merge(flow {
+                    while (true) {
+                        if (p2pManager.requestP2pState(channel) == WifiP2pManager.WIFI_P2P_STATE_DISABLED) return@flow emit(
+                            null to null)
+                        if (app.location?.isLocationEnabled != true) emit(
+                            p2pManager.requestConnectionInfo(channel) to p2pManager.requestGroupInfo(channel))
+                        delay(1.seconds)
+                    }
+                }, p2pConnections) else p2pConnections).takeWhile { (info, group) ->
+                    info?.groupFormed == true && info.isGroupOwner && group?.isGroupOwner == true
+                }.collect { (_, group) ->
+                    updateGroup(group!!)
+                    showNotification(group)
                 }
-            }, p2pConnections) else p2pConnections).takeWhile { (info, group) ->
-                info?.groupFormed == true && info.isGroupOwner && group?.isGroupOwner == true
-            }.collect { (_, group) ->
-                updateGroup(group!!)
-                showNotification(group)
+            } finally {
+                timeoutMonitor?.close()
+                timeoutMonitor = null
+                withContext(NonCancellable) { routing.stop() }
             }
         } finally {
-            timeoutMonitor?.close()
-            timeoutMonitor = null
-            withContext(NonCancellable) { routing.stop() }
+            // Re-enable before removal so a failed teardown cannot leak the mutation.
+            if (disablePowerSaveForLifespan) withContext(NonCancellable) {
+                setPowerSave(groupInterface, enable = true)
+            }
         }
     } finally {
         // Withdraw the active P2P interface before framework teardown starts. Group removal can outlive this
@@ -465,6 +470,15 @@ class RepeaterService : Service(), CoroutineScope {
                 SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
             }
         }
+    }
+
+    private suspend fun setPowerSave(groupIfName: String, enable: Boolean) = try {
+        RootManager.use { it.execute(RepeaterCommands.SetPowerSave(groupIfName, enable)) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Timber.w(e)
+        SmartSnackbar.make(e).show()
     }
 
     @RequiresApi(33)
