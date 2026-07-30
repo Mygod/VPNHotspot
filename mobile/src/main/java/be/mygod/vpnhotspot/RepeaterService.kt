@@ -262,7 +262,11 @@ class RepeaterService : Service(), CoroutineScope {
     }
 
     /** Carries a user-facing start failure out of [runLifespan]. */
-    private class StartFailure(message: String, val showWifiEnable: Boolean = false) : Exception(message)
+    private class StartFailure(
+        message: String,
+        val reason: Int? = null,
+        val showWifiEnable: Boolean = false,
+    ) : Exception(message)
 
     private val p2pManager get() = Services.p2p!!
     private var channel: WifiP2pManager.Channel? = null
@@ -563,9 +567,29 @@ class RepeaterService : Service(), CoroutineScope {
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        if (e.cause !is SupplicantP2pIface.Hidl12UnsupportedException) Timber.w(e)
+                        val expected = e.cause is SupplicantP2pIface.Hidl12UnsupportedException ||
+                                e.cause is SupplicantP2pIface.P2pInterfaceUnavailableException
+                        try {
+                            createFrameworkGroup(channel, null) // possibly HIDL <1.2, start default group instead
+                        } catch (fallback: StartFailure) {
+                            if (!expected) {
+                                e.addSuppressed(fallback)
+                                Timber.w(e)
+                            } else if (fallback.reason == WifiP2pManager.BUSY) {
+                                Timber.i("Supplicant group creation unavailable; framework fallback rejected as busy")
+                            } else {
+                                fallback.addSuppressed(e)
+                                Timber.w(fallback)
+                            }
+                            throw fallback
+                        } catch (fallback: CancellationException) {
+                            throw fallback
+                        } catch (fallback: Exception) {
+                            fallback.addSuppressed(e)
+                            throw fallback
+                        }
+                        if (!expected) Timber.w(e)
                         SmartSnackbar.make(e).show()
-                        createFrameworkGroup(channel, null) // possibly HIDL <1.2, start default group instead
                     }
                     ready.await()
                 }
@@ -579,7 +603,7 @@ class RepeaterService : Service(), CoroutineScope {
     private suspend fun createFrameworkGroup(channel: WifiP2pManager.Channel, config: WifiP2pConfig?) {
         val reason = if (config == null) p2pManager.createGroup(channel) else p2pManager.createGroup(channel, config)
         if (reason != null) throw StartFailure(formatReason(R.string.repeater_create_group_failure, reason),
-                showWifiEnable = reason == WifiP2pManager.BUSY)
+                reason = reason, showWifiEnable = reason == WifiP2pManager.BUSY)
     }
 
     /**

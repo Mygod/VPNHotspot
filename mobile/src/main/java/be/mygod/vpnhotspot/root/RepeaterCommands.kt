@@ -93,7 +93,7 @@ object RepeaterCommands {
             if (aidl == null) return SupplicantP2pIface.addGroup(ssid, passphrase, frequency, randomizeMac)
             val p2pIface = aidl.listInterfaces().firstOrNull { it.type == IfaceType.P2P }?.let {
                 aidl.getP2pInterface(it.name)
-            } ?: error("No framework-owned P2P supplicant interface")
+            } ?: throw SupplicantP2pIface.P2pInterfaceUnavailableException()
             val macRandomizationResult = try {   // best-effort, matching Framework mode's MAC randomization behaviour
                 p2pIface.setMacRandomization(randomizeMac)
                 MacRandomizationResult.Applied()

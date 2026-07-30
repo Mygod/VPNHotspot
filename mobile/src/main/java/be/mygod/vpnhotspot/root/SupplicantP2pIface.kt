@@ -15,6 +15,8 @@ import java.lang.reflect.Proxy
 
 object SupplicantP2pIface {
     class Hidl12UnsupportedException : UnsupportedOperationException("P2P supplicant HIDL 1.2 missing")
+    class P2pInterfaceUnavailableException(message: String = "No framework-owned P2P supplicant interface") :
+        IllegalStateException(message)
 
     /**
      * Android 10's VTS treats this HIDL status as meaning that P2P MAC randomization is unsupported.
@@ -125,7 +127,8 @@ object SupplicantP2pIface {
                     else -> callSuper(listInterfacesCallback, proxy, method, args)
                 }
             }))
-        val p2pInfo = ifaces!!.first { it != null && type.getInt(it) == IfaceType.P2P }
+        val p2pInfo = ifaces!!.firstOrNull { it != null && type.getInt(it) == IfaceType.P2P }
+            ?: throw P2pInterfaceUnavailableException()
         val p2pName = name[p2pInfo]
         var iface: IHwInterface? = null
         getInterface(supplicant, p2pInfo, Proxy.newProxyInstance(classLoader, arrayOf(getInterfaceCallback),
