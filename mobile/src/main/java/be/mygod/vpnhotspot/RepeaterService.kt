@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.wifi.supplicant.KeyMgmtMask
+import android.hardware.wifi.supplicant.SupplicantStatusCode
 import android.net.MacAddress
 import android.net.wifi.OuiKeyedData
 import android.net.wifi.ScanResult
@@ -17,6 +18,7 @@ import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Looper
+import android.os.ServiceSpecificException
 import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
@@ -47,6 +49,7 @@ import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
+import be.mygod.vpnhotspot.util.getRootCause
 import be.mygod.vpnhotspot.util.intentFilter
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -572,11 +575,16 @@ class RepeaterService : Service(), CoroutineScope {
                         try {
                             createFrameworkGroup(channel, null) // possibly HIDL <1.2, start default group instead
                         } catch (fallback: StartFailure) {
-                            if (!expected) {
+                            // The reproduced AIDL path reports this mode conflict as generic FAILURE_UNKNOWN; require
+                            // the framework's independent BUSY result so unrelated generic failures remain reportable.
+                            val incompatibleMode = fallback.reason == WifiP2pManager.BUSY && (expected ||
+                                    (e.getRootCause() as? ServiceSpecificException)?.errorCode ==
+                                    SupplicantStatusCode.FAILURE_UNKNOWN)
+                            if (incompatibleMode) {
+                                Timber.i("Supplicant group creation unavailable; framework fallback rejected as busy")
+                            } else if (!expected) {
                                 e.addSuppressed(fallback)
                                 Timber.w(e)
-                            } else if (fallback.reason == WifiP2pManager.BUSY) {
-                                Timber.i("Supplicant group creation unavailable; framework fallback rejected as busy")
                             } else {
                                 fallback.addSuppressed(e)
                                 Timber.w(fallback)

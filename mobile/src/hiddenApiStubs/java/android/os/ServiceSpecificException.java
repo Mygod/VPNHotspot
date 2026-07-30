@@ -1,7 +1,8 @@
 package android.os;
 
 /**
- * Compile-only system API used to preserve Binder service status in per-event Crashlytics keys.
+ * Compile-only system API used to preserve Binder service status in per-event Crashlytics keys and to classify
+ * narrowly expected service failures.
  *
  * <p>Descriptor: {@code Landroid/os/ServiceSpecificException;->errorCode:I,sdk,system-api,test-api}</p>
  *
