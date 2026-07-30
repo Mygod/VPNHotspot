@@ -22,6 +22,7 @@ import be.mygod.vpnhotspot.util.RangeInput
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.toRegionalIndicatorFlagOrNull
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.emitAll
 import timber.log.Timber
@@ -56,7 +57,10 @@ internal fun rememberSoftApRuntimeInfo(target: ApConfigurationTarget): State<Sof
                     } else throw e
                 }
             } else WifiApCommands.softApCallbackFlow(expensive = true)
-            events.catch { e -> Timber.w(e) }.collect { event ->
+            events.catch { e ->
+                if (e is CancellationException) throw e
+                Timber.w(e)
+            }.collect { event ->
                 when (event) {
                     is WifiApManager.Event.OnCapabilityChanged -> {
                         currentCapability = event.capability

@@ -4,6 +4,7 @@ use std::io;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use rtnetlink::MulticastGroup;
 use tokio::sync::{Mutex, Notify};
 use tokio::task::JoinHandle;
 use tokio::time::{sleep_until, Instant as TokioInstant};
@@ -28,8 +29,24 @@ mod tproxy;
 mod udp;
 
 pub(crate) use icmp::Dispatcher as IcmpDispatcher;
+use udp::ReplySocketPool;
 
 const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
+
+#[derive(Clone)]
+pub(crate) struct ProcessResources {
+    icmp: IcmpDispatcher,
+    reply_sockets: Arc<ReplySocketPool>,
+}
+
+impl ProcessResources {
+    pub(crate) fn new(reply_mark: u32) -> Self {
+        Self {
+            icmp: IcmpDispatcher::new(),
+            reply_sockets: Arc::new(ReplySocketPool::new(reply_mark)),
+        }
+    }
+}
 
 async fn sleep_until_deadline(deadline: Option<Instant>) {
     if let Some(deadline) = deadline {
@@ -45,10 +62,10 @@ pub(crate) struct Runtime {
     shared: Arc<Mutex<SessionConfig>>,
     stop: CancellationToken,
     dns: dns::CounterSink,
+    resources: ProcessResources,
     clients: HashMap<[u8; 6], ClientRuntime>,
     counters: Nat66Counters,
     cleanup_prefixes: Vec<Ipv6Inet>,
-    netlink: netlink::Handle,
     config_changed: Arc<Notify>,
     ra_task: Option<JoinHandle<()>>,
     _icmp_registration: Option<icmp::Registration>,
@@ -71,12 +88,11 @@ impl Runtime {
         shared: Arc<Mutex<SessionConfig>>,
         stop: CancellationToken,
         dns: dns::CounterSink,
-        netlink: &netlink::Runtime,
-        icmp: &IcmpDispatcher,
+        netlink: &mut netlink::RequestConnection,
+        resources: ProcessResources,
     ) -> Option<Self> {
         config.ipv6_nat.as_ref()?;
         let config_changed = Arc::new(Notify::new());
-        let netlink_handle = netlink.handle();
         let mut runtime = Self {
             call_id,
             ports: Ipv6NatPorts {
@@ -86,15 +102,15 @@ impl Runtime {
             shared: shared.clone(),
             stop,
             dns,
+            resources,
             clients: HashMap::new(),
             counters: Nat66Counters::default(),
             cleanup_prefixes: Vec::new(),
-            netlink: netlink_handle,
             config_changed: config_changed.clone(),
             ra_task: None,
             _icmp_registration: None,
         };
-        runtime.replace_clients(config, icmp);
+        runtime.replace_clients(config);
         if !runtime
             .ports
             .clients
@@ -103,13 +119,10 @@ impl Runtime {
         {
             return None;
         }
-        let icmp_registration = match icmp
-            .register(
-                config,
-                shared.clone(),
-                runtime.counters.clone(),
-                &runtime.netlink,
-            )
+        let icmp_registration = match runtime
+            .resources
+            .icmp
+            .register(config, shared.clone(), runtime.counters.clone(), netlink)
             .await
         {
             Ok(registration) => Some(registration),
@@ -135,14 +148,17 @@ impl Runtime {
         };
         runtime.ports.icmp_echo = icmp_registration.is_some();
         runtime._icmp_registration = icmp_registration;
-        runtime.ra_task = match ra::spawn_loop(
-            shared.clone(),
-            config_changed.clone(),
-            netlink.ipv6_address_changed(),
-            runtime.netlink.clone(),
-            runtime.stop.clone(),
-            config,
-        ) {
+        runtime.ra_task = match netlink::EventConnection::new(&[MulticastGroup::Ipv6Ifaddr])
+            .and_then(|events| {
+                ra::spawn_loop(
+                    shared.clone(),
+                    config_changed.clone(),
+                    events,
+                    netlink::RequestConnection::new()?,
+                    runtime.stop.clone(),
+                    config,
+                )
+            }) {
             Ok(task) => Some(task),
             Err(e) => {
                 report::report_for(
@@ -159,7 +175,7 @@ impl Runtime {
         Some(runtime)
     }
 
-    pub(crate) fn replace_clients(&mut self, config: &SessionConfig, icmp: &IcmpDispatcher) {
+    pub(crate) fn replace_clients(&mut self, config: &SessionConfig) {
         let mut next_macs = Vec::new();
         if config.ipv6_nat.is_some() {
             for client in &config.clients {
@@ -191,7 +207,7 @@ impl Runtime {
                 None
             };
             let udp = if needs_udp {
-                self.start_udp(config, mac, icmp)
+                self.start_udp(config, mac)
             } else {
                 None
             };
@@ -285,12 +301,7 @@ impl Runtime {
         }
     }
 
-    fn start_udp(
-        &self,
-        config: &SessionConfig,
-        mac: [u8; 6],
-        icmp: &IcmpDispatcher,
-    ) -> Option<ClientListenerRuntime> {
+    fn start_udp(&self, config: &SessionConfig, mac: [u8; 6]) -> Option<ClientListenerRuntime> {
         let stop = self.stop.child_token();
         match tproxy::create_udp_listener(config.reply_mark).and_then(|listener| {
             let port = listener.local_addr()?.port();
@@ -298,7 +309,7 @@ impl Runtime {
                 listener,
                 self.shared.clone(),
                 stop.clone(),
-                icmp.clone(),
+                self.resources.clone(),
                 self.counters.clone(),
                 self.dns.clone(),
                 mac,
@@ -403,12 +414,16 @@ impl Runtime {
         }
     }
 
-    pub(crate) async fn stop(self, snapshot: &SessionConfig, withdraw_cleanup: bool) {
+    pub(crate) async fn stop(
+        self,
+        netlink: &mut netlink::RequestConnection,
+        snapshot: &SessionConfig,
+        withdraw_cleanup: bool,
+    ) {
         let Self {
             stop,
             clients,
             cleanup_prefixes,
-            netlink,
             ra_task,
             _icmp_registration,
             ..
@@ -432,7 +447,7 @@ impl Runtime {
             Vec::new()
         };
         prefixes.push(ipv6_nat.gateway);
-        ra::withdraw_prefixes_once(&netlink, snapshot, &prefixes, false).await;
+        ra::withdraw_prefixes_once(netlink, snapshot, &prefixes, false).await;
     }
 }
 

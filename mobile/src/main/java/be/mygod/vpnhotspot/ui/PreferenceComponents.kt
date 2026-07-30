@@ -2,6 +2,7 @@ package be.mygod.vpnhotspot.ui
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.ScrollIndicatorState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -47,8 +48,8 @@ import androidx.compose.material3.TooltipAnchorPosition
 import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.nonInteractiveScrollbar
 import androidx.compose.material3.rememberTooltipState
-import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -109,6 +110,14 @@ fun rememberDialogFocusRequester(enabled: Boolean = true): FocusRequester {
 }
 
 @Composable
+fun Modifier.nonInteractiveVerticalScrollbar(state: ScrollIndicatorState?) = state?.let {
+    nonInteractiveScrollbar(
+        state = it,
+        orientation = Orientation.Vertical,
+    )
+} ?: this
+
+@Composable
 fun SettingsList(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(vertical = 8.dp),
@@ -119,11 +128,7 @@ fun SettingsList(
         state = state,
         modifier = modifier
             .fillMaxSize()
-            .scrollbar(
-                state = state.scrollIndicatorState,
-                orientation = Orientation.Vertical,
-                isFadeEnabled = false,
-            ),
+            .nonInteractiveVerticalScrollbar(state.scrollIndicatorState),
         contentPadding = contentPadding,
         content = content,
     )
@@ -241,18 +246,31 @@ fun PreferenceRow(
     onClick: (() -> Unit)? = null,
 ) {
     val position = LocalPreferenceRowPosition.current
-    SegmentedListItem(
-        onClick = onClick ?: {},
-        shapes = preferenceRowShapes(position),
-        modifier = modifier.fillMaxWidth(),
-        enabled = enabled,
-        leadingContent = iconContent,
-        trailingContent = trailing,
-        supportingContent = summaryContent ?: summary?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
-        verticalAlignment = Alignment.CenterVertically,
-        colors = preferenceRowColors(position),
-    ) {
-        titleContent()
+    if (onClick == null) {
+        SegmentedListItem(
+            shapes = preferenceRowShapes(position),
+            modifier = modifier.fillMaxWidth(),
+            enabled = enabled,
+            leadingContent = iconContent,
+            trailingContent = trailing,
+            supportingContent = summaryContent ?: summary?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
+            verticalAlignment = Alignment.CenterVertically,
+            colors = preferenceRowColors(position),
+            content = titleContent,
+        )
+    } else {
+        SegmentedListItem(
+            onClick = onClick,
+            shapes = preferenceRowShapes(position),
+            modifier = modifier.fillMaxWidth(),
+            enabled = enabled,
+            leadingContent = iconContent,
+            trailingContent = trailing,
+            supportingContent = summaryContent ?: summary?.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
+            verticalAlignment = Alignment.CenterVertically,
+            colors = preferenceRowColors(position),
+            content = titleContent,
+        )
     }
 }
 
@@ -479,11 +497,7 @@ fun PreferenceSelectionSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f, fill = false)
-                .scrollbar(
-                    state = state.scrollIndicatorState,
-                    orientation = Orientation.Vertical,
-                    isFadeEnabled = false,
-                ),
+                .nonInteractiveVerticalScrollbar(state.scrollIndicatorState),
             contentPadding = modalBottomSheetListContentPadding(),
             verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
         ) {

@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::io;
 use std::net::IpAddr;
 
-use futures_util::{pin_mut, TryStreamExt};
 use rtnetlink::packet_route::{address::AddressAttribute, AddressFamily};
 
 use crate::{netlink, report};
@@ -19,10 +18,10 @@ use super::netlink_commands::{
 };
 
 pub(crate) async fn replace_static_addresses(
-    handle: &netlink::Handle,
+    connection: &mut netlink::RequestConnection,
     command: &ReplaceStaticAddressesCommand,
 ) -> io::Result<()> {
-    let index = netlink::link_index(handle, &command.dev)
+    let index = netlink::link_index(connection, &command.dev)
         .await
         .with_report_context_details(
             "routing.static_addresses.link_index",
@@ -41,29 +40,20 @@ pub(crate) async fn replace_static_addresses(
             prefix_len,
             interface: command.dev.clone(),
         };
-        match apply_address_command_with_index(handle, &address_command, index).await {
+        match apply_address_command_with_index(connection, &address_command, index).await {
             Ok(()) => {}
             Err(e) if error_errno(&e) == Some(libc::EEXIST) => {}
             Err(e) => return Err(e),
         }
     }
-    let _dump = handle.lock_dump().await;
-    let addresses = handle
-        .raw()
-        .address()
-        .get()
-        .set_link_index_filter(index)
-        .execute();
-    pin_mut!(addresses);
-    while let Some(message) = addresses
-        .try_next()
+    let addresses = connection
+        .dump_addresses(index)
         .await
-        .map_err(netlink::to_io_error)
         .with_report_context_details(
             "routing.static_addresses.dump",
             [("dev", command.dev.clone())],
-        )?
-    {
+        )?;
+    for message in addresses {
         let mut address = None;
         for attribute in &message.attributes {
             match attribute {
@@ -90,7 +80,7 @@ pub(crate) async fn replace_static_addresses(
             prefix_len,
             interface: command.dev.clone(),
         };
-        match apply_address_command_with_index(handle, &address_command, index).await {
+        match apply_address_command_with_index(connection, &address_command, index).await {
             Ok(()) => {}
             Err(e) if is_missing_address(&e) => {}
             Err(e) => return Err(e),
@@ -100,11 +90,11 @@ pub(crate) async fn replace_static_addresses(
 }
 
 pub(super) async fn clean_ip(
-    handle: &netlink::Handle,
+    connection: &mut netlink::RequestConnection,
     command: &CleanRoutingCommand,
 ) -> io::Result<()> {
-    flush_routes(handle, AddressFamily::Inet6, DAEMON_TABLE).await?;
-    for interface in netlink::link_names(handle).await?.into_values() {
+    flush_routes(connection, AddressFamily::Inet6, DAEMON_TABLE).await?;
+    for interface in netlink::link_names(connection).await?.into_values() {
         let prefix = ipv6_nat_prefix(&command.ipv6_nat_prefix_seed, &interface);
         let gateway = ipv6_nat_gateway(prefix);
         let address = IpAddressCommand {
@@ -113,7 +103,7 @@ pub(super) async fn clean_ip(
             prefix_len: gateway.network_length(),
             interface: interface.clone(),
         };
-        if let Err(e) = apply_address_command(handle, &address).await {
+        if let Err(e) = apply_address_command(connection, &address).await {
             if !is_missing_address(&e) {
                 report::io_with_details("routing.clean_ip.address", e, address_details(&address));
             }
@@ -126,7 +116,7 @@ pub(super) async fn clean_ip(
             interface,
             table: ANDROID_ROUTE_TABLE_LOCAL_NETWORK,
         };
-        if let Err(e) = apply_route_command(handle, &route).await {
+        if let Err(e) = apply_route_command(connection, &route).await {
             if !is_missing(&e) {
                 report::io_with_details("routing.clean_ip.route", e, route_details(&route));
             }

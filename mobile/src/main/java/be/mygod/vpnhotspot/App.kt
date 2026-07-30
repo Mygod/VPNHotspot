@@ -12,6 +12,7 @@ import android.content.pm.ProviderInfo
 import android.content.res.Configuration
 import android.location.LocationManager
 import android.os.Build
+import android.os.ServiceSpecificException
 import android.os.StrictMode
 import android.os.SystemProperties
 import android.os.ext.SdkExtensions
@@ -30,12 +31,14 @@ import be.mygod.vpnhotspot.util.CrashlyticsKeyProvider
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.getRootCause
 import be.mygod.vpnhotspot.util.privateLookup
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.gms.dynamite.DynamiteModule
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.analytics.ParametersBuilder
 import com.google.firebase.analytics.logEvent
+import com.google.firebase.crashlytics.CustomKeysAndValues
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.provider.FirebaseInitProvider
 import kotlinx.coroutines.DEBUG_PROPERTY_NAME
@@ -104,6 +107,11 @@ class App : Application() {
                     if (priority >= Log.WARN || priority == Log.DEBUG) Log.println(priority, tag, message)
                     if (priority >= Log.INFO && t !is NoShellException) {
                         val crashlyticsKeys = (t as? CrashlyticsKeyProvider)?.crashlyticsKeys
+                            ?: (t.getRootCause() as? ServiceSpecificException)?.let {
+                                CustomKeysAndValues.Builder()
+                                    .putInt("android.serviceSpecific.errorCode", it.errorCode)
+                                    .build()
+                            }
                         if (crashlyticsKeys == null) FirebaseCrashlytics.getInstance().recordException(t)
                         else FirebaseCrashlytics.getInstance().recordException(t, crashlyticsKeys)
                     }

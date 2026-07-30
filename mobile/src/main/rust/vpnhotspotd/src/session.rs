@@ -1,6 +1,7 @@
 use std::io;
 use std::sync::Arc;
 
+use rtnetlink::MulticastGroup;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
@@ -10,14 +11,14 @@ use vpnhotspotd::shared::model::{
     has_client_scoped_ipv6_nat_demand, should_disable_uncommitted_ipv6_nat, Ipv6NatPorts,
     SessionConfig, SessionPorts,
 };
+use vpnhotspotd::shared::protocol::IoResultReportExt;
 
 pub(crate) struct Session {
     call_id: u64,
     config: Arc<Mutex<SessionConfig>>,
     dns: dns::Runtime,
     nat66: Option<nat66::Runtime>,
-    icmp: nat66::IcmpDispatcher,
-    netlink: Arc<netlink::Runtime>,
+    nat66_resources: nat66::ProcessResources,
     routing: routing::Runtime,
     downstream_ipv4: DownstreamIpv4,
     stop: CancellationToken,
@@ -27,18 +28,23 @@ impl Session {
     pub(crate) async fn start(
         call_id: u64,
         mut config: SessionConfig,
-        netlink: Arc<netlink::Runtime>,
-        icmp: &nat66::IcmpDispatcher,
+        nat66_resources: nat66::ProcessResources,
         cancel: &CancellationToken,
     ) -> io::Result<Self> {
         let stop = CancellationToken::new();
+        let mut downstream_events =
+            netlink::EventConnection::new(&[MulticastGroup::Link, MulticastGroup::Ipv4Ifaddr])
+                .with_report_context("session.downstream_ipv4.events")?;
+        let mut routing_netlink = netlink::RequestConnection::new()
+            .with_report_context("session.downstream_ipv4.netlink")?;
         let downstream_ipv4 = downstream::wait_ipv4(
-            &netlink.handle(),
-            netlink.ipv4_address_changed(),
+            &mut routing_netlink,
+            &mut downstream_events,
             &config.downstream,
             cancel,
         )
         .await?;
+        drop(downstream_events);
         let shared = Arc::new(Mutex::new(config.clone()));
         let mut dns = dns::Runtime::start(
             call_id,
@@ -54,8 +60,8 @@ impl Session {
             shared.clone(),
             stop.child_token(),
             dns.counter_sink(),
-            &netlink,
-            icmp,
+            &mut routing_netlink,
+            nat66_resources.clone(),
         )
         .await;
         if nat66.is_none() && has_client_scoped_ipv6_nat_demand(&config) {
@@ -71,7 +77,7 @@ impl Session {
             &config,
             downstream_ipv4,
             candidate_ports,
-            netlink.handle(),
+            routing_netlink,
         )
         .await;
         dns.retain_ports(&committed_ports.dns);
@@ -88,7 +94,9 @@ impl Session {
                 .await?;
             dns.retain_ports(&committed_ports.dns);
             if let Some(nat66) = nat66.take() {
-                nat66.stop(&previous, true).await;
+                nat66
+                    .stop(routing.request_connection(), &previous, true)
+                    .await;
             }
         }
         Ok(Self {
@@ -96,8 +104,7 @@ impl Session {
             config: shared,
             dns,
             nat66,
-            icmp: icmp.clone(),
-            netlink,
+            nat66_resources,
             routing,
             downstream_ipv4,
             stop,
@@ -117,8 +124,8 @@ impl Session {
                     self.config.clone(),
                     self.stop.child_token(),
                     self.dns.counter_sink(),
-                    &self.netlink,
-                    &self.icmp,
+                    self.routing.request_connection(),
+                    self.nat66_resources.clone(),
                 )
                 .await;
             }
@@ -132,7 +139,7 @@ impl Session {
             let mut current = self.config.lock().await;
             self.dns.replace_clients(&config);
             if let Some(nat66) = self.nat66.as_mut() {
-                nat66.replace_clients(&config, &self.icmp);
+                nat66.replace_clients(&config);
             }
             let candidate_ports = SessionPorts {
                 dns: self.dns.ports(),
@@ -147,7 +154,7 @@ impl Session {
                 Err(e) => {
                     self.dns.replace_clients(&current);
                     if let Some(nat66) = self.nat66.as_mut() {
-                        nat66.replace_clients(&current, &self.icmp);
+                        nat66.replace_clients(&current);
                     }
                     return Err(e);
                 }
@@ -182,7 +189,9 @@ impl Session {
             *current = config;
         }
         if let (Some(nat66), Some(snapshot)) = (nat66_to_stop, nat66_stop_snapshot) {
-            nat66.stop(&snapshot, true).await;
+            nat66
+                .stop(self.routing.request_connection(), &snapshot, true)
+                .await;
         }
         if let Some(nat66) = self.nat66.as_ref() {
             nat66.notify_config_changed();
@@ -204,12 +213,18 @@ impl Session {
         counters
     }
 
-    pub(crate) async fn stop(self, withdraw_cleanup: bool) {
+    pub(crate) async fn stop(mut self, withdraw_cleanup: bool) {
         let snapshot = self.config.lock().await.clone();
         self.stop.cancel();
-        self.routing.stop().await;
+        self.routing.drain_applied().await;
         if let Some(nat66) = self.nat66 {
-            nat66.stop(&snapshot, withdraw_cleanup).await;
+            nat66
+                .stop(
+                    self.routing.request_connection(),
+                    &snapshot,
+                    withdraw_cleanup,
+                )
+                .await;
         }
     }
 }

@@ -50,8 +50,8 @@ suspend fun loadSystemApConfiguration(snackbarHostState: SnackbarHostState): ApC
                     ?: SoftApConfigurationCompat()
             } else RootManager.use { it.execute(WifiApCommands.GetConfiguration()) }.toCompat()
             ApConfigurationSession(config, ApConfigurationTarget.System)
-        } catch (_: CancellationException) {
-            null
+        } catch (e: CancellationException) {
+            throw e
         } catch (eRoot: Exception) {
             eRoot.addSuppressed(e)
             if (Build.VERSION.SDK_INT >= 30 || eRoot.getRootCause() !is SecurityException) Timber.w(eRoot)
@@ -83,8 +83,7 @@ suspend fun applySystemApConfiguration(
             try {
                 if (RootManager.use { it.execute(WifiApCommands.SetConfigurationLegacy(wc)) }.value) return true
             } catch (eCancel: CancellationException) {
-                snackbarHostState.showLongSnackbar(eCancel.readableMessage)
-                return false
+                throw eCancel
             } catch (eRoot: Exception) {
                 eRoot.addSuppressed(e)
                 Timber.w(eRoot)
@@ -106,8 +105,7 @@ suspend fun applySystemApConfiguration(
             try {
                 if (RootManager.use { it.execute(WifiApCommands.SetConfiguration(platform)) }.value) return true
             } catch (eCancel: CancellationException) {
-                snackbarHostState.showLongSnackbar(eCancel.readableMessage)
-                return false
+                throw eCancel
             } catch (eRoot: Exception) {
                 eRoot.addSuppressed(e)
                 Timber.w(eRoot)
@@ -127,7 +125,10 @@ suspend fun loadRepeaterApConfiguration(binder: RepeaterService.Binder?): ApConf
         ssid = adopted?.let { WifiSsidCompat.fromUtf8Text(it.networkName) } ?: RepeaterService.networkName,
         passphrase = adopted?.passphrase ?: RepeaterService.passphrase,
         securityType = if (adopted != null && Build.VERSION.SDK_INT >= 36) {
-            adopted.securityType + SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
+            (if (adopted.securityType == WifiP2pGroup.SECURITY_TYPE_UNKNOWN) {
+                Timber.w("Unknown Wi-Fi P2P group security type, using legacy-only PCC mode")
+                WifiP2pGroup.SECURITY_TYPE_WPA2_PSK
+            } else adopted.securityType) + SoftApConfiguration.SECURITY_TYPE_WPA2_PSK
         } else RepeaterService.securityType,
         isAutoShutdownEnabled = RepeaterService.isAutoShutdownEnabled,
         shutdownTimeoutMillis = RepeaterService.shutdownTimeoutMillis,

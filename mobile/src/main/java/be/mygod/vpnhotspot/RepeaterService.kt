@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.hardware.wifi.supplicant.KeyMgmtMask
+import android.hardware.wifi.supplicant.SupplicantStatusCode
 import android.net.MacAddress
 import android.net.wifi.OuiKeyedData
 import android.net.wifi.ScanResult
@@ -17,6 +18,7 @@ import android.net.wifi.p2p.WifiP2pInfo
 import android.net.wifi.p2p.WifiP2pManager
 import android.os.Build
 import android.os.Looper
+import android.os.ServiceSpecificException
 import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
@@ -47,6 +49,7 @@ import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.broadcastReceiver
 import be.mygod.vpnhotspot.util.ensureReceiverUnregistered
+import be.mygod.vpnhotspot.util.getRootCause
 import be.mygod.vpnhotspot.util.intentFilter
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -160,7 +163,10 @@ class RepeaterService : Service(), CoroutineScope {
         @get:RequiresApi(36)
         @set:RequiresApi(36)
         var pccModeConnectionType: Int
-            get() = app.pref.getInt(KEY_PCC_MODE_CONNECTION_TYPE, WifiP2pConfig.PCC_MODE_CONNECTION_TYPE_LEGACY_ONLY)
+            get() = app.pref.getInt(KEY_PCC_MODE_CONNECTION_TYPE,
+                WifiP2pConfig.PCC_MODE_CONNECTION_TYPE_LEGACY_ONLY).let {
+                if (it == WifiP2pGroup.SECURITY_TYPE_UNKNOWN) WifiP2pConfig.PCC_MODE_CONNECTION_TYPE_LEGACY_ONLY else it
+            }
             set(value) = app.pref.edit { putInt(KEY_PCC_MODE_CONNECTION_TYPE, value) }
         var securityType: Int
             get() = if (Build.VERSION.SDK_INT >= 36) {
@@ -266,7 +272,11 @@ class RepeaterService : Service(), CoroutineScope {
     }
 
     /** Carries a user-facing start failure out of [runLifespan]. */
-    private class StartFailure(message: String, val showWifiEnable: Boolean = false) : Exception(message)
+    private class StartFailure(
+        message: String,
+        val reason: Int? = null,
+        val showWifiEnable: Boolean = false,
+    ) : Exception(message)
 
     private val p2pManager get() = Services.p2p!!
     private var channel: WifiP2pManager.Channel? = null
@@ -510,7 +520,12 @@ class RepeaterService : Service(), CoroutineScope {
                     ready.await().also { group ->
                         networkName = WifiSsidCompat.fromUtf8Text(group.networkName)
                         passphrase = group.passphrase
-                        if (Build.VERSION.SDK_INT >= 36) pccModeConnectionType = group.securityType
+                        if (Build.VERSION.SDK_INT >= 36) {
+                            pccModeConnectionType = if (group.securityType == WifiP2pGroup.SECURITY_TYPE_UNKNOWN) {
+                                Timber.w("Unknown Wi-Fi P2P group security type, using legacy-only PCC mode")
+                                WifiP2pConfig.PCC_MODE_CONNECTION_TYPE_LEGACY_ONLY
+                            } else group.securityType
+                        }
                     }
                 }
                 useFramework -> {
@@ -540,7 +555,7 @@ class RepeaterService : Service(), CoroutineScope {
                 else -> {
                     try {
                         p2pManager.requestPersistentGroupInfo(channel)
-                        RootManager.use {
+                        when (val result = RootManager.use {
                             it.execute(RepeaterCommands.AddPersistentGroupWithConfig(ssid.bytes, psk,
                                 when (val oc = operatingChannel) {
                                     0 -> when (operatingBand) {
@@ -562,17 +577,48 @@ class RepeaterService : Service(), CoroutineScope {
                                         vendorData = data.data
                                     }
                                 }.toTypedArray()))
-                        }?.let {
-                            val macRandomizationError = it.unwrap()
-                            Timber.w(macRandomizationError)
-                            SmartSnackbar.make(macRandomizationError).show()
+                        }) {
+                            is RepeaterCommands.MacRandomizationResult.Applied -> Unit
+                            is RepeaterCommands.MacRandomizationResult.Unsupported -> if (result.enableRequested) {
+                                SmartSnackbar.make(R.string.softap_start_failure_unsupported_configuration).show()
+                            }
+                            is RepeaterCommands.MacRandomizationResult.Failure -> {
+                                val error = result.error.unwrap()
+                                Timber.w(error)
+                                SmartSnackbar.make(error).show()
+                            }
                         }
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        if (e.cause !is SupplicantP2pIface.Hidl12UnsupportedException) Timber.w(e)
+                        val expected = e.cause is SupplicantP2pIface.Hidl12UnsupportedException ||
+                                e.cause is SupplicantP2pIface.P2pInterfaceUnavailableException
+                        try {
+                            createFrameworkGroup(channel, null) // possibly HIDL <1.2, start default group instead
+                        } catch (fallback: StartFailure) {
+                            // The reproduced AIDL path reports this mode conflict as generic FAILURE_UNKNOWN; require
+                            // the framework's independent BUSY result so unrelated generic failures remain reportable.
+                            val incompatibleMode = fallback.reason == WifiP2pManager.BUSY && (expected ||
+                                    (e.getRootCause() as? ServiceSpecificException)?.errorCode ==
+                                    SupplicantStatusCode.FAILURE_UNKNOWN)
+                            if (incompatibleMode) {
+                                Timber.i("Supplicant group creation unavailable; framework fallback rejected as busy")
+                            } else if (!expected) {
+                                e.addSuppressed(fallback)
+                                Timber.w(e)
+                            } else {
+                                fallback.addSuppressed(e)
+                                Timber.w(fallback)
+                            }
+                            throw fallback
+                        } catch (fallback: CancellationException) {
+                            throw fallback
+                        } catch (fallback: Exception) {
+                            fallback.addSuppressed(e)
+                            throw fallback
+                        }
+                        if (!expected) Timber.w(e)
                         SmartSnackbar.make(e).show()
-                        createFrameworkGroup(channel, null) // possibly HIDL <1.2, start default group instead
                     }
                     ready.await()
                 }
@@ -586,7 +632,7 @@ class RepeaterService : Service(), CoroutineScope {
     private suspend fun createFrameworkGroup(channel: WifiP2pManager.Channel, config: WifiP2pConfig?) {
         val reason = if (config == null) p2pManager.createGroup(channel) else p2pManager.createGroup(channel, config)
         if (reason != null) throw StartFailure(formatReason(R.string.repeater_create_group_failure, reason),
-                showWifiEnable = reason == WifiP2pManager.BUSY)
+                reason = reason, showWifiEnable = reason == WifiP2pManager.BUSY)
     }
 
     /**

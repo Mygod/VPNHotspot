@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.ui.apconfiguration
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,7 +18,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldLabelPosition
-import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +38,7 @@ import be.mygod.vpnhotspot.ui.DialogDismissButton
 import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.PreferenceSplitSwitch
 import be.mygod.vpnhotspot.ui.PreferenceSwitch
+import be.mygod.vpnhotspot.ui.nonInteractiveVerticalScrollbar
 import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
 import be.mygod.vpnhotspot.ui.rememberPreferenceSplitFocusModifiers
 
@@ -130,11 +129,7 @@ fun TextSwitchApRow(
                             .focusRequester(focusRequester)
                             .then(
                                 if (multiline) {
-                                    Modifier.scrollbar(
-                                        state = scrollState.scrollIndicatorState,
-                                        orientation = Orientation.Vertical,
-                                        isFadeEnabled = false,
-                                    )
+                                    Modifier.nonInteractiveVerticalScrollbar(scrollState.scrollIndicatorState)
                                 } else Modifier
                             ),
                         enabled = fieldEnabled,

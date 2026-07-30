@@ -58,7 +58,7 @@ enum RoutingMutation {
 }
 
 impl RoutingMutation {
-    async fn apply(&self, handle: &netlink::Handle) -> io::Result<()> {
+    async fn apply(&self, connection: &mut netlink::RequestConnection) -> io::Result<()> {
         match self {
             Self::EnsureIptablesChain {
                 target,
@@ -72,7 +72,7 @@ impl RoutingMutation {
                 apply_iptables_batch(rule.target, rule.table, std::slice::from_ref(rule)).await
             }
             Self::IpForward { downstream } => add_ip_forward(downstream).await,
-            Self::Ip(command) => command.apply(handle).await,
+            Self::Ip(command) => command.apply(connection).await,
             Self::NetdNat {
                 downstream,
                 upstream,
@@ -83,12 +83,12 @@ impl RoutingMutation {
         }
     }
 
-    async fn delete(&self, handle: &netlink::Handle) -> bool {
+    async fn delete(&self, connection: &mut netlink::RequestConnection) -> bool {
         match self {
             Self::EnsureIptablesChain { .. } => true,
             Self::Iptables(rule) => rule.delete().await,
             Self::IpForward { downstream } => remove_ip_forward(downstream).await,
-            Self::Ip(command) => command.delete_result(handle).await,
+            Self::Ip(command) => command.delete_result(connection).await,
             // Revert is intentionally omitted because netd tracks forwarding state globally by
             // interface pair without ownership, so disabling here may tear down system-owned state.
             //
@@ -106,8 +106,8 @@ pub(crate) struct Runtime {
     ports: SessionPorts,
     downstream_ipv4: DownstreamIpv4,
     ipv6_nat_intercept_mode: Option<Ipv6NatInterceptMode>,
-    netlink: netlink::Handle,
     applied: Vec<RoutingMutation>,
+    connection: netlink::RequestConnection,
 }
 
 impl Runtime {
@@ -116,17 +116,18 @@ impl Runtime {
         config: &SessionConfig,
         downstream_ipv4: DownstreamIpv4,
         ports: SessionPorts,
-        netlink: netlink::Handle,
+        connection: netlink::RequestConnection,
     ) -> (Self, SessionPorts) {
         let mut runtime = Self {
             call_id,
             ports,
             downstream_ipv4,
             ipv6_nat_intercept_mode: None,
-            netlink,
             applied: Vec::new(),
+            connection,
         };
-        runtime.setup(config).await;
+        let desired = runtime.desired_mutations(config).await;
+        runtime.reconcile(desired).await;
         let committed = runtime.reconcile_committed_ports(config).await;
         (runtime, committed)
     }
@@ -152,21 +153,22 @@ impl Runtime {
         Ok(self.reconcile_committed_ports(next).await)
     }
 
-    pub(crate) async fn stop(mut self) {
-        self.drain_applied().await;
-    }
-
-    async fn setup(&mut self, config: &SessionConfig) {
-        let desired = self.desired_mutations(config).await;
-        self.reconcile(desired).await;
-    }
-
     async fn reconcile_committed_ports(&mut self, config: &SessionConfig) -> SessionPorts {
         let committed = self.committed_ports(config);
         self.ports = committed.clone();
         let desired = self.desired_mutations(config).await;
         self.reconcile(desired).await;
         committed
+    }
+
+    pub(crate) fn request_connection(&mut self) -> &mut netlink::RequestConnection {
+        &mut self.connection
+    }
+
+    pub(crate) async fn drain_applied(&mut self) {
+        while let Some(mutation) = self.applied.pop() {
+            mutation.delete(&mut self.connection).await;
+        }
     }
 
     async fn reset_changed_ipv4_counter_rules(
@@ -187,7 +189,9 @@ impl Runtime {
                 let mut index = self.applied.len();
                 while index > 0 {
                     index -= 1;
-                    if self.applied[index] == mutation && mutation.delete(&self.netlink).await {
+                    if self.applied[index] == mutation
+                        && mutation.delete(&mut self.connection).await
+                    {
                         self.applied.remove(index);
                     }
                 }
@@ -201,7 +205,7 @@ impl Runtime {
             index -= 1;
             if !desired.contains(&self.applied[index]) {
                 let mutation = self.applied[index].clone();
-                if mutation.delete(&self.netlink).await {
+                if mutation.delete(&mut self.connection).await {
                     self.applied.remove(index);
                 }
             }
@@ -221,7 +225,7 @@ impl Runtime {
                         }
                     }
                 }
-                _ => match mutation.apply(&self.netlink).await {
+                _ => match mutation.apply(&mut self.connection).await {
                     Ok(()) => {
                         if !matches!(mutation, RoutingMutation::EnsureIptablesChain { .. }) {
                             self.applied.push(mutation);
@@ -230,12 +234,6 @@ impl Runtime {
                     Err(e) => report::io("routing.apply", e),
                 },
             }
-        }
-    }
-
-    async fn drain_applied(&mut self) {
-        while let Some(mutation) = self.applied.pop() {
-            mutation.delete(&self.netlink).await;
         }
     }
 }
@@ -255,34 +253,34 @@ pub(crate) async fn delete_ipv6_nat_firewall_base() {
 }
 
 pub(crate) async fn clean(
-    handle: &netlink::Handle,
+    connection: &mut netlink::RequestConnection,
     command: &CleanRoutingCommand,
 ) -> io::Result<()> {
     delete_rule_repeated(
-        handle,
+        connection,
         IpFamily::Ipv6,
         rule_priority(RULE_PRIORITY_DAEMON_BASE),
     )
     .await?;
     delete_rule_repeated(
-        handle,
+        connection,
         IpFamily::Ipv4,
         rule_priority(RULE_PRIORITY_UPSTREAM_BASE),
     )
     .await?;
     delete_rule_repeated(
-        handle,
+        connection,
         IpFamily::Ipv4,
         rule_priority(RULE_PRIORITY_UPSTREAM_FALLBACK_BASE),
     )
     .await?;
     delete_rule_repeated(
-        handle,
+        connection,
         IpFamily::Ipv4,
         rule_priority(RULE_PRIORITY_UPSTREAM_DISABLE_SYSTEM_BASE),
     )
     .await?;
-    clean_ip(handle, command).await?;
+    clean_ip(connection, command).await?;
     firewall_cleanup::clean().await;
     Ok(())
 }

@@ -68,6 +68,16 @@ object RepeaterCommands {
     }
 
     @Parcelize
+    sealed class MacRandomizationResult : Parcelable {
+        @Parcelize
+        class Applied : MacRandomizationResult()
+        @Parcelize
+        data class Unsupported(val enableRequested: Boolean) : MacRandomizationResult()
+        @Parcelize
+        data class Failure(val error: ParcelableThrowable) : MacRandomizationResult()
+    }
+
+    @Parcelize
     class AddPersistentGroupWithConfig(
         private val ssid: ByteArray,
         private val passphrase: String,
@@ -75,8 +85,8 @@ object RepeaterCommands {
         private val keyMgmtMask: Int,
         private val randomizeMac: Boolean,
         private val vendorData: Array<OuiKeyedData>,
-    ) : RootCommand<ParcelableThrowable?> {
-        override suspend fun execute(): ParcelableThrowable? {
+    ) : RootCommand<MacRandomizationResult> {
+        override suspend fun execute(): MacRandomizationResult {
             val aidl = SupplicantAidl.instance
             val capability = SupplicantCapability(aidl?.interfaceVersion)
             if (!capability.aidlV3) {
@@ -92,11 +102,11 @@ object RepeaterCommands {
             }
             if (aidl == null) return SupplicantP2pIface.addGroup(ssid, passphrase, frequency, randomizeMac)
             val p2pIface = aidl.requireP2pInterface()
-            val macRandomizationError = try {   // best-effort, matching Framework mode's MAC randomization behaviour
+            val macRandomizationResult = try {   // best-effort, matching Framework mode's MAC randomization behaviour
                 p2pIface.setMacRandomization(randomizeMac)
-                null
+                MacRandomizationResult.Applied()
             } catch (e: Exception) {
-                e
+                MacRandomizationResult.Failure(ParcelableThrowable(e))
             }
             try {
                 if (p2pIface.interfaceVersion < 3) @Suppress("DEPRECATION") {
@@ -110,9 +120,11 @@ object RepeaterCommands {
                     it.keyMgmtMask = keyMgmtMask
                     if (vendorData.isNotEmpty()) it.vendorData = vendorData
                 })
-                return macRandomizationError?.let { ParcelableThrowable(it) }
+                return macRandomizationResult
             } catch (e: Throwable) {
-                macRandomizationError?.let { e.addSuppressed(it) }
+                (macRandomizationResult as? MacRandomizationResult.Failure)?.error?.unwrap()?.let {
+                    e.addSuppressed(it.cause ?: it)
+                }
                 throw e
             }
         }
@@ -120,7 +132,7 @@ object RepeaterCommands {
 
     private fun ISupplicant.requireP2pInterface() = listInterfaces().firstOrNull { it.type == IfaceType.P2P }?.let {
         getP2pInterface(it.name)
-    } ?: error("No framework-owned P2P supplicant interface")
+    } ?: throw SupplicantP2pIface.P2pInterfaceUnavailableException()
 
     private var channel: WifiP2pManager.Channel? = null
     private fun WifiP2pManager.obtainChannel(): WifiP2pManager.Channel {

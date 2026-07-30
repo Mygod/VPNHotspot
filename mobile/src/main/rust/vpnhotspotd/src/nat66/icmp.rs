@@ -92,7 +92,7 @@ impl Dispatcher {
         initial: &SessionConfig,
         config: Arc<Mutex<SessionConfig>>,
         counters: Nat66Counters,
-        netlink: &netlink::Handle,
+        netlink: &mut netlink::RequestConnection,
     ) -> io::Result<Registration> {
         if initial.ipv6_nat.is_none() {
             return Err(io::Error::new(

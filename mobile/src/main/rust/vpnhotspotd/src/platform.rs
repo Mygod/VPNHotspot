@@ -9,7 +9,7 @@ pub(crate) fn android_api_level() -> i32 {
 }
 
 pub(crate) fn kernel_release() -> io::Result<String> {
-    let mut uts = std::mem::MaybeUninit::<libc::utsname>::uninit();
+    let mut uts = std::mem::MaybeUninit::<libc::utsname>::zeroed();
     if unsafe { libc::uname(uts.as_mut_ptr()) } != 0 {
         return Err(io::Error::last_os_error());
     }

@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::io;
 use std::net::IpAddr;
 
-use futures_util::TryStreamExt;
 use rtnetlink::packet_route::{
     neighbour::{
         NeighbourAddress, NeighbourAttribute, NeighbourMessage,
@@ -10,26 +9,27 @@ use rtnetlink::packet_route::{
     },
     RouteNetlinkMessage,
 };
-use tokio::{select, spawn, task::JoinHandle};
+use rtnetlink::MulticastGroup;
+use tokio::select;
+use tokio_util::sync::CancellationToken;
 
 use crate::report::{ControllerSender, ControllerSenderExt};
 use crate::{netlink, report};
 use vpnhotspotd::shared::proto::daemon::{self, NeighbourState};
 use vpnhotspotd::shared::protocol::{
-    daemon_error_report_with_details, neighbour_monitor_update_frame,
+    daemon_error_report_with_details, neighbour_monitor_update_frame, IoResultReportExt,
 };
 
 const KNOWN_NEIGHBOUR_STATE_BITS: u16 = 0x01 | 0x02 | 0x04 | 0x08 | 0x10 | 0x20 | 0x40 | 0x80;
+const EVENT_GROUPS: [MulticastGroup; 2] = [MulticastGroup::Neigh, MulticastGroup::Link];
 
 pub(crate) async fn dump(
-    handle: &netlink::Handle,
+    handle: &mut netlink::RequestConnection,
     call_id: u64,
 ) -> io::Result<Vec<daemon::Neighbour>> {
     let interfaces = netlink::link_names(handle).await?;
-    let _dump = handle.lock_dump().await;
-    let mut messages = handle.raw().neighbours().get().execute();
     let mut neighbours = Vec::new();
-    while let Some(message) = messages.try_next().await.map_err(netlink::to_io_error)? {
+    for message in handle.dump_neighbours().await? {
         let interface = interface_name_from_map(&interfaces, message.header.ifindex);
         if let Some(neighbour) = neighbour_from_message(call_id, false, message, interface)
             .and_then(|delta| match delta.delta {
@@ -43,107 +43,74 @@ pub(crate) async fn dump(
     Ok(neighbours)
 }
 
-pub(crate) struct Monitor {
-    registration: netlink::NeighbourRegistration,
-    link_registration: netlink::LinkRegistration,
-    task: JoinHandle<()>,
+pub(crate) async fn run(
+    call_id: u64,
+    sender: ControllerSender,
+    cancel: &CancellationToken,
+) -> io::Result<()> {
+    let mut events = netlink::EventConnection::new(&EVENT_GROUPS)
+        .with_report_context("neighbour.events.netlink")?;
+    let mut request =
+        netlink::RequestConnection::new().with_report_context("neighbour.request.netlink")?;
+    let mut topology = netlink::bridge_topology(&mut request).await?;
+    send_update(
+        &sender,
+        call_id,
+        dump(&mut request, call_id)
+            .await?
+            .into_iter()
+            .map(|neighbour| daemon::NeighbourDelta {
+                delta: Some(daemon::neighbour_delta::Delta::Upsert(neighbour)),
+            }),
+        Some(topology.clone()),
+    )?;
+
+    loop {
+        let message = select! {
+            _ = cancel.cancelled() => return Ok(()),
+            event = events.next() => event.with_report_context("neighbour.events")?,
+        };
+        match message {
+            message @ (RouteNetlinkMessage::NewNeighbour(_)
+            | RouteNetlinkMessage::DelNeighbour(_)) => {
+                if let Some(delta) = neighbour_from_event(call_id, &mut request, message).await {
+                    send_update(&sender, call_id, std::iter::once(delta), None)?;
+                }
+            }
+            RouteNetlinkMessage::NewLink(_) | RouteNetlinkMessage::DelLink(_) => {
+                match netlink::bridge_topology(&mut request).await {
+                    Ok(next) if next != topology => {
+                        send_update(&sender, call_id, std::iter::empty(), Some(next.clone()))?;
+                        topology = next;
+                    }
+                    Ok(_) => {}
+                    Err(e) => report::io("neighbour.bridge_topology", e),
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
-impl Monitor {
-    pub(crate) async fn spawn(
-        call_id: u64,
-        netlink: &netlink::Runtime,
-        sender: ControllerSender,
-    ) -> io::Result<Self> {
-        let (registration, mut events) = netlink.register_neighbour_monitor()?;
-        let (link_registration, mut link_events) = netlink.register_link_monitor()?;
-        let handle = netlink.handle();
-        let mut topology = netlink::bridge_topology(&handle).await?;
-        let neighbours = dump(&handle, call_id).await?;
-        if !sender.send_frame(neighbour_monitor_update_frame(
-            call_id,
-            neighbours
-                .into_iter()
-                .map(|neighbour| daemon::NeighbourDelta {
-                    delta: Some(daemon::neighbour_delta::Delta::Upsert(neighbour)),
-                }),
-            Some(topology.clone()),
-        )) {
-            return Err(io::Error::new(
-                io::ErrorKind::BrokenPipe,
-                "controller disconnected",
-            ));
-        }
-        Ok(Self {
-            registration,
-            link_registration,
-            task: spawn(async move {
-                loop {
-                    select! {
-                        message = events.recv() => match message {
-                            Some(message) => {
-                                if let Some(delta) = neighbour_from_event(call_id, &handle, message).await {
-                                    if !sender
-                                        .send_frame(neighbour_monitor_update_frame(
-                                            call_id,
-                                            std::iter::once(delta),
-                                            None,
-                                        ))
-                                    {
-                                        report::stderr!(
-                                            "neighbour monitor frame send failed: controller disconnected"
-                                        );
-                                        break;
-                                    }
-                                }
-                            }
-                            None => break,
-                        },
-                        message = link_events.recv() => match message {
-                            Some(_) => match netlink::bridge_topology(&handle).await {
-                                Ok(next) if next != topology => {
-                                    if !sender
-                                        .send_frame(neighbour_monitor_update_frame(
-                                            call_id,
-                                            std::iter::empty::<daemon::NeighbourDelta>(),
-                                            Some(next.clone()),
-                                        ))
-                                    {
-                                        report::stderr!(
-                                            "neighbour monitor frame send failed: controller disconnected"
-                                        );
-                                        break;
-                                    }
-                                    topology = next;
-                                }
-                                Ok(_) => {}
-                                Err(e) => report::io("neighbour.bridge_topology", e),
-                            },
-                            None => break,
-                        }
-                    }
-                }
-            }),
-        })
-    }
-
-    pub(crate) async fn stop(self) {
-        let Self {
-            registration,
-            link_registration,
-            task,
-        } = self;
-        drop(registration);
-        drop(link_registration);
-        if let Err(e) = task.await {
-            report::message("neighbour.monitor_join", e.to_string(), "JoinError");
-        }
+fn send_update(
+    sender: &ControllerSender,
+    call_id: u64,
+    deltas: impl IntoIterator<Item = daemon::NeighbourDelta>,
+    topology: Option<daemon::LinkTopologySnapshot>,
+) -> io::Result<()> {
+    if sender.send_frame(neighbour_monitor_update_frame(call_id, deltas, topology)) {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "controller disconnected",
+        ))
     }
 }
 
 async fn neighbour_from_event(
     call_id: u64,
-    handle: &netlink::Handle,
+    handle: &mut netlink::RequestConnection,
     message: RouteNetlinkMessage,
 ) -> Option<daemon::NeighbourDelta> {
     let (deleting, message) = match message {

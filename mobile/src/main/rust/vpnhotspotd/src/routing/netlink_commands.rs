@@ -1,7 +1,6 @@
 use std::io;
 use std::net::IpAddr;
 
-use futures_util::{pin_mut, TryStreamExt};
 use rtnetlink::packet_route::{
     address::{AddressAttribute, AddressMessage},
     route::{
@@ -78,21 +77,24 @@ pub(super) enum IpCommand {
 }
 
 impl IpCommand {
-    pub(super) async fn apply(&self, handle: &netlink::Handle) -> io::Result<()> {
+    pub(super) async fn apply(
+        &self,
+        connection: &mut netlink::RequestConnection,
+    ) -> io::Result<()> {
         ignore_existing(match self {
-            Self::Rule(command) => apply_rule_command(handle, command).await,
-            Self::Route(command) => apply_route_command(handle, command).await,
-            Self::Address(command) => apply_address_command(handle, command).await,
+            Self::Rule(command) => apply_rule_command(connection, command).await,
+            Self::Route(command) => apply_route_command(connection, command).await,
+            Self::Address(command) => apply_address_command(connection, command).await,
         })
     }
 
-    pub(super) async fn delete_result(&self, handle: &netlink::Handle) -> bool {
+    pub(super) async fn delete_result(&self, connection: &mut netlink::RequestConnection) -> bool {
         match self {
             Self::Rule(command) => {
                 let mut command = command.clone();
                 command.operation = IpOperation::Delete;
                 report_delete_result(
-                    apply_rule_command(handle, &command).await,
+                    apply_rule_command(connection, &command).await,
                     is_missing,
                     "routing.delete_rule",
                     || rule_details(&command),
@@ -102,7 +104,7 @@ impl IpCommand {
                 let mut command = command.clone();
                 command.operation = IpOperation::Delete;
                 report_delete_result(
-                    apply_route_command(handle, &command).await,
+                    apply_route_command(connection, &command).await,
                     is_missing,
                     "routing.delete_route",
                     || route_details(&command),
@@ -112,7 +114,7 @@ impl IpCommand {
                 let mut command = command.clone();
                 command.operation = IpOperation::Delete;
                 report_delete_result(
-                    apply_address_command(handle, &command).await,
+                    apply_address_command(connection, &command).await,
                     is_missing_address,
                     "routing.delete_address",
                     || address_details(&command),
@@ -130,13 +132,13 @@ fn ignore_existing(result: io::Result<()>) -> io::Result<()> {
 }
 
 pub(super) async fn delete_rule_repeated(
-    handle: &netlink::Handle,
+    connection: &mut netlink::RequestConnection,
     family: IpFamily,
     priority: u32,
 ) -> io::Result<()> {
     loop {
         let result = apply_rule_command(
-            handle,
+            connection,
             &IpRuleCommand {
                 operation: IpOperation::Delete,
                 family,
@@ -179,104 +181,81 @@ where
 }
 
 pub(super) async fn apply_address_command(
-    handle: &netlink::Handle,
+    connection: &mut netlink::RequestConnection,
     command: &IpAddressCommand,
 ) -> io::Result<()> {
-    let index = netlink::link_index(handle, &command.interface)
+    let index = netlink::link_index(connection, &command.interface)
         .await
         .with_report_context_details("routing.address.link_index", address_details(command))?;
-    apply_address_command_with_index(handle, command, index).await
+    apply_address_command_with_index(connection, command, index).await
 }
 
 pub(super) async fn apply_address_command_with_index(
-    handle: &netlink::Handle,
+    connection: &mut netlink::RequestConnection,
     command: &IpAddressCommand,
     index: u32,
 ) -> io::Result<()> {
     match command.operation {
         IpOperation::Replace => {
-            let mut request = handle
-                .raw()
-                .address()
-                .add(index, command.address, command.prefix_len)
-                .replace();
-            *request.message_mut() = address_message(index, command.address, command.prefix_len);
-            request.execute().await
+            connection
+                .replace_address(
+                    index,
+                    command.address,
+                    command.prefix_len,
+                    address_message(index, command.address, command.prefix_len),
+                )
+                .await
         }
         IpOperation::Delete => {
-            handle
-                .raw()
-                .address()
-                .del(address_message(index, command.address, command.prefix_len))
-                .execute()
+            connection
+                .delete_address(address_message(index, command.address, command.prefix_len))
                 .await
         }
     }
-    .map_err(netlink::to_io_error)
     .with_report_context_details("routing.address", address_details(command))
 }
 
 pub(super) async fn apply_route_command(
-    handle: &netlink::Handle,
+    connection: &mut netlink::RequestConnection,
     command: &IpRouteCommand,
 ) -> io::Result<()> {
     let message = route_message(
         command,
-        netlink::link_index(handle, &command.interface)
+        netlink::link_index(connection, &command.interface)
             .await
             .with_report_context_details("routing.route.link_index", route_details(command))?,
     );
     match command.operation {
-        IpOperation::Replace => handle.raw().route().add(message).replace().execute().await,
-        IpOperation::Delete => handle.raw().route().del(message).execute().await,
+        IpOperation::Replace => connection.replace_route(message).await,
+        IpOperation::Delete => connection.delete_route(message).await,
     }
-    .map_err(netlink::to_io_error)
     .with_report_context_details("routing.route", route_details(command))
 }
 
 pub(super) async fn apply_rule_command(
-    handle: &netlink::Handle,
+    connection: &mut netlink::RequestConnection,
     command: &IpRuleCommand,
 ) -> io::Result<()> {
+    let message = rule_message(command)
+        .with_report_context_details("routing.rule.fill", rule_details(command))?;
     match command.operation {
-        IpOperation::Replace => {
-            let mut request = handle.raw().rule().add();
-            fill_rule_message(request.message_mut(), command)
-                .with_report_context_details("routing.rule.fill", rule_details(command))?;
-            request.execute().await
-        }
-        IpOperation::Delete => {
-            handle
-                .raw()
-                .rule()
-                .del(
-                    rule_message(command)
-                        .with_report_context_details("routing.rule.fill", rule_details(command))?,
-                )
-                .execute()
-                .await
-        }
+        IpOperation::Replace => connection.add_rule(message).await,
+        IpOperation::Delete => connection.delete_rule(message).await,
     }
-    .map_err(netlink::to_io_error)
     .with_report_context_details("routing.rule", rule_details(command))
 }
 
 pub(super) async fn flush_routes(
-    handle: &netlink::Handle,
+    connection: &mut netlink::RequestConnection,
     family: AddressFamily,
     table: u32,
 ) -> io::Result<()> {
-    let _dump = handle.lock_dump().await;
-    let routes = handle
-        .raw()
-        .route()
-        .get(route_dump_message(family, table))
-        .execute();
-    pin_mut!(routes);
-    while let Some(route) = routes.try_next().await.map_err(netlink::to_io_error)? {
+    let routes = connection
+        .dump_routes(route_dump_message(family, table))
+        .await?;
+    for route in routes {
         if route_table(&route) == Some(table) {
-            if let Err(e) = handle.raw().route().del(route).execute().await {
-                let e = netlink::to_io_error(e);
+            if let Err(e) = connection.delete_route(route).await {
                 if !is_missing(&e) {
                     report::io_with_details(
                         "routing.flush_routes.delete",

@@ -1,7 +1,6 @@
 package be.mygod.vpnhotspot.ui.apconfiguration
 
 import android.os.Build
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,7 +11,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -33,6 +31,7 @@ import be.mygod.vpnhotspot.ui.PreferenceGroup
 import be.mygod.vpnhotspot.ui.PreferenceRadioRow
 import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.annotatedStringResource
+import be.mygod.vpnhotspot.ui.nonInteractiveVerticalScrollbar
 import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
 import be.mygod.vpnhotspot.ui.rememberTextFieldValueAtEnd
 
@@ -106,11 +105,7 @@ private fun MacAddressApDialog(
             }
             Column(
                 modifier = Modifier
-                    .scrollbar(
-                        state = scrollState.scrollIndicatorState,
-                        orientation = Orientation.Vertical,
-                        isFadeEnabled = false,
-                    )
+                    .nonInteractiveVerticalScrollbar(scrollState.scrollIndicatorState)
                     .verticalScroll(scrollState),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {

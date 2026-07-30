@@ -5,7 +5,6 @@ use std::net::{IpAddr, Ipv6Addr, SocketAddrV6};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use futures_util::{pin_mut, TryStreamExt};
 use libc::{EADDRNOTAVAIL, ENOBUFS, MSG_DONTWAIT};
 use rtnetlink::packet_route::{
     address::{AddressAttribute, AddressMessage},
@@ -54,8 +53,8 @@ enum RaSendError {
 pub(crate) fn spawn_loop(
     config: Arc<Mutex<SessionConfig>>,
     config_changed: Arc<Notify>,
-    ipv6_address_changed: Arc<Notify>,
-    netlink: netlink::Handle,
+    mut events: netlink::EventConnection,
+    mut netlink: netlink::RequestConnection,
     stop: CancellationToken,
     initial: &SessionConfig,
 ) -> io::Result<JoinHandle<()>> {
@@ -84,12 +83,12 @@ pub(crate) fn spawn_loop(
                     let mut withdrew_current_prefix = false;
                     if let Some(ipv6_nat) = current.ipv6_nat.as_ref() {
                         let mtu = downstream_mtu(
-                            &netlink,
+                            &mut netlink,
                             &current.downstream,
                             "nat66.ra_idle_mtu_lookup",
                         )
                         .await;
-                        match link_local_router(&netlink, &current.downstream).await {
+                        match link_local_router(&mut netlink, &current.downstream).await {
                             Ok(Some(router)) => {
                                 withdraw_prefixes_once_with_router(
                                     &current,
@@ -121,7 +120,17 @@ pub(crate) fn spawn_loop(
                 select! {
                     _ = stop.cancelled() => break,
                     _ = config_changed.notified() => refresh_downstream_prefixes = true,
-                    _ = ipv6_address_changed.notified() => address_changed = true,
+                    event = events.next() => match event {
+                        Ok(_) => address_changed = true,
+                        Err(e) => {
+                            report::io_with_details(
+                                "nat66.ra_events",
+                                e,
+                                [("downstream", current.downstream.clone())],
+                            );
+                            break;
+                        }
+                    },
                 }
                 continue;
             }
@@ -129,7 +138,7 @@ pub(crate) fn spawn_loop(
             let mut send_current = false;
             if take(&mut refresh_downstream_prefixes) || send_address_changed {
                 let mtu_prefixes =
-                    match downstream_ipv6_prefixes(&netlink, &current.downstream).await {
+                    match downstream_ipv6_prefixes(&mut netlink, &current.downstream).await {
                         Ok(prefixes) => prefixes,
                         Err(e) => {
                             report::io_with_details(
@@ -149,9 +158,10 @@ pub(crate) fn spawn_loop(
                     }
                 }
             }
-            let mtu = downstream_mtu(&netlink, &current.downstream, "nat66.ra_mtu_lookup").await;
+            let mtu =
+                downstream_mtu(&mut netlink, &current.downstream, "nat66.ra_mtu_lookup").await;
             let mut missing_interface = false;
-            let router = match link_local_router(&netlink, &current.downstream).await {
+            let router = match link_local_router(&mut netlink, &current.downstream).await {
                 Ok(router) => router,
                 Err(e) if netlink::is_missing_link(&e) => {
                     missing_interface = true;
@@ -216,6 +226,16 @@ pub(crate) fn spawn_loop(
                 if send_current || router_changed || send_address_changed || next_ra <= now {
                     match send_ra(&current, router, None, mtu).await {
                         Ok(()) => advertising_current_prefix = true,
+                        Err(RaSendError::Setup(e)) | Err(RaSendError::Transmit(e))
+                            if is_downstream_address_unavailable(&e) =>
+                        {
+                            report::stdout!(
+                                "ra current advertisement skipped: link-local router address {} no longer available on {}: {}",
+                                router.address,
+                                current.downstream,
+                                e
+                            );
+                        }
                         Err(RaSendError::Transmit(e))
                             if is_downstream_transmit_backpressure(&e) =>
                         {
@@ -246,7 +266,17 @@ pub(crate) fn spawn_loop(
                 _ = stop.cancelled() => break,
                 _ = config_changed.notified() => refresh_downstream_prefixes = true,
                 _ = sleep_until(TokioInstant::from_std(next_deadline)) => {}
-                _ = ipv6_address_changed.notified() => address_changed = true,
+                event = events.next() => match event {
+                    Ok(_) => address_changed = true,
+                    Err(e) => {
+                        report::io_with_details(
+                            "nat66.ra_events",
+                            e,
+                            [("downstream", current.downstream.clone())],
+                        );
+                        break;
+                    }
+                },
                 ready = socket.readable() => {
                     let mut ready = match ready {
                         Ok(ready) => ready,
@@ -261,6 +291,18 @@ pub(crate) fn spawn_loop(
                                 if let Some(router) = router {
                                     match send_ra(&current, router, Some(source), mtu).await {
                                         Ok(()) => advertising_current_prefix = true,
+                                        Err(RaSendError::Setup(e))
+                                        | Err(RaSendError::Transmit(e))
+                                            if is_downstream_address_unavailable(&e) =>
+                                        {
+                                            report::stdout!(
+                                                "ra solicited advertisement skipped: link-local router address {} no longer available on {} while replying to {}: {}",
+                                                router.address,
+                                                current.downstream,
+                                                source,
+                                                e
+                                            );
+                                        }
                                         Err(RaSendError::Transmit(e))
                                             if is_downstream_transmit_backpressure(&e) =>
                                         {
@@ -304,7 +346,7 @@ pub(crate) fn spawn_loop(
 }
 
 pub(crate) async fn withdraw_prefixes_once(
-    netlink: &netlink::Handle,
+    netlink: &mut netlink::RequestConnection,
     config: &SessionConfig,
     prefixes: &[Ipv6Inet],
     keep_router: bool,
@@ -347,7 +389,7 @@ async fn withdraw_prefixes_once_with_router(
     }
     let fd = match create_send_socket(&config.downstream, config.reply_mark, router) {
         Ok(fd) => fd,
-        Err(e) if e.raw_os_error() == Some(EADDRNOTAVAIL) => {
+        Err(e) if is_downstream_address_unavailable(&e) => {
             report::stdout!(
                 "ra withdraw skipped: link-local router address {} no longer available on {}",
                 router.address,
@@ -387,6 +429,10 @@ async fn withdraw_prefixes_once_with_router(
     }
 }
 
+fn is_downstream_address_unavailable(error: &io::Error) -> bool {
+    error.raw_os_error() == Some(EADDRNOTAVAIL)
+}
+
 fn is_downstream_transmit_backpressure(error: &io::Error) -> bool {
     error.raw_os_error() == Some(ENOBUFS)
 }
@@ -422,7 +468,11 @@ fn create_send_socket(interface: &str, mark: u32, router: Router) -> io::Result<
     Ok(socket)
 }
 
-async fn downstream_mtu(handle: &netlink::Handle, interface: &str, context: &str) -> u32 {
+async fn downstream_mtu(
+    handle: &mut netlink::RequestConnection,
+    interface: &str,
+    context: &str,
+) -> u32 {
     match netlink::link_mtu(handle, interface).await {
         Ok(mtu) => mtu,
         Err(e) if netlink::is_missing_link(&e) => DEFAULT_MTU,
@@ -434,7 +484,7 @@ async fn downstream_mtu(handle: &netlink::Handle, interface: &str, context: &str
 }
 
 async fn downstream_ipv6_prefixes(
-    handle: &netlink::Handle,
+    handle: &mut netlink::RequestConnection,
     interface: &str,
 ) -> io::Result<Vec<Ipv6Inet>> {
     let interface_index = match netlink::link_index(handle, interface).await {
@@ -442,22 +492,13 @@ async fn downstream_ipv6_prefixes(
         Err(e) if netlink::is_missing_link(&e) => return Ok(Vec::new()),
         Err(e) => return Err(e),
     };
-    let _dump = handle.lock_dump().await;
-    let addresses = handle
-        .raw()
-        .address()
-        .get()
-        .set_link_index_filter(interface_index)
-        .execute();
-    pin_mut!(addresses);
+    let addresses = match handle.dump_addresses(interface_index).await {
+        Ok(addresses) => addresses,
+        Err(e) if netlink::is_missing_link(&e) => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
     let mut prefixes = Vec::new();
-    loop {
-        let message = match addresses.try_next().await.map_err(netlink::to_io_error) {
-            Ok(Some(message)) => message,
-            Ok(None) => break,
-            Err(e) if netlink::is_missing_link(&e) => return Ok(Vec::new()),
-            Err(e) => return Err(e),
-        };
+    for message in addresses {
         if message.header.family != AddressFamily::Inet6 {
             continue;
         }
@@ -495,25 +536,12 @@ fn routable_ipv6_prefix(address: Ipv6Addr, prefix_len: u8) -> Option<Ipv6Inet> {
 }
 
 async fn link_local_router(
-    handle: &netlink::Handle,
+    handle: &mut netlink::RequestConnection,
     interface: &str,
 ) -> io::Result<Option<Router>> {
     let interface_index = netlink::link_index(handle, interface).await?;
-    let _dump = handle.lock_dump().await;
-    let addresses = handle
-        .raw()
-        .address()
-        .get()
-        .set_link_index_filter(interface_index)
-        .execute();
-    pin_mut!(addresses);
     let mut router = None;
-    loop {
-        let address = match addresses.try_next().await.map_err(netlink::to_io_error) {
-            Ok(Some(address)) => address,
-            Ok(None) => break,
-            Err(e) => return Err(e),
-        };
+    for address in handle.dump_addresses(interface_index).await? {
         if router.is_none() && address.header.family == AddressFamily::Inet6 {
             if let Some(address) = router_address(&address) {
                 router = Some(Router {

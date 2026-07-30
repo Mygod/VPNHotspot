@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.ui.apconfiguration
 import android.net.wifi.SoftApConfiguration
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -19,7 +18,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -38,6 +36,7 @@ import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.PreferenceSelectionRow
 import be.mygod.vpnhotspot.ui.VpnHotspotModalBottomSheet
 import be.mygod.vpnhotspot.ui.modalBottomSheetListContentPadding
+import be.mygod.vpnhotspot.ui.nonInteractiveVerticalScrollbar
 import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 
@@ -104,11 +103,7 @@ private fun ChannelApSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f, fill = false)
-                .scrollbar(
-                    state = state.scrollIndicatorState,
-                    orientation = Orientation.Vertical,
-                    isFadeEnabled = false,
-                ),
+                .nonInteractiveVerticalScrollbar(state.scrollIndicatorState),
             contentPadding = modalBottomSheetListContentPadding(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {

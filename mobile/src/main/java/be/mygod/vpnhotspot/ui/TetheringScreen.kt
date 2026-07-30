@@ -17,7 +17,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
-import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,7 +33,6 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.scrollbar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.State
@@ -92,6 +90,7 @@ import be.mygod.vpnhotspot.net.wifi.VendorData
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
+import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
@@ -127,9 +126,7 @@ fun TetheringScreen(
 ) {
     val context = LocalContext.current
     val inspectionMode = LocalInspectionMode.current
-    val scope = rememberCoroutineScope()
     val linkStyles = rememberNetworkAddressLinkStyles()
-    val repeaterMissingLocationPermissions = stringResource(R.string.repeater_missing_location_permissions)
     val staticIpActive by StaticIpSetter.active.collectAsStateWithLifecycle()
     val staticIpAddresses by StaticIpSetter.addresses.collectAsStateWithLifecycle()
     val staticIpApplying by StaticIpSetter.applying.collectAsStateWithLifecycle()
@@ -224,9 +221,7 @@ fun TetheringScreen(
             onResult = { granted ->
                 if (granted) {
                     app.startServiceWithLocation<RepeaterService>(context)
-                } else scope.launch {
-                    snackbarHostState.showLongSnackbar(repeaterMissingLocationPermissions)
-                }
+                } else SmartSnackbar.make(R.string.repeater_missing_location_permissions).show()
             },
         )
         launcher::launch
@@ -456,11 +451,7 @@ fun TetheringScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(focusRequester)
-                            .scrollbar(
-                                state = scrollState.scrollIndicatorState,
-                                orientation = Orientation.Vertical,
-                                isFadeEnabled = false,
-                            )
+                            .nonInteractiveVerticalScrollbar(scrollState.scrollIndicatorState)
                             .semantics { contentDescription = staticIpTitle },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                         lineLimits = TextFieldLineLimits.MultiLine(
@@ -777,7 +768,10 @@ private fun rememberWifiSummary(
             )
         }
         lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
-            WifiApCommands.softApCallbackFlow(expensive = true).catch { e -> Timber.w(e) }.collect { event ->
+            WifiApCommands.softApCallbackFlow(expensive = true).catch { e ->
+                if (e is CancellationException) throw e
+                Timber.w(e)
+            }.collect { event ->
                 when (event) {
                     is WifiApManager.Event.OnStateChanged -> {
                         if (!WifiApManager.checkWifiApState(event.state)) return@collect

@@ -327,12 +327,13 @@ class ClientViewModel : ViewModel(), DefaultLifecycleObserver {
             val oldRecord = oldRecords[newRecord.previousId ?: return@forEach] ?: return@forEach
             val elapsed = newRecord.timestamp - oldRecord.timestamp
             if (elapsed <= 0L) {
-                if (elapsed < 0L ||
-                    newRecord.sentPackets != oldRecord.sentPackets || newRecord.sentBytes != oldRecord.sentBytes ||
+                if (elapsed < 0L) Timber.w(
+                    "Discarding traffic rate update after wall clock moved backwards ($elapsed ms)")
+                else if (newRecord.sentPackets != oldRecord.sentPackets ||
+                    newRecord.sentBytes != oldRecord.sentBytes ||
                     newRecord.receivedPackets != oldRecord.receivedPackets ||
                     newRecord.receivedBytes != oldRecord.receivedBytes) {
-                    Timber.w(Exception("Traffic counters changed without positive elapsed time ($elapsed ms): old=${
-                        oldRecord} new=$newRecord"))
+                    Timber.w("Discarding traffic rate update with zero elapsed time")
                 }
                 return@forEach
             }

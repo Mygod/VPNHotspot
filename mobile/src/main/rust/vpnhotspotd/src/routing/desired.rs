@@ -110,7 +110,7 @@ impl Runtime {
                 if !seen_upstream_interfaces.insert(ifname.as_str()) {
                     continue;
                 }
-                let ifindex = match netlink::link_index(&self.netlink, ifname).await {
+                let ifindex = match netlink::link_index(&mut self.connection, ifname).await {
                     Ok(ifindex) => ifindex,
                     Err(e) if netlink::is_missing_link(&e) => continue,
                     Err(e) => {
@@ -182,7 +182,12 @@ impl Runtime {
             })
         {
             self.ipv6_nat_intercept_mode = Some(
-                Ipv6NatInterceptMode::detect(self.call_id, &self.netlink, &config.downstream).await,
+                Ipv6NatInterceptMode::detect(
+                    self.call_id,
+                    &mut self.connection,
+                    &config.downstream,
+                )
+                .await,
             );
         }
         let ipv6_nat = config

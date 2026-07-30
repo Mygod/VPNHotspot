@@ -1,229 +1,196 @@
 use std::collections::{HashMap, HashSet};
 use std::io;
-use std::sync::{Arc, Mutex as StdMutex};
+use std::net::IpAddr;
 
+use futures_channel::mpsc::UnboundedReceiver;
 use futures_util::{pin_mut, StreamExt, TryStreamExt};
 use rtnetlink::{
-    packet_core::NetlinkPayload,
+    packet_core::{NetlinkMessage, NetlinkPayload},
     packet_route::{
+        address::AddressMessage,
         link::{InfoKind, LinkAttribute, LinkInfo, LinkMessage},
-        AddressFamily, RouteNetlinkMessage,
+        neighbour::NeighbourMessage,
+        route::RouteMessage,
+        rule::RuleMessage,
+        RouteNetlinkMessage,
     },
-    MulticastGroup,
+    sys::SocketAddr,
+    IpVersion, MulticastGroup,
 };
-use tokio::select;
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
-use tokio::sync::{Mutex, MutexGuard, Notify};
 use tokio::task::JoinHandle;
 use vpnhotspotd::shared::proto::daemon;
 
-use crate::report;
-
-#[derive(Clone)]
-pub(crate) struct Handle {
+pub(crate) struct RequestConnection {
     inner: rtnetlink::Handle,
-    dump_lock: Arc<Mutex<()>>,
-}
-
-impl Handle {
-    fn new(inner: rtnetlink::Handle) -> Self {
-        Self {
-            inner,
-            dump_lock: Arc::new(Mutex::new(())),
-        }
-    }
-
-    pub(crate) fn raw(&self) -> &rtnetlink::Handle {
-        &self.inner
-    }
-
-    pub(crate) async fn lock_dump(&self) -> MutexGuard<'_, ()> {
-        self.dump_lock.lock().await
-    }
-}
-
-pub(crate) struct Runtime {
-    handle: Handle,
-    ipv4_address_changed: Arc<Notify>,
-    ipv6_address_changed: Arc<Notify>,
-    neighbour_events: Arc<EventSlot>,
-    link_events: Arc<EventSlot>,
     task: JoinHandle<()>,
 }
 
-impl Runtime {
+impl RequestConnection {
     pub(crate) fn new() -> io::Result<Self> {
-        let (connection, handle, mut messages) = rtnetlink::new_multicast_connection(&[
-            MulticastGroup::Neigh,
-            MulticastGroup::Link,
-            MulticastGroup::Ipv4Ifaddr,
-            MulticastGroup::Ipv6Ifaddr,
-        ])?;
-        let ipv4_address_changed = Arc::new(Notify::new());
-        let ipv6_address_changed = Arc::new(Notify::new());
-        let neighbour_events = Arc::new(EventSlot::new(
-            "neighbour monitor already active",
-            "neighbour monitor state poisoned",
-            "netlink.neighbour_registration.drop",
-            "netlink.send_neighbour_event",
-        ));
-        let link_events = Arc::new(EventSlot::new(
-            "link monitor already active",
-            "link monitor state poisoned",
-            "netlink.link_registration.drop",
-            "netlink.send_link_event",
-        ));
-        let task_ipv4_address_changed = ipv4_address_changed.clone();
-        let task_ipv6_address_changed = ipv6_address_changed.clone();
-        let task_neighbour_events = neighbour_events.clone();
-        let task_link_events = link_events.clone();
-        let task = tokio::spawn(async move {
-            tokio::pin!(connection);
-            loop {
-                select! {
-                    _ = &mut connection => break,
-                    message = messages.next() => match message {
-                        Some((message, _)) => dispatch_message(
-                                message.payload,
-                                &task_ipv4_address_changed,
-                                &task_ipv6_address_changed,
-                                &task_neighbour_events,
-                                &task_link_events,
-                            ),
-                        None => break,
-                    },
-                }
-            }
-        });
+        let (connection, inner, _) = rtnetlink::new_connection()?;
         Ok(Self {
-            handle: Handle::new(handle),
-            ipv4_address_changed,
-            ipv6_address_changed,
-            neighbour_events,
-            link_events,
-            task,
+            inner,
+            task: tokio::spawn(async move {
+                connection.await;
+                crate::report::message(
+                    "netlink.request_connection",
+                    "rtnetlink request connection closed",
+                    "ConnectionClosed",
+                );
+            }),
         })
     }
 
-    pub(crate) fn handle(&self) -> Handle {
-        self.handle.clone()
+    pub(crate) async fn dump_addresses(
+        &mut self,
+        link_index: u32,
+    ) -> io::Result<Vec<AddressMessage>> {
+        self.inner
+            .address()
+            .get()
+            .set_link_index_filter(link_index)
+            .execute()
+            .try_collect()
+            .await
+            .map_err(to_io_error)
     }
 
-    pub(crate) fn ipv4_address_changed(&self) -> Arc<Notify> {
-        self.ipv4_address_changed.clone()
+    pub(crate) async fn dump_neighbours(&mut self) -> io::Result<Vec<NeighbourMessage>> {
+        self.inner
+            .neighbours()
+            .get()
+            .execute()
+            .try_collect()
+            .await
+            .map_err(to_io_error)
     }
 
-    pub(crate) fn ipv6_address_changed(&self) -> Arc<Notify> {
-        self.ipv6_address_changed.clone()
+    pub(crate) async fn dump_routes(
+        &mut self,
+        message: RouteMessage,
+    ) -> io::Result<Vec<RouteMessage>> {
+        self.inner
+            .route()
+            .get(message)
+            .execute()
+            .try_collect()
+            .await
+            .map_err(to_io_error)
     }
 
-    pub(crate) fn register_neighbour_monitor(
-        &self,
-    ) -> io::Result<(
-        NeighbourRegistration,
-        UnboundedReceiver<RouteNetlinkMessage>,
-    )> {
-        self.neighbour_events.register()
+    pub(crate) async fn dump_rules(&mut self, version: IpVersion) -> io::Result<Vec<RuleMessage>> {
+        self.inner
+            .rule()
+            .get(version)
+            .execute()
+            .try_collect()
+            .await
+            .map_err(to_io_error)
     }
 
-    pub(crate) fn register_link_monitor(
-        &self,
-    ) -> io::Result<(LinkRegistration, UnboundedReceiver<RouteNetlinkMessage>)> {
-        self.link_events.register()
+    pub(crate) async fn replace_address(
+        &mut self,
+        index: u32,
+        address: IpAddr,
+        prefix_len: u8,
+        message: AddressMessage,
+    ) -> io::Result<()> {
+        let mut request = self
+            .inner
+            .address()
+            .add(index, address, prefix_len)
+            .replace();
+        *request.message_mut() = message;
+        request.execute().await.map_err(to_io_error)
+    }
+
+    pub(crate) async fn delete_address(&mut self, message: AddressMessage) -> io::Result<()> {
+        self.inner
+            .address()
+            .del(message)
+            .execute()
+            .await
+            .map_err(to_io_error)
+    }
+
+    pub(crate) async fn replace_route(&mut self, message: RouteMessage) -> io::Result<()> {
+        self.inner
+            .route()
+            .add(message)
+            .replace()
+            .execute()
+            .await
+            .map_err(to_io_error)
+    }
+
+    pub(crate) async fn delete_route(&mut self, message: RouteMessage) -> io::Result<()> {
+        self.inner
+            .route()
+            .del(message)
+            .execute()
+            .await
+            .map_err(to_io_error)
+    }
+
+    pub(crate) async fn add_rule(&mut self, message: RuleMessage) -> io::Result<()> {
+        let mut request = self.inner.rule().add();
+        *request.message_mut() = message;
+        request.execute().await.map_err(to_io_error)
+    }
+
+    pub(crate) async fn delete_rule(&mut self, message: RuleMessage) -> io::Result<()> {
+        self.inner
+            .rule()
+            .del(message)
+            .execute()
+            .await
+            .map_err(to_io_error)
     }
 }
 
-impl Drop for Runtime {
+impl Drop for RequestConnection {
     fn drop(&mut self) {
         self.task.abort();
     }
 }
 
-pub(crate) type NeighbourRegistration = EventRegistration;
-pub(crate) type LinkRegistration = EventRegistration;
-
-pub(crate) struct EventRegistration {
-    events: Arc<EventSlot>,
+pub(crate) struct EventConnection {
+    messages: UnboundedReceiver<(NetlinkMessage<RouteNetlinkMessage>, SocketAddr)>,
+    task: JoinHandle<()>,
 }
 
-impl Drop for EventRegistration {
-    fn drop(&mut self) {
-        self.events.unregister();
-    }
-}
-
-struct EventSlot {
-    events: StdMutex<Option<UnboundedSender<RouteNetlinkMessage>>>,
-    duplicate: &'static str,
-    poisoned: &'static str,
-    drop_context: &'static str,
-    send_context: &'static str,
-}
-
-impl EventSlot {
-    fn new(
-        duplicate: &'static str,
-        poisoned: &'static str,
-        drop_context: &'static str,
-        send_context: &'static str,
-    ) -> Self {
-        Self {
-            events: StdMutex::new(None),
-            duplicate,
-            poisoned,
-            drop_context,
-            send_context,
-        }
+impl EventConnection {
+    pub(crate) fn new(groups: &[MulticastGroup]) -> io::Result<Self> {
+        let (connection, _request_handle, messages) = rtnetlink::new_multicast_connection(groups)?;
+        Ok(Self {
+            messages,
+            task: tokio::spawn(connection),
+        })
     }
 
-    fn register(
-        self: &Arc<Self>,
-    ) -> io::Result<(EventRegistration, UnboundedReceiver<RouteNetlinkMessage>)> {
-        let (sender, receiver) = unbounded_channel();
-        let mut events = self
-            .events
-            .lock()
-            .map_err(|_| io::Error::other(self.poisoned))?;
-        if events.is_some() {
-            return Err(io::Error::new(io::ErrorKind::AlreadyExists, self.duplicate));
+    pub(crate) async fn next(&mut self) -> io::Result<RouteNetlinkMessage> {
+        while let Some((message, _)) = self.messages.next().await {
+            if let NetlinkPayload::InnerMessage(message) = message.payload {
+                return Ok(message);
+            }
         }
-        *events = Some(sender);
-        Ok((
-            EventRegistration {
-                events: self.clone(),
-            },
-            receiver,
+        Err(io::Error::new(
+            io::ErrorKind::BrokenPipe,
+            "netlink event stream closed",
         ))
     }
+}
 
-    fn unregister(&self) {
-        match self.events.lock() {
-            Ok(mut events) => {
-                events.take();
-            }
-            Err(_) => report::io(self.drop_context, io::Error::other(self.poisoned)),
-        }
-    }
-
-    fn send(&self, message: RouteNetlinkMessage) {
-        match self.events.lock() {
-            Ok(mut events) => {
-                if events
-                    .as_ref()
-                    .is_some_and(|sender| sender.send(message).is_err())
-                {
-                    events.take();
-                }
-            }
-            Err(_) => report::io(self.send_context, io::Error::other(self.poisoned)),
-        }
+impl Drop for EventConnection {
+    fn drop(&mut self) {
+        self.task.abort();
     }
 }
 
-pub(crate) async fn link_index(handle: &Handle, name: &str) -> io::Result<u32> {
+pub(crate) async fn link_index(handle: &mut RequestConnection, name: &str) -> io::Result<u32> {
     validate_interface_name(name)?;
     let links = handle
-        .raw()
+        .inner
         .link()
         .get()
         .match_name(name.to_owned())
@@ -239,10 +206,10 @@ pub(crate) async fn link_index(handle: &Handle, name: &str) -> io::Result<u32> {
     }
 }
 
-pub(crate) async fn link_mtu(handle: &Handle, name: &str) -> io::Result<u32> {
+pub(crate) async fn link_mtu(handle: &mut RequestConnection, name: &str) -> io::Result<u32> {
     validate_interface_name(name)?;
     let links = handle
-        .raw()
+        .inner
         .link()
         .get()
         .match_name(name.to_owned())
@@ -272,8 +239,8 @@ pub(crate) async fn link_mtu(handle: &Handle, name: &str) -> io::Result<u32> {
     }
 }
 
-pub(crate) async fn link_name(handle: &Handle, index: u32) -> io::Result<String> {
-    let links = handle.raw().link().get().match_index(index).execute();
+pub(crate) async fn link_name(handle: &mut RequestConnection, index: u32) -> io::Result<String> {
+    let links = handle.inner.link().get().match_index(index).execute();
     pin_mut!(links);
     if let Some(link) = links.try_next().await.map_err(to_io_error)? {
         link_name_from_message(link).ok_or_else(|| {
@@ -290,10 +257,8 @@ pub(crate) async fn link_name(handle: &Handle, index: u32) -> io::Result<String>
     }
 }
 
-pub(crate) async fn link_names(handle: &Handle) -> io::Result<HashMap<u32, String>> {
-    let _dump = handle.lock_dump().await;
-    let links = handle.raw().link().get().execute();
-    pin_mut!(links);
+pub(crate) async fn link_names(handle: &mut RequestConnection) -> io::Result<HashMap<u32, String>> {
+    let mut links = handle.inner.link().get().execute();
     let mut names = HashMap::new();
     while let Some(link) = links.try_next().await.map_err(to_io_error)? {
         let index = link.header.index;
@@ -304,10 +269,10 @@ pub(crate) async fn link_names(handle: &Handle) -> io::Result<HashMap<u32, Strin
     Ok(names)
 }
 
-pub(crate) async fn bridge_topology(handle: &Handle) -> io::Result<daemon::LinkTopologySnapshot> {
-    let _dump = handle.lock_dump().await;
-    let links = handle.raw().link().get().execute();
-    pin_mut!(links);
+pub(crate) async fn bridge_topology(
+    handle: &mut RequestConnection,
+) -> io::Result<daemon::LinkTopologySnapshot> {
+    let mut links = handle.inner.link().get().execute();
     let mut names = HashMap::new();
     let mut bridges = HashSet::new();
     let mut members = Vec::new();
@@ -371,34 +336,6 @@ pub(crate) fn to_io_error(error: rtnetlink::Error) -> io::Error {
 
 pub(crate) fn is_missing_link(error: &io::Error) -> bool {
     error.kind() == io::ErrorKind::NotFound || error.raw_os_error() == Some(libc::ENODEV)
-}
-
-fn dispatch_message(
-    payload: NetlinkPayload<RouteNetlinkMessage>,
-    ipv4_address_changed: &Notify,
-    ipv6_address_changed: &Notify,
-    neighbour_events: &EventSlot,
-    link_events: &EventSlot,
-) {
-    match payload {
-        NetlinkPayload::InnerMessage(
-            message @ (RouteNetlinkMessage::NewNeighbour(_) | RouteNetlinkMessage::DelNeighbour(_)),
-        ) => neighbour_events.send(message),
-        NetlinkPayload::InnerMessage(
-            message @ (RouteNetlinkMessage::NewLink(_) | RouteNetlinkMessage::DelLink(_)),
-        ) => {
-            ipv4_address_changed.notify_waiters();
-            link_events.send(message);
-        }
-        NetlinkPayload::InnerMessage(
-            RouteNetlinkMessage::NewAddress(message) | RouteNetlinkMessage::DelAddress(message),
-        ) => match message.header.family {
-            AddressFamily::Inet => ipv4_address_changed.notify_waiters(),
-            AddressFamily::Inet6 => ipv6_address_changed.notify_waiters(),
-            _ => {}
-        },
-        _ => {}
-    }
 }
 
 fn link_name_from_message(link: LinkMessage) -> Option<String> {

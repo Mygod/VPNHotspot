@@ -94,6 +94,7 @@ import be.mygod.vpnhotspot.ui.apconfiguration.applyRepeaterApConfiguration
 import be.mygod.vpnhotspot.ui.apconfiguration.applySystemApConfiguration
 import be.mygod.vpnhotspot.ui.apconfiguration.loadRepeaterApConfiguration
 import be.mygod.vpnhotspot.ui.apconfiguration.loadSystemApConfiguration
+import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.stopAndUnbind
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
@@ -141,8 +142,8 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
     val tetheringDestinationVisible = rootDestination == RootDestination.Tethering || visibleEntries.any { entry ->
         entry.destination.hierarchy.any { it.route == RootDestination.Tethering.route }
     }
-    val bindRepeaterService = tetheringDestinationVisible ||
-            savedApSession?.target == ApConfigurationTarget.Repeater
+    val bindRepeaterService = Services.p2p != null && (tetheringDestinationVisible ||
+            savedApSession?.target == ApConfigurationTarget.Repeater)
     val repeaterBinderState = rememberServiceBinder<RepeaterService.Binder>(
         bindRepeaterService,
         RepeaterService::class.java,

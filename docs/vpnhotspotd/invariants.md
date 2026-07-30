@@ -13,13 +13,18 @@ compatibility or cleanup impact.
   interception that sends traffic to those runtimes.
 - Traffic accounting and client blocking are MAC-facing. IP addresses may be
   hidden counter selectors, but they are not the live client identity.
-- Netlink runtime owns the shared rtnetlink connection and event fan-out. It is
-  created lazily on first netlink/routing use and then remains process-wide. It
-  allows one neighbour monitor and one link monitor consumer at a time.
+- Each rtnetlink connection has one lifecycle owner. Multicast-only event
+  connections are separate from request connections; session routing retains
+  its request connection for the session lifetime and never reconnects it.
 - The process-wide ICMP dispatcher exists only for NAT66 ICMPv6 state that must
   be shared across sessions because the kernel queue is process-wide. It owns
   queue `30000` and must attribute queued Echo Requests from source
   hardware-address metadata.
+- The process-wide NAT66 UDP reply-socket registry exists because exact socket
+  binds share the daemon's network namespace across MAC listeners and sessions.
+  For its immutable daemon reply mark, it owns at most one live socket per exact
+  IPv6 source address and port. Associations, per-listener DNS anchors, and DNS
+  query tasks hold leases; only the last lease may remove and close the socket.
 
 ## Interception
 
@@ -53,6 +58,10 @@ compatibility or cleanup impact.
   or disabled without an app-owned identifier.
 - Adding a new persistent route, rule, address, firewall rule, mark, table, or
   chain requires adding or identifying its Clean path.
+- Reply-socket leases are process-local descriptor ownership, not persistent
+  routing or firewall state. Session stop and replacement release their leases,
+  detached tasks may retain leases until completion, and process death closes
+  any remaining descriptors without Clean bookkeeping.
 - When a change mutates existing rules or similar, backwards compatibility is almost never considered since these mutations are cleared upon reboot.
   It is almost never worth the maintainability burden to carry over cleanup for legacy rules.
 

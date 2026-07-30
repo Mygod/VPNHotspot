@@ -9,11 +9,11 @@ use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
-use crate::neighbour::Monitor;
 use crate::report::{ControllerSender, ControllerSenderExt};
 use crate::session::Session;
-use crate::{ipsec, nat66, netlink, report, routing};
+use crate::{ipsec, nat66, neighbour, netlink, report, routing};
 use vpnhotspotd::shared::ipsec::{IpSecForwardPolicyTarget, UpstreamTracker};
+use vpnhotspotd::shared::model::DAEMON_REPLY_MARK;
 use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::{
     ack_event_frame, ack_reply_frame, daemon_error_report_with_details, daemon_io_error_report,
@@ -36,9 +36,8 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     let (sender, writer) = spawn_writer(controller_write);
     report::init(sender.clone())?;
     let state = Arc::new(State {
-        netlink: Mutex::new(None),
         ipsec: Mutex::new(UpstreamTracker::default()),
-        icmp: nat66::IcmpDispatcher::new(),
+        nat66: nat66::ProcessResources::new(DAEMON_REPLY_MARK),
         sessions: Mutex::new(HashMap::new()),
         ipv6_nat_firewall_base: Mutex::new(false),
         neighbour_monitor: Mutex::new(None),
@@ -149,9 +148,8 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
 }
 
 struct State {
-    netlink: Mutex<Option<Arc<netlink::Runtime>>>,
     ipsec: Mutex<UpstreamTracker>,
-    icmp: nat66::IcmpDispatcher,
+    nat66: nat66::ProcessResources,
     sessions: Mutex<HashMap<u64, Arc<SessionState>>>,
     ipv6_nat_firewall_base: Mutex<bool>,
     neighbour_monitor: Mutex<Option<MonitorState>>,
@@ -169,23 +167,12 @@ struct SessionState {
 struct MonitorState {
     id: u64,
     cancel: CancellationToken,
-    monitor: Monitor,
 }
 
 impl State {
-    async fn netlink(&self) -> io::Result<Arc<netlink::Runtime>> {
-        let mut current = self.netlink.lock().await;
-        if let Some(netlink) = current.as_ref() {
-            return Ok(netlink.clone());
-        }
-        let netlink = Arc::new(netlink::Runtime::new()?);
-        *current = Some(netlink.clone());
-        Ok(netlink)
-    }
-
     async fn stop(&self, withdraw_cleanup: bool) {
         if let Some(monitor) = self.neighbour_monitor.lock().await.take() {
-            monitor.monitor.stop().await;
+            monitor.cancel.cancel();
         }
         let sessions = self.drain_sessions().await;
         stop_sessions(&sessions, withdraw_cleanup).await;
@@ -351,12 +338,9 @@ async fn handle_command(
             Ok(CallOutput::NoFrame)
         }
         daemon::client_envelope::Command::ReplaceStaticAddresses(command) => {
-            let netlink = state
-                .netlink()
-                .await
+            let mut handle = netlink::RequestConnection::new()
                 .with_report_context("control.replace_static_addresses.netlink")?;
-            let handle = netlink.handle();
-            routing::replace_static_addresses(&handle, &command)
+            routing::replace_static_addresses(&mut handle, &command)
                 .await
                 .with_report_context_details(
                     "control.replace_static_addresses",
@@ -384,12 +368,9 @@ async fn handle_command(
             for id in complete_ids {
                 send_complete(id, sender);
             }
-            let netlink = state
-                .netlink()
-                .await
+            let mut handle = netlink::RequestConnection::new()
                 .with_report_context("control.clean_routing.netlink")?;
-            let handle = netlink.handle();
-            routing::clean(&handle, &command)
+            routing::clean(&mut handle, &command)
                 .await
                 .with_report_context("control.clean_routing")?;
             Ok(CallOutput::Reply(ack_reply_frame(id)))
@@ -445,17 +426,6 @@ async fn start_session(
             );
         }
     }
-    let netlink = match state
-        .netlink()
-        .await
-        .with_report_context("control.start_session.netlink")
-    {
-        Ok(netlink) => netlink,
-        Err(e) => {
-            remove_session_slot(state, &slot).await;
-            return Err(e);
-        }
-    };
     if config.ipv6_nat.is_some() {
         if let Err(e) = state
             .ensure_ipv6_nat_firewall_base()
@@ -478,7 +448,7 @@ async fn start_session(
     }
     let mut guard = slot.control.lock().await;
     let ipsec_config = config.clone();
-    let session = match Session::start(id, config, netlink, &state.icmp, cancel)
+    let session = match Session::start(id, config, state.nat66.clone(), cancel)
         .await
         .with_report_context_details(
             "control.start_session",
@@ -599,31 +569,20 @@ async fn start_neighbour_monitor(
         )
         .with_report_context("control.start_neighbour_monitor"));
     }
-    if let Some(monitor) = current.take() {
-        monitor.monitor.stop().await;
+    if let Some(previous) = current.take() {
+        previous.cancel.cancel();
     }
-    let netlink = state
-        .netlink()
-        .await
-        .with_report_context("control.start_neighbour_monitor.netlink")?;
     *current = Some(MonitorState {
         id,
         cancel: cancel.clone(),
-        monitor: Monitor::spawn(id, &netlink, sender)
-            .await
-            .with_report_context("control.start_neighbour_monitor")?,
     });
     drop(current);
-    cancel.cancelled().await;
+    let result = neighbour::run(id, sender, &cancel)
+        .await
+        .with_report_context("control.start_neighbour_monitor");
     let mut current = state.neighbour_monitor.lock().await;
-    let monitor = if current.as_ref().is_some_and(|current| current.id == id) {
-        current.take()
-    } else {
-        None
-    };
-    drop(current);
-    if let Some(monitor) = monitor {
-        monitor.monitor.stop().await;
+    if current.as_ref().is_some_and(|current| current.id == id) {
+        current.take();
     }
-    Ok(())
+    result
 }
