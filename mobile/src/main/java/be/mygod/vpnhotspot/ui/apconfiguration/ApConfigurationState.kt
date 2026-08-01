@@ -444,8 +444,14 @@ class ApConfigurationState(
         } else decoded
     }
 
-    fun channelEntries(allowDisabled: Boolean = false) = if (allowDisabled) listOf(ChannelOption.Disabled) +
-            channelOptions else channelOptions
+    fun channelEntries(allowDisabled: Boolean = false): List<ChannelOption> {
+        val options = if (p2pMode && !useFramework && supplicantCapability?.aidlV3 != true) {
+            channelOptions.filterNot {
+                it.band == SoftApConfiguration.BAND_6GHZ && it.channel == 0
+            }
+        } else channelOptions
+        return if (allowDisabled) listOf(ChannelOption.Disabled) + options else options
+    }
     fun bssidEditable(macRandomization: Int) = !p2pMode && (Build.VERSION.SDK_INT < 31 ||
             macRandomization == SoftApConfigurationCompat.RANDOMIZATION_NONE)
     fun macAddressSummary(context: Context) = if (p2pMode) {
