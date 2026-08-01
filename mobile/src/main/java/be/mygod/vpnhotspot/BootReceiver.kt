@@ -6,9 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Parcelable
+import android.util.AtomicFile
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.toByteArray
 import be.mygod.vpnhotspot.util.toParcelable
+import be.mygod.vpnhotspot.util.writeAtomically
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -19,8 +21,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
-import java.io.DataInputStream
-import java.io.DataOutputStream
 import java.io.File
 import java.io.FileNotFoundException
 
@@ -44,12 +44,14 @@ class BootReceiver : BroadcastReceiver() {
         }
 
         private const val FILENAME = "bootconfig"
-        private val configFile by lazy { File(app.deviceStorage.noBackupFilesDir, FILENAME) }
+        private val configFile by lazy { AtomicFile(File(app.deviceStorage.noBackupFilesDir, FILENAME)) }
         private val configMutex = Mutex()
         private suspend fun migrateIfNecessaryLocked() = withContext(Dispatchers.IO) {
             val oldFile = File(app.noBackupFilesDir, FILENAME)
             if (oldFile.canRead()) try {
-                if (!configFile.exists()) oldFile.copyTo(configFile)
+                if (!configFile.baseFile.exists()) configFile.writeAtomically {
+                    oldFile.inputStream().use { it.copyTo(this) }
+                }
                 if (!oldFile.delete()) oldFile.deleteOnExit()
             } catch (e: Exception) {
                 Timber.w(e)
@@ -59,9 +61,7 @@ class BootReceiver : BroadcastReceiver() {
             migrateIfNecessaryLocked()
             return withContext(Dispatchers.IO) {
                 try {
-                    DataInputStream(configFile.inputStream()).use {
-                        it.readBytes().toParcelable(Config::class.java.classLoader)
-                    }
+                    configFile.readFully().toParcelable(Config::class.java.classLoader)
                 } catch (_: FileNotFoundException) {
                     null
                 } catch (e: Exception) {
@@ -73,7 +73,7 @@ class BootReceiver : BroadcastReceiver() {
         private suspend fun updateConfig(work: Config.() -> Boolean) = configMutex.withLock {
             val config = loadConfigLocked() ?: Config()
             if (config.work()) withContext(Dispatchers.IO) {
-                DataOutputStream(configFile.outputStream()).use { it.write(config.toByteArray()) }
+                configFile.writeAtomically { write(config.toByteArray()) }
             }
             config
         }

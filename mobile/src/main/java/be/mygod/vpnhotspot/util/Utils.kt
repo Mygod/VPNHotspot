@@ -19,6 +19,7 @@ import android.os.Parcel
 import android.os.Parcelable
 import android.os.RemoteException
 import android.os.ext.SdkExtensions
+import android.util.AtomicFile
 import androidx.annotation.RequiresExtension
 import androidx.core.net.toUri
 import androidx.core.os.ParcelCompat
@@ -33,6 +34,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
+import java.io.FileOutputStream
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
@@ -68,6 +70,17 @@ fun Long.toPluralInt() = when (this) {
 
 fun Method.matches(name: String, vararg classes: Class<*>) = this.name == name && parameterCount == classes.size &&
         classes.indices.all { i -> parameters[i].type == classes[i] }
+
+inline fun AtomicFile.writeAtomically(block: FileOutputStream.() -> Unit) {
+    val stream = startWrite()
+    try {
+        stream.block()
+        finishWrite(stream)
+    } catch (e: Exception) {
+        failWrite(stream)
+        throw e
+    }
+}
 
 inline fun <T> useParcel(block: (Parcel) -> T): T {
     val parcel = Parcel.obtain()
