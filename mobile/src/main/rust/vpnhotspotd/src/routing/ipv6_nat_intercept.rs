@@ -106,37 +106,33 @@ async fn probe_protocol_rules(connection: &mut netlink::RequestConnection) -> Re
         Err(e) if error_errno(&e) == Some(libc::EEXIST) => None,
         Err(e) => Some(Err(format!("add failed: {e}"))),
     };
-    let result = if let Some(result) = result {
-        result
+    let (result, cleanup_ip_protocol) = if let Some(result) = result {
+        (result, None)
     } else {
         match dump_contains_probe_rule(connection).await {
-            Ok(true) => Ok(()),
-            Ok(false) => Err("probe rule dump did not echo FRA_IP_PROTO".to_owned()),
-            Err(e) => Err(format!("dump failed: {e}")),
+            Ok(true) => (Ok(()), Some(IpProtocol::Tcp)),
+            Ok(false) => (
+                Err("probe rule dump did not echo FRA_IP_PROTO".to_owned()),
+                None,
+            ),
+            Err(e) => (Err(format!("dump failed: {e}")), None),
         }
     };
-    cleanup_probe_rules(connection).await;
-    result
-}
-
-async fn cleanup_probe_rules(connection: &mut netlink::RequestConnection) {
-    for mut command in [probe_command(Some(IpProtocol::Tcp)), probe_command(None)] {
-        command.operation = IpOperation::Delete;
-        loop {
-            match apply_rule_command(connection, &command).await {
-                Ok(()) => {}
-                Err(e) if is_missing(&e) => break,
-                Err(e) => {
-                    report::io_with_details(
-                        "routing.ipv6_nat_protocol_probe_cleanup",
-                        e,
-                        rule_details(&command),
-                    );
-                    break;
-                }
-            }
+    // Normal probe rollback removes at most one rule. Clean owns stale duplicate sweeping.
+    let mut command = probe_command(cleanup_ip_protocol);
+    command.operation = IpOperation::Delete;
+    match apply_rule_command(connection, &command).await {
+        Ok(()) => {}
+        Err(e) if is_missing(&e) => {}
+        Err(e) => {
+            report::io_with_details(
+                "routing.ipv6_nat_protocol_probe_cleanup",
+                e,
+                rule_details(&command),
+            );
         }
     }
+    result
 }
 
 async fn dump_contains_probe_rule(connection: &mut netlink::RequestConnection) -> io::Result<bool> {

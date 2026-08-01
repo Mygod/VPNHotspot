@@ -225,6 +225,8 @@ Other:
 * For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata.
 * `IPv6 NAT` fwmark fallback for TPROXY uses masked high reserved bits `0x10000000/0x10000000`.
   That fallback is expected on only kernels without effective `FRA_IP_PROTO` policy-rule support, which upstream Linux added in 4.17.
+  Probe cleanup deletes at most one rule, omitting `FRA_IP_PROTO` when support or
+  the mutation outcome is uncertain; repeated stale-rule deletion is reserved for Clean.
 * Daemon reply sockets use the AOSP local-network protected mark `0x00030063`, which assumes
   `LOCAL_NET_ID = 99` plus the `explicitlySelected` and `protectedFromVpn` fwmark bits.
 

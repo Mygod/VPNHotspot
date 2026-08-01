@@ -315,11 +315,15 @@ listener interception rule to choose. The probe adds a temporary
 detached-interface rule at `<nat66-daemon-priority>`:
 `iif vpnhs_probe0 priority <nat66-daemon-priority> ipproto tcp lookup 900`. Routing
 then dumps IPv6 rules and requires the echoed rule to include `ipproto tcp`.
-The probe deletes both the exact protocol rule and a possible no-protocol stale
-form. This detached interface is intentional: kernels without `FRA_IP_PROTO`
-can silently ignore the unknown attribute and accept a bare
-`iif ... lookup 900` rule, so probing with the real downstream would create a
-transient or leaked traffic-affecting rule.
+Normal probe cleanup deletes at most one rule: the exact protocol form when the
+dump echoed it, or a selector without `ipproto` otherwise. The protocol-less
+selector is also the best-effort rollback when the add or dump outcome is
+uncertain. Missing state is accepted; other deletion failures are reported.
+Repeated deletion of stale or duplicate rules is reserved for Clean. This
+detached interface is intentional: kernels without `FRA_IP_PROTO` can silently
+ignore the unknown attribute and accept a bare `iif ... lookup 900` rule, so
+probing with the real downstream would create a transient or leaked
+traffic-affecting rule.
 
 If the probe fails, routing uses fwmark fallback mode. When `uname.release`
 parses as Linux 4.17 or newer, the fallback is also reported as a structured
