@@ -112,8 +112,11 @@ class App : Application() {
                                     .putInt("android.serviceSpecific.errorCode", it.errorCode)
                                     .build()
                             }
-                        if (crashlyticsKeys == null) FirebaseCrashlytics.getInstance().recordException(t)
-                        else FirebaseCrashlytics.getInstance().recordException(t, crashlyticsKeys)
+                        val reported = if (t.stackTrace.isEmpty()) {
+                            RuntimeException("Stackless exception reported through Timber", t)
+                        } else t
+                        if (crashlyticsKeys == null) FirebaseCrashlytics.getInstance().recordException(reported)
+                        else FirebaseCrashlytics.getInstance().recordException(reported, crashlyticsKeys)
                     }
                 }
             }
