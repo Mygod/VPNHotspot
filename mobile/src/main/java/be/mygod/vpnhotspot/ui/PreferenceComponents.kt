@@ -337,7 +337,6 @@ fun PreferenceSwitchRow(
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private fun preferenceRowShapes(position: PreferenceRowPosition?) = when {
     position == null -> ListItemDefaults.shapes()
-    position.count == 1 -> ListItemDefaults.shapes(shape = MaterialTheme.shapes.large)
     else -> ListItemDefaults.segmentedShapes(position.index, position.count)
 }
 

@@ -6,7 +6,7 @@ pluginManagement {
     }
 }
 plugins {
-    id("io.github.ben-manes.versions.settings") version "0.56.0"
+    id("io.github.ben-manes.versions.settings") version "0.58.0"
     id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 dependencyResolutionManagement {

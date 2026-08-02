@@ -218,6 +218,8 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
             exitTransition = { fadeOut(navFadeSpec) },
             popEnterTransition = { fadeIn(navFadeSpec) },
             popExitTransition = { fadeOut(navFadeSpec) },
+            predictivePopEnterTransition = { fadeIn(navFadeSpec) },
+            predictivePopExitTransition = { fadeOut(navFadeSpec) },
         ) {
             composable(RootDestination.Tethering.route) {
                 val scope = rememberCoroutineScope()
