@@ -32,12 +32,14 @@ abstract class KillableTileService : TileService() {
         null
     }
 
-    protected fun runActivity(intent: Intent) = unlockAndRun {
+    protected fun runActivity(intent: Intent) {
         if (Build.VERSION.SDK_INT < 34) @Suppress("DEPRECATION") @SuppressLint("StartActivityAndCollapseDeprecated") {
             startActivityAndCollapse(intent)
         } else startActivityAndCollapse(PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE))
     }
-    fun dismiss() = runActivity(Intent(this, SelfDismissActivity::class.java).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    fun dismiss() = unlockAndRun {
+        runActivity(Intent(this, SelfDismissActivity::class.java).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
     @Suppress("LeakingThis")
     protected val dismissHandle = WeakReference(this)
     override fun onDestroy() {

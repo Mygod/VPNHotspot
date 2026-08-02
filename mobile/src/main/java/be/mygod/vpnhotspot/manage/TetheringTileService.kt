@@ -235,7 +235,7 @@ sealed class TetheringTileService : NetlinkNeighbourMonitoringTileService() {
                     }
                 }
                 false -> start()
-                else -> ManageBar.start(this::runActivity)
+                else -> unlockAndRun { ManageBar.start(this::runActivity) }
             }
         }
     }
