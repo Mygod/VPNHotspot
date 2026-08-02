@@ -118,14 +118,16 @@ class ApConfigurationState(
         }
         p2pMode -> listOf(SecurityOption(R.string.wifi_security_wpa2_personal,
             SoftApConfiguration.SECURITY_TYPE_WPA2_PSK))
-        else -> listOf(
-            R.string.wifi_security_open,
-            R.string.wifi_security_wpa2_psk,
-            R.string.wifi_security_wpa3_sae_transition,
-            R.string.wifi_security_wpa3_sae,
-            R.string.wifi_security_wpa3_owe_transition,
-            R.string.wifi_security_wpa3_owe,
-        ).mapIndexed { index, label -> SecurityOption(label, index) }
+        else -> buildList {
+            add(R.string.wifi_security_open)
+            add(R.string.wifi_security_wpa2_psk)
+            add(R.string.wifi_security_wpa3_sae_transition)
+            add(R.string.wifi_security_wpa3_sae)
+            if (Build.VERSION.SDK_INT >= 33) {
+                add(R.string.wifi_security_wpa3_owe_transition)
+                add(R.string.wifi_security_wpa3_owe)
+            }
+        }.mapIndexed { index, label -> SecurityOption(label, index) }
     }
     private val channelOptions get() = currentChannelOptions(p2pMode)
     val bandwidthEntries = if (Build.VERSION.SDK_INT >= 33) {
