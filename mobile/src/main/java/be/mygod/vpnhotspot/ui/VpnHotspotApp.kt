@@ -1,18 +1,25 @@
 package be.mygod.vpnhotspot.ui
 
-import android.app.Activity
 import android.app.Service
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.os.Build
 import android.os.IBinder
-import androidx.activity.compose.BackHandler
+import android.view.RoundedCorner
+import android.view.WindowManager
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -23,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -56,7 +64,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -77,6 +89,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigationevent.NavigationEvent
 import androidx.window.core.layout.WindowSizeClass.Companion.WIDTH_DP_MEDIUM_LOWER_BOUND
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
@@ -123,7 +136,7 @@ private enum class AppDestination(val route: String) {
 )
 @Composable
 fun VpnHotspotApp(clientViewModel: ClientViewModel) {
-    val appContext = LocalContext.current
+    val context = LocalContext.current
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
     SmartSnackbarBridge(snackbarHostState)
@@ -201,14 +214,29 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
             savedApSession = null
         }
     }
-    BackHandler(rootDestination != null) {
-        (appContext as? Activity)?.finish()
-    }
     val navFadeSpec = MaterialTheme.motionScheme.defaultEffectsSpec<Float>()
+    // Match the remaining cross-activity preview geometry: 8dp edge margin and system back easing.
+    val predictiveBackEasing = CubicBezierEasing(0.1f, 0.1f, 0f, 1f)
+    val density = LocalDensity.current
+    val predictiveBackEdgeMargin = with(density) { 8.dp.roundToPx() }
+    val predictiveBackBackgroundAlpha = if (isSystemInDarkTheme()) 0.2f else 0.8f
+    val predictiveBackCornerRadius = if (Build.VERSION.SDK_INT >= 31) {
+        val insets = context.getSystemService(WindowManager::class.java).currentWindowMetrics.windowInsets
+        val top = insets.getRoundedCorner(RoundedCorner.POSITION_TOP_LEFT)?.radius ?: 0
+        val bottom = insets.getRoundedCorner(RoundedCorner.POSITION_BOTTOM_LEFT)?.radius ?: 0
+        when {
+            top == 0 -> bottom
+            bottom == 0 -> top
+            else -> minOf(top, bottom)
+        }
+    } else 0
+    val predictiveBackShape = if (predictiveBackCornerRadius == 0) RectangleShape else {
+        RoundedCornerShape(with(density) { predictiveBackCornerRadius.toDp() })
+    }
     Box(
         Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(if (appDestinationVisible) Color.Black else MaterialTheme.colorScheme.background),
     ) {
         NavHost(
             navController = navController,
@@ -218,8 +246,36 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
             exitTransition = { fadeOut(navFadeSpec) },
             popEnterTransition = { fadeIn(navFadeSpec) },
             popExitTransition = { fadeOut(navFadeSpec) },
-            predictivePopEnterTransition = { fadeIn(navFadeSpec) },
-            predictivePopExitTransition = { fadeOut(navFadeSpec) },
+            predictivePopEnterTransition = {
+                if (AppDestination.entries.any { it.route == initialState.destination.route }) {
+                    fadeIn(
+                        animationSpec = keyframes {
+                            durationMillis = 300
+                            // AOSP holds the scrim through pre-commit; the normal pop removes it.
+                            predictiveBackBackgroundAlpha at 299
+                        },
+                        initialAlpha = predictiveBackBackgroundAlpha,
+                    )
+                } else fadeIn(navFadeSpec)
+            },
+            predictivePopExitTransition = { swipeEdge ->
+                if (AppDestination.entries.any { it.route == initialState.destination.route }) {
+                    scaleOut(
+                        animationSpec = tween(easing = predictiveBackEasing),
+                        targetScale = 0.85f,
+                        transformOrigin = if (swipeEdge == NavigationEvent.EDGE_LEFT) {
+                            TransformOrigin(1f, 0.5f)
+                        } else {
+                            TransformOrigin(0.5f, 0.5f)
+                        },
+                    ) + slideOutHorizontally(
+                        animationSpec = tween(easing = predictiveBackEasing),
+                        targetOffsetX = {
+                            if (swipeEdge == NavigationEvent.EDGE_LEFT) -predictiveBackEdgeMargin else 0
+                        },
+                    )
+                } else fadeOut(navFadeSpec)
+            },
         ) {
             composable(RootDestination.Tethering.route) {
                 val scope = rememberCoroutineScope()
@@ -331,15 +387,22 @@ fun VpnHotspotApp(clientViewModel: ClientViewModel) {
             }
             for (destination in AppDestination.entries) {
                 composable(destination.route) {
-                    ApConfigurationRoute(
-                        route == destination.route,
-                        apState,
-                        applyApConfiguration,
-                        navController,
-                        snackbarHostState,
-                        onSnackbarStartPaddingChanged = { snackbarStartPadding = it },
-                        onSnackbarBottomPaddingChanged = { snackbarBottomPadding = it },
-                    )
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .clip(predictiveBackShape)
+                            .background(MaterialTheme.colorScheme.background),
+                    ) {
+                        ApConfigurationRoute(
+                            route == destination.route,
+                            apState,
+                            applyApConfiguration,
+                            navController,
+                            snackbarHostState,
+                            onSnackbarStartPaddingChanged = { snackbarStartPadding = it },
+                            onSnackbarBottomPaddingChanged = { snackbarBottomPadding = it },
+                        )
+                    }
                 }
             }
         }
@@ -426,13 +489,16 @@ private fun RootDestinationScaffold(
     val adaptiveInfo = currentWindowAdaptiveInfoV2()
     val useNavigationRail = adaptiveInfo.windowSizeClass.isWidthAtLeastBreakpoint(WIDTH_DP_MEDIUM_LOWER_BOUND)
     val navigateToRoot: (RootDestination) -> Unit = { destination ->
-        if (destination == selectedDestination) onReselect()
-        navController.navigate(destination.route) {
-            popUpTo(navController.graph.findStartDestination().id) {
-                saveState = true
+        if (destination == selectedDestination) {
+            onReselect()
+        } else {
+            navController.navigate(destination.route) {
+                popUpTo(navController.graph.findStartDestination().id) {
+                    saveState = true
+                }
+                launchSingleTop = true
+                restoreState = true
             }
-            launchSingleTop = true
-            restoreState = true
         }
     }
     if (useNavigationRail) {
