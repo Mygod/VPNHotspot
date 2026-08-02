@@ -19,8 +19,10 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.firebase.crashlytics.FirebaseCrashlytics
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.channels.consumeEach
@@ -35,6 +37,7 @@ import kotlin.time.Duration.Companion.seconds
 
 object RootManager : RootSession(), Logger {
     override val context get() = app.deviceStorage
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     @Parcelize
     sealed class RootInitEvent : Parcelable {
@@ -100,23 +103,15 @@ object RootManager : RootSession(), Logger {
             setCustomKey("root.launchedPid", rootProcess.process.pid)
         }
         super.handleRootLifecycle(rootProcess)
-        unexpectedLifecycle("stdout/stderr closed unexpectedly")
     } finally {
-        GlobalScope.launch {
-            var exit = withTimeoutOrNull(10.seconds) { rootProcess.process.awaitExit() }
-            if (exit == null) {
+        scope.launch {
+            if (withTimeoutOrNull(10.seconds) { rootProcess.process.awaitExit() } == null) {
                 rootProcess.process.destroy()
-                exit = withTimeoutOrNull(5.seconds) { rootProcess.process.awaitExit() }
-                unexpectedLifecycle(if (exit == null) {
+                if (withTimeoutOrNull(5.seconds) { rootProcess.process.awaitExit() } == null) {
                     rootProcess.process.destroyForcibly()
-                    "Root JVM refused to exit"
-                } else "Root JVM exited with $exit and timeout")
-            } else if (exit != 0) unexpectedLifecycle("Root JVM unexpectedly exited with $exit")
+                }
+            }
         }
-    }
-    private fun unexpectedLifecycle(message: String) {
-        Timber.w(Exception(message))
-        SmartSnackbar.make(message).show()
     }
 
     override suspend fun initServer(server: RootServer) {
@@ -124,7 +119,7 @@ object RootManager : RootSession(), Logger {
         UnblockCentral.openPidFd
         super.initServer(server)
         val initialized = CompletableDeferred<Unit>()
-        GlobalScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
             try {
                 server.flow(RootInit()).collect { event ->
                     when (event) {
@@ -137,7 +132,10 @@ object RootManager : RootSession(), Logger {
             } catch (e: CancellationException) {
                 if (!initialized.isCompleted) initialized.cancel(e)
             } catch (e: Exception) {
-                if (!initialized.isCompleted) initialized.completeExceptionally(e) else Timber.w(e)
+                if (!initialized.isCompleted) initialized.completeExceptionally(e) else {
+                    Timber.w(e)
+                    if (e is RootServer.UnexpectedExitException) SmartSnackbar.make(e).show()
+                }
             }
         }
         initialized.await()
