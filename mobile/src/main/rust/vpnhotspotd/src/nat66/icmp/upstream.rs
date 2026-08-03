@@ -22,7 +22,7 @@ use crate::{report, socket::is_kernel_icmp_error};
 use vpnhotspotd::shared::icmp_nat::{downstream_icmp_error_source, EchoEntry};
 use vpnhotspotd::shared::icmp_wire::{
     build_echo_reply_with_checksum, build_echo_request_with_checksum, build_icmp_error_packet,
-    build_icmp_quote, build_translated_udp_quote,
+    build_icmp_quote,
 };
 use vpnhotspotd::shared::model::Network;
 use vpnhotspotd::shared::nat66_counter::Nat66CounterSource;
@@ -262,7 +262,7 @@ async fn handle_upstream_echo_error(
             hop_limit,
         },
         Some(error.message_len),
-        probe.payload,
+        probe,
     )
     .await
 }
@@ -273,8 +273,7 @@ async fn handle_upstream_udp_error(
     error: IcmpErrorMetadata,
     probe: UdpErrorProbe<'_>,
 ) {
-    let context = match state.lookup_udp_error(network, probe.quote.source, probe.quote.destination)
-    {
+    let context = match state.lookup_udp_error(network, probe.source, probe.destination) {
         Ok(Some(context)) => context,
         Ok(None) => return,
         Err(e) => {
@@ -283,12 +282,7 @@ async fn handle_upstream_udp_error(
         }
     };
     let source = downstream_icmp_error_source(*error.offender.ip(), context.gateway);
-    let quote = match build_translated_udp_quote(
-        probe.quote,
-        context.client,
-        context.destination,
-        probe.payload,
-    ) {
+    let quote = match probe.quote.translate(context.client, context.destination) {
         Ok(quote) => quote,
         Err(e) => {
             report::io_with_details(
@@ -375,7 +369,7 @@ pub(super) async fn drain_echo_error_queue(
             None
         };
         let response = echo_error_response(error, &entry, &probe);
-        send_echo_error(state, entry, response, count_len, probe.payload).await
+        send_echo_error(state, entry, response, count_len, probe).await
     }
 }
 
@@ -384,45 +378,54 @@ async fn send_echo_error(
     entry: EchoEntry,
     response: EchoErrorResponse,
     count_len: Option<usize>,
-    payload: &[u8],
+    probe: EchoErrorProbe<'_>,
 ) {
-    let request = match build_echo_request_with_checksum(
-        *entry.client.ip(),
-        response.destination,
-        entry.original_id,
-        entry.original_seq,
-        payload,
-    ) {
-        Ok(request) => request,
-        Err(e) => {
-            report::io_with_details(
-                "nat66.icmp_echo_error_quote_request",
-                e,
-                [
-                    ("client", entry.client.to_string()),
-                    ("destination", response.destination.to_string()),
-                ],
-            );
-            return;
-        }
-    };
-    let quote = match build_icmp_quote(
-        *entry.client.ip(),
-        response.destination,
-        response.hop_limit,
-        &request,
-    ) {
-        Ok(quote) => quote,
-        Err(e) => {
-            report::io_with_details(
-                "nat66.icmp_echo_error_quote",
-                e,
-                [
-                    ("client", entry.client.to_string()),
-                    ("destination", response.destination.to_string()),
-                ],
-            );
-            return;
+    let quote = if let Some(quote) = probe.quote {
+        quote.translate(
+            *entry.client.ip(),
+            response.destination,
+            entry.original_id,
+            entry.original_seq,
+        )
+    } else {
+        let request = match build_echo_request_with_checksum(
+            *entry.client.ip(),
+            response.destination,
+            entry.original_id,
+            entry.original_seq,
+            probe.payload,
+        ) {
+            Ok(request) => request,
+            Err(e) => {
+                report::io_with_details(
+                    "nat66.icmp_echo_error_quote_request",
+                    e,
+                    [
+                        ("client", entry.client.to_string()),
+                        ("destination", response.destination.to_string()),
+                    ],
+                );
+                return;
+            }
+        };
+        match build_icmp_quote(
+            *entry.client.ip(),
+            response.destination,
+            response.hop_limit,
+            &request,
+        ) {
+            Ok(quote) => quote,
+            Err(e) => {
+                report::io_with_details(
+                    "nat66.icmp_echo_error_quote",
+                    e,
+                    [
+                        ("client", entry.client.to_string()),
+                        ("destination", response.destination.to_string()),
+                    ],
+                );
+                return;
+            }
         }
     };
     let packet = match build_icmp_error_packet(

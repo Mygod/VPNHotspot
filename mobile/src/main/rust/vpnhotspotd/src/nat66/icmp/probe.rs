@@ -1,6 +1,6 @@
 use std::net::{Ipv6Addr, SocketAddrV6};
 
-use etherparse::{Icmpv6Header, Icmpv6Type, IpNumber, Ipv6Header, UdpHeader};
+use etherparse::{Icmpv6Header, Icmpv6Type};
 
 use super::raw_socket::{
     ErrorQueueMessage, Ipv6RecvError, EMSGSIZE, SO_EE_ORIGIN_ICMP6, SO_EE_ORIGIN_LOCAL,
@@ -8,7 +8,7 @@ use super::raw_socket::{
 use vpnhotspotd::shared::icmp_nat::{
     downstream_icmp_error_source, icmpv6_error_bytes, EchoEntry, ICMPV6_PACKET_TOO_BIG,
 };
-use vpnhotspotd::shared::icmp_wire::UdpQuoteMetadata;
+use vpnhotspotd::shared::icmp_quote::{QuotedEchoPacket, QuotedUdpPacket};
 
 pub(super) struct EchoErrorProbe<'a> {
     pub(super) destination: Ipv6Addr,
@@ -16,11 +16,13 @@ pub(super) struct EchoErrorProbe<'a> {
     pub(super) seq: u16,
     pub(super) hop_limit: Option<u8>,
     pub(super) payload: &'a [u8],
+    pub(super) quote: Option<QuotedEchoPacket<'a>>,
 }
 
 pub(super) struct UdpErrorProbe<'a> {
-    pub(super) quote: UdpQuoteMetadata,
-    pub(super) payload: &'a [u8],
+    pub(super) source: SocketAddrV6,
+    pub(super) destination: SocketAddrV6,
+    pub(super) quote: QuotedUdpPacket<'a>,
 }
 
 pub(super) struct EchoErrorResponse {
@@ -115,58 +117,28 @@ fn error_queue_echo_probe(message: &ErrorQueueMessage) -> Option<EchoErrorProbe<
         seq: echo.seq,
         hop_limit: None,
         payload,
+        quote: None,
     })
 }
 
 pub(super) fn quoted_echo_probe(payload: &[u8]) -> Option<EchoErrorProbe<'_>> {
-    let (ip, rest) = Ipv6Header::from_slice(payload).ok()?;
-    if ip.next_header != IpNumber::IPV6_ICMP {
-        return None;
-    }
-    let (icmp, payload) = Icmpv6Header::from_slice(rest).ok()?;
-    let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type else {
-        return None;
-    };
+    let quote = QuotedEchoPacket::parse(payload)?;
     Some(EchoErrorProbe {
-        destination: ip.destination_addr(),
-        id: echo.id,
-        seq: echo.seq,
-        hop_limit: Some(ip.hop_limit),
-        payload,
+        destination: quote.destination,
+        id: quote.id,
+        seq: quote.seq,
+        hop_limit: Some(quote.hop_limit),
+        payload: quote.payload,
+        quote: Some(quote),
     })
 }
 
 pub(super) fn quoted_udp_probe(payload: &[u8]) -> Option<UdpErrorProbe<'_>> {
-    let (ip, rest) = Ipv6Header::from_slice(payload).ok()?;
-    if ip.next_header != IpNumber::UDP {
-        return None;
-    }
-    let (udp, payload) = UdpHeader::from_slice(rest).ok()?;
-    if ip.payload_length != udp.length
-        || udp.length < UdpHeader::LEN_U16
-        || usize::from(udp.length) < UdpHeader::LEN + payload.len()
-    {
-        return None;
-    }
+    let quote = QuotedUdpPacket::parse(payload)?;
     Some(UdpErrorProbe {
-        quote: UdpQuoteMetadata {
-            source: normalize_udp_error_addr(SocketAddrV6::new(
-                ip.source_addr(),
-                udp.source_port,
-                0,
-                0,
-            )),
-            destination: normalize_udp_error_addr(SocketAddrV6::new(
-                ip.destination_addr(),
-                udp.destination_port,
-                0,
-                0,
-            )),
-            hop_limit: ip.hop_limit,
-            length: udp.length,
-            checksum: udp.checksum,
-        },
-        payload,
+        source: normalize_udp_error_addr(quote.source),
+        destination: normalize_udp_error_addr(quote.destination),
+        quote,
     })
 }
 

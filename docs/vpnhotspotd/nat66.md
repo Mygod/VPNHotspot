@@ -284,6 +284,9 @@ The daemon allocates a rewritten Echo identifier/sequence, records the original
 client MAC, client IPv6 address, and hop limit, sends a daemon-owned upstream
 Echo Request on the selected Android network, and restores the client-visible
 identifier when the Echo Reply returns.
+The NFQUEUE path does not reassemble fragmented downstream Echo Requests, so an
+Echo Request whose Fragment header actually fragments the ICMPv6 payload is not
+proxied. Atomic fragments continue through the ordinary Echo path.
 If the selected network reports host- or network-unreachable during the
 upstream Echo send, the daemon logs the route loss, removes the Echo allocation,
 and drops the intercepted request without emitting a structured nonfatal.
@@ -298,10 +301,16 @@ The translated error types are Destination Unreachable, Packet Too Big, Time
 Exceeded, and Parameter Problem. Generated downstream ICMP errors preserve the
 upstream offender source when that source is meaningful on the downstream link;
 link-local upstream offenders are rewritten to the NAT66 gateway. Error quotes
-are capped so the complete generated IPv6 packet stays within the IPv6 minimum
-MTU. Expected kernel socket errors from remote ICMP delivery are consumed after
-error-queue processing when no daemon-owned quote can be mapped. Unmapped remote
-ICMP errors are not guessed into downstream errors.
+are parsed through complete supported IPv6 extension-header chains. An atomic or
+first fragment can be mapped when its Fragment offset is zero and the quote
+contains the complete Echo or UDP header; non-initial fragments cannot identify
+daemon-owned transport state and are left unmapped. Reverse translation rewrites
+the existing quote, including the transport checksum, while preserving its
+extension headers and Fragment identification. Quotes are capped so the complete
+generated IPv6 packet stays within the IPv6 minimum MTU. Expected kernel socket
+errors from remote ICMP delivery are consumed after error-queue processing when
+no daemon-owned quote can be mapped. Unmapped remote ICMP errors are not guessed
+into downstream errors.
 
 ICMPv6 counters count one sent unit per daemon-owned upstream Echo Request and
 one received unit per upstream Echo Reply or upstream ICMPv6 error translated
