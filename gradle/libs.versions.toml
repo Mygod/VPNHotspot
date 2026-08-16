@@ -22,7 +22,7 @@ leakcanary-android = "com.squareup.leakcanary:leakcanary-android:2.14"
 librootkotlinx = "be.mygod.librootkotlinx:librootkotlinx:2.0.0-beta02"
 lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
-navigation-compose = "androidx.navigation:navigation-compose:2.10.0-beta01"
+navigation-compose = "androidx.navigation:navigation-compose:2.10.0-rc01"
 oss-licenses-plugin = "com.google.android.gms:oss-licenses-plugin:0.13.0"
 play-services-oss-licenses = "com.google.android.gms:play-services-oss-licenses:17.5.1"
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
