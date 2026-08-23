@@ -299,12 +299,50 @@ impl Drop for ResolverQuery {
     }
 }
 
+// `cfg(not(test))` because this binary now has host tests of its own, and a host has no `libandroid` to link
+// against. Root's build is unaffected: a non-test build links exactly what it always did. The refusing stubs
+// below are the same shape [crate::resolver] and [crate::upstream] already use for the same reason.
+#[cfg(not(test))]
 #[link(name = "android")]
 unsafe extern "C" {
     fn android_res_nsend(network: u64, msg: *const u8, msglen: usize, flags: u32) -> c_int;
     fn android_res_nresult(fd: c_int, rcode: *mut c_int, answer: *mut u8, anslen: usize) -> c_int;
     fn android_res_cancel(nsend_fd: c_int);
 }
+
+/// The platform's resolver, replaced by refusals when this binary is built as a test harness. Deliberately
+/// not a fake that answers: a resolver fake would be a second implementation of the thing under test.
+///
+/// # Safety
+///
+/// Nothing is dereferenced, so calling any of them is unconditionally sound.
+#[cfg(test)]
+unsafe fn android_res_nsend(_network: u64, _msg: *const u8, _msglen: usize, _flags: u32) -> c_int {
+    -1
+}
+
+/// See [android_res_nsend].
+///
+/// # Safety
+///
+/// Nothing is dereferenced, so calling it is unconditionally sound.
+#[cfg(test)]
+unsafe fn android_res_nresult(
+    _fd: c_int,
+    _rcode: *mut c_int,
+    _answer: *mut u8,
+    _anslen: usize,
+) -> c_int {
+    -1
+}
+
+/// See [android_res_nsend].
+///
+/// # Safety
+///
+/// Nothing is dereferenced, so calling it is unconditionally sound.
+#[cfg(test)]
+unsafe fn android_res_cancel(_nsend_fd: c_int) {}
 
 fn create_tcp_listener(reply_mark: u32) -> io::Result<TcpListener> {
     let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0))?;

@@ -232,7 +232,6 @@ android {
         targetSdk = 37
         versionCode = 2011
         versionName = "3.0.8"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     splits {
         abi {
@@ -264,7 +263,6 @@ android {
     )
     lint.warning += "FullBackupContent"
     lint.warning += "UnsafeOptInUsageError"
-    sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
 }
 val hiddenApiStubAnnotations = configurations.create("hiddenApiStubAnnotations")
 val compileHiddenApiStubs = tasks.register<JavaCompile>("compileHiddenApiStubs") {
@@ -286,6 +284,15 @@ wire {
         enumMode = "sealed_class"
         rpcRole = "none"
     }
+}
+// No instrumented tests exist here - there is no `src/androidTest`, no runner, and nothing declared in
+// `androidTestImplementation` (AGP still creates that configuration; it is simply empty) - and without this
+// AGP would still create the component for every variant, leaving a full set of `*DebugAndroidTest` compile,
+// package, install and `connectedDebugAndroidTest` tasks that build nothing and run nothing. Turned off at the
+// builder, before variants are created, because that is the phase the API offers for it; disabling the tasks
+// afterwards would leave the component in place and only hide it. JVM unit tests are untouched.
+androidComponents.beforeVariants { variant ->
+    variant.enableAndroidTest = false
 }
 androidComponents.onVariants { variant ->
     val variantTitle = variant.name.replaceFirstChar(Char::titlecase)
@@ -378,6 +385,8 @@ dependencies {
     implementation(libs.navigation.compose)
     implementation(libs.play.services.oss.licenses)
     implementation(libs.room.ktx)
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
     implementation(libs.timber)
     implementation(libs.wire.runtime)
     implementation(libs.zxing.core)
@@ -385,9 +394,4 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     hiddenApiStubAnnotations(libs.annotation.jvm)
     testImplementation(libs.junit)
-    androidTestImplementation(platform(libs.compose.bom))
-    androidTestImplementation(libs.espresso.core)
-    androidTestImplementation(libs.junit.ktx)
-    androidTestImplementation(libs.room.testing)
-    androidTestImplementation(libs.test.runner)
 }

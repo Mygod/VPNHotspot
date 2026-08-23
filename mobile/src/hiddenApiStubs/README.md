@@ -10,16 +10,50 @@ Stub declarations should carry `androidx.annotation.RequiresApi` for the exact p
 Use declaration comments in the stub only for the API levels where VPNHotspot actually uses the member, especially when that differs from the introduction point or depends on a runtime probe.
 
 APIs whose owner class is already in `android.jar` should stay as direct SDK usage, reflection, or hardcoded constants at the call site.
-These additional reflected whitelisted/system API are listed below:
+These additional reflected whitelisted/system API are listed below.
+Suffixes are the exact rows of `../hiddenapi/hiddenapi-flags.csv` as checked, and `sdk` in a row means only that the runtime imposes no hidden-API restriction, never that the member is ordinary public API.
+That CSV records runtime labels alone, `sdk` is also what a member with no `hiddenapi` line at all is recorded as, and no source-list metadata is synthesized, so a row can neither prove public API nor disprove system API by omitting `system-api` (see `../hiddenapi/README.md`).
+Public and system status comes from the source API lists instead: `android.net.NetworkAgent` is `@hide @SystemApi` ([source](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/NetworkAgent.java#94)), absent from that module's `framework/api/current.txt` and present in its `framework/api/system-current.txt`, while its rows still read `Landroid/net/NetworkAgent;->register()Landroid/net/Network;,sdk,test-api` and `Landroid/net/NetworkAgent;->markConnected()V,sdk,test-api`.
+What decides membership here is therefore reachability, not the row: a member belongs in this inventory when it is missing from `android.jar` and so needs a compile-only stub or reflection, however public its row looks.
 
 * `Landroid/bluetooth/BluetoothProfile;->PAN:I,sdk,system-api,test-api`
 * (prior to API 30) `Landroid/net/ConnectivityManager;->startTethering(IZLandroid/net/ConnectivityManager$OnStartTetheringCallback;Landroid/os/Handler;)V,sdk,system-api,test-api`
 * (prior to API 30) `Landroid/net/ConnectivityManager;->stopTethering(I)V,sdk,system-api,test-api`
 * `Landroid/net/LinkAddress;-><init>(Ljava/lang/String;)V,sdk,system-api,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/LinkAddress;-><init>(Ljava/net/InetAddress;I)V,sdk,test-api`
 * (since API 30) `Landroid/net/LinkAddress;->getDeprecationTime()J,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/LinkAddress;->getExpirationTime()J,sdk,system-api,test-api`
 * `Landroid/net/LinkProperties;->getAllInterfaceNames()Ljava/util/List;,sdk,system-api,test-api`
 * `Landroid/net/LinkProperties;->getAllRoutes()Ljava/util/List;,sdk,system-api,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkAgent;-><init>(Landroid/content/Context;Landroid/os/Looper;Ljava/lang/String;Landroid/net/NetworkCapabilities;Landroid/net/LinkProperties;Landroid/net/NetworkScore;Landroid/net/NetworkAgentConfig;Landroid/net/NetworkProvider;)V,sdk,test-api`,
+  the `NetworkScore` overload; the `LocalNetworkConfig` overloads are `blocked` and are not used
+* (since API 33, Shizuku mode) `Landroid/net/NetworkAgent;->register()Landroid/net/Network;,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkAgent;->markConnected()V,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkAgent;->unregister()V,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkAgent;->onNetworkCreated()V,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkAgent;->onNetworkDestroyed()V,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkAgent;->onNetworkUnwanted()V,sdk,test-api`, the terminal
+  agent-channel callback a withdrawal requires: ConnectivityService delivers it from
+  `NetworkAgentInfo.disconnect()` whether or not a native network was ever created, so it - and not the
+  absence of `onNetworkCreated` - is what proves a known agent is gone
+* (since API 33, Shizuku mode) `Landroid/net/NetworkAgent;->getNetwork()Landroid/net/Network;,sdk,test-api`,
+  read back to classify a registration that threw, since the platform assigns it before `register()` returns
+* (since API 33, Shizuku mode) `Landroid/net/NetworkAgentConfig$Builder;-><init>()V,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkAgentConfig$Builder;->setLegacyType(I)Landroid/net/NetworkAgentConfig$Builder;,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkAgentConfig$Builder;->setLegacyTypeName(Ljava/lang/String;)Landroid/net/NetworkAgentConfig$Builder;,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkAgentConfig$Builder;->build()Landroid/net/NetworkAgentConfig;,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkCapabilities;->NET_CAPABILITY_NOT_VCN_MANAGED:I,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkCapabilities$Builder;-><init>()V,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkCapabilities$Builder;->addTransportType(I)Landroid/net/NetworkCapabilities$Builder;,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkCapabilities$Builder;->addCapability(I)Landroid/net/NetworkCapabilities$Builder;,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkCapabilities$Builder;->removeCapability(I)Landroid/net/NetworkCapabilities$Builder;,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkCapabilities$Builder;->setNetworkSpecifier(Landroid/net/NetworkSpecifier;)Landroid/net/NetworkCapabilities$Builder;,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkCapabilities$Builder;->build()Landroid/net/NetworkCapabilities;,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkScore$Builder;-><init>()V,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkScore$Builder;->setLegacyInt(I)Landroid/net/NetworkScore$Builder;,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/NetworkScore$Builder;->build()Landroid/net/NetworkScore;,sdk,test-api`
+* (since API 33, Shizuku mode) `Landroid/net/RouteInfo;-><init>(Landroid/net/IpPrefix;Ljava/net/InetAddress;Ljava/lang/String;I)V,sdk,test-api`;
+  the three-argument overload AOSP's own test networks use is `max-target-r` and therefore unusable here
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onClientsChanged(Ljava/util/Collection;)V,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onError(Ljava/lang/String;I)V,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onError(Landroid/net/TetheringInterface;I)V,sdk,system-api,test-api`

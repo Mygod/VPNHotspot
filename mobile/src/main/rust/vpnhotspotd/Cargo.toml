@@ -9,7 +9,14 @@ path = "src/lib.rs"
 [[bin]]
 name = "vpnhotspotd"
 path = "src/main.rs"
-test = false
+# Tested, which the host harness pays for in one way: the bionic and log owners this binary declares are
+# already gated on `cfg(not(test))`, with unlinked refusals in their place, because a host has neither
+# library to link against. `platform::android_api_level` is deliberately *not* among them - it is the real
+# Android extern, ungated, and no fake stands in for it - so tests are structured to avoid the paths that
+# reach it rather than to fake a device. Nothing else changes: the daemon's own code is what runs, and what
+# it buys is that the owners which cannot leave this crate, the TCP engine and its resolver transactions,
+# can be proved where they live rather than through a stand-in for them.
+test = true
 
 [dependencies]
 cidr = "0.3.2"
@@ -20,10 +27,17 @@ libc = "0.2.189"
 nfq = { package = "nfq-updated", version = "0.2.6" }
 nix = { version = "0.31.3", default-features = false, features = ["net", "uio"] }
 prost = "0.14.3"
+rustix = { version = "1.1.4", features = ["rand"] }
 rtnetlink = { version = "0.21.0", default-features = false, features = ["tokio_socket"] }
+smoltcp = { version = "0.13", default-features = false, features = ["std", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp"] }
 socket2 = { version = "0.6.5", features = ["all"] }
 tokio = { version = "1.53.1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
 tokio-util = "0.7.19"
+
+[dev-dependencies]
+# Paused time, so the reporter's window task can be tested without a real sleep in a test. Not unified into
+# the binary: dev-dependency features are only enabled when a test target is built.
+tokio = { version = "1.53.1", features = ["test-util"] }
 
 [build-dependencies]
 prost-build = "0.14.3"

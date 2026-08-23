@@ -69,7 +69,27 @@ where
     K: ToString,
     V: ToString,
 {
-    if let Some(report) = reported_io_error_report(&error) {
+    describe_io_error(context, &error, details)
+}
+
+/// The same report, from an error the caller still needs afterwards.
+///
+/// Nothing here ever consumed the error - it reads the message, the errno and the kind and puts them in a
+/// message of its own - so taking it by value was only ever a convenience for the callers that were throwing
+/// it away. A failure that both ends a task *and* has to be described to the app cannot throw it away, and
+/// rebuilding an equivalent error to hand back would drop exactly the errno this exists to carry.
+#[track_caller]
+pub fn describe_io_error<I, K, V>(
+    context: impl Into<String>,
+    error: &io::Error,
+    details: I,
+) -> DaemonErrorReport
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: ToString,
+    V: ToString,
+{
+    if let Some(report) = reported_io_error_report(error) {
         return report;
     }
     let location = Location::caller();
@@ -86,7 +106,13 @@ where
     }
 }
 
-fn reported_io_error_report(error: &io::Error) -> Option<DaemonErrorReport> {
+/// The structured form an error is already carrying, if it has one.
+///
+/// Public because "has this failure already been described to the app?" is a question the app session's
+/// teardown has to answer: it describes what converged on it, and a task that converged on its own failure -
+/// the TUN writer, the session seed - attaches what it emitted so the same failure is not put in front of
+/// the app twice.
+pub fn reported_io_error_report(error: &io::Error) -> Option<DaemonErrorReport> {
     error
         .get_ref()?
         .downcast_ref::<DaemonReportError>()

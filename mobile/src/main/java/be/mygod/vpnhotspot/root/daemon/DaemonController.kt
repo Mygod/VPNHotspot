@@ -62,7 +62,6 @@ object DaemonController {
     private val logScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
     private val stdoutLog = DaemonLog("stdout") { Timber.tag(BINARY_NAME).i(it) }
     private val stderrLog = DaemonLog("stderr") { Timber.tag(BINARY_NAME).e(it) }
-    private var daemonCommandAbiChecked = false
 
     /**
      * Android 10 bionic supports direct linker execution of uncompressed, page-aligned zip entries:
@@ -70,8 +69,12 @@ object DaemonController {
      * Android 10 DexPathList returns zip native-library paths only for stored entries:
      * https://android.googlesource.com/platform/libcore/+/android-10.0.0_r1/dalvik/src/main/java/dalvik/system/DexPathList.java#884
      */
-    private val daemonCommand by lazy {
+    val daemonCommand by lazy {
         val path = (app.classLoader as BaseDexClassLoader).findLibrary(BINARY_NAME) ?: error("Daemon binary missing")
+        // Validated once here rather than at each launch site: [be.mygod.vpnhotspot.shizuku.AppUidDaemon]
+        // execs the same binary the same way, and an ABI mismatch is a property of the binary rather than of
+        // who launched it.
+        DaemonAbi.check(path)
         listOf(if (Process.is64Bit()) "/system/bin/linker64" else "/system/bin/linker", path)
     }
 
@@ -138,10 +141,6 @@ object DaemonController {
         if (socket != null) return
         Timber.d("Starting $BINARY_NAME")
         val command = daemonCommand
-        if (!daemonCommandAbiChecked) {
-            DaemonAbi.check(command[1])
-            daemonCommandAbiChecked = true
-        }
         daemonStdioClosing = false
         daemonStdioEofReported = false
         val socketName = "be.mygod.vpnhotspot.${Process.myPid()}.${Random.nextLong().toHexString()}"

@@ -9,14 +9,28 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::UnixStream;
 use tokio::sync::mpsc::unbounded_channel;
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
 
 use crate::report::{ControllerMessage, ControllerSender};
 use crate::socket::await_connect;
 
 // Mirrors the app-side control frame cap, matching Android's documented Binder transaction buffer.
-const MAX_CONTROL_PACKET_SIZE: usize = 1024 * 1024;
+pub(crate) const MAX_CONTROL_PACKET_SIZE: usize = 1024 * 1024;
 
-pub(super) fn spawn_writer<W>(mut writer: W) -> (ControllerSender, JoinHandle<()>)
+/// The control writer for both conversations, and the thing that ends one when it cannot write.
+///
+/// A write failure is terminal rather than advisory. `send_packet` writes the length prefix and the payload
+/// separately, so a failure between them desynchronizes the stream with nothing to resynchronize on - and a
+/// conversation that kept running would believe it was still answering a peer it can no longer reach. The
+/// root loop in particular parks on `recv_packet`, which a peer that closed only its read half never wakes,
+/// so without the token below root would sit there with live routing and live IPsec probes behind it.
+///
+/// Shared rather than duplicated per conversation: root and the app-UID session differ in what they own, not
+/// in what a broken control socket means.
+pub(crate) fn spawn_writer<W>(
+    mut writer: W,
+    cancel: CancellationToken,
+) -> (ControllerSender, JoinHandle<io::Result<()>>)
 where
     W: AsyncWrite + Unpin + Send + 'static,
 {
@@ -24,19 +38,22 @@ where
     let task = tokio::spawn(async move {
         while let Some(message) = receiver.recv().await {
             if let Err(e) = send_packet(&mut writer, message.packet()).await {
+                let reported = io::Error::new(e.kind(), e.to_string());
                 message.log_send_failure(e);
                 receiver.close();
                 while let Some(message) = receiver.recv().await {
                     message.log_drop_after_disconnect();
                 }
-                break;
+                cancel.cancel();
+                return Err(reported);
             }
         }
+        Ok(())
     });
     (sender, task)
 }
 
-pub(super) async fn connect_control_socket(socket_name: &str) -> io::Result<UnixStream> {
+pub(crate) async fn connect_control_socket(socket_name: &str) -> io::Result<UnixStream> {
     let address = SockAddr::unix(OsStr::from_bytes(format!("\0{socket_name}").as_bytes()))?;
     let socket = Socket::new(Domain::UNIX, Type::STREAM, None)?;
     socket.set_nonblocking(true)?;
@@ -55,7 +72,7 @@ pub(super) async fn connect_control_socket(socket_name: &str) -> io::Result<Unix
     UnixStream::from_std(stream)
 }
 
-pub(super) async fn recv_packet<R>(socket: &mut R) -> io::Result<Vec<u8>>
+pub(crate) async fn recv_packet<R>(socket: &mut R) -> io::Result<Vec<u8>>
 where
     R: AsyncRead + Unpin,
 {

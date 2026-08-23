@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repo is a single-app Android project. Root Gradle files live at the repo top level. The app module is [`mobile`](./mobile), with Kotlin/Java under [`mobile/src/main/java`](./mobile/src/main/java), native code under [`mobile/src/main/cpp`](./mobile/src/main/cpp), Rust daemon code under [`mobile/src/main/rust`](./mobile/src/main/rust), resources under [`mobile/src/main/res`](./mobile/src/main/res), JVM tests under [`mobile/src/test/java`](./mobile/src/test/java), and instrumented tests under [`mobile/src/androidTest/java`](./mobile/src/androidTest/java). Product-specific source lives in [`mobile/src/google`](./mobile/src/google) and [`mobile/src/freedom`](./mobile/src/freedom).
+This repo is a single-app Android project. Root Gradle files live at the repo top level. The app module is [`mobile`](./mobile), with Kotlin/Java under [`mobile/src/main/java`](./mobile/src/main/java), native code under [`mobile/src/main/cpp`](./mobile/src/main/cpp), Rust daemon code under [`mobile/src/main/rust`](./mobile/src/main/rust), resources under [`mobile/src/main/res`](./mobile/src/main/res), and JVM tests under [`mobile/src/test/java`](./mobile/src/test/java). Product-specific source lives in [`mobile/src/google`](./mobile/src/google) and [`mobile/src/freedom`](./mobile/src/freedom).
 
 ## Build, Test, and Development Commands
 Use Gradle from the repo root.
@@ -9,7 +9,6 @@ Use Gradle from the repo root.
 - `./gradlew :mobile:compileDebugKotlin`: fast Kotlin compile check.
 - `./gradlew :mobile:testDebugUnitTest`: run JVM/unit tests.
 - `./gradlew :mobile:installDebug`: install the debug build on a connected device.
-- `./gradlew :mobile:connectedDebugAndroidTest`: run instrumented tests on device/emulator.
 
 ## Coding Style & Naming Conventions
 Follow existing Kotlin style: 4-space indentation, concise expression bodies only when clear, and existing naming patterns. Match nearby code before introducing new structure.
@@ -64,7 +63,9 @@ Rust daemon code should be event-driven and async-first. Prefer Tokio readiness,
 - Run `cargo fmt`, `cargo check`, and preferably `cargo clippy --all-targets -- -D warnings` for Rust changes. Also run the Gradle native build task when the Android build integration could be affected.
 
 ## Testing Guidelines
-Add or update unit tests in `mobile/src/test/java` for parser, routing, and compatibility logic. Use AndroidX instrumentation tests only when behavior depends on framework/runtime integration. Name tests after the target type, for example `IpSecForwardPolicyCommandTest`. Prefer the smallest test that proves the behavior change.
+Add or update unit tests in `mobile/src/test/java` for parser, routing, and compatibility logic. Name tests after the target type, for example `IpSecForwardPolicyCommandTest`. Prefer the smallest test that proves the behavior change.
+
+This repository keeps **no instrumented tests, and the build does not generate the component for them**: there is no `mobile/src/androidTest`, no instrumentation runner and no `androidTestImplementation` declarations - AGP still defines that configuration, and `:mobile:dependencies --configuration androidTestImplementation` reports it empty - while `androidComponents.beforeVariants` sets `enableAndroidTest = false` so AGP creates no `*AndroidTest` variant at all: no compile, package, install or `connectedDebugAndroidTest` task exists to run, leaving only AGP's three empty project-level aggregates (`assembleAndroidTest`, `connectedAndroidTest`, `deviceAndroidTest`). Do not reintroduce any of it, and do not run Android instrumentation tests on the maintainer's device. Behaviour that genuinely needs a device is qualified by hand with a purpose-built harness instead - see the device gates in [`docs/vpnhotspotd/shizuku.md`](./docs/vpnhotspotd/shizuku.md), several of which require a separately signed second app and cannot be an in-repo test at all - and what a host JVM cannot reach is stated as unproven rather than asserted by a test nobody runs. This says nothing about ordinary device work: `installDebug`, `adb` and hand-driven qualification stay available when they are separately authorized.
 
 ## Commit & Pull Request Guidelines
 Keep commit messages short, imperative, and specific, matching recent history such as `Fixes` or `Update dependencies`. PRs should explain user-visible impact, compatibility risk, and validation performed. Link the issue when relevant and include screenshots only for UI changes.

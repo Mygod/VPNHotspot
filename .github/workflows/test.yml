@@ -49,6 +49,13 @@ jobs:
         working-directory: mobile/src/main/rust/vpnhotspotd
         run: cargo clippy --locked --all-targets -- -D warnings
 
+      - name: Test Rust daemon
+        # Run rather than only compiled: the daemon's owner invariants are tests - refusal boundaries, unwind
+        # order, and the arithmetic behind every derived capacity - and compiling them proves none of it.
+        # `--locked` for the same reason the checks above use it.
+        working-directory: mobile/src/main/rust/vpnhotspotd
+        run: cargo test --locked
+
       - name: Audit Rust daemon dependencies
         working-directory: mobile/src/main/rust/vpnhotspotd
         run: cargo audit

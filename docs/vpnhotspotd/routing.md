@@ -750,6 +750,53 @@ Table 900 may be flushed by Clean because it is reserved by VPNHotspot. Table
 97 must not be flushed; delete only reconstructed VPNHotspot NAT66 routes from
 it.
 
+## Rootless Shizuku Mode
+
+This mode makes **none** of the mutations above, and it cannot: every one of them
+needs root, while the daemon and the app both run at the app UID. It is listed here
+so the catalog is complete about what the app does to the system, not because routing
+owns any of it. Nothing here is reachable from `routing.rs`, and `CleanRoutingCommand`
+neither creates nor removes any of it.
+
+What a session creates, all of it through Shizuku's shell/root identity and all of it
+owned by a Binder or a descriptor rather than by a table:
+
+| State | How it is created | How it goes away |
+| --- | --- | --- |
+| A `testtunN` TUN interface | `TestNetworkManager.createTunInterface`, never `setupTestNetwork` | closing the last `ParcelFileDescriptor`, which app-process death does too |
+| `192.0.2.1/30` and `2001:db8:1::1/64` on it | assigned by `createTunInterface` | with the interface |
+| A restricted native network over it | `NetworkAgent.register` with `TRANSPORT_TEST`, no `NOT_RESTRICTED` and no `INTERNET`, and an empty allowed-UID set from a fresh builder | `NetworkAgent.unregister`, or agent Binder death |
+| Its routes and DNS servers | the agent's immutable `LinkProperties`: one connected route per address, an IPv4 and an IPv6 default route, and `192.0.2.5`/`fd00::53` as resolvers | with the network |
+| An exact foreground `NetworkRequest` | `requestNetwork` through the privileged manager | `IConnectivityManager.releaseNetworkRequest(handle)` on the retained handle, or callback Binder death |
+| The global `preferTestNetworks` flag | `ITetheringConnector.setPreferTestNetworks(true)` | `setPreferTestNetworks(false)` on stop. A flag a dead process left set is adopted by the next session rather than cleared by its start, so that session's own stop - or a reboot - is what clears it |
+
+The addresses are documentation prefixes on purpose. Every address the interface holds
+is an address clients cannot reach, because the default route delivers their traffic to
+the TUN while the connected prefix is delivered locally; TEST-NET-1 and the IPv6
+documentation prefix are guaranteed never to be assigned, so that hole cannot collide
+with a destination a client wants.
+
+Cleanup is descriptor and Binder ownership rather than bookkeeping, which is why it
+needs no Clean path: a normal stop, a rolled-back startup, app-process death, a force
+stop and an uninstall all release the same things, and none of them can leave a route
+or a firewall rule behind because none was ever installed. Two residues do outlive a
+session, and neither is removable at this privilege level:
+
+- the global preference, if the app died before clearing it. It has no owner token and there
+  is no recovery action for it: after process death a fresh start does not clear it in
+  preparation, so what clears it is that session's own stop, or a reboot. It does not strand
+  the hotspot - with no test network present Android reselects an ordinary upstream - but it
+  does mean the next test network to appear is preferred, including a foreign one;
+- a pair of rules in netd's own `tetherctrl_counters` chain naming each dead `testtunN`.
+  Ordinary tethering reuses one downstream name and so reuses its rules; a fresh test
+  interface per session does not. They live in a chain netd owns, alongside rules for
+  live interfaces, so removing them is exactly the delete-by-shared-family the
+  guardrails below forbid. Reboot is what clears them.
+
+Losing the network never stops tethering. Android reselects an ordinary upstream and
+clients keep working unprotected, which is documented in the root `README.md` because
+nothing on the client side changes to say so.
+
 ## Guardrails
 
 - Do not add a route, rule, address, mark, chain, or firewall rule without

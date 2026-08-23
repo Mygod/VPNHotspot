@@ -12,7 +12,7 @@ use tokio_util::sync::CancellationToken;
 use crate::report::{ControllerSender, ControllerSenderExt};
 use crate::session::Session;
 use crate::{ipsec, nat66, neighbour, netlink, report, routing};
-use vpnhotspotd::shared::ipsec::{IpSecForwardPolicyTarget, UpstreamTracker};
+use vpnhotspotd::shared::ipsec::{Finished, IpSecForwardPolicyTarget, Probe, UpstreamTracker};
 use vpnhotspotd::shared::model::DAEMON_REPLY_MARK;
 use vpnhotspotd::shared::proto::daemon;
 use vpnhotspotd::shared::protocol::{
@@ -20,10 +20,11 @@ use vpnhotspotd::shared::protocol::{
     daemon_io_error_report_with_details, error_frame, ipsec_forward_policy_frame,
     read_session_config, traffic_counters_frame, IoErrorReportExt, IoResultReportExt,
 };
+use vpnhotspotd::shared::tasks::Background;
 
 mod calls;
 mod session_control;
-mod wire;
+pub(crate) mod wire;
 
 use calls::{detach_call, handle_call, send_complete, CallOutput, CallState};
 use session_control::{read_session_counters, run_session, stop_sessions, SessionControl};
@@ -33,12 +34,16 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     let controller = connect_control_socket(&socket_name).await?;
     report::stderr!("connected to {socket_name}");
     let (mut controller_read, controller_write) = controller.into_split();
-    let (sender, writer) = spawn_writer(controller_write);
+    // Cancelled by the writer when the control socket can no longer carry a frame, which is the only way the
+    // read loop below learns about a peer that closed just its read half.
+    let cancel = CancellationToken::new();
+    let (sender, writer) = spawn_writer(controller_write, cancel.clone());
     report::init(sender.clone())?;
     let state = Arc::new(State {
         ipsec: Mutex::new(UpstreamTracker::default()),
         nat66: nat66::ProcessResources::new(DAEMON_REPLY_MARK),
         sessions: Mutex::new(HashMap::new()),
+        probes: Background::new("control.ipsec_probe"),
         ipv6_nat_firewall_base: Mutex::new(false),
         neighbour_monitor: Mutex::new(None),
     });
@@ -47,6 +52,14 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     let mut tasks = JoinSet::new();
     loop {
         let packet = select! {
+            // Biased, and this arm first, because "first" has to be real rather than documented: an
+            // unbiased select picks at random among ready arms, so a writer that has just failed could lose
+            // to a buffered command and this loop would dispatch a new call - starting side effects - after
+            // output was already terminal. A dead control socket ends the conversation instead, rather than
+            // leaving it parked on a read that will never return while root routing and IPsec probes stay
+            // live behind it.
+            biased;
+            () = cancel.cancelled() => break,
             result = tasks.join_next(), if !tasks.is_empty() => {
                 if let Some(Err(e)) = result {
                     report::message("control.call_join", e.to_string(), "JoinError");
@@ -138,19 +151,27 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
             report::message("control.call_join", e.to_string(), "JoinError");
         }
     }
+    if let Err(e) = state.probes.close().await {
+        report::message("control.ipsec_probe_join", e.to_string(), "JoinError");
+    }
     state.stop(false).await;
     report::flush().await;
     drop(sender);
-    if let Err(e) = writer.await {
-        report::stderr!("controller writer task failed: {e}");
+    match writer.await {
+        Ok(result) => result,
+        Err(e) => Err(io::Error::other(format!(
+            "controller writer task failed: {e}"
+        ))),
     }
-    Ok(())
 }
 
 struct State {
     ipsec: Mutex<UpstreamTracker>,
     nat66: nat66::ProcessResources,
     sessions: Mutex<HashMap<u64, Arc<SessionState>>>,
+    /// The IPsec probes calls have started. Owned by the process rather than detached, and joined by [run]
+    /// before anything a probe touches is torn down - see [Background].
+    probes: Background,
     ipv6_nat_firewall_base: Mutex<bool>,
     neighbour_monitor: Mutex<Option<MonitorState>>,
 }
@@ -223,45 +244,98 @@ impl State {
             }
             self.ipsec.lock().await.update_session(slot.id, config)
         };
-        if probe {
-            let state = self.clone();
-            let sender = sender.clone();
-            tokio::spawn(async move {
-                let result = ipsec::scan().await;
-                state.finish_ipsec_probe(result, &sender).await;
-            });
+        let Some(probe) = probe else {
+            // Either nothing changed that a scan could answer, or one is already running and this update is
+            // recorded as the rescan it owes - which the probe below picks up rather than losing.
+            return;
+        };
+        let state = self.clone();
+        let sender = sender.clone();
+        // Admitted rather than spawned, so the handle is kept: this task mutates the tracker and sends frames
+        // on the control writer, both of which the process tears down on its way out. A refused admission
+        // means the process is already stopping, and the tracker's probing flag goes with the [State::stop]
+        // that refused it.
+        let admitted = self
+            .probes
+            .admit(|cancel| async move {
+                // One flight, however many updates it has to answer for. Looping here rather than admitting a
+                // second task keeps "one scan at a time" true and keeps the update that arrived mid-scan from
+                // being answered by a scan that predates it.
+                let mut probe = probe;
+                loop {
+                    let result = select! {
+                        biased;
+                        // The one expected ending, and a quiet one: the process is stopping, so there is no
+                        // tracker left to update and no conversation left to tell.
+                        () = cancel.cancelled() => return,
+                        result = ipsec::scan() => result,
+                    };
+                    match state.finish_ipsec_probe(probe, result, &sender).await {
+                        Some(rescan) => probe = rescan,
+                        None => return,
+                    }
+                }
+            })
+            .await;
+        if let Err(e) = admitted.reaped {
+            report::message("control.ipsec_probe_join", e.to_string(), "JoinError");
+        }
+        if !admitted.started {
+            report::stderr!("ipsec probe skipped: the daemon is stopping");
         }
     }
 
+    /// Commits one probe's answer, if it still speaks for the tracker's sessions, and hands back the rescan it
+    /// owes either way.
+    ///
+    /// The rescan is not optional for the caller: the tracker has handed it this flight, so a `Some` that is
+    /// not run leaves the tracker believing a scan is in progress and nothing would ever start another. The
+    /// loop below runs it; the two paths that return `None` with one outstanding are both the conversation
+    /// itself ending, where [State::stop] clears the tracker.
     async fn finish_ipsec_probe(
         &self,
+        probe: Probe,
         result: io::Result<Vec<IpSecForwardPolicyTarget>>,
         sender: &ControllerSender,
-    ) {
+    ) -> Option<Probe> {
         match result {
             Ok(targets) => {
-                let frames = {
+                let (frames, rescan) = {
                     let mut ipsec = self.ipsec.lock().await;
-                    ipsec.finish_probe();
-                    ipsec.retain_observed_targets(&targets);
-                    targets
-                        .into_iter()
-                        .filter_map(|target| {
-                            let id = ipsec.session_for_new_target(&target)?;
-                            Some(ipsec_forward_policy_frame(id, &target))
-                        })
-                        .collect::<Vec<_>>()
+                    let Finished { current, rescan } = ipsec.finish_probe(probe);
+                    // A probe the sessions moved out from under - a clean, or a replacement this scan predates
+                    // - speaks for a session set that no longer exists. Committing it would forget the targets
+                    // a newer scan has already sent, and forgetting those is what makes them be sent again;
+                    // publishing it would attribute what it did see from the session set it no longer speaks
+                    // for. So nothing it saw is used, and the rescan below is what answers for the change.
+                    if current {
+                        ipsec.retain_observed_targets(&targets);
+                        let frames = targets
+                            .into_iter()
+                            .filter_map(|target| {
+                                let id = ipsec.session_for_new_target(&target)?;
+                                Some(ipsec_forward_policy_frame(id, &target))
+                            })
+                            .collect::<Vec<_>>();
+                        (frames, rescan)
+                    } else {
+                        (Vec::new(), rescan)
+                    }
                 };
                 for frame in frames {
                     if !sender.send_frame(frame) {
                         report::stderr!("controller send failed");
-                        return;
+                        return None;
                     }
                 }
+                rescan
             }
             Err(e) => {
-                self.ipsec.lock().await.finish_probe();
+                // A scan that failed is reported whoever it belonged to - the failure is the daemon's own
+                // either way.
+                let rescan = self.ipsec.lock().await.finish_probe(probe).rescan;
                 report::report_for(None, daemon_io_error_report("ipsec.scan", e));
+                rescan
             }
         }
     }
