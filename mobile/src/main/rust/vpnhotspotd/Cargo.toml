@@ -1,0 +1,38 @@
+[package]
+name = "vpnhotspotd"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "vpnhotspotd"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+cidr = "0.3.2"
+etherparse = "0.21.0"
+futures-channel = "0.3.33"
+futures-util = "0.3.33"
+libc = "0.2.189"
+nfq = { package = "nfq-updated", version = "0.2.6" }
+nix = { version = "0.31.3", default-features = false, features = ["net", "uio"] }
+prost = "0.14.3"
+rtnetlink = { version = "0.21.0", default-features = false, features = ["tokio_socket"] }
+socket2 = { version = "0.6.5", features = ["all"] }
+tokio = { version = "1.53.1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
+tokio-util = "0.7.19"
+
+[build-dependencies]
+prost-build = "0.14.3"
+protoc-bin-vendored = "3.2.0"
+
+[profile.release]
+panic = "abort"
+lto = "fat"
+codegen-units = 1
+
+[profile.dev]
+panic = "abort"

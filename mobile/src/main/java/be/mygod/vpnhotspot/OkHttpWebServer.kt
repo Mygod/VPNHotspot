@@ -6,9 +6,7 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Build
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.net.TetheringManagerCompat.tetheredIfaces
-import be.mygod.vpnhotspot.net.wifi.WifiApManager
-import be.mygod.vpnhotspot.net.wifi.WifiApManager.wifiApState
+import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.ApiKeyManager
 import kotlinx.coroutines.*
@@ -1255,36 +1253,14 @@ class OkHttpWebServer(private val context: Context, val port: Int = 9999) {
         }
     }
     
-    private fun startWifiTethering() {
-        TetheringManagerCompat.startTethering(
-            android.net.TetheringManager.TETHERING_WIFI,
-            true,
-            object : TetheringManagerCompat.StartTetheringCallback {
-                override fun onTetheringStarted() {
-                    Timber.i("WiFi tethering started successfully")
-                }
-                
-                override fun onTetheringFailed(error: Int?) {
-                    val errorMsg = error?.let { TetheringManagerCompat.tetherErrorLookup(it) } ?: "Unknown error"
-                    Timber.w("Failed to start WiFi tethering: $errorMsg")
-                    throw RuntimeException("Failed to start WiFi tethering: $errorMsg")
-                }
-            }
-        )
+    private fun startWifiTethering() = runBlocking {
+        TetheringManagerCompat.startTethering(android.net.TetheringManager.TETHERING_WIFI, false)
+        Timber.i("WiFi tethering started successfully")
     }
-    
-    private fun stopWifiTethering() {
-        val callback = object : TetheringManagerCompat.StopTetheringCallback {
-            override fun onStopTetheringSucceeded() {
-                Timber.i("WiFi tethering stopped successfully")
-            }
-            
-            override fun onStopTetheringFailed(error: Int) {
-                Timber.w("WiFi tethering stop failed with error: $error")
-            }
-        }
-        TetheringManagerCompat.stopTethering(android.net.TetheringManager.TETHERING_WIFI, callback)
-        Timber.i("WiFi tethering stop requested")
+
+    private fun stopWifiTethering() = runBlocking {
+        TetheringManagerCompat.stopTethering(android.net.TetheringManager.TETHERING_WIFI)
+        Timber.i("WiFi tethering stopped successfully")
     }
     
     private fun getSystemStatus(): SystemStatus {
@@ -1385,12 +1361,11 @@ class OkHttpWebServer(private val context: Context, val port: Int = 9999) {
     
     private fun getWifiStatus(): String {
         return try {
-            val intent = context.registerReceiver(null, IntentFilter(TetheringManagerCompat.ACTION_TETHER_STATE_CHANGED))
-            val tetherInterfaces = intent?.tetheredIfaces
-            
-            val wifiInterfaces = tetherInterfaces?.filter { iface ->
-                iface.startsWith("wlan") || iface.startsWith("ap")
-            } ?: emptyList()
+            val wifiInterfaces = runBlocking {
+                TetherStates.flow.first().tethered.filter { iface ->
+                    iface.startsWith("wlan") || iface.startsWith("ap")
+                }
+            }
             
             if (wifiInterfaces.isNotEmpty()) {
                 "运行中 (接口: ${wifiInterfaces.joinToString(", ")})"

@@ -1,57 +1,48 @@
 package be.mygod.vpnhotspot.util
 
-import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.content.res.Resources
-import android.net.InetAddresses
+import android.icu.text.DateFormat
 import android.net.LinkProperties
-import android.net.MacAddress
 import android.net.NetworkRequest
 import android.net.RouteInfo
 import android.net.http.ConnectionMigrationOptions
 import android.net.http.HttpEngine
 import android.os.Build
+import android.os.IBinder
+import android.os.Parcel
+import android.os.Parcelable
 import android.os.RemoteException
 import android.os.ext.SdkExtensions
-import android.text.Spannable
-import android.text.SpannableString
-import android.text.SpannableStringBuilder
-import android.text.Spanned
-import android.view.MenuItem
-import android.view.View
-import android.widget.ImageView
-import androidx.annotation.DrawableRes
+import android.util.AtomicFile
 import androidx.annotation.RequiresExtension
-import androidx.core.i18n.DateTimeFormatter
-import androidx.core.i18n.DateTimeFormatterSkeletonOptions
 import androidx.core.net.toUri
-import androidx.core.view.isVisible
-import androidx.databinding.BindingAdapter
-import androidx.fragment.app.DialogFragment
-import androidx.fragment.app.FragmentManager
+import androidx.core.os.ParcelCompat
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.MacAddressCompat
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.File
+import java.io.FileOutputStream
 import java.lang.invoke.MethodHandles
 import java.lang.reflect.InvocationHandler
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.net.HttpURLConnection
 import java.net.InetAddress
-import java.net.NetworkInterface
-import java.net.SocketException
 import java.net.URL
+import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executor
 
@@ -61,19 +52,57 @@ tailrec fun Throwable.getRootCause(): Throwable {
 }
 val Throwable.readableMessage: String get() = getRootCause().run { localizedMessage ?: javaClass.name }
 
+fun String.toRegionalIndicatorFlagOrNull(): String? {
+    val code = uppercase(Locale.US)
+    if (code.length != 2 || code.any { it !in 'A'..'Z' }) return null
+    return String(code.flatMap { listOf('\uD83C', it + 0xDDA5) }.toCharArray())
+}
+
 /**
  * This is a hack: we wrap longs around in 1 billion and such. Hopefully every language counts in base 10 and this works
  * marvelously for everybody.
  */
-fun Long.toPluralInt(): Int {
-    check(this >= 0)    // please don't mess with me
-    if (this <= Int.MAX_VALUE) return toInt()
-    return (this % 1000000000).toInt() + 1000000000
+fun Long.toPluralInt() = when (this) {
+    in Int.MIN_VALUE..Int.MAX_VALUE -> toInt()
+    in 0..Long.MAX_VALUE -> (this % 1000000000).toInt() + 1000000000
+    else -> (this % 1000000000).toInt() - 1000000000
 }
 
 fun Method.matches(name: String, vararg classes: Class<*>) = this.name == name && parameterCount == classes.size &&
         classes.indices.all { i -> parameters[i].type == classes[i] }
-inline fun <reified T> Method.matches1(name: String) = matches(name, T::class.java)
+
+inline fun AtomicFile.writeAtomically(block: FileOutputStream.() -> Unit) {
+    val stream = startWrite()
+    try {
+        stream.block()
+        finishWrite(stream)
+    } catch (e: Exception) {
+        failWrite(stream)
+        throw e
+    }
+}
+
+inline fun <T> useParcel(block: (Parcel) -> T): T {
+    val parcel = Parcel.obtain()
+    try {
+        return block(parcel)
+    } finally {
+        parcel.recycle()
+    }
+}
+
+fun Parcelable?.toByteArray(parcelableFlags: Int = 0) = useParcel { parcel ->
+    parcel.writeParcelable(this, parcelableFlags)
+    parcel.marshall()
+}
+
+fun <T : Parcelable> ByteArray.toParcelable(classLoader: ClassLoader?, clazz: Class<T>) = useParcel { parcel ->
+    parcel.unmarshall(this, 0, size)
+    parcel.setDataPosition(0)
+    ParcelCompat.readParcelable(parcel, classLoader, clazz)
+}
+inline fun <reified T : Parcelable> ByteArray.toParcelable(classLoader: ClassLoader?) =
+    toParcelable(classLoader, T::class.java)
 
 fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
     try {
@@ -81,22 +110,9 @@ fun Context.ensureReceiverUnregistered(receiver: BroadcastReceiver) {
     } catch (_: IllegalArgumentException) { }
 }
 
-private val dateTimeFormat = DateTimeFormatterSkeletonOptions.Builder(
-    year = DateTimeFormatterSkeletonOptions.Year.NUMERIC,
-    month = DateTimeFormatterSkeletonOptions.Month.NUMERIC,
-    day = DateTimeFormatterSkeletonOptions.Day.NUMERIC,
-    period = DateTimeFormatterSkeletonOptions.Period.ABBREVIATED,
-    hour = DateTimeFormatterSkeletonOptions.Hour.NUMERIC,
-    minute = DateTimeFormatterSkeletonOptions.Minute.NUMERIC,
-    second = DateTimeFormatterSkeletonOptions.Second.NUMERIC,
-    fractionalSecond = DateTimeFormatterSkeletonOptions.FractionalSecond.NUMERIC_3_DIGITS,
-).build()
-fun Context.formatTimestamp(timestamp: Long) = DateTimeFormatter(this, dateTimeFormat,
-    resources.configuration.locales[0]).format(timestamp)
-
-fun DialogFragment.showAllowingStateLoss(manager: FragmentManager, tag: String? = null) {
-    if (!manager.isStateSaved) show(manager, tag)
-}
+fun Context.formatTimestamp(timestamp: Long) = DateFormat.getInstanceForSkeleton(
+    if (android.text.format.DateFormat.is24HourFormat(this)) "yMdHmsSSS" else "yMdahmsSSS",
+    resources.configuration.locales[0]).format(Date(timestamp))
 
 fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) = receiver(context, intent)
@@ -104,115 +120,64 @@ fun broadcastReceiver(receiver: (Context, Intent) -> Unit) = object : BroadcastR
 
 fun intentFilter(vararg actions: String) = IntentFilter().also { actions.forEach(it::addAction) }
 
-@BindingAdapter("android:src")
-fun setImageResource(imageView: ImageView, @DrawableRes resource: Int) = imageView.setImageResource(resource)
+private fun ByteArray.u32(index: Int) =
+    (this[index].toInt() shl 24 or
+            ((this[index + 1].toInt() and 0xFF) shl 16) or
+            ((this[index + 2].toInt() and 0xFF) shl 8) or
+            (this[index + 3].toInt() and 0xFF)).toUInt()
 
-@BindingAdapter("android:visibility")
-fun setVisibility(view: View, value: Boolean) {
-    view.isVisible = value
-}
-
-private val formatSequence = "%([0-9]+\\$|<?)([^a-zA-z%]*)([[a-zA-Z%]&&[^tT]]|[tT][a-zA-Z])".toPattern()
-/**
- * Version of [String.format] that works on [Spanned] strings to preserve rich text formatting.
- * Both the `format` as well as any `%s args` can be Spanned and will have their formatting preserved.
- * Due to the way [Spannable]s work, any argument's spans will can only be included **once** in the result.
- * Any duplicates will appear as text only.
- *
- * See also: https://github.com/george-steel/android-utils/blob/289aff11e53593a55d780f9f5986e49343a79e55/src/org/oshkimaadziig/george/androidutils/SpanFormatter.java
- *
- * @param locale
- * the locale to apply; `null` value means no localization.
- * @param args
- * the list of arguments passed to the formatter.
- * @return the formatted string (with spans).
- * @see String.format
- * @author George T. Steel
- */
-fun CharSequence.format(locale: Locale, vararg args: Any) = SpannableStringBuilder(this).apply {
-    var i = 0
-    var argAt = -1
-    while (i < length) {
-        val m = formatSequence.matcher(this)
-        if (!m.find(i)) break
-        i = m.start()
-        val exprEnd = m.end()
-        val argTerm = m.group(1)!!
-        val modTerm = m.group(2)
-        val cookedArg = when (val typeTerm = m.group(3)) {
-            "%" -> "%"
-            "n" -> "\n"
-            else -> {
-                val argItem = args[when (argTerm) {
-                    "" -> ++argAt
-                    "<" -> argAt
-                    else -> Integer.parseInt(argTerm.substring(0, argTerm.length - 1)) - 1
-                }]
-                if (typeTerm == "s" && argItem is Spanned) argItem else {
-                    String.format(locale, "%$modTerm$typeTerm", argItem)
+val InetAddress.isBogon get() = address.let { bytes ->
+    when (bytes.size) {
+        4 -> when (bytes[0].toInt()) {
+            0, 10, 127 -> true
+            else -> bytes.u32(0).let { address ->
+                when {
+                    (address and 0xFFC00000u) == 0x64400000u -> true
+                    (address and 0xFFFF0000u) == 0xA9FE0000u -> true
+                    (address and 0xFFF00000u) == 0xAC100000u -> true
+                    (address and 0xFFFFFF00u) == 0xC0000000u ->
+                        address != 0xC0000009u && address != 0xC000000Au
+                    (address and 0xFFFFFF00u) == 0xC0000200u -> true
+                    address == 0xC0586302u -> true
+                    (address and 0xFFFF0000u) == 0xC0A80000u -> true
+                    (address and 0xFFFE0000u) == 0xC6120000u -> true
+                    (address and 0xFFFFFF00u) == 0xC6336400u -> true
+                    (address and 0xFFFFFF00u) == 0xCB007100u -> true
+                    (address and 0xE0000000u) == 0xE0000000u -> true
+                    else -> false
                 }
             }
         }
-        replace(i, exprEnd, cookedArg)
-        i += cookedArg.length
-    }
-}
-
-fun <T> Iterable<T>.joinToSpanned(separator: CharSequence = ", ", prefix: CharSequence = "", postfix: CharSequence = "",
-                                  limit: Int = -1, truncated: CharSequence = "...",
-                                  transform: ((T) -> CharSequence)? = null) =
-    joinTo(SpannableStringBuilder(), separator, prefix, postfix, limit, truncated, transform)
-fun <T> Sequence<T>.joinToSpanned(separator: CharSequence = ", ", prefix: CharSequence = "", postfix: CharSequence = "",
-                                  limit: Int = -1, truncated: CharSequence = "...",
-                                  transform: ((T) -> CharSequence)? = null) =
-    joinTo(SpannableStringBuilder(), separator, prefix, postfix, limit, truncated, transform)
-
-fun makeIpSpan(ip: InetAddress) = ip.hostAddress.let {
-    // exclude all bogon IP addresses supported by Android APIs
-    if (!app.hasTouch || ip.isMulticastAddress || ip.isAnyLocalAddress || ip.isLoopbackAddress ||
-            ip.isLinkLocalAddress || ip.isSiteLocalAddress || ip.isMCGlobal || ip.isMCNodeLocal ||
-            ip.isMCLinkLocal || ip.isMCSiteLocal || ip.isMCOrgLocal) it else SpannableString(it).apply {
-        setSpan(CustomTabsUrlSpan("https://ipinfo.io/$it"), 0, length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-    }
-}
-fun makeMacSpan(mac: String) = if (app.hasTouch) SpannableString(mac).apply {
-    setSpan(CustomTabsUrlSpan("https://macaddress.io/macaddress/$mac"), 0, length,
-        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-} else mac
-
-fun NetworkInterface?.formatAddresses(macOnly: Boolean = false,
-                                      macOverride: MacAddress? = null) = SpannableStringBuilder().apply {
-    var address = macOverride
-    if (address == null && this@formatAddresses != null) try {
-        val hardwareAddress = hardwareAddress
-        address = try {
-            hardwareAddress?.let(MacAddress::fromBytes)
-        } catch (e: IllegalArgumentException) {
-            try {
-                hardwareAddress?.let { MacAddress.fromString(String(it)) }.also { Timber.d(e) }
-            } catch (e2: IllegalArgumentException) {
-                e.addSuppressed(e2)
-                Timber.w(e)
-                null
+        16 -> {
+            val first = bytes.u32(0)
+            val second = bytes.u32(4)
+            val third = bytes.u32(8)
+            val fourth = bytes.u32(12)
+            when {
+                first == 0u && second == 0u && third == 0u && (fourth == 0u || fourth == 1u) -> true
+                first == 0u && second == 0u && third == 0x0000FFFFu -> true
+                first == 0x0064FF9Bu && (second and 0xFFFF0000u) == 0x00010000u -> true
+                first == 0x01000000u && (second == 0u || second == 1u) -> true
+                (first and 0xFFFFFE00u) == 0x20010000u -> !(
+                        first == 0x20010001u && second == 0u && third == 0u && fourth in 1u..3u ||
+                        first == 0x20010003u ||
+                        first == 0x20010004u && (second and 0xFFFF0000u) == 0x01120000u ||
+                        (first and 0xFFFFFFF0u) == 0x20010020u ||
+                        (first and 0xFFFFFFF0u) == 0x20010030u)
+                first == 0x20010DB8u -> true
+                (first and 0xFFFF0000u) == 0x20020000u -> true
+                (first and 0xFFFFF000u) == 0x3FFF0000u -> true
+                (first and 0xFFFF0000u) == 0x5F000000u -> true
+                (first and 0xFE000000u) == 0xFC000000u -> true
+                (first and 0xFFC00000u) == 0xFE800000u ||
+                        (first and 0xFFC00000u) == 0xFEC00000u -> true
+                (first and 0xFF000000u) == 0xFF000000u -> true
+                else -> false
             }
         }
-    } catch (_: SocketException) { }
-    if (address != null && address != MacAddressCompat.ANY_ADDRESS) appendLine(makeMacSpan(address.toString()))
-    if (!macOnly && this@formatAddresses != null) for (address in interfaceAddresses) {
-        append(makeIpSpan(address.address))
-        address.networkPrefixLength.also { if (it.toInt() != address.address.address.size * 8) append("/$it") }
-        appendLine()
-    }
-}.trimEnd()
-
-private val parseNumericAddress by lazy @SuppressLint("SoonBlockedPrivateApi") {
-    InetAddress::class.java.getDeclaredMethod("parseNumericAddress", String::class.java).apply {
-        isAccessible = true
+        else -> false
     }
 }
-fun parseNumericAddress(address: String) = if (Build.VERSION.SDK_INT >= 29) {
-    InetAddresses.parseNumericAddress(address)
-} else parseNumericAddress(null, address) as InetAddress
 
 private val getAllInterfaceNames by lazy { LinkProperties::class.java.getDeclaredMethod("getAllInterfaceNames") }
 @Suppress("UNCHECKED_CAST")
@@ -234,12 +199,34 @@ fun Context.stopAndUnbind(connection: ServiceConnection) {
     unbindService(connection)
 }
 
-var MenuItem.isNotGone: Boolean
-    get() = isVisible || isEnabled
-    set(value) {
-        isVisible = value
-        isEnabled = value
+/**
+ * Bind to [service] for as long as the returned flow is collected, emitting the connected [IBinder]
+ * (and null whenever the service disconnects), then unbinding once collection ends. The
+ * [ServiceConnection] captures only the channel, so neither the system nor our own LoadedApk roots
+ * the collector through it — unlike passing a heavy `this` as the connection.
+ *
+ * Note: ending collection (an explicit unbind) does NOT emit a terminal null — Android only calls
+ * onServiceDisconnected on unexpected disconnects — so a collector that caches the binder elsewhere
+ * must clear it in a finally/onCompletion, or it will read a stale binder on the next bind cycle.
+ */
+fun Context.bindServiceFlow(service: Intent, flags: Int = Context.BIND_AUTO_CREATE) = callbackFlow {
+    val connection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+            trySend(binder)
+        }
+        override fun onServiceDisconnected(name: ComponentName?) {
+            trySend(null)
+        }
     }
+    // Android registers the connection in LoadedApk before bindService returns — even when it returns
+    // false (component missing/refused) or throws — so we must always unbind, else it leaks till process death.
+    try {
+        bindService(service, connection, flags)
+        awaitClose()
+    } finally {
+        unbindService(connection)
+    }
+}
 
 fun Resources.findIdentifier(name: String, defType: String, defPackage: String, alternativePackage: String? = null) =
     getIdentifier(name, defType, defPackage).let {

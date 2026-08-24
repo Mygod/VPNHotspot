@@ -7,10 +7,14 @@ import android.content.ClipboardManager
 import android.content.ContentProvider
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ProviderInfo
 import android.content.res.Configuration
 import android.location.LocationManager
 import android.os.Build
+import android.os.ServiceSpecificException
+import android.os.StrictMode
+import android.os.SystemProperties
 import android.os.ext.SdkExtensions
 import android.provider.Settings
 import android.system.Os
@@ -20,24 +24,28 @@ import androidx.annotation.Size
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.getSystemService
-import androidx.preference.PreferenceManager
 import be.mygod.librootkotlinx.NoShellException
-import be.mygod.vpnhotspot.net.DhcpWorkaround
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
+import be.mygod.vpnhotspot.util.CrashlyticsKeyProvider
 import be.mygod.vpnhotspot.util.DeviceStorageApp
+import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.ApiKeyManager
+import be.mygod.vpnhotspot.util.WebServerManager
+import be.mygod.vpnhotspot.util.getRootCause
 import be.mygod.vpnhotspot.util.privateLookup
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.gms.dynamite.DynamiteModule
+import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.analytics.ParametersBuilder
-import com.google.firebase.analytics.ktx.analytics
 import com.google.firebase.analytics.logEvent
+import com.google.firebase.crashlytics.CustomKeysAndValues
 import com.google.firebase.crashlytics.FirebaseCrashlytics
-import com.google.firebase.ktx.Firebase
 import com.google.firebase.provider.FirebaseInitProvider
 import kotlinx.coroutines.DEBUG_PROPERTY_NAME
 import kotlinx.coroutines.DEBUG_PROPERTY_VALUE_ON
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -50,29 +58,47 @@ class App : Application() {
         lateinit var app: App
     }
 
-    @SuppressLint("RestrictedApi")
-    override fun onCreate() {
-        super.onCreate()
-        app = this
-        deviceStorage = DeviceStorageApp(this)
-        // alternative to PreferenceManager.getDefaultSharedPreferencesName(this)
-        deviceStorage.moveSharedPreferencesFrom(this, PreferenceManager(this).sharedPreferencesName)
-        deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
-        BootReceiver.migrateIfNecessary()
-        Services.init { this }
-
+    init {
         // overhead of debug mode is minimal: https://github.com/Kotlin/kotlinx.coroutines/blob/f528898/docs/debugging.md#debug-mode
         System.setProperty(DEBUG_PROPERTY_NAME, DEBUG_PROPERTY_VALUE_ON)
-        DynamiteModule::class.java.getDeclaredField("zzf").apply { isAccessible = true }.set(null, false)
+    }
+
+    override fun attachBaseContext(base: Context?) {
+        super.attachBaseContext(base)
+        app = this
+        deviceStorage = DeviceStorageApp(this)
+        @Suppress("DEPRECATION")
+        deviceStorage.moveSharedPreferencesFrom(this,
+            android.preference.PreferenceManager.getDefaultSharedPreferencesName(this))
+        deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
+        Services.init { this }
+
+        DynamiteModule::class.java.getDeclaredField("zzg").apply { isAccessible = true }.set(null, false)
         // call super.attachInfo get around ProviderInfo check
         FirebaseInitProvider::class.java.privateLookup().findSpecial(ContentProvider::class.java, "attachInfo",
             MethodType.methodType(Void.TYPE, Context::class.java, ProviderInfo::class.java),
             FirebaseInitProvider::class.java).bindTo(FirebaseInitProvider()).invokeWithArguments(deviceStorage, null)
+        val isDebug = try {
+            when {
+                packageManager.hasSigningCertificate(packageName, byteArrayOf(0x72, 0x4f, 0xff.toByte(), 0xe1.toByte(), 0x7e, 0x11, 0x88.toByte(), 0x53, 0x3c, 0x0d, 0x6a, 0x7a, 0xf3.toByte(), 0xc1.toByte(), 0xdc.toByte(), 0x12, 0x94.toByte(), 0x7c, 0xb5.toByte(), 0x54, 0x32, 0x3a, 0xf2.toByte(), 0xb1.toByte(), 0x87.toByte(), 0xc1.toByte(), 0xf5.toByte(), 0xec.toByte(), 0x19, 0x63, 0xf2.toByte(), 0xb7.toByte()), PackageManager.CERT_INPUT_SHA256) -> false
+                packageManager.hasSigningCertificate(packageName, byteArrayOf(0x60, 0xca.toByte(), 0x99.toByte(), 0x8a.toByte(), 0x3d, 0xba.toByte(), 0xde.toByte(), 0x0a, 0xa7.toByte(), 0xe2.toByte(), 0x8e.toByte(), 0x55, 0x23, 0x6b, 0x08, 0x22, 0x9c.toByte(), 0xdd.toByte(), 0xe1.toByte(), 0xb3.toByte(), 0x76, 0xf7.toByte(), 0x47, 0x43, 0x23, 0x8b.toByte(), 0xad.toByte(), 0x2f, 0x25, 0x44, 0xc8.toByte(), 0x1a), PackageManager.CERT_INPUT_SHA256) -> true
+                else -> null
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
         FirebaseCrashlytics.getInstance().apply {
-            setCustomKey("uname.release", Os.uname().release)
-            setCustomKey("build", Build.DISPLAY)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) setCustomKey("extension_s",
-                SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S))
+            if (isDebug != null) {
+                setCustomKey("debug", isDebug)
+                setCustomKey("git", BuildGit.VALUE)
+                setCustomKey("uname.release", Os.uname().release)
+                setCustomKey("build", Build.DISPLAY)
+                setCustomKey("ro.vendor.api_level", SystemProperties.get("ro.vendor.api_level", ""))
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    setCustomKey("extension_s", SdkExtensions.getExtensionVersion(Build.VERSION_CODES.S))
+                }
+            } else isCrashlyticsCollectionEnabled = false
         }
         Timber.plant(object : Timber.DebugTree() {
             @SuppressLint("LogNotTimber")
@@ -81,18 +107,44 @@ class App : Application() {
                     if (priority != Log.DEBUG || BuildConfig.DEBUG) Log.println(priority, tag, message)
                     FirebaseCrashlytics.getInstance().log("${"XXVDIWEF".getOrElse(priority) { 'X' }}/$tag: $message")
                 } else {
-                    if (priority >= Log.WARN || priority == Log.DEBUG) {
-                        Log.println(priority, tag, message)
-                        Log.w(tag, message, t)
-                    }
+                    if (priority >= Log.WARN || priority == Log.DEBUG) Log.println(priority, tag, message)
                     if (priority >= Log.INFO && t !is NoShellException) {
-                        FirebaseCrashlytics.getInstance().recordException(t)
+                        val crashlyticsKeys = (t as? CrashlyticsKeyProvider)?.crashlyticsKeys
+                            ?: (t.getRootCause() as? ServiceSpecificException)?.let {
+                                CustomKeysAndValues.Builder()
+                                    .putInt("android.serviceSpecific.errorCode", it.errorCode)
+                                    .build()
+                            }
+                        val reported = if (t.stackTrace.isEmpty()) {
+                            RuntimeException("Stackless exception reported through Timber", t)
+                        } else t
+                        if (crashlyticsKeys == null) FirebaseCrashlytics.getInstance().recordException(reported)
+                        else FirebaseCrashlytics.getInstance().recordException(reported, crashlyticsKeys)
                     }
                 }
             }
         })
+        StrictMode.setThreadPolicy(StrictMode.ThreadPolicy.Builder().apply {
+            if (BuildConfig.DEBUG) detectAll() else detectNetwork()
+        }.penaltyListener(InPlaceExecutor) { Timber.w(it, "StrictMode thread policy violation") }.build())
+        StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().apply {
+            if (BuildConfig.DEBUG) detectAll() else detectFileUriExposure()
+        }.penaltyListener(InPlaceExecutor) { Timber.w(it, "StrictMode VM policy violation") }.build())
+    }
+
+    override fun onCreate() {
+        super.onCreate()
         ServiceNotification.updateNotificationChannels()
-        if (DhcpWorkaround.shouldEnable) DhcpWorkaround.enable(true)
+        TetheringAutoController.start()
+        ApiKeyManager.init(this)
+        WebServerManager.init(this)
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                WebServerManager.start(this@App)
+            } catch (e: Exception) {
+                Timber.e(e, "Unable to start remote-control HTTP server")
+            }
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
@@ -112,7 +164,7 @@ class App : Application() {
      * logException is inappropriate sometimes because it flushes all logs that could be used to investigate other bugs.
      */
     fun logEvent(@Size(min = 1L, max = 40L) event: String, block: ParametersBuilder.() -> Unit = { }) {
-        Firebase.analytics.logEvent(event) {
+        FirebaseAnalytics.getInstance(app).logEvent(event) {
             block(this)
             Timber.i(if (bundle.isEmpty) event else "$event, extras: $bundle")
         }
@@ -139,7 +191,8 @@ class App : Application() {
             setLocale(Locale.ENGLISH)
         })
     }
-    val pref by lazy { PreferenceManager.getDefaultSharedPreferences(deviceStorage) }
+    @Suppress("DEPRECATION")
+    val pref by lazy { android.preference.PreferenceManager.getDefaultSharedPreferences(deviceStorage) }
     val clipboard by lazy { getSystemService<ClipboardManager>()!! }
     val location by lazy { getSystemService<LocationManager>() }
 

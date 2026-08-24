@@ -1,47 +1,29 @@
 package be.mygod.vpnhotspot.manage
 
 import android.content.Intent
-import android.view.View
-import androidx.databinding.BaseObservable
-import androidx.recyclerview.widget.RecyclerView
+import android.os.Build
+import androidx.annotation.DoNotInline
 import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.databinding.ListitemManageBinding
-import be.mygod.vpnhotspot.net.TetherOffloadManager
+import timber.log.Timber
 
-object ManageBar : Manager() {
-    private const val TAG = "ManageBar"
-    private const val SETTINGS_PACKAGE = "com.android.settings"
-    private const val SETTINGS_1 = "com.android.settings.Settings\$TetherSettingsActivity"
-    private const val SETTINGS_2 = "com.android.settings.TetherSettings"
-
-    object Data : BaseObservable() {
-        val offloadEnabled get() = TetherOffloadManager.enabled
-    }
-    class ViewHolder(binding: ListitemManageBinding) : RecyclerView.ViewHolder(binding.root), View.OnClickListener {
-        init {
-            binding.data = Data
-            binding.root.setOnClickListener(this)
-        }
-
-        override fun onClick(v: View?) = start(itemView.context::startActivity)
-    }
-
-    override val type: Int get() = VIEW_TYPE_MANAGE
-
+object ManageBar {
+    private const val ACTION_TETHER_SETTINGS = "android.settings.TETHER_SETTINGS"
+    @DoNotInline
     fun start(startActivity: (Intent) -> Unit) {
-        val intent = Intent().setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        var eSuppressed: RuntimeException? = null
+        if (Build.VERSION.SDK_INT >= 30) try {
+            startActivity(Intent(ACTION_TETHER_SETTINGS).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return
+        } catch (e: RuntimeException) {
+            app.logEvent(ACTION_TETHER_SETTINGS)
+            eSuppressed = e
+        }
         try {
-            startActivity(intent.setClassName(SETTINGS_PACKAGE, SETTINGS_1))
-        } catch (e1: RuntimeException) {
-            try {
-                startActivity(intent.setClassName(SETTINGS_PACKAGE, SETTINGS_2))
-                app.logEvent(TAG) { param(SETTINGS_1, e1.toString()) }
-            } catch (e2: RuntimeException) {
-                app.logEvent(TAG) {
-                    param(SETTINGS_1, e1.toString())
-                    param(SETTINGS_2, e2.toString())
-                }
-            }
+            startActivity(Intent().setFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                .setClassName("com.android.settings", "com.android.settings.Settings\$TetherSettingsActivity"))
+        } catch (e: RuntimeException) {
+            eSuppressed?.let { e.addSuppressed(eSuppressed) }
+            Timber.w(e)
         }
     }
 }

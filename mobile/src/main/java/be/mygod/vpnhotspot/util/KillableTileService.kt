@@ -3,31 +3,22 @@ package be.mygod.vpnhotspot.util
 import android.annotation.SuppressLint
 import android.app.ForegroundServiceStartNotAllowedException
 import android.app.PendingIntent
-import android.content.ComponentName
 import android.content.Intent
-import android.content.ServiceConnection
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.DeadObjectException
 import android.os.IBinder
-import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
 import android.view.View
 import android.view.WindowManager
 import androidx.core.view.doOnPreDraw
 import java.lang.ref.WeakReference
 
-abstract class KillableTileService : TileService(), ServiceConnection {
+abstract class KillableTileService : TileService() {
     protected var tapPending = false
 
-    /**
-     * Compat helper for setSubtitle.
-     */
-    protected fun Tile.subtitle(value: CharSequence?) {
-        if (Build.VERSION.SDK_INT >= 29) subtitle = value
-    }
-
-    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+    /** Run a tap that arrived before the service binder was ready; call this once the binder connects. */
+    protected fun resolveTapPending() {
         if (tapPending) {
             tapPending = false
             onClick()
@@ -41,12 +32,14 @@ abstract class KillableTileService : TileService(), ServiceConnection {
         null
     }
 
-    protected fun runActivity(intent: Intent) = unlockAndRun {
+    protected fun runActivity(intent: Intent) {
         if (Build.VERSION.SDK_INT < 34) @Suppress("DEPRECATION") @SuppressLint("StartActivityAndCollapseDeprecated") {
             startActivityAndCollapse(intent)
         } else startActivityAndCollapse(PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE))
     }
-    fun dismiss() = runActivity(Intent(this, SelfDismissActivity::class.java).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    fun dismiss() = unlockAndRun {
+        runActivity(Intent(this, SelfDismissActivity::class.java).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
     @Suppress("LeakingThis")
     protected val dismissHandle = WeakReference(this)
     override fun onDestroy() {

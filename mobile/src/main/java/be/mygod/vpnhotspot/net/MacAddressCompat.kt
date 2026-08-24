@@ -24,6 +24,8 @@ value class MacAddressCompat(val addr: Long) {
             put(toByteArray())
             rewind()
         }.long
+
+        fun MacAddress.toOui36String() = toByteArray().toHexString(0, 5).substring(0, 9)
     }
 
     fun toPlatform() = MacAddress.fromBytes(ByteBuffer.allocate(8).run {

@@ -1,236 +1,95 @@
 package be.mygod.vpnhotspot.root
 
 import android.content.Context
-import android.net.TetheringManager
-import android.os.Build
-import android.os.Parcelable
 import android.os.RemoteException
 import android.provider.Settings
-import androidx.annotation.RequiresApi
-import be.mygod.librootkotlinx.ParcelableBoolean
-import be.mygod.librootkotlinx.ParcelableInt
-import be.mygod.librootkotlinx.ParcelableString
-import be.mygod.librootkotlinx.RootCommand
-import be.mygod.librootkotlinx.RootCommandChannel
 import be.mygod.librootkotlinx.RootCommandNoResult
-import be.mygod.librootkotlinx.isEBADF
-import be.mygod.vpnhotspot.App.Companion.app
-import be.mygod.vpnhotspot.net.Routing.Companion.IP
-import be.mygod.vpnhotspot.net.Routing.Companion.IPTABLES
-import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.net.VpnFirewallManager
+import be.mygod.librootkotlinx.io.awaitExit
+import be.mygod.librootkotlinx.io.openReadChannel
+import be.mygod.librootkotlinx.io.openWriteChannel
+import be.mygod.librootkotlinx.io.startPipes
 import be.mygod.vpnhotspot.util.Services
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.ByteWriteChannel
+import io.ktor.utils.io.toByteArray
+import io.ktor.utils.io.writeFully
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.channels.onClosed
-import kotlinx.coroutines.channels.onFailure
-import kotlinx.coroutines.channels.produce
-import kotlinx.coroutines.job
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
-import timber.log.Timber
 import java.io.File
-import java.io.FileOutputStream
-import java.io.IOException
-import java.io.InterruptedIOException
-
-fun ProcessBuilder.fixPath(redirect: Boolean = false) = apply {
-    environment().compute("PATH") { _, value ->
-        if (value.isNullOrEmpty()) "/system/bin" else "$value:/system/bin"
-    }
-    redirectErrorStream(redirect)
-}
 
 @Parcelize
-data class Dump(val path: String, val cacheDir: File = app.deviceStorage.codeCacheDir) : RootCommandNoResult {
+data class Dump(val path: String) : RootCommandNoResult {
+    companion object {
+        private const val DUMPSYS = "/system/bin/dumpsys"
+        private const val IP = "/system/bin/ip"
+        private const val IPTABLES = "/system/bin/iptables"
+        const val LOGCAT = "/system/bin/logcat"
+    }
+
     override suspend fun execute() = withContext(Dispatchers.IO) {
-        FileOutputStream(path, true).use { out ->
-            val process = ProcessBuilder("sh").fixPath(true).start()
-            process.outputStream.bufferedWriter().use { commands ->
-                commands.appendLine("""
+        val output = File(path)
+        ProcessBuilder("/system/bin/sh").apply {
+            redirectErrorStream(true)
+            redirectOutput(ProcessBuilder.Redirect.appendTo(output))
+        }.startPipes(stdout = false, stderr = false).use { pipes ->
+            var stdin: ByteWriteChannel? = null
+            try {
+                stdin = pipes.requireStdin().openWriteChannel(Services.mainHandler)
+                stdin.writeFully("""
+                    |echo
                     |echo dumpsys ${Context.WIFI_P2P_SERVICE}
-                    |dumpsys ${Context.WIFI_P2P_SERVICE}
+                    |$DUMPSYS ${Context.WIFI_P2P_SERVICE}
                     |echo
                     |echo dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
-                    |dumpsys ${Context.CONNECTIVITY_SERVICE} tethering
+                    |$DUMPSYS ${Context.CONNECTIVITY_SERVICE} tethering
                     |echo
-                """.trimMargin())
-                if (Build.VERSION.SDK_INT >= 29) {
-                    val dumpCommand = if (Build.VERSION.SDK_INT >= 33) {
-                        "dumpsys ${Context.CONNECTIVITY_SERVICE} trafficcontroller"
-                    } else VpnFirewallManager.DUMP_COMMAND
-                    commands.appendLine("echo $dumpCommand\n$dumpCommand\necho")
-                    if (Build.VERSION.SDK_INT >= 31) commands.appendLine(
-                        "settings get global ${VpnFirewallManager.UIDS_ALLOWED_ON_RESTRICTED_NETWORKS}")
-                }
-                commands.appendLine("""
-                    |echo iptables -t filter
-                    |iptables-save -t filter
-                    |echo
-                    |echo iptables -t nat
-                    |iptables-save -t nat
+                    |echo iptables-save
+                    |/system/bin/iptables-save
                     |echo
                     |echo ip6tables-save
-                    |ip6tables-save
+                    |/system/bin/ip6tables-save
                     |echo
                     |echo ip rule
                     |$IP rule
                     |echo
+                    |echo ip route show table all
+                    |$IP route show table all
+                    |echo
                     |echo ip neigh
                     |$IP neigh
                     |echo
-                    |echo iptables -nvx -L vpnhotspot_fwd
-                    |$IPTABLES -nvx -L vpnhotspot_fwd
+                    |echo ip -s link
+                    |$IP -s link
+                    |echo
+                    |echo iptables -t nat -nvx -L POSTROUTING
+                    |$IPTABLES -w -t nat -nvx -L POSTROUTING
+                    |echo
+                    |echo iptables -t nat -nvx -L vpnhotspot_masquerade
+                    |$IPTABLES -w -t nat -nvx -L vpnhotspot_masquerade
                     |echo
                     |echo iptables -nvx -L vpnhotspot_acl
-                    |$IPTABLES -nvx -L vpnhotspot_acl
+                    |$IPTABLES -w -nvx -L vpnhotspot_acl
+                    |echo
+                    |echo iptables -nvx -L vpnhotspot_stats
+                    |$IPTABLES -w -nvx -L vpnhotspot_stats
                     |echo
                     |echo logcat-su
-                    |logcat -d
-                """.trimMargin())
-            }
-            process.inputStream.copyTo(out)
-            when (val exit = process.waitFor()) {
-                0 -> { }
-                else -> out.write("Process exited with $exit".toByteArray())
+                    |$LOGCAT -d
+                """.trimMargin().encodeToByteArray())
+                stdin.flushAndClose()
+                stdin = null
+                when (val exit = pipes.process.awaitExit()) {
+                    0 -> { }
+                    else -> output.appendText("Process exited with $exit")
+                }
+            } finally {
+                stdin?.cancel(null)
             }
         }
         null
-    }
-}
-
-sealed class ProcessData : Parcelable {
-    @Parcelize
-    data class StdoutLine(val line: String) : ProcessData()
-    @Parcelize
-    data class StderrLine(val line: String) : ProcessData()
-    @Parcelize
-    data class Exit(val code: Int) : ProcessData()
-}
-
-@Parcelize
-class ProcessListener(private val terminateRegex: Regex,
-                      private vararg val command: String) : RootCommandChannel<ProcessData> {
-    override fun create(scope: CoroutineScope) = scope.produce(Dispatchers.IO, capacity) {
-        val process = ProcessBuilder(*command).start()
-        // we need to destroy process before joining, so we cannot use coroutineScope
-        val parent = Job(coroutineContext.job)
-        try {
-            launch(parent) {
-                try {
-                    process.inputStream.bufferedReader().useLines { lines ->
-                        for (line in lines) {
-                            trySend(ProcessData.StdoutLine(line)).onClosed { return@useLines }.onFailure { throw it!! }
-                            if (terminateRegex.containsMatchIn(line)) process.destroy()
-                        }
-                    }
-                } catch (_: InterruptedIOException) { } catch (e: IOException) {
-                    if (!e.isEBADF) Timber.w(e)
-                }
-            }
-            launch(parent) {
-                try {
-                    process.errorStream.bufferedReader().useLines { lines ->
-                        for (line in lines) trySend(ProcessData.StdoutLine(line)).onClosed {
-                            return@useLines
-                        }.onFailure { throw it!! }
-                    }
-                } catch (_: InterruptedIOException) { } catch (e: IOException) {
-                    if (!e.isEBADF) Timber.w(e)
-                }
-            }
-            launch(parent) {
-                trySend(ProcessData.Exit(process.waitFor())).onClosed { return@launch }.onFailure { throw it!! }
-            }
-            parent.join()
-        } finally {
-            parent.cancel()
-            if (process.isAlive) process.destroyForcibly()
-            parent.join()
-        }
-    }
-}
-
-@Parcelize
-class ReadArp : RootCommand<ParcelableString> {
-    override suspend fun execute() = withContext(Dispatchers.IO) {
-        ParcelableString(File("/proc/net/arp").readText())
-    }
-}
-
-@Parcelize
-@RequiresApi(30)
-data class StartTethering(private val type: Int,
-                          private val showProvisioningUi: Boolean) : RootCommand<ParcelableInt?> {
-    override suspend fun execute(): ParcelableInt? {
-        val future = CompletableDeferred<Int?>()
-        TetheringManagerCompat.startTethering(type, true, showProvisioningUi, {
-            it.run()
-        }, object : TetheringManager.StartTetheringCallback {
-            override fun onTetheringStarted() {
-                future.complete(null)
-            }
-
-            override fun onTetheringFailed(error: Int) {
-                future.complete(error)
-            }
-        })
-        return future.await()?.let { ParcelableInt(it) }
-    }
-}
-
-@Parcelize
-@RequiresApi(30)
-data class StopTethering(private val cacheDir: File, private val type: Int) : RootCommand<ParcelableInt?> {
-    override suspend fun execute(): ParcelableInt? {
-        val future = CompletableDeferred<Int?>()
-        TetheringManagerCompat.stopTethering(type, object : TetheringManagerCompat.StopTetheringCallback {
-            override fun onStopTetheringSucceeded() {
-                future.complete(null)
-            }
-
-            override fun onStopTetheringFailed(error: Int) {
-                future.complete(error)
-            }
-
-            override fun onException(e: Exception) {
-                future.completeExceptionally(e)
-            }
-        }, Services.context, cacheDir)
-        return future.await()?.let { ParcelableInt(it) }
-    }
-}
-
-@Deprecated("Old API since API 30")
-@Parcelize
-@Suppress("DEPRECATION")
-data class StartTetheringLegacy(private val cacheDir: File, private val type: Int,
-                                private val showProvisioningUi: Boolean) : RootCommand<ParcelableBoolean> {
-    override suspend fun execute(): ParcelableBoolean {
-        val future = CompletableDeferred<Boolean>()
-        val callback = object : TetheringManagerCompat.StartTetheringCallback {
-            override fun onTetheringStarted() {
-                future.complete(true)
-            }
-
-            override fun onTetheringFailed(error: Int?) {
-                check(error == null)
-                future.complete(false)
-            }
-        }
-        TetheringManagerCompat.startTetheringLegacy(type, showProvisioningUi, callback, cacheDir = cacheDir)
-        return ParcelableBoolean(future.await())
-    }
-}
-
-@Parcelize
-data class StopTetheringLegacy(private val type: Int) : RootCommandNoResult {
-    override suspend fun execute(): Parcelable? {
-        TetheringManagerCompat.stopTetheringLegacy(type)
-        return null
     }
 }
 
@@ -251,11 +110,25 @@ data class SettingsGlobalPut(val name: String, val value: String) : RootCommandN
         }
     }
 
-    override suspend fun execute() = withContext(Dispatchers.IO) {
-        val process = ProcessBuilder("settings", "put", "global", name, value).fixPath(true).start()
-        val error = process.inputStream.bufferedReader().readText()
-        val exit = process.waitFor()
-        if (exit != 0 || error.isNotEmpty()) throw RemoteException("Process exited with $exit: $error")
-        null
+    override suspend fun execute() = null.also {
+        val (exit, output) = ProcessBuilder("/system/bin/settings", "put", "global", name, value).apply {
+            redirectInput(ProcessBuilder.Redirect.from(File("/dev/null")))
+        }.startPipes(stdin = false).use { pipes ->
+            var stdout: ByteReadChannel? = null
+            var stderr: ByteReadChannel? = null
+            try {
+                stdout = pipes.requireStdout().openReadChannel(Services.mainHandler)
+                stderr = pipes.requireStderr().openReadChannel(Services.mainHandler)
+                coroutineScope {
+                    val stdoutText = async { stdout.toByteArray().decodeToString() }
+                    val stderrText = async { stderr.toByteArray().decodeToString() }
+                    pipes.process.awaitExit() to stdoutText.await() + stderrText.await()
+                }
+            } finally {
+                stdout?.cancel(null)
+                stderr?.cancel(null)
+            }
+        }
+        if (exit != 0 || output.isNotEmpty()) throw RemoteException("Process exited with $exit: $output")
     }
 }

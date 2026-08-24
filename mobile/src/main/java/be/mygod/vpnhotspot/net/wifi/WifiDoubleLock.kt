@@ -3,7 +3,6 @@ package be.mygod.vpnhotspot.net.wifi
 import android.annotation.SuppressLint
 import android.content.SharedPreferences
 import android.net.wifi.WifiManager
-import android.os.Build
 import android.os.PowerManager
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -22,9 +21,10 @@ class WifiDoubleLock(lockType: Int) : AutoCloseable {
     companion object : SharedPreferences.OnSharedPreferenceChangeListener {
         private const val KEY = "service.wifiLock"
         var mode: Mode
-            @Suppress("DEPRECATION")
-            get() = Mode.valueOf(app.pref.getString(KEY, Mode.Full.toString()) ?: "").let {
-                if (it == Mode.Full && Build.VERSION.SDK_INT >= 29) Mode.None else it
+            get() = try {
+                Mode.valueOf(app.pref.getString(KEY, Mode.None.toString()) ?: "")
+            } catch (_: IllegalArgumentException) {
+                Mode.None
             }
             set(value) = app.pref.edit { putString(KEY, value.toString()) }
         private val service by lazy { app.getSystemService<PowerManager>()!! }
@@ -61,12 +61,7 @@ class WifiDoubleLock(lockType: Int) : AutoCloseable {
     enum class Mode(val lockType: Int? = null, val keepScreenOn: Boolean = false) {
         None,
         @Suppress("DEPRECATION")
-        @Deprecated("This constant was deprecated in API level Q.\n" +
-                "This API is non-functional and will have no impact.")
-        Full(WifiManager.WIFI_MODE_FULL),
-        @Suppress("DEPRECATION")
         HighPerf(WifiManager.WIFI_MODE_FULL_HIGH_PERF),
-        @RequiresApi(29)
         LowLatency(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, true),
     }
 

@@ -1,0 +1,128 @@
+package be.mygod.vpnhotspot.ui.apconfiguration
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.TextObfuscationMode
+import androidx.compose.foundation.text.input.maxLength
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedSecureTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.autofill.ContentType
+import androidx.compose.ui.autofill.contentType
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
+import be.mygod.vpnhotspot.R
+import be.mygod.vpnhotspot.ui.DialogConfirmButton
+import be.mygod.vpnhotspot.ui.DialogDismissButton
+import be.mygod.vpnhotspot.ui.PreferenceRow
+import be.mygod.vpnhotspot.ui.TooltipIconButton
+import be.mygod.vpnhotspot.ui.annotatedStringResource
+import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
+
+@Composable
+fun PasswordApRow(state: ApConfigurationState) {
+    val context = LocalContext.current
+    val maxLength = state.passwordMaxLength
+    var editing by rememberSaveable(state.password) { mutableStateOf(false) }
+    val draft = rememberSaveable(state.password, editing, saver = TextFieldState.Saver) {
+        TextFieldState(state.password)
+    }
+    var visible by rememberSaveable(editing) { mutableStateOf(false) }
+    val password = draft.text.toString()
+    val error = state.passwordError(password, context)
+    val title = stringResource(R.string.wifi_password)
+    PreferenceRow(
+        icon = R.drawable.ic_wifi_lock,
+        title = title,
+        summary = if (state.password.isEmpty()) "" else "\u2022".repeat(8),
+        onClick = { editing = true },
+    )
+    if (editing) AlertDialog(
+        onDismissRequest = { editing = false },
+        title = { Text(title) },
+        text = {
+            val focusRequester = rememberDialogFocusRequester()
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(
+                    text = annotatedStringResource(R.string.wifi_password_help),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                OutlinedSecureTextField(
+                    state = draft,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
+                        .contentType(ContentType("wifiPassword") + ContentType.Password)
+                        .semantics { contentDescription = title },
+                    inputTransformation = if (maxLength) InputTransformation.maxLength(63) else null,
+                    isError = error != null,
+                    shape = OutlinedTextFieldDefaults.roundedShape,
+                    colors = OutlinedTextFieldDefaults.tonalColors(),
+                    supportingText = if (error != null || maxLength) {
+                        {
+                            Column {
+                                error?.let { ErrorApText(it) }
+                                if (maxLength) Text(stringResource(R.string.configuration_input_length, password.length, 63))
+                            }
+                        }
+                    } else null,
+                    trailingIcon = {
+                        val tooltip = stringResource(
+                            if (visible) R.string.wifi_password_hide else R.string.wifi_password_show,
+                        )
+                        TooltipIconButton(
+                            tooltip = tooltip,
+                            onClick = { visible = !visible },
+                        ) {
+                            Icon(
+                                painter = painterResource(if (visible) {
+                                    R.drawable.ic_visibility_off
+                                } else R.drawable.ic_visibility),
+                                contentDescription = tooltip,
+                            )
+                        }
+                    },
+                    textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
+                    textObfuscationMode = if (visible) {
+                        TextObfuscationMode.Visible
+                    } else TextObfuscationMode.Hidden,
+                )
+            }
+        },
+        confirmButton = {
+            DialogConfirmButton(
+                enabled = error == null,
+                onClick = {
+                    state.password = password
+                    editing = false
+                },
+            ) {
+                Text(stringResource(android.R.string.ok))
+            }
+        },
+        dismissButton = {
+            DialogDismissButton(onClick = { editing = false }) {
+                Text(stringResource(android.R.string.cancel))
+            }
+        },
+    )
+}

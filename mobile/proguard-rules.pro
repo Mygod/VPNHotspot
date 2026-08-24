@@ -17,10 +17,11 @@
 -keepattributes SourceFile,LineNumberTable
 -dontobfuscate
 
+-assumenosideeffects class kotlinx.coroutines.DebugKt {
+    boolean getDEBUG() return true;
+    boolean getRECOVER_STACK_TRACES() return true;
+}
+
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
--dontwarn lombok.Generated
--dontwarn org.slf4j.impl.StaticLoggerBinder
--dontwarn org.xbill.DNS.spi.DnsjavaInetAddressResolverProvider
--dontwarn sun.net.spi.nameservice.NameServiceDescriptor

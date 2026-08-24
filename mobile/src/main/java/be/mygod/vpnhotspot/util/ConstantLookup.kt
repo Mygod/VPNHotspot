@@ -21,7 +21,7 @@ class ConstantLookup(private val prefix: String, private val lookup29: Array<out
 
     operator fun invoke(reason: Int, trimPrefix: Boolean = false): String {
         if (Build.VERSION.SDK_INT >= 30) try {
-            lookup.get(reason)?.let { return if (trimPrefix) it.substring(prefix.length) else it }
+            lookup[reason]?.let { return if (trimPrefix) it.substring(prefix.length) else it }
         } catch (e: ReflectiveOperationException) {
             Timber.w(e)
         }
@@ -46,7 +46,7 @@ class LongConstantLookup(private val clazz: Class<*>, private val prefix: String
 
     operator fun invoke(reason: Long, trimPrefix: Boolean = false): String {
         try {
-            lookup.get(reason)?.let { return if (trimPrefix) it.substring(prefix.length) else it }
+            lookup[reason]?.let { return if (trimPrefix) it.substring(prefix.length) else it }
         } catch (e: ReflectiveOperationException) {
             Timber.w(e)
         }

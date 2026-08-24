@@ -5,24 +5,34 @@ import android.net.TetheringManager
 import android.os.Build
 import androidx.annotation.DrawableRes
 import androidx.annotation.RequiresApi
+import androidx.annotation.StringRes
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
-import be.mygod.vpnhotspot.util.Event0
+import be.mygod.vpnhotspot.net.TetherType.Companion.changes
 import be.mygod.vpnhotspot.util.findIdentifier
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.util.regex.Pattern
 
-enum class TetherType(@DrawableRes val icon: Int) {
-    NONE(R.drawable.ic_device_wifi_tethering),
-    WIFI_P2P(R.drawable.ic_action_settings_input_antenna),
-    USB(R.drawable.ic_device_usb),
-    WIFI(R.drawable.ic_device_network_wifi),
-    BLUETOOTH(R.drawable.ic_device_bluetooth),
+enum class TetherType(@get:DrawableRes val icon: Int, @get:StringRes val label: Int) {
+    NONE(R.drawable.ic_device_unknown, R.string.tether_type_none),
+    WIFI_P2P(R.drawable.ic_router, R.string.tether_type_wifi_p2p),
+    USB(R.drawable.ic_usb, R.string.tethering_manage_usb),
+    WIFI(R.drawable.ic_network_wifi, R.string.tethering_manage_wifi),
+    BLUETOOTH(R.drawable.ic_bluetooth, R.string.tethering_manage_bluetooth),
     // if you have an issue with these Ethernet icon namings, blame Google
-    NCM(R.drawable.ic_action_settings_ethernet),
-    ETHERNET(R.drawable.ic_content_inbox),
-    WIGIG(R.drawable.ic_image_flash_on),
-    VIRTUAL(R.drawable.ic_deployed_code),
+    NCM(R.drawable.ic_cable, R.string.tether_type_ncm),
+    ETHERNET(R.drawable.ic_lan, R.string.tethering_manage_ethernet),
+    WIGIG(R.drawable.ic_network_wifi, R.string.tether_type_wigig),
+    VIRTUAL(R.drawable.ic_hub, R.string.tether_type_virtual),
     ;
 
     val isWifi get() = when (this) {
@@ -32,7 +42,7 @@ enum class TetherType(@DrawableRes val icon: Int) {
 
     fun isA(other: TetherType) = this == other || other == USB && this == NCM
 
-    companion object : TetheringManagerCompat.TetheringEventCallback {
+    companion object {
         private lateinit var usbRegexs: List<Pattern>
         private lateinit var wifiRegexs: List<Pattern>
         private var wigigRegexs = emptyList<Pattern>()
@@ -40,10 +50,11 @@ enum class TetherType(@DrawableRes val icon: Int) {
         private lateinit var bluetoothRegexs: List<Pattern>
         private var ncmRegexs = emptyList<Pattern>()
         private val ethernetRegex: Pattern?
+        @RequiresApi(30)
         private var requiresUpdate = false
 
         @RequiresApi(30)    // unused on lower APIs
-        val listener = Event0()
+        lateinit var changes: SharedFlow<Unit> private set
 
         private fun Pair<String, Resources>.getRegexs(name: String, alternativePackage: String? = null): List<Pattern> {
             val id = second.findIdentifier(name, "array", first, alternativePackage)
@@ -65,7 +76,6 @@ enum class TetherType(@DrawableRes val icon: Int) {
             usbRegexs = emptyList()
             wifiRegexs = emptyList()
             bluetoothRegexs = emptyList()
-            TetheringManagerCompat.registerTetheringEventCallback(this)
             val info = TetheringManagerCompat.resolvedService.serviceInfo
             val tethering = "com.android.networkstack.tethering" to
                     app.packageManager.getResourcesForApplication(info.applicationInfo)
@@ -77,21 +87,33 @@ enum class TetherType(@DrawableRes val icon: Int) {
             ncmRegexs = tethering.getRegexs("config_tether_ncm_regexs", info.packageName)
         }
 
-        @RequiresApi(30)
-        override fun onTetherableInterfaceRegexpsChanged(reg: Any?) = synchronized(this) {
-            if (requiresUpdate) return@synchronized
-            Timber.i("onTetherableInterfaceRegexpsChanged: $reg")
-            TetheringManagerCompat.unregisterTetheringEventCallback(this)
-            requiresUpdate = true
-            listener()
-        }
-
         /**
          * Source: https://android.googlesource.com/platform/frameworks/base/+/32e772f/packages/Tethering/src/com/android/networkstack/tethering/TetheringConfiguration.java#93
          */
         init {
             val system = "android" to Resources.getSystem()
-            if (Build.VERSION.SDK_INT >= 30) requiresUpdate = true else {
+            if (Build.VERSION.SDK_INT >= 30) {
+                requiresUpdate = true
+                val changesState = MutableSharedFlow<Unit>(
+                    extraBufferCapacity = 1,
+                    onBufferOverflow = BufferOverflow.DROP_OLDEST,
+                )
+                changes = changesState.asSharedFlow()
+                @OptIn(DelicateCoroutinesApi::class)    // fire and forget global background listener
+                GlobalScope.launch {
+                    TetheringManagerCompat.eventFlow
+                        .filterIsInstance<TetheringManagerCompat.Event.TetherableInterfaceRegexpsChanged>()
+                        .drop(1)
+                        .collect { (reg) ->
+                            synchronized(this@Companion) {      // same monitor as ofInterface/updateRegexs
+                                if (requiresUpdate) return@synchronized
+                                Timber.i("onTetherableInterfaceRegexpsChanged: $reg")
+                                requiresUpdate = true
+                                changesState.tryEmit(Unit)
+                            }
+                        }
+                }
+            } else {
                 usbRegexs = system.getRegexs("config_tether_usb_regexs")
                 wifiRegexs = system.getRegexs("config_tether_wifi_regexs")
                 bluetoothRegexs = system.getRegexs("config_tether_bluetooth_regexs")
@@ -106,36 +128,34 @@ enum class TetherType(@DrawableRes val icon: Int) {
         }
 
         /**
-         * The result could change for the same interface since API 30+.
-         * It will be triggered by [TetheringManagerCompat.TetheringEventCallback.onTetherableInterfaceRegexpsChanged].
+         * The result could change for the same interface since API 30+, triggered by a
+         * [TetheringManagerCompat.Event.TetherableInterfaceRegexpsChanged] from [changes].
          *
          * Based on: https://android.googlesource.com/platform/frameworks/base/+/5d36f01/packages/Tethering/src/com/android/networkstack/tethering/Tethering.java#479
          */
         fun ofInterface(iface: String?, p2pDev: String? = null) = when (iface) {
             null -> NONE
             p2pDev -> WIFI_P2P
-            else -> try {
-                synchronized(this) { ofInterfaceImpl(iface) }
+            else -> TetheringManagerCompat.getInterfaceType(iface)?.let { fromTetheringType(it) } ?: try {
+                synchronized(this) {
+                    if (requiresUpdate) updateRegexs()
+                    when {
+                        wifiRegexs.any { it.matcher(iface).matches() } -> WIFI
+                        wigigRegexs.any { it.matcher(iface).matches() } -> WIGIG
+                        wifiP2pRegexs.any { it.matcher(iface).matches() } -> WIFI_P2P
+                        usbRegexs.any { it.matcher(iface).matches() } -> USB
+                        bluetoothRegexs.any { it.matcher(iface).matches() } -> BLUETOOTH
+                        ncmRegexs.any { it.matcher(iface).matches() } -> NCM
+                        ethernetRegex?.matcher(iface)?.matches() == true -> ETHERNET
+                        // https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Connectivity/Tethering/src/com/android/networkstack/tethering/Tethering.java;l=979;drc=b4d6320e2ae398b36f0aaafb2ecd83609d2d99af
+                        iface == "avf_tap_fixed" -> VIRTUAL
+                        else -> NONE
+                    }
+                }
             } catch (e: RuntimeException) {
                 Timber.w(e)
                 NONE
             }
-        }
-        private tailrec fun ofInterfaceImpl(iface: String): TetherType = when {
-            requiresUpdate -> {
-                if (Build.VERSION.SDK_INT >= 30) updateRegexs() else error("unexpected requiresUpdate")
-                ofInterfaceImpl(iface)
-            }
-            wifiRegexs.any { it.matcher(iface).matches() } -> WIFI
-            wigigRegexs.any { it.matcher(iface).matches() } -> WIGIG
-            wifiP2pRegexs.any { it.matcher(iface).matches() } -> WIFI_P2P
-            usbRegexs.any { it.matcher(iface).matches() } -> USB
-            bluetoothRegexs.any { it.matcher(iface).matches() } -> BLUETOOTH
-            ncmRegexs.any { it.matcher(iface).matches() } -> NCM
-            ethernetRegex?.matcher(iface)?.matches() == true -> ETHERNET
-            // https://cs.android.com/android/platform/superproject/main/+/main:packages/modules/Connectivity/Tethering/src/com/android/networkstack/tethering/Tethering.java;l=979;drc=b4d6320e2ae398b36f0aaafb2ecd83609d2d99af
-            iface == "avf_tap_fixed" -> VIRTUAL
-            else -> NONE
         }
 
         fun fromTetheringType(type: Int) = when (type) {

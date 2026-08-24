@@ -1,0 +1,74 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager "platforms;android-37.0" "build-tools;37.0.0" "ndk;29.0.14206865"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/29.0.14206865" >> "$GITHUB_ENV"
+
+      - name: Install Android Rust targets
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Check Rust daemon
+        working-directory: mobile/src/main/rust/vpnhotspotd
+        run: cargo check --locked --all-targets
+
+      - name: Run Rust daemon clippy
+        working-directory: mobile/src/main/rust/vpnhotspotd
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Audit Rust daemon dependencies
+        working-directory: mobile/src/main/rust/vpnhotspotd
+        run: cargo audit
+
+      - name: Run build and tests
+        run: ./gradlew assembleDebug check --no-daemon
+
+      - name: Verify release R8 coroutine debug
+        run: ./gradlew :mobile:verifyReleaseCoroutineDebugR8 --no-daemon
+
+      - name: Upload APKs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: apk
+          path: mobile/build/outputs/apk
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports
+          path: mobile/build/reports
