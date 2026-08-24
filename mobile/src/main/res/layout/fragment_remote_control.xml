@@ -334,7 +334,7 @@
                         android:layout_marginEnd="8dp"
                         android:text="启动热点"
                         android:textSize="14sp"
-                        app:icon="@drawable/ic_network_wifi_tethering"
+                        app:icon="@drawable/ic_wifi_tethering"
                         app:iconGravity="textStart"
                         app:cornerRadius="8dp"
                         style="@style/Widget.MaterialComponents.Button" />
