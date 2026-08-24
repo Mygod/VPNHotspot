@@ -1,4 +1,6 @@
 import groovy.json.JsonOutput
+import java.io.File
+import java.util.Properties
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -218,6 +220,15 @@ abstract class GenerateSupplicantAidlJavaTask : DefaultTask() {
 }
 
 val javaVersion = 11
+val sharedSigningPropertiesFile = File(System.getProperty("user.home"), "work/newhome-signing.properties")
+val sharedSigningProperties = Properties().apply {
+    if (sharedSigningPropertiesFile.isFile) sharedSigningPropertiesFile.inputStream().use(::load)
+}
+val sharedSigningStoreFile = sharedSigningProperties.getProperty("storeFile")?.let { configuredPath ->
+    File(configuredPath).takeIf { it.isFile }
+        ?: File(sharedSigningPropertiesFile.parentFile, File(configuredPath).name).takeIf { it.isFile }
+}
+
 android {
     namespace = "be.mygod.vpnhotspot"
 
@@ -246,9 +257,20 @@ android {
         buildConfig = true
         compose = true
     }
+    signingConfigs {
+        if (sharedSigningPropertiesFile.isFile && sharedSigningStoreFile != null) {
+            create("newhomeShared") {
+                storeFile = sharedSigningStoreFile
+                storePassword = sharedSigningProperties.getProperty("storePassword")
+                keyAlias = sharedSigningProperties.getProperty("keyAlias")
+                keyPassword = sharedSigningProperties.getProperty("keyPassword")
+            }
+        }
+    }
     buildTypes {
         debug {
             isPseudoLocalesEnabled = true
+            signingConfigs.findByName("newhomeShared")?.let { signingConfig = it }
         }
         release {
             isShrinkResources = true
