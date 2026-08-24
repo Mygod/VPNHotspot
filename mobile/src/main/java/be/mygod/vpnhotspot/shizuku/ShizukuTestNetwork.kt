@@ -370,6 +370,7 @@ object ShizukuTestNetwork {
      * cancellable, because Shizuku authorization can sit on the user's own permission dialog for as long as
      * they take. Returns the publication step.
      */
+    @SuppressLint("WrongConstant")
     private suspend fun prepare(): suspend () -> Unit {
         check(Build.VERSION.SDK_INT >= 33) { "Shizuku mode requires Android 13" }
         val epoch = ShizukuEpoch.authorize()
@@ -423,6 +424,7 @@ object ShizukuTestNetwork {
      * stays exactly as it is, and Android's tethering decides for itself whether to select what this
      * publishes.
      */
+    @SuppressLint("WrongConstant")
     private suspend fun publish(epoch: ShizukuEpoch) {
         // Resolved before anything is created, because the direct release is what a retirement needs and
         // discovering that it is unreachable *after* the TUN, the request, the preference and the agent
@@ -1126,6 +1128,7 @@ object ShizukuTestNetwork {
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#3288
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/service/src/com/android/server/ConnectivityService.java#2224
      */
+    @SuppressLint("WrongConstant")
     private fun Session.commit(): State {
         val upstream = upstream
         return when {
