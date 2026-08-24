@@ -766,7 +766,7 @@ by a descriptor, a process, or a Binder token rather than by a private table:
 | A `testtunN` TUN interface | `TestNetworkManager.createTunInterface`, never `setupTestNetwork` | closing the last open file descriptor for it - the app's `ParcelFileDescriptor` and the independent raw descriptor the child received both count, so both have to go |
 | `192.0.2.1/30` and `2001:db8:1::1/64` on it | assigned by `createTunInterface` | with the interface |
 | A restricted native network over it | `NetworkAgent.register` with `TRANSPORT_TEST`, no `NOT_RESTRICTED` and no `INTERNET`, and an empty allowed-UID set from a fresh builder | `NetworkAgent.unregister`, or agent Binder death |
-| Its routes and DNS servers | the agent's immutable `LinkProperties`: one connected route per address, an IPv4 and an IPv6 default route, and `192.0.2.5`/`fd00::53` as resolvers | with the network |
+| Its routes and DNS servers | the agent's immutable `LinkProperties`: one connected route per address, an IPv4 and an IPv6 default route, and `192.0.2.2`/`fd00::53` as resolvers | with the network |
 | An exact foreground `NetworkRequest` | `requestNetwork` through the privileged manager | `IConnectivityManager.releaseNetworkRequest(handle)` on the retained handle, or callback Binder death |
 
 The dataplane child is not one of those: no Shizuku identity is involved in it at all. The Kotlin app

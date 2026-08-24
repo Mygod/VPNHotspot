@@ -28,7 +28,7 @@ class SessionPublicationTest {
         }
 
         /** Exactly what a session declares, so the packed bytes asserted below are the real ones. */
-        val VIRTUAL = packed("192.0.2.5", "fd00::53")
+        val VIRTUAL = packed("192.0.2.2", "fd00::53")
         val GATEWAY = packed("192.0.2.1", "2001:db8:1::1")
 
         /** The TestNetwork's own contract, which is what a session is constructed with. */

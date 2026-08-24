@@ -139,7 +139,7 @@ The interface contract is fixed for the life of a session and the daemon is pinn
 | --- | --- |
 | IPv4 | `192.0.2.1/30` |
 | IPv6 | `2001:db8:1::1/64` |
-| Virtual DNS | `192.0.2.5`, `fd00::53` |
+| Virtual DNS | `192.0.2.2`, `fd00::53` |
 | MTU | 1500 |
 
 They are documentation prefixes because every address the interface holds is an address clients cannot

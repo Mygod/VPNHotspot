@@ -90,9 +90,10 @@ object ShizukuTestNetwork {
      */
     private const val TUN_IPV4_PREFIX_LENGTH = 30
     /**
-     * Classified by exact address match, so it need not share [TUN_IPV4_ADDRESS]'s prefix.
+     * Classified by exact address match, while sharing [TUN_IPV4_ADDRESS]'s prefix keeps every synthetic
+     * IPv4 destination inside the one connected route.
      */
-    private const val VIRTUAL_DNS_IPV4 = "192.0.2.5"
+    private const val VIRTUAL_DNS_IPV4 = "192.0.2.2"
     /**
      * Tethering copies only `isGlobalPreferred()` `/64`s from its upstream into the downstream
      * config, and that predicate rejects ULAs by name, so the prefix clients receive has to look
