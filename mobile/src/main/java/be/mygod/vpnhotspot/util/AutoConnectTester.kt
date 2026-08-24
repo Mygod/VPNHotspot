@@ -1,8 +1,6 @@
 package be.mygod.vpnhotspot.util
 
 import android.content.Context
-import android.content.SharedPreferences
-import androidx.preference.PreferenceManager
 import be.mygod.vpnhotspot.App
 import timber.log.Timber
 

@@ -257,6 +257,7 @@ android {
     buildFeatures {
         buildConfig = true
         compose = true
+        viewBinding = true
     }
     signingConfigs {
         if (sharedSigningPropertiesFile.isFile && sharedSigningStoreFile != null) {

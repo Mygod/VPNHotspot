@@ -29,9 +29,9 @@ object TetheringAutoController : SharedPreferences.OnSharedPreferenceChangeListe
     private data class Target(val key: String, val type: Int, val matches: (String) -> Boolean)
     private val targets = listOf(
         Target(KEY_WIFI, TetheringManager.TETHERING_WIFI) { it.startsWith("wlan") || it.startsWith("ap") },
-        Target(KEY_BLUETOOTH, TetheringManager.TETHERING_BLUETOOTH) { it.startsWith("bt-pan") || it.startsWith("bnep") },
-        Target(KEY_USB, TetheringManager.TETHERING_USB) { it.contains("rndis") || it.startsWith("usb") },
-        Target(KEY_ETHERNET, TetheringManager.TETHERING_ETHERNET) { it.startsWith("eth") },
+        Target(KEY_BLUETOOTH, TetheringManagerCompat.TETHERING_BLUETOOTH) { it.startsWith("bt-pan") || it.startsWith("bnep") },
+        Target(KEY_USB, TetheringManagerCompat.TETHERING_USB) { it.contains("rndis") || it.startsWith("usb") },
+        Target(KEY_ETHERNET, TetheringManagerCompat.TETHERING_ETHERNET) { it.startsWith("eth") },
     )
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
     private val retries = mutableMapOf<String, Job>()

@@ -10,6 +10,7 @@ import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.ApiKeyManager
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.ResponseBody.Companion.toResponseBody
