@@ -52,7 +52,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="12dp"
                     android:hint="远程设备IP地址"
-                    app:startIconDrawable="@drawable/ic_device_network_wifi"
+                    app:startIconDrawable="@drawable/ic_network_wifi"
                     app:startIconTint="@color/colorPrimary"
                     style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
@@ -71,7 +71,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="12dp"
                     android:hint="端口号"
-                    app:startIconDrawable="@drawable/ic_action_settings"
+                    app:startIconDrawable="@drawable/ic_settings"
                     app:startIconTint="@color/colorPrimary"
                     style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
@@ -97,7 +97,7 @@
                         android:layout_weight="1"
                         android:layout_marginEnd="8dp"
                         android:hint="API Key"
-                        app:startIconDrawable="@drawable/ic_action_settings"
+                        app:startIconDrawable="@drawable/ic_settings"
                         app:startIconTint="@color/colorPrimary"
                         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
 
@@ -115,7 +115,7 @@
                         android:layout_height="wrap_content"
                         android:text="扫描"
                         android:textSize="12sp"
-                        app:icon="@drawable/ic_action_perm_scan_wifi"
+                        app:icon="@drawable/ic_wifi_protected_setup"
                         app:iconSize="16dp"
                         app:cornerRadius="8dp"
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
@@ -129,7 +129,7 @@
                     android:layout_height="wrap_content"
                     android:text="连接远程设备"
                     android:textSize="16sp"
-                    app:icon="@drawable/ic_device_devices"
+                    app:icon="@drawable/ic_devices"
                     app:iconGravity="textStart"
                     app:cornerRadius="8dp" />
 
@@ -184,7 +184,7 @@
                         android:layout_height="wrap_content"
                         android:text="刷新"
                         android:textSize="12sp"
-                        app:icon="@drawable/ic_action_autorenew"
+                        app:icon="@drawable/ic_auto_timer"
                         app:iconSize="16dp"
                         app:cornerRadius="6dp"
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
@@ -334,7 +334,7 @@
                         android:layout_marginEnd="8dp"
                         android:text="启动热点"
                         android:textSize="14sp"
-                        app:icon="@drawable/ic_device_wifi_tethering"
+                        app:icon="@drawable/ic_network_wifi_tethering"
                         app:iconGravity="textStart"
                         app:cornerRadius="8dp"
                         style="@style/Widget.MaterialComponents.Button" />
@@ -347,7 +347,7 @@
                         android:layout_marginStart="8dp"
                         android:text="停止热点"
                         android:textSize="14sp"
-                        app:icon="@drawable/ic_device_wifi"
+                        app:icon="@drawable/ic_network_wifi"
                         app:iconGravity="textStart"
                         app:cornerRadius="8dp"
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
@@ -378,7 +378,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginBottom="12dp"
                         android:hint="APP包名 (如: com.example.app)"
-                        app:startIconDrawable="@drawable/ic_action_settings"
+                        app:startIconDrawable="@drawable/ic_settings"
                         app:startIconTint="@color/colorPrimary"
                         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox.ExposedDropdownMenu">
 
@@ -407,7 +407,7 @@
                             android:layout_marginEnd="8dp"
                             android:text="启动APP"
                             android:textSize="14sp"
-                            app:icon="@drawable/ic_action_build"
+                            app:icon="@drawable/ic_code"
                             app:iconGravity="textStart"
                             app:cornerRadius="8dp"
                             style="@style/Widget.MaterialComponents.Button" />
@@ -418,7 +418,7 @@
                             android:layout_height="wrap_content"
                             android:text="保存"
                             android:textSize="12sp"
-                            app:icon="@drawable/ic_content_file_copy"
+                            app:icon="@drawable/ic_content_copy"
                             app:iconSize="16dp"
                             app:cornerRadius="8dp"
                             style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
