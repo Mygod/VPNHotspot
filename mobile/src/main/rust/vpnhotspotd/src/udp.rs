@@ -1340,7 +1340,11 @@ mod tests {
     /// is then read for the kernel's own refusal, and an empty queue means there is no MTU that can
     /// truthfully be attributed to this destination. `unreported` is the whole outcome.
     ///
-    /// An IPv6 destination on purpose: it is what skips the fragmentation option, so the send is reached.
+    /// Driven through [Relay::fail] with the errno in hand rather than through a real `sendmsg`, because
+    /// whether a host produces `EMSGSIZE` at all is a property of *its* routing: one with no IPv6 route
+    /// refuses at route lookup with `ENETUNREACH`, long before any size is looked at, and the branch under
+    /// test is then never reached. What this pins is the classification and the empty-queue decision, and
+    /// the error alone reaches both.
     #[tokio::test]
     async fn an_oversized_datagram_with_no_attributable_mtu_is_counted_not_reported() {
         // Taken before anything that can report, and therefore released after all of it: locals drop in
@@ -1358,7 +1362,8 @@ mod tests {
             .apply(Stamp::default(), whole.relay_upstream, &mut admission)
             .await;
 
-        // Larger than any datagram a UDP socket will take, which is what the kernel answers EMSGSIZE to.
+        // Larger than any datagram a UDP socket will take, which is the shape this branch is about even
+        // though the errno below is what drives it.
         let payload = vec![0u8; 70_000];
         let oversized = Relayed {
             source: SocketAddr::V6(std::net::SocketAddrV6::new(
@@ -1403,7 +1408,15 @@ mod tests {
             seen
         });
 
-        relay.relay(&[], oversized, &gateways, &mut output, &mut admission);
+        // The mapping's socket is fresh, so its error queue is empty - which is the case with no MTU that
+        // can truthfully be attributed to this destination, and needs no host route to arrange.
+        relay.fail(
+            io::Error::from_raw_os_error(libc::EMSGSIZE),
+            &[],
+            oversized,
+            &gateways,
+            &mut output,
+        );
         assert_eq!(1, relay.counters.too_big);
         assert_eq!(1, relay.counters.unreported);
         assert_eq!(0, relay.counters.sent);
