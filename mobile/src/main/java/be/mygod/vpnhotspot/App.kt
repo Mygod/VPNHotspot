@@ -31,6 +31,8 @@ import be.mygod.vpnhotspot.util.CrashlyticsKeyProvider
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.InPlaceExecutor
 import be.mygod.vpnhotspot.util.Services
+import be.mygod.vpnhotspot.util.ApiKeyManager
+import be.mygod.vpnhotspot.util.WebServerManager
 import be.mygod.vpnhotspot.util.getRootCause
 import be.mygod.vpnhotspot.util.privateLookup
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -43,6 +45,7 @@ import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.provider.FirebaseInitProvider
 import kotlinx.coroutines.DEBUG_PROPERTY_NAME
 import kotlinx.coroutines.DEBUG_PROPERTY_VALUE_ON
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -132,6 +135,16 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         ServiceNotification.updateNotificationChannels()
+        TetheringAutoController.start()
+        ApiKeyManager.init(this)
+        WebServerManager.init(this)
+        GlobalScope.launch(Dispatchers.IO) {
+            try {
+                WebServerManager.start(this@App)
+            } catch (e: Exception) {
+                Timber.e(e, "Unable to start remote-control HTTP server")
+            }
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

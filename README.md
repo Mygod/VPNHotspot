@@ -8,6 +8,12 @@
 
 Connecting things to your VPN made simple. Share your VPN connection over hotspot or repeater. (**root required**)  
 
+### Fork-specific features
+
+This fork keeps automatic recovery controls for Wi-Fi, Bluetooth, USB, and Ethernet tethering. Recovery is driven by Android tether-state events and uses exponential retry backoff instead of periodic one-second polling. Existing preference keys are preserved during upgrades.
+
+It also includes a local HTTP control API, API-key management, and QR-code pairing under **Settings > HTTP API and QR pairing**. The server listens on the local network and allows cleartext HTTP for LAN access. API-key authentication is optional for compatibility; enable it before using the service on an untrusted network.
+
 This app is useful for:
 
 * Connecting things that don't support VPN like Chromecasts behind corporate firewalls;

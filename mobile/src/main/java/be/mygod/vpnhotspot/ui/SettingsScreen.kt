@@ -67,6 +67,8 @@ import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
 import be.mygod.vpnhotspot.RoutingManager
+import be.mygod.vpnhotspot.RemoteControlActivity
+import be.mygod.vpnhotspot.TetheringAutoController
 import be.mygod.vpnhotspot.net.Routing.Ipv6Mode
 import be.mygod.vpnhotspot.net.TetherOffloadManager
 import be.mygod.vpnhotspot.net.monitor.Upstream
@@ -130,6 +132,14 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
     val autoStart by if (inspectionMode) {
         remember { mutableStateOf(false) }
     } else rememberPreferenceBoolean(BootReceiver.KEY, false)
+    val autoWifi by if (inspectionMode) remember { mutableStateOf(false) }
+        else rememberPreferenceBoolean(TetheringAutoController.KEY_WIFI, false)
+    val autoBluetooth by if (inspectionMode) remember { mutableStateOf(false) }
+        else rememberPreferenceBoolean(TetheringAutoController.KEY_BLUETOOTH, false)
+    val autoUsb by if (inspectionMode) remember { mutableStateOf(false) }
+        else rememberPreferenceBoolean(TetheringAutoController.KEY_USB, false)
+    val autoEthernet by if (inspectionMode) remember { mutableStateOf(false) }
+        else rememberPreferenceBoolean(TetheringAutoController.KEY_ETHERNET, false)
     val useSystemTempHotspot by if (inspectionMode) {
         remember { mutableStateOf(false) }
     } else rememberPreferenceBoolean(LocalOnlyHotspotService.KEY_USE_SYSTEM, false)
@@ -328,6 +338,38 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                             scope.launch { BootReceiver.onUserSettingUpdated(enabled) }
                         }
                     },
+                )
+            }
+            row(R.string.auto_tether_wifi) {
+                SwitchPreferenceRow(R.drawable.ic_wifi_tethering, R.string.auto_tether_wifi,
+                    stringResource(R.string.auto_tether_wifi_summary), autoWifi) {
+                    if (!inspectionMode) TetheringAutoController.setEnabled(TetheringAutoController.KEY_WIFI, it)
+                }
+            }
+            row(R.string.auto_tether_bluetooth) {
+                SwitchPreferenceRow(R.drawable.ic_bluetooth, R.string.auto_tether_bluetooth,
+                    stringResource(R.string.auto_tether_bluetooth_summary), autoBluetooth) {
+                    if (!inspectionMode) TetheringAutoController.setEnabled(TetheringAutoController.KEY_BLUETOOTH, it)
+                }
+            }
+            row(R.string.auto_tether_usb) {
+                SwitchPreferenceRow(R.drawable.ic_usb, R.string.auto_tether_usb,
+                    stringResource(R.string.auto_tether_usb_summary), autoUsb) {
+                    if (!inspectionMode) TetheringAutoController.setEnabled(TetheringAutoController.KEY_USB, it)
+                }
+            }
+            if (Build.VERSION.SDK_INT >= 30) row(R.string.auto_tether_ethernet) {
+                SwitchPreferenceRow(R.drawable.ic_lan, R.string.auto_tether_ethernet,
+                    stringResource(R.string.auto_tether_ethernet_summary), autoEthernet) {
+                    if (!inspectionMode) TetheringAutoController.setEnabled(TetheringAutoController.KEY_ETHERNET, it)
+                }
+            }
+            row(R.string.remote_control_title) {
+                PreferenceRow(
+                    icon = R.drawable.ic_qr_code_2,
+                    title = stringResource(R.string.remote_control_title),
+                    summary = stringResource(R.string.remote_control_summary),
+                    onClick = { if (!inspectionMode) context.startActivity(Intent(context, RemoteControlActivity::class.java)) },
                 )
             }
             if (Build.VERSION.SDK_INT >= 30) row(R.string.settings_service_temp_hotspot_use_system) {
