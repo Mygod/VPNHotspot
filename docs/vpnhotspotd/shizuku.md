@@ -39,9 +39,11 @@ the recommended path.
 - **A bounded set of supported traffic.** TCP, UDP, DNS terminated at the virtual resolver addresses, ICMP
   Echo, and a bounded set of translated ICMP errors. ESP, GRE, SCTP, unknown IP protocols and downstream
   link control (RA/RS/ND, DHCP, ARP) are not carried; Android tethering owns downstream link control.
-- **IPv6 reaches at most one downstream.** Tethering delegates an upstream `/64` only to the oldest active
-  downstream, so a second tethered interface is IPv4-only - and *at most*, because a local-only downstream
-  can hold that position while being answered from an earlier branch that never consults the upstream
+- **IPv6 reaches at most one downstream.** Tethering passes an upstream `/64` only to the oldest active
+  downstream
+  ([source](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/Tethering/src/com/android/networkstack/tethering/IPv6TetheringCoordinator.java#201)),
+  so a second tethered interface is IPv4-only - and *at most*, because a local-only downstream can hold that
+  position while being answered from an earlier branch that never consults the upstream
   ([source](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/Tethering/src/com/android/networkstack/tethering/IPv6TetheringCoordinator.java#191)),
   leaving every tethered interface without IPv6. This app's own local-only hotspot can produce that ordering
   exactly like any other app's, since it runs independently of this mode.
