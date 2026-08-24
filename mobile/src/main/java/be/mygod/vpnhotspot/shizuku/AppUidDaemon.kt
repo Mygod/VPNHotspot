@@ -37,6 +37,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import timber.log.Timber
@@ -240,7 +241,20 @@ class AppUidDaemon private constructor(
                 this.acknowledgement = acknowledgement
                 val applied = withTimeout(CONTROL_RESULT_DEADLINE) {
                     DaemonIpc.writeFrame(output, ShizukuSessionConfig.ADAPTER.encode(next))
-                    acknowledgement.await()
+                    // Raced against [ended], because [receive] can only fail the round trips it finds in
+                    // flight: a slot installed after the reader is gone has nobody left to complete it, and
+                    // awaiting it alone would spend the whole deadline rediscovering what [ended] already
+                    // says. The deadline stays for what it was written for - a child still reading its
+                    // socket that never answers - rather than standing in for a child that is not there.
+                    // `select` is biased to its first clause, so an acknowledgement the reader delivered on
+                    // its way out still wins the turn it shares with the stream ending.
+                    select {
+                        acknowledgement.onAwait { it }
+                        ended.onAwait {
+                            throw IOException("$BINARY_NAME stopped answering, so config " +
+                                    "${next.sequence} will never be acknowledged")
+                        }
+                    }
                 }
                 check(applied.sequence == next.sequence) {
                     "$BINARY_NAME acknowledged config ${applied.sequence}, expected ${next.sequence}"
@@ -281,6 +295,10 @@ class AppUidDaemon private constructor(
      * Completed when [receive] stops, which is the first moment the app can tell the daemon is no longer
      * answering. Waiting for the next config to time out instead would leave a session believing it owned a
      * dataplane for a further [CONTROL_RESULT_DEADLINE].
+     *
+     * Read by [apply] as well as by the session's failure watcher, and for the same reason: this is the one
+     * place that knows the conversation is over, so a control round trip consults it rather than waiting out
+     * a deadline no answer can beat.
      */
     val ended = CompletableDeferred<Unit>()
 
@@ -291,7 +309,9 @@ class AppUidDaemon private constructor(
      * eventually stall the daemon's writer behind a full socket buffer.
      *
      * Ending is not a failure by itself - a stopped session closes this socket - but it is terminal for any
-     * config still waiting, because nothing will ever acknowledge it now.
+     * config still waiting, because nothing will ever acknowledge it now. Only the round trips in flight
+     * when it ends are failed from here; one that begins afterwards finds no reader to fail it, which is why
+     * [apply] races [ended] rather than trusting this to reach it.
      */
     private suspend fun receive() {
         try {

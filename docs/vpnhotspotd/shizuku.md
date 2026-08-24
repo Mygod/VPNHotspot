@@ -3986,7 +3986,13 @@ daemon had nothing to sweep.
   release, which is exactly the system state it exists to remove.
 - **Losing the daemon ends the session promptly.** The app reads the daemon's stream for the
   session's whole life rather than only while a config is in flight, so a child that stops
-  answering is noticed when it happens instead of at the next config's deadline.
+  answering is noticed when it happens instead of at the next config's deadline. A config round
+  trip is raced against that same signal rather than only awaiting an acknowledgement, because the
+  reader can fail only the round trips it finds in flight: one begun after the stream ended - the
+  ordered stop's own "stop admitting" is exactly that - would otherwise wait out the full
+  `control_result_deadline` for an answer no one is left to send, keeping `testtun` published and
+  tethering pinned to a dead dataplane for a minute. The deadline still covers what it was written
+  for, a child that is still reading its socket and never answers.
 
 **Unexpected background failures are now structured reports.** Everything the app-UID dataplane
 knew was previously a line of stdout. `ShizukuDaemonFrame` now carries either an acknowledgement
