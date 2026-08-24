@@ -104,13 +104,25 @@ attached to discards it.
 After the handshake the bootstrap hands off, and the session that follows is a
 level-triggered config loop rather than the call/reply conversation the root mode
 uses. Each config is answered with what was actually applied, and the answer waits on
-the ingress task confirming that everything keyed to the previous epoch is gone - not
-merely that it was asked to go. Concretely, retiring a UDP mapping cancels its receive
+the ingress task confirming that the state *the changed axes require to retire* is gone -
+not merely that it was asked to go. Concretely, retiring a UDP mapping cancels its receive
 task, waits for that task to run to completion, drops the mapping's own share of the
-socket, and refunds the descriptor's budget charge only then - so an acknowledged epoch
-means the descriptors are back. A message from the task would not mean that, since it
-would be sent while the task still held the descriptor. Nothing else can honestly
-report it either, because the session loop owns no dataplane state.
+socket, and refunds the descriptor's budget charge only then. A message from the task
+would not mean that, since it would be sent while the task still held the descriptor.
+Nothing else can honestly report it either, because the session loop owns no dataplane
+state.
+
+What an acknowledgement deliberately does *not* cover is a resolver transaction. Those are
+never cancelled to free capacity, because the platform owns the query once submitted, so one
+outlives the config that retired whatever asked for it. What it keeps depends on whether this
+process can still observe it. A transaction that stays observable holds its wrapper descriptor
+and its logical token to completion, then discards or SERVFAILs the result. One whose wrapper
+or readiness registration has become unobservable is different: this process closes or cancels
+that descriptor and refunds the query's ordinary record and bytes, and only the *logical token*
+standing for the platform's slot is quarantined until the session ends - the case spelled out
+under [Selected-Network Handover](#selected-network-handover). Either way an acknowledged
+config means the retired axes' own workers are joined and refunded, not that the daemon holds
+nothing from before it.
 
 ### Selected-Network Handover
 
@@ -191,10 +203,13 @@ because none of them owns one. What the sweep does, in order:
    every admitted flow into, which already holds each live handle exactly once, rather than
    collecting what is due into a list no lease covers.
 
-   `STOPPING` neither pauses a floor nor rearms one. It admits no new flow and no new
-   exchange, and it does not refresh a deadline from payload it is draining, but the deadlines
-   keep running and what they retire is still taken back - with a reset for a flow that has a
-   remote endpoint, and silently for one that has none - still listening, or already closed.
+   `STOPPING` neither pauses a floor nor rearms one. Once the stop's `closeAdmission` has been
+   acknowledged it admits no new flow and no new exchange, and it does not refresh a deadline
+   from payload it is draining; before that acknowledgement - or before the child is fenced
+   when it cannot be obtained - the previous admitting config is still the one in force. Either
+   way the deadlines keep running and what they retire is still taken back - with a reset for a
+   flow that has a remote endpoint, and silently for one that has none - still listening, or
+   already closed.
 
    A flow whose worker already finished is settled directly by a retirement or a shutdown rather than
    waited for. Both workers return as soon as their own ordered work is done, so a clean terminal hands
@@ -309,7 +324,10 @@ cleanly is not the same as either alone.
 On the app side, shutdown is a fence rather than a signal, because everything downstream
 assumes the child is gone:
 close the socket, wait 10 seconds for exit, `destroy()` for SIGTERM, wait 5 more,
-then SIGKILL the peer-credentials pid explicitly and wait for observed exit.
+then SIGKILL the launched child PID explicitly and wait for observed exit. That PID is
+read from the process the app started, never from the connection: peer credentials
+authenticate that the connected child *is* that process, and a child that never connects
+has none at all, so taking the PID from the connection would leave that case unfenceable.
 `destroyForcibly()` is not an escalation on Android - it calls `destroy()`, whose
 native side is already `kill(pid, SIGTERM)`.
 

@@ -1,7 +1,7 @@
 # vpnhotspotd Internals
 
 `vpnhotspotd` is the daemon used by VPNHotspot intended for all long-running background root-side work, including but not limited to routing state, DNS proxying, neighbour monitoring, and IPv6 NAT mode.
-The same binary also has an app-UID entry point for Shizuku mode, which owns a TUN and no system state; the two share the launcher and the frame format and nothing else, because none of the root-side mutations are permitted at the app UID.
+The same binary also has an app-UID entry point for Shizuku mode, which owns no root routing state: the Kotlin Shizuku control path owns the TUN/TestNetwork session's publication and control resources, and this entry point receives a duplicate of that TUN and owns the dataplane over it. The entry points share low-level infrastructure, including executable entry dispatch, frame format, the shared wire/control writer's terminal-failure machinery, and the report builders. Their live runtime state, owned resources, policy, and system mutations are independent, since none of the root-side mutations are permitted at the app UID.
 The split is designed this way since root-side JVM daemon is much more expensive and should be avoided as much as possible.
 These docs describe the daemon's internal ownership model and cleanup invariants.
 IPC documentations not included and should refer to [`mobile/src/main/proto/daemon.proto`](../../mobile/src/main/proto/daemon.proto).
@@ -201,10 +201,14 @@ IPC documentations not included and should refer to [`mobile/src/main/proto/daem
 - [`tcp_dns/transactions.rs`](../../mobile/src/main/rust/vpnhotspotd/src/tcp_dns/transactions.rs) owns
   those transactions, apart from the transports that asked for them, because a retirement must sweep a
   client's transport at once and must not cancel a submitted query at all - so a transaction holds the
-  reserved resolver slot until the platform is genuinely done with it. It is a prepared, charged table
-  the ingress owner polls rather than a task per query: a row is inserted irrevocably and the platform
-  is then called synchronously, so there is no state in which Android holds a question this table is not
-  accounting for. Each query is admitted at the length its prefix announces *before* the message is
+  reserved resolver slot for as long as this process can still observe the platform working on it. It is
+  a prepared, charged table the ingress owner polls rather than a task per query: a row is taken before
+  the platform is called synchronously, and an accepted question is then accounted for in exactly one of
+  two forms. While it stays observable it remains a row in this table to completion. If its wrapper or
+  readiness registration becomes unobservable, the ordinary row and descriptor ownership is released and
+  refunded, and only the logical token standing for Android's slot transfers into the session-owned
+  quarantine until the session ends - so there is no state in which Android holds a question this process
+  is not accounting for. Each query is admitted at the length its prefix announces *before* the message is
   stored, and is stamped with the config and the `Network` current when the ingress owner accepts it -
   so one connection's questions may belong to different selections, and an answer from a selection the
   session has left becomes that query's own SERVFAIL on a stream that stays usable. A query with no
@@ -301,21 +305,25 @@ IPC documentations not included and should refer to [`mobile/src/main/proto/daem
   the writer: finishing proves nothing more will be handed over, and joining the writer task
   afterwards proves what was handed over reached the peer.
 
-The Kotlin side of the same subsystem lives under
-[`mobile/src/main/java/be/mygod/vpnhotspot/root/daemon/`](../../mobile/src/main/java/be/mygod/vpnhotspot/root/daemon/).
-Kotlin starts the binary, frames control messages, owns call IDs, and turns
-daemon reports into app-visible exceptions or nonfatal warnings.
+The Kotlin side has two halves. Root control lives under
+[`mobile/src/main/java/be/mygod/vpnhotspot/root/daemon/`](../../mobile/src/main/java/be/mygod/vpnhotspot/root/daemon/):
+it starts the binary, frames the call/reply conversation, and owns call IDs. The app-UID
+Shizuku path is launched and framed by
+[`shizuku/AppUidDaemon.kt`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/AppUidDaemon.kt)
+instead, and has no call IDs at all - it speaks the level-triggered config conversation
+described in [`shizuku.md`](shizuku.md). Both turn daemon reports into app-visible
+exceptions or nonfatal warnings.
 
 ## Documents
 
 - [`lifecycle.md`](lifecycle.md): daemon startup, control-loop ownership, call
   lifetime, session lifetime, cancellation, and shutdown.
-- [`shizuku.md`](shizuku.md): proposed Shizuku-mode control plane,
-  TestNetwork/TUN ownership, authenticated file-descriptor handoff, Rust
-  dataplane, resource policy, and implementation and validation gates. Its
-  security posture is best effort by design: device qualification proved that
-  any local app can inject packets into the tunnel interface, so the mode
-  protects tethered clients but not against other apps on the device.
+- [`shizuku.md`](shizuku.md): the rootless Shizuku mode - session ownership,
+  restricted TestNetwork publication, system-tethering selection, the app-UID
+  dataplane, external state and cleanup, and qualification status. Its security
+  posture is best effort by design: device qualification proved that any local
+  app can inject packets into the tunnel interface, so the mode protects
+  tethered clients but not against other apps on the device.
 - [`routing.md`](routing.md): desired routing state, reversible mutations,
   Clean behavior, and system mutation ownership.
 - [`nat66.md`](nat66.md): IPv6 NAT runtime boundaries for TCP, UDP, ICMPv6,
