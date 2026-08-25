@@ -63,22 +63,17 @@ public result API.
 
 ### The app-UID resolver
 
-The rootless TestNetwork path does not share the code above. It has its own resolver
-owner in [`resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/resolver.rs), whose
-only caller is `virtual_dns.rs`; root's DNS proxy keeps its own resolver in
-[`dns.rs`](../../mobile/src/main/rust/vpnhotspotd/src/dns.rs), unchanged.
-
-It differs in how the descriptor is watched. Both directions are polled, and the write
-direction is there purely as a close detector. `AsyncFd` offers no arbitrary-interest
-poll, only one per direction, and each direction's readiness is masked to its own bits -
-so an error never appears as an errno from the poll and a terminal condition written
-against one would be dead code. What the two directions cover between them is every way
-this descriptor can end: `EPOLLHUP` and `EPOLLIN|EPOLLRDHUP` arrive as read-closed, and a
-bare `EPOLLERR` with no `HUP` beside it arrives as *write*-closed. Watching only the read
-direction would instead have rested on an assumption about when the kernel raises `HUP`,
-and the cost of that assumption being wrong is a transaction that never reaches a terminal
-at all - holding a descriptor record, a logical token and a query until the session ends,
-since there is deliberately no timer on one.
+The rootless TestNetwork path does not share the code above: it has its own
+resolver owner in
+[`resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/resolver.rs), whose
+only caller is `virtual_dns.rs`, while root's DNS proxy keeps
+[`dns.rs`](../../mobile/src/main/rust/vpnhotspotd/src/dns.rs) unchanged. It watches
+both directions of the resolver descriptor and treats closure of that descriptor,
+however the platform closes it, as completion of the transaction; the readiness
+bits behind that are in
+[`resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/resolver.rs). Missing a
+closure would hold that query's descriptor and resolver slot until the session
+ends, because transactions carry no timer.
 
 DNS accounting counts the DNS payload bytes handed to `android_res_nsend` and
 the response bytes returned by `android_res_nresult`. It does not try to account
@@ -104,49 +99,23 @@ does not try to infer lower-layer TCP packet counts.
 
 Nothing assumes one read is one message, and a resolver failure is not a stream
 failure: a SERVFAIL is framed for the message it belongs to and the connection
-carries on. Only a length prefix that can never complete - a zero-length message,
-after which nothing is at an offset the framing could resynchronize on - ends it.
-The framing and that decision live in
-[`shared/dns_wire.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shared/dns_wire.rs),
-away from the transport, because they are the attacker-facing half and the half
-that has to be answerable for without a device.
+carries on. A zero-length prefix is invalid DNS, and this implementation closes
+the stream on it. The framing lives in
+[`shared/dns_wire.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shared/dns_wire.rs).
 
 Unexpected EOF while reading the next frame ends the connection cleanly.
 Host- or network-unreachable response writes are treated as downstream
 reachability churn and logged. Other I/O failures are returned to the
 connection task.
 
-On the app-UID path a transport whose client has finished asking does not end the
-moment its own task returns. The task returns as soon as its ordered end of stream
-has been taken, and the client's socket is still in `LAST-ACK` then - so the flow
-is detached and the client's teardown finishes before anything is removed. See
-[Shizuku Mode](shizuku.md#a-flow-can-outlive-its-worker); the resolver ownership
-below is unchanged by it, because a detached transport asks nothing more.
-
-A transport also ends when it falls idle past its outer TCP floor, and that ends
-the *transport only*. The resolver transaction it asked for
-is a row in the ingress owner's own table rather than something the transport
-owns, so an expiry neither cancels, awaits nor refunds it: an outstanding
-question keeps its row and its descriptor until the platform is done with it,
-exactly as under an epoch retirement. The token is the transport's rather than the
-question's - a live transport keeps it between questions, which is what lets the
-stream ask another - so what the transport's close
-does with that token is hand it to the question rather than return it, because
-Android's own per-UID slot is still taken and a moment where the token looked
-free would admit a query the limiter has no room for. The answer, when it comes,
-is settled against the exact `(SocketHandle, worker)` pair the query was
-published for, so a late answer for an expired transport is discarded and
-refunded once - and the flow that reused the same handle with a new worker is
-untouched by either its predecessor's answer or its predecessor's deadline.
-
-A session that has stopped serving starts no new exchange on a transport it still
-holds. A length prefix the owner has not admitted yet is refused rather than
-dropped, so nothing is allocated and the stream stays framed for the client's next
-question; a query the owner had already accepted, whose payload-free commit was
-still queued when the stop won, is answered from the capacity that reservation
-already covers rather than becoming platform work a stopping session cannot watch
-the end of. Rows already submitted, and the delivery acknowledgements for them,
-finish normally.
+On the app-UID path a transport outlives its own task while the client is still
+closing ([Shizuku Mode](shizuku.md#a-flow-can-outlive-its-worker)), and ending a
+transport ends the transport only: its resolver transaction is owned separately,
+is never cancelled with it, and keeps the platform's slot reserved until it
+finishes, so a late answer is discarded rather than delivered to whatever reused
+the connection. A session that has stopped serving refuses a question it has not
+admitted rather than dropping it, so the stream stays framed, while accepted
+queries finish normally.
 
 ## UDP DNS
 
@@ -166,37 +135,33 @@ Resolver failure normally returns a SERVFAIL response when the query can be
 parsed enough to build one. If a SERVFAIL response cannot be generated, the
 query is dropped.
 
-Every resolver outcome the platform answered - no selected upstream network, an
-Android resolver timeout, `EBUSY` from its per-UID limiter, a name that does not
-resolve, a remote failure - returns SERVFAIL when possible and is otherwise
-silent. A client chooses how many queries it sends, so a line each would be a log
-flood it drives. Only the daemon's own wrapper around a transaction is not
-client-driven, and that one is a structured, coalesced nonfatal naming its step;
-either way the DNS runtime keeps going.
+Every outcome returned by the platform - no selected upstream network, a timeout,
+`EBUSY` from its per-UID limiter, an unresolvable name, a remote failure -
+returns SERVFAIL when possible and is otherwise silent, because a client chooses
+how many queries it sends. Only the daemon's own wrapper around a transaction is
+not client-driven, and a failure there is a structured, coalesced nonfatal naming
+its step; see [`errors.md`](errors.md).
 
-Those two are different outcomes, not two shades of the same one, and
-[`resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/resolver.rs) keeps them
-apart as types rather than distilling both into an error:
+A submission therefore has three outcomes, which
+[`resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/resolver.rs) keeps
+typed all the way to the owner that acts on them:
 
-- **An expected platform outcome** - a timeout, `EBUSY`, a name that does not
-  resolve, a refusal, or a submission `android_res_nsend` itself rejected - is
-  what one query asked for. It becomes that query's own SERVFAIL and the stream
-  carries on to the next message. What happens to the logical token depends on
-  whose it is: a UDP query owns its own, so it goes back with the rest of that
-  query's grant, while a DNS-over-TCP query's debt owns none in the ordinary case -
-  the connection holds the one token and keeps it between questions, which is what
-  lets the stream ask another.
-- **An accepted-but-unobservable submission** is not. `android_res_nsend` is
-  irreversible, so once it has answered with a descriptor Android holds a per-UID
-  slot whatever happens here; if this process's own wrapper around that descriptor
-  fails, or the readiness registration it is being watched with later goes away,
-  that slot's end is something nothing here can observe. The query's record and
-  bytes are refunded and its logical token is not - it is quarantined for the rest
-  of the session, because refunding a slot Android still holds is what drives the
-  limiter into `EBUSY`. A DNS-over-TCP stream that hits this ends rather than
-  continuing: its transport no longer owns a token, so it has nothing to ask a
-  next question with. Root mode has no logical-token ceiling and so has nothing to
-  quarantine; it reports the step and answers the client.
+- **`NeverReached`** - `android_res_nsend` refused the query, so nothing of
+  Android's is held;
+- **`Accepted`** - the platform has the query, and this process can wait for the
+  DNS result or for the failure the platform returns instead;
+- **`Unobservable`** - Android accepted the query and then this daemon's wrapper
+  around the descriptor failed, or the readiness registration went away, so a
+  per-UID slot is held whose end nothing here can observe.
+
+The first two are ordinary answers, and the query's reservation is released with
+them. `Unobservable` is not: the daemon's own memory and descriptor are released,
+but the resolver slot stays reserved for the rest of the session, because
+returning capacity for a transaction Android still holds is what drives its
+limiter into `EBUSY`.
+A DNS-over-TCP stream that hits this is closed, because no resolver capacity
+remains for it to ask another query with. Root mode has no per-UID resolver
+ceiling of its own and reserves nothing.
 
 Listener setup failures do not stop the session.
 Routing omits the missing DNS redirect, so normal IP traffic and manually

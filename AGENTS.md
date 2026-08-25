@@ -91,10 +91,8 @@ Do not hand-wave platform API reflection, hidden API, or root behavior.
 - Do not add normal `sdk/public-api` entries to `README.md` just because code now touches them. Document only reflected hidden APIs, blocked APIs, or non-obvious platform assumptions.
 - If a hidden API is only used on a narrower runtime path than its Android introduction, the `README.md` qualifier must follow actual app usage, not just platform availability.
 - Follow existing conventions first. Check similar entries in `README.md`, `../hiddenapi/hiddenapi-flags.csv`, and nearby source comments before adding new ones.
-- Do not search for hiddenapi data elsewhere. Use the provided `../hiddenapi/hiddenapi-flags.csv`, and do not edit it unless explicitly asked.
-- Before adding, removing, or reclassifying any Android API entry in `README.md`, verify the exact descriptor and exact overload in `../hiddenapi/hiddenapi-flags.csv`. Do not infer access category from class-level knowledge, AOSP source, or a sibling overload.
-- Never guess or synthesize hiddenapi flag suffixes. The suffix after the descriptor, such as `blocked`, `unsupported`, or `sdk,system-api,test-api`, must come from an exact descriptor match in `../hiddenapi/hiddenapi-flags.csv`.
-- AOSP API signature files such as `current.txt`, `system-current.txt`, annotations such as `@SystemApi`/`@FlaggedApi`, and SDK stubs may support API-surface or availability conclusions, but they do not prove hiddenapi flags. If the exact descriptor is absent from `../hiddenapi/hiddenapi-flags.csv`, do not append a flag suffix; document the absence explicitly when it matters.
+- Hidden-API inventory edits must follow `$android-hidden-api-compatibility`; its app-use range, release-matched dataset, exact-descriptor, suffix, and row-shape rules are authoritative.
+- Do not edit `../hiddenapi` or another hiddenapi dataset unless explicitly asked.
 - Treat `public-api` as a stop sign for `Hidden whitelisted APIs` and `Private APIs used / Assumptions for Android customizations` unless this app also uses a different non-public member with its own descriptor.
 - Update the correct documentation bucket: blocked/private/internal APIs go in `README.md` under
   `Private APIs used / Assumptions for Android customizations`; reflected or directly referenced
@@ -117,6 +115,5 @@ Do not hand-wave platform API reflection, hidden API, or root behavior.
 Keep `README.md` in sync with these changes.
 
 - Update `Private APIs used / Assumptions for Android customizations`, `Hidden whitelisted APIs`, and `Other` whenever descriptors, API ranges, hidden constants, or platform assumptions change.
-- Cross-check README entries against `../hiddenapi/hiddenapi-flags.csv` by exact descriptor when applicable.
-- If `README.md` API documentation changes, state in the final response that `../hiddenapi/hiddenapi-flags.csv` was checked and which descriptors were verified.
+- If `README.md` API documentation changes, state which exact descriptors and release-matched datasets were verified.
 - If a change affects compatibility, cleanup behavior, or required privileges, also update the relevant README usage or troubleshooting text.

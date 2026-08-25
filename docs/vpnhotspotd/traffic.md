@@ -29,20 +29,22 @@ committed client set must not enter an upstream forwarding, DNS proxy, or NAT66
 proxy path. The daemon must not recover client identity by looking up source IP
 addresses in neighbour state.
 
-None of this applies to the rootless app-UID path, and the difference is worth
-stating rather than inferring. That path has no MAC identity at all: IPv4 arrives
-already translated by Android's own tethering NAT, and any app on the device can put
-an arbitrary source address on the TUN, so upstream bytes there cannot be attributed
-to the client that really sent them. It carries exactly three shared principals -
-`platform_dns`, `platform_ipv4` and `platform_ipv6` - and they exist to bound what
-forged input can make the daemon allocate, not to say who sent anything.
+Neither the MAC-facing identity above nor the whitelist applies to the
+rootless app-UID path, which has no MAC identity at all: IPv4 arrives already
+translated by Android's own tethering NAT, and any app with network access can
+put an arbitrary source address on the TUN, so upstream bytes there cannot be
+attributed to the client that really sent them. That path carries exactly
+three shared principals, `platform_dns`, `platform_ipv4` and `platform_ipv6`,
+and they exist to bound what forged input can make the daemon allocate, not to
+say who sent anything.
 
-Per-client accounting and per-client blocking are therefore *not available* while a
-rootless session carries the downstream. Both are this app's own root-mode features:
-the counters come from the per-client `iptables` rules `routing/desired.rs` installs,
-and blocking comes from the app's own neighbour-driven routing. Android's system
-tethering supplies neither, so nothing takes over when root routing is not there -
-this is a capability the rootless mode does not have, not one that moves elsewhere.
+**Per-client accounting and per-client blocking are unavailable for traffic
+carried while Android has selected this mode's TestNetwork as the tethering
+upstream.** Both are root-mode features of this app: the
+counters come from the per-client `iptables` rules `routing/desired.rs`
+installs, and blocking comes from the app's own neighbour-driven routing.
+Android's system tethering supplies neither, so nothing takes over when root
+routing is absent. See [`shizuku.md`](shizuku.md).
 
 ## Client Identity
 
