@@ -488,29 +488,6 @@ contain traffic a shipped build would not produce.
 | Cleanup | Ordered cleanup on normal stop, leaving no network, request, TUN, child or foreground service | rooted with root-backed Shizuku, and stock non-rooted with shell-backed Shizuku |
 | Security boundary | Restricted `Network`-handle selection is enforced against a separately signed app and against the owner UID alike; direct interface injection succeeds. Isolation was tested and **failed** | separately signed out-of-repository attacker harness plus TUN packet capture, distinct from the rows above and proving nothing about release behaviour |
 
-### Open Gates
-
-Do not claim production support until these are resolved.
-
-- **Release builds.** No release-APK qualification exists; release-build native launch and
-  SELinux/`SCM_RIGHTS` behaviour is untested.
-- **Platform coverage.** Android 13-16, OEM builds and Mainline variants: Shizuku provider delivery, wrapped
-  descriptor return, `ConnectivityManager` field access and constructor-less construction, request, agent
-  and tethering selection, cleanup, and packet semantics.
-- **The Wi-Fi hotspot dataplane.** SoftAP failed on the qualification device before this feature could be
-  selected, so the whole Wi-Fi path is unqualified.
-- **Repeated tethering start/stop cycles** on any transport. The VPN handover tests do not cover restarting
-  tethering.
-- **The rest of the failure matrix.** Shizuku death, a Shizuku identity UID change, a child that never
-  authenticates, startup races, and the TERM-to-KILL escalation against a child that ignores SIGTERM.
-- **Resource ceilings.** Long-horizon descriptor reclamation and the measured descriptor, memory, DNS-token
-  and fragment ceilings under sustained device pressure. Host tests cover the derivations, not the device.
-- **Residual DNS and old-network cases**, including the daemon's DNS ceiling against the platform's per-UID
-  limiter across repeated handovers.
-- **A truly foreign TestNetwork.** A second agent published by this app proves only the collision-scan read
-  path.
-- **Reliability.** None of the above is a reliability, throughput or long-soak claim.
-
 ## Related Code And Documentation
 
 - [`mobile/src/main/java/be/mygod/vpnhotspot/shizuku/`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/) -
