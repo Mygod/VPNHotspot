@@ -67,7 +67,6 @@
     <string name="shizuku_state_verifying">Checking…</string>
     <string name="shizuku_state_active">Active</string>
     <string name="shizuku_state_restart_required">System tethering is not using this connection</string>
-    <string name="shizuku_state_stopping">Stopping…</string>
     <string name="shizuku_failure_collision">Another app is already publishing a test network (%s), and only one at
         a time can be used as the tethering upstream</string>
     <string name="shizuku_failure_tethering_died">The system tethering service died. Restart this app before trying
@@ -78,7 +77,6 @@
         Android for, so a new one cannot start. Try again, or restart this app</string>
     <string name="shizuku_failure_unfenced">VPN tethering without root could not prove Android released its test
         network (%s). Restart this app</string>
-    <string name="shizuku_state_starting">Starting…</string>
 
     <string name="tethering_manage">Manage system tethering…</string>
     <string name="tethering_manage_offload_enabled">Please disable Tethering hardware acceleration in Developer options

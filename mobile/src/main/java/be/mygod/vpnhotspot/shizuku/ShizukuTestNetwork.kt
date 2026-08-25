@@ -28,10 +28,13 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.job
@@ -200,21 +203,19 @@ object ShizukuTestNetwork {
          * same build can reach [ACTIVE] on the first cycle or stay here across three.
          */
         RESTART_REQUIRED(R.string.shizuku_state_restart_required),
-        /** Admission is closed and ordered cleanup is running. */
-        STOPPING(R.string.shizuku_state_stopping),
     }
 
     /**
-     * Where one session generation is in its life. Globally owned and published only by the owner: a
-     * successor is admitted exactly when this reaches [Phase.OFF], which happens once - as the final
-     * committed transition of a retirement - and never in the middle of one.
+     * What one session generation still owes, as a private ledger fact. Never a user-visible state and
+     * never a transition to render: a successor is admitted exactly when the generation is finished and
+     * cleared, which happens once, as the final committed step of a retirement.
      */
     private enum class Phase {
         /**
-         * Resources are being acquired and nothing is committed. A publication that fails leaves this phase
-         * behind with its ledger intact, and [ShizukuLifecycle] runs the one retirement that withdraws it.
+         * Resources are being acquired and nothing is committed. A publication that fails leaves this fact
+         * behind with its ledger intact, and the lifespan's finalizer runs the one retirement over it.
          */
-        STARTING,
+        ACQUIRING,
         /** Committed. The session owns a TUN, a request, an agent, a preference and a child. */
         RUNNING,
         /** Ordered withdrawal is running. Admission is closed and no successor may enter. */
@@ -233,16 +234,36 @@ object ShizukuTestNetwork {
         val epoch: ShizukuEpoch,
         /** Owns tethering and egress observation for the session lifetime, and nothing else. */
         val scope: CoroutineScope,
+        /**
+         * The lifespan this generation belongs to. Every display state it commits is stamped with this, so
+         * whether it may still speak for the row is decided by identity against the accepted intent owner
+         * rather than by when a write happened to land.
+         */
+        val lifespan: Job,
     ) {
-        var phase = Phase.STARTING
+        var phase = Phase.ACQUIRING
+        /**
+         * What this generation currently is, kept here rather than read back out of the display flow: the
+         * daemon's config is built from it, and the config must not change because the row stopped showing
+         * a label. Null until the first commit and again from the moment a withdrawal begins.
+         */
+        var state: State? = null
         /** Assigned the moment `createTunInterface` names it, which is also when [descriptor] is recorded. */
         var interfaceName = ""
         /**
          * A committed session has lost the machinery it needs, carrying what the user is told. Completed by
          * whichever observer noticed rather than acted on there, because those observers run inside the scope
-         * a withdrawal cancels; the one watcher that selects on this owns the withdrawal.
+         * a withdrawal cancels; signalling is all they do. The one watcher that selects on this reports it
+         * and completes [ended], and the withdrawal itself is the lifespan finalizer's alone.
          */
         val failed = CompletableDeferred<CharSequence>()
+        /**
+         * Completed once this session has lost the machinery it needs and its one watcher has said so. What
+         * the lifespan awaits: returning from it sends that same lifespan into its own finalizer, which is
+         * the only thing that withdraws - so a session that ended on its own and one the user stopped reach
+         * exactly the same teardown, in the same place.
+         */
+        val ended = CompletableDeferred<Unit>()
         /**
          * The retirement in flight, and what makes several stops one withdrawal: the first caller runs the
          * ordered steps and every other awaits this. Written before the first suspension point on the
@@ -251,6 +272,11 @@ object ShizukuTestNetwork {
          * of returning as though it had finished.
          */
         var retirement: CompletableDeferred<Unit>? = null
+        /**
+         * Why this generation could not confirm its privileged release, kept so the one owner that reports
+         * a start's single cleanup attempt can carry the real cause rather than a bare message.
+         */
+        var residual: Exception? = null
 
         /**
          * Not a ledger entry: building it issues no wrapped transaction, so there is no unknown outcome to
@@ -325,6 +351,15 @@ object ShizukuTestNetwork {
          */
         val localUnfenced get() = arrayOf<SessionResource>(descriptor, child, agent).any { it.terminal }
 
+        /**
+         * True while any local resource is still owed at all - live, issuing, released but unconfirmed, or
+         * unknown. Wider than [localUnfenced] on purpose, and it is the fence question: `fencing()` moves a
+         * child to RELEASE_ISSUED *before* `Child.stop()` can throw, and the descriptor close and the agent
+         * barrier have the same shape, so a resource that is merely not-yet-confirmed may still be relaying.
+         * Only [localUnfenced] is hopeless; this is everything that is not yet done.
+         */
+        val localOutstanding get() = arrayOf<SessionResource>(descriptor, child, agent).any { it.outstanding }
+
         override fun toString() = "session $generation: " + resources.joinToString()
     }
 
@@ -333,18 +368,29 @@ object ShizukuTestNetwork {
      * The one session generation this process owns, whatever [Phase] it is in, and the lock nothing else
      * plays: a successor is admitted exactly when this becomes null, which happens once, as the final
      * committed transition of a retirement. Confined to [privilegedDispatcher], and every mutating entry
-     * point below runs inside [lifecycle]'s command lane, which is what keeps two of them apart across their
+     * point below runs inside one lifespan, which is what keeps two of them apart across their
      * suspensions - a single-lane dispatcher orders dispatches, not run-to-completion sections.
+     *
+     * What serializes the generations themselves is the lifespan barrier: a successor joins its predecessor
+     * before it prepares anything, and that barrier is the process's rather than any one component's, so it
+     * holds across a recreation too. If Android destroys the service while a lifespan is still finalizing,
+     * its scope is deliberately left alive to finish - and that finalizer is exactly the predecessor the
+     * recreated instance's first command joins, rather than something it can overtake.
+     *
+     * This field and [Session.retirement] are the ledger's own half of the same rule, and they answer for
+     * what no ordering can: a non-null generation is settled before anything new is created, and a
+     * withdrawal already in flight is awaited rather than duplicated, both on this lane. Neither of them is
+     * a statement about *ownership*, which is why the one destructive entry point is keyed on the lifespan
+     * that published the generation instead of trusting either - see [stop].
      */
     private var current: Session? = null
-    private val stateFlow = MutableStateFlow<State?>(null)
-    /** Null when no session is running. */
-    val state = stateFlow.asStateFlow()
+    private val stateFlow = MutableStateFlow<OwnedState?>(null)
     /**
-     * Outlives every session, because a session's own scope is what retirement cancels. A watcher that
-     * asked for the withdrawal would otherwise be cancelled by the withdrawal it asked for.
+     * The last committed display state and the lifespan that committed it. Null when none has been.
+     *
+     * Internal because the carrier is: only this module projects it, through [OwnedState.label].
      */
-    private val owned = CoroutineScope(privilegedDispatcher + SupervisorJob())
+    internal val state = stateFlow.asStateFlow()
     /**
      * The tethering service died under a session, so `TetheringManager`'s permanently cached connector in
      * this process is dead and AOSP states that no recovery is possible. Nothing this app can do brings it
@@ -355,45 +401,136 @@ object ShizukuTestNetwork {
      */
     private var tetheringDied = false
 
-    /**
-     * This mode's own command lane, and the only way in: [ShizukuLifecycle] is what makes a duplicate press
-     * share one start, an explicit stop supersede a start that has created nothing yet, and a failed
-     * publication retire what it managed to create. It knows about this session and nothing else - root mode
-     * is neither consulted nor touched by any transition it drives.
-     */
-    val lifecycle = ShizukuLifecycle(object : ShizukuLifecycle.Session {
-        override suspend fun prepare() = this@ShizukuTestNetwork.prepare()
-        override suspend fun retire() = stop()
-    })
+    private val intentFlow = MutableStateFlow<Job?>(null)
 
     /**
-     * Everything that has to hold before anything is created, and nothing that mutates anything. Runs
-     * cancellable, because Shizuku authorization can sit on the user's own permission dialog for as long as
+     * Stable user intent as an owner token: the lifespan a start installed, or null for off. On the moment a
+     * start is accepted, off the moment a stop is asked for or a lifespan ends on its own. Never a
+     * transition, so the row's control is always live and never shows a state the user cannot act on.
+     *
+     * A token rather than a boolean because the same value answers both questions the row asks - whether
+     * this mode is meant to be on, and *whose* committed state may label it. Published here rather than by
+     * the lifespan owner because it outlives any one component, while the lifespan itself belongs to the
+     * foreground service that holds the process up.
+     */
+    val intent = intentFlow.asStateFlow()
+
+    /** Accepts [owner] as the lifespan the user asked for. */
+    fun publishIntent(owner: Job) {
+        intentFlow.value = owner
+    }
+
+    /**
+     * Withdraws [owner], if it is still the accepted one.
+     *
+     * Identity-guarded and atomic, so a lifespan finalizing after its successor was already accepted cannot
+     * turn the row off under it. Nothing else has to move with it: a committed state carries the lifespan
+     * that produced it, so it stops being shown the moment its own owner stops being the intended one.
+     */
+    fun withdrawIntent(owner: Job) {
+        intentFlow.compareAndSet(owner, null)
+    }
+
+    /**
+     * Whether every local resource this process created has been proven gone.
+     *
+     * The authoritative answer, read from the ledger rather than remembered beside it: a generation is
+     * either absent or owes nothing local at all. A lifespan owner asks this after each cleanup attempt to
+     * decide whether it may let the process go, which is why it has to be the ledger's fact and not a flag
+     * some component keeps - a flag resets when that component is recreated, and the child it was describing
+     * does not.
+     *
+     * Suspending, and on [privilegedDispatcher], because that is where the ledger lives: reading it from
+     * the main thread would be answering a question about state this lane is in the middle of mutating.
+     */
+    internal suspend fun localResourcesFenced() = withContext(privilegedDispatcher) {
+        current?.localOutstanding != true
+    }
+
+    /**
+     * Settles whatever the previous generation still owed, and creates nothing. Mutating, not mutation-free:
+     * it can fence a child, close the TUN, withdraw the agent, release a privileged request and clear the
+     * global preference.
+     *
+     * Reached from a live lifespan as that start's one attempt, and from a cleanup-only one as the whole of
+     * what it exists for. Either way it runs *before* anything only a new session needs - the Shizuku
+     * authorization, the automatic-upstream support check, [tetheringDied], the collision scan - because
+     * none of those is what a withdrawal is missing: fencing the child, withdrawing the agent and closing
+     * the descriptor issue no Shizuku transaction at all, and only the request release and the preference
+     * clear do, which is what [Session.cleanupEpoch] authorizes for itself when the session's own epoch is
+     * gone. Ordering a successor's gates in front of this would let a Shizuku the user revoked, or a
+     * tethering service that died permanently, take away the only retry a recoverable child, descriptor or
+     * agent still had.
+     *
+     * Unkeyed, unlike [stop], and deliberately: what this settles is by definition a generation some *other*
+     * lifespan published, which is the whole of inherited debt and which no owner token could name. What
+     * makes that sound is the barrier rather than a key - every caller has joined the complete process
+     * predecessor, and every successor from any component orders itself behind the caller - so while this
+     * runs there is no newer generation for it to reach. What the barrier does not order is anything reached
+     * from outside a lifespan, which is what [Session.retirement] is for: [retire] below awaits a withdrawal
+     * already in flight instead of starting a second.
+     */
+    internal suspend fun settle(): Unit = withContext(privilegedDispatcher) {
+        val previous = current ?: return@withContext
+        // Exactly one attempt, and which one depends on what the previous generation still owes. A
+        // withdrawal that threw may have left local resources, so it is retried whole; one that got as far
+        // as [Phase.RESIDUAL] owes only the privileged release, which is the one thing a cleanup epoch
+        // still reaches.
+        //
+        // The two are alternatives rather than steps. A full retirement that itself ends RESIDUAL has
+        // already made this attempt: issuing its release again here would be the same debt attempted twice
+        // in a row, reported twice, by one press.
+        if (previous.phase == Phase.RESIDUAL) {
+            try {
+                releasePrivileged(previous)
+            } catch (e: Exception) {
+                if (e is CancellationException && e !is TimeoutCancellationException) throw e
+                throw IllegalStateException(app.getString(R.string.shizuku_failure_cleanup_unconfirmed), e)
+            }
+            finish(previous)
+        } else {
+            // Throws when the local resources could not be fenced, and finishes the generation itself when
+            // it settles everything. Anything it leaves behind - a release it could not confirm, which is
+            // [Phase.RESIDUAL] - is the *next* attempt's, not a second one here, so this one reports the
+            // failure rather than letting a successor publish over a generation the ledger still owes.
+            retire(previous)
+            current?.let { still ->
+                throw IllegalStateException(
+                    app.getString(R.string.shizuku_failure_cleanup_unconfirmed), still.residual)
+            }
+        }
+        Timber.i("Finished the outstanding cleanup of Shizuku session ${previous.generation}")
+    }
+
+    /**
+     * Everything that has to hold before this generation creates anything *of its own*, and nothing about
+     * the previous one: [settle] has already run, on the same lifespan and before this. Cancellable
+     * throughout, because Shizuku authorization can sit on the user's own permission dialog for as long as
      * they take. Returns the publication step.
+     *
+     * Every gate here may refuse this session permanently, and none of that refusal reaches backwards: a
+     * revoked Shizuku, an unsupported device or a dead tethering service stops a new generation from
+     * existing and leaves the old one already withdrawn.
      */
     @SuppressLint("WrongConstant")
-    private suspend fun prepare(): suspend () -> Unit {
+    internal suspend fun prepare(): suspend () -> Unit {
         check(Build.VERSION.SDK_INT >= 33) { "Shizuku mode requires Android 13" }
+        // Read here, on the lifespan's own coroutine and before anything switches away from it, so the
+        // session's observers can be launched as its structured children rather than as a second root. A
+        // `withContext` job further down would be the wrong parent: it completes when its block returns,
+        // and a parent with a live child never would.
+        val lifespan = currentCoroutineContext().job
         val epoch = ShizukuEpoch.authorize()
         // before anything is created, because a device that never consults the preference cannot run this
         // mode at all and a permanent RESTART_REQUIRED is the worst available outcome
         PinnedTetheringConnector.requireAutomaticUpstream()
         withContext(privilegedDispatcher) {
             check(!tetheringDied) { app.getString(R.string.shizuku_failure_tethering_died) }
-            current?.let { previous ->
-                // Everything else is the command lane's business: a live or retiring session means it is not
-                // OFF, and it would not have called this.
-                check(previous.phase == Phase.RESIDUAL) { "A Shizuku session is already running" }
-                // Retried here rather than in a path of its own: a fresh epoch has just been authorized,
-                // which is the one thing the outstanding release was missing.
-                try {
-                    releasePrivileged(previous)
-                } catch (e: Exception) {
-                    if (e is CancellationException && e !is TimeoutCancellationException) throw e
-                    throw IllegalStateException(app.getString(R.string.shizuku_failure_cleanup_unconfirmed), e)
-                }
-                finish(previous)
-                Timber.i("Finished the outstanding cleanup of Shizuku session ${previous.generation}")
+            // The ledger's own half of one-generation-at-a-time, on the lane that owns it. [settle] above
+            // either cleared this or threw, so reaching it non-null means the ordering in front of the
+            // ledger failed; fail closed rather than publish a second generation over a live one.
+            current?.let {
+                throw IllegalStateException("Shizuku session ${it.generation} is still outstanding")
             }
             // A newly started app process has no old in-memory generation, so a TestNetwork that outlived one
             // is only detectable by asking the platform. Ordinary reads are enough and no privilege is
@@ -407,7 +544,7 @@ object ShizukuTestNetwork {
                 throw CollisionException(Services.connectivity.getLinkProperties(network)?.interfaceName)
             }
         }
-        return { withContext(privilegedDispatcher) { publish(epoch) } }
+        return { withContext(privilegedDispatcher) { publish(epoch, lifespan) } }
     }
 
     /**
@@ -416,17 +553,20 @@ object ShizukuTestNetwork {
      *
      * It deliberately does **not** roll itself back. Failing here throws with [current] still naming the
      * session and its ledger still owning every resource that exists, and [ShizukuLifecycle] runs the one
-     * retirement - so a rollback that fails is retried by the next explicit stop rather than immediately by
-     * the start that caused it. Nothing before the ledger exists can leave anything behind: building the
-     * private manager and fetching the TestNetwork service binder issue no transaction that owes a release.
+     * retirement - so a rollback that fails is not retried immediately by the start that caused it. What
+     * retries it is the next *command*: intent is already off, so the next thing the user can do to this row
+     * is turn it on again, and [settle] runs ahead of any new session either way - as a start's first step,
+     * or as the whole of an idle stop's. Nothing before the ledger exists can leave anything behind: building
+     * the private
+     * manager and fetching the TestNetwork service binder issue no transaction that owes a release.
      *
-     * Runs inside [ShizukuLifecycle.State.PUBLISHING], so no other start or stop can interleave with it.
+     * Runs inside one lifespan, after its predecessor barrier, so no other publication can interleave.
      * Nothing of root mode's is consulted, withdrawn or rebuilt to get here: whatever root routing exists
      * stays exactly as it is, and Android's tethering decides for itself whether to select what this
      * publishes.
      */
     @SuppressLint("WrongConstant")
-    private suspend fun publish(epoch: ShizukuEpoch) {
+    private suspend fun publish(epoch: ShizukuEpoch, lifespan: Job) {
         // Resolved before anything is created, because the direct release is what a retirement needs and
         // discovering that it is unreachable *after* the TUN, the request, the preference and the agent
         // exist would leave a session that cannot be taken back. No transaction, no side effect.
@@ -444,7 +584,14 @@ object ShizukuTestNetwork {
                 as TestNetworkManager
         // Published as the owner of the generation before anything can be created under it, so there is
         // never a completed step that no ledger names.
-        val current = Session(++generation, epoch, CoroutineScope(privilegedDispatcher + SupervisorJob()))
+        // A supervisor *child* of the lifespan rather than a root of its own, so these observers end with
+        // it and no scope of theirs outlives it. That is structure, not exclusion: cancellation is
+        // cooperative and a collector can still finish a write afterwards, which is why what it writes is
+        // stamped with its owner rather than trusted to have stopped. Supervisor because one observer
+        // failing is not the other's business, and the retirement below is still what joins them before
+        // touching a resource.
+        val current = Session(++generation, epoch,
+            CoroutineScope(privilegedDispatcher + SupervisorJob(lifespan)), lifespan)
         current.privileged = privileged
         this.current = current
         // Recorded live inside the bracket, before its closing epoch check. `createTunInterface` hands
@@ -486,9 +633,9 @@ object ShizukuTestNetwork {
                 val next = try {
                     current.commit()
                 } catch (e: CollisionException) {
-                    // Terminal, and reported through the one watcher that owns the withdrawal rather
+                    // Terminal, and signalled to the one watcher that completes [Session.ended] rather
                     // than withdrawn from here: this collector is inside the scope a withdrawal
-                    // cancels.
+                    // cancels, and withdrawing is not an observer's to do.
                     Timber.w(e)
                     current.failed.complete(e.readableMessage)
                     return@collect
@@ -499,8 +646,14 @@ object ShizukuTestNetwork {
                 // from a short absence.
                 if (next != State.ACTIVE) {
                     current.publication.advanceDownstream()
-                } else if (stateFlow.value == next) return@collect
-                stateFlow.value = next
+                } else if (current.state == next) return@collect
+                current.state = next
+                // Stamped with the lifespan that produced it rather than filtered by when it lands. This
+                // write is not cancellable, so an observer can reach it after its own lifespan was cancelled
+                // and stopped being the accepted one, but a stamped value can only ever label the owner it
+                // names - so a late write is harmless and the daemon's config above still gets the truth on
+                // the way out.
+                stateFlow.value = OwnedState(current.lifespan, next)
                 Timber.i("Shizuku session ${current.generation} is $next, upstream " +
                         "${current.upstream}, epoch ${current.publication.downstreamEpoch}")
                 current.push()
@@ -694,7 +847,7 @@ object ShizukuTestNetwork {
         check(readback.dnsServers.containsAll(properties.dnsServers)) { "Lost DNS servers" }
         // Both latch, so this covers a loss anywhere between registration and here rather than only
         // one arriving now. Losing either before commit is an ordinary startup failure; the watcher
-        // below takes over afterwards.
+        // below is what notices afterwards.
         check(!callback.lost.isCompleted) { "The request lost its network during startup" }
         check(!agent.destroyed.isCompleted) { "The test network was destroyed during startup" }
         // The read [commit] classifies a non-owned upstream with, aimed at the network this session
@@ -708,14 +861,16 @@ object ShizukuTestNetwork {
         }
         current.network = network
         current.phase = Phase.RUNNING
-        stateFlow.value = current.commit()
+        val committed = current.commit()
+        current.state = committed
+        stateFlow.value = OwnedState(current.lifespan, committed)
         current.push()
         // The push above is the first one to reach the daemon, so it is also the first thing that
         // can end this session. Turning it into a startup failure keeps one retirement in charge: the
-        // watcher below is installed only after this line, so nothing else can be withdrawing yet.
+        // watcher below is installed only after this line, so nothing can be ending this session yet.
         check(!current.failed.isCompleted) { "The daemon stopped answering during startup" }
         Timber.i("Published restricted test network $network on ${current.interfaceName} as " +
-                "${stateFlow.value}, upstream ${current.upstream}: $published $readback")
+                "$committed, upstream ${current.upstream}: $published $readback")
         // Only a committed session is watched for these. Until commit, the retirement [ShizukuLifecycle]
         // runs on a failed publication is the only withdrawal there can be: a second one running
         // concurrently with it would release resources the first has not finished recording, and leak
@@ -724,10 +879,10 @@ object ShizukuTestNetwork {
         //
         // A committed session ends only when its own machinery is gone, and each of these is that:
         // the network this session exists to run has been removed, or the app can no longer tell
-        // what its child is bound to. One watcher rather than five, because they share one
-        // withdrawal and the first of them to fire is the one that owns it. It lives in the
-        // session's own scope so an ordered stop cancels it before touching anything, and it hands
-        // the withdrawal itself to [owned], which the withdrawal cannot cancel.
+        // what its child is bound to. One watcher rather than five, because one ending is all there
+        // is and the first of them to fire is the one reported. It lives in the session's own scope
+        // so an ordered stop cancels it before touching anything, and all it does is report and
+        // complete [Session.ended] - the lifespan resumes on that and withdraws in its own finalizer.
         current.scope.launch {
             val failure = select {
                 connector.died.onAwait {
@@ -751,39 +906,61 @@ object ShizukuTestNetwork {
             }
             Timber.w("Shizuku session ${current.generation} ended: $failure")
             SmartSnackbar.make(failure).show()
-            owned.launch {
-                // Through the command lane rather than straight into [retire], so a user-initiated stop
-                // arriving now becomes the same withdrawal instead of a second one, and so the row stops
-                // reporting the mode as on once it finishes. Nothing outside this mode is asked for
-                // anything: root routing, if any, is untouched by this session ending.
-                try {
-                    lifecycle.stop()
-                } catch (e: Exception) {
-                    if (e is CancellationException && e !is TimeoutCancellationException) throw e
-                    // Nothing above this would report it: it is the last thing running for a session
-                    // that has already lost the machinery it needed.
-                    Timber.w(e)
-                    SmartSnackbar.make(e).show()
-                }
-            }
+            // Handed to the lifespan rather than acted on here, so the withdrawal has one owner however it
+            // was reached: this completes, the lifespan returns from its await and runs the same retirement
+            // a user's stop would have cancelled it into. Nothing outside this mode is asked for anything -
+            // root routing, if any, is untouched by this session ending.
+            current.ended.complete(Unit)
         }
     }
 
     /**
-     * Retires the running session, if any, and returns only once every local resource is gone: the child has
-     * exited, the network's destruction is proven, the observers are joined and the descriptor is closed.
-     * A privileged release may still be owed after that - that residue forbids another session in this
-     * process without keeping the TUN open for it.
+     * Suspends on the committed session's own terminal, which its watcher completes when the session loses
+     * something it needs.
+     *
+     * Nothing is handed anywhere by that completion: this is the lifespan's own suspension, so the same
+     * lifespan resumes here and walks into its own finalizer, and the withdrawal below runs there. A stop
+     * arriving instead cancels this wait and reaches that same finalizer, which is why there is one teardown
+     * for both endings.
      */
-    private suspend fun stop(): Unit = withContext(privilegedDispatcher) {
-        current?.let { if (it.phase != Phase.RESIDUAL) retire(it) }
+    internal suspend fun awaitEnd() = withContext(privilegedDispatcher) {
+        checkNotNull(current) { "A published session is what a lifespan awaits" }.ended.await()
+    }
+
+    /**
+     * Retires the running session, if any, and returns only once every local resource is gone: the child has
+     * exited, the network's destruction is proven, the observers are joined and the descriptor is closed. A
+     * privileged release may still be owed after that - that residue forbids another session in this process
+     * without keeping the TUN open for it, and this is where the caller hears about it.
+     *
+     * Called from a lifespan's finalizer, and [owner] is that lifespan. This is the one destructive entry
+     * point the ledger exposes, so it is keyed: a generation belongs to the lifespan that published it, and
+     * one found under any other owner is left whole. The predecessor barrier means the question should not
+     * arise - a successor from any component joins the lifespan it replaces before it prepares anything -
+     * and keying it is what makes that an invariant of the ledger rather than a property of whoever happened
+     * to call. A finalizer that outlived its own generation has nothing of its own left to withdraw, and a
+     * replacement's resources were never its to take.
+     *
+     * A session already left residual is not retried here: its local resources are gone and only [settle]
+     * can finish what is left.
+     */
+    internal suspend fun stop(owner: Job): Unit = withContext(privilegedDispatcher) {
+        val session = current ?: return@withContext
+        if (session.lifespan !== owner) return@withContext
+        if (session.phase == Phase.RESIDUAL) return@withContext
+        retire(session)
+        // The withdrawal itself finished - nothing local is left - but it could not confirm the privileged
+        // release, and that is this caller's answer rather than a line in the log. [retire] records it
+        // without showing it precisely so that the one layer which asked, here the lifespan's finalizer,
+        // is the one layer that reports it.
+        session.residual?.let { throw it }
     }
 
     // The global preference is the one piece of system state a session can leave behind. It has no owner
     // token, so app death, force-stop or uninstall can strand it at true with nothing left running to clear
     // it, and it is *not* recovered through an action on an existing screen: the row the user already has is
     // the recovery path. Two cases, and they differ. A session left RESIDUAL inside *this* process is
-    // retried by [prepare], which is why a start settles what a previous withdrawal still owed. After full
+    // retried by [settle], which is why a command settles what a previous withdrawal still owed. After full
     // process death there is no ledger to retry, so a fresh start does not clear the flag in preparation -
     // what clears it then is that session's own [retire], or a reboot.
     //
@@ -794,7 +971,11 @@ object ShizukuTestNetwork {
     // is restored: the preference is cleared, never negotiated.
 
     /**
-     * Ordered withdrawal, shared by a failed publication, the user's own stop and the failure watcher.
+     * Ordered withdrawal, reached from a lifespan finalizer through [stop] and from a later lifespan's
+     * [settle] retrying what a previous generation still owed - never from an observer or the watcher.
+     * Unkeyed, unlike [stop], and deliberately: what [settle] passes here is a generation some *other*
+     * lifespan published, which is the whole of inherited debt, and it may only do so having joined that
+     * lifespan.
      * Idempotent and resumable: the first caller runs the steps and the rest await
      * [Session.retirement], while every step confirms its own ledger entry, so a retry does what is left
      * rather than what is done.
@@ -803,9 +984,11 @@ object ShizukuTestNetwork {
      * withdrawing the agent and closing the descriptor need no Shizuku transaction at all. Only the
      * preference clear and the request release do, and those are the ones that may be left outstanding.
      *
-     * [NonCancellable] because the session's own observers reach this: every step below awaits something,
-     * and without it the preference clear, the agent's destruction callback and the request release would
-     * all abandon immediately, leaving exactly the system state this is here to remove.
+     * [NonCancellable] because of who the ordinary caller is: a lifespan that has *already* been cancelled
+     * and is running its finalizer, or a later [settle] retrying inherited debt inside a lifespan a stop can
+     * cancel at any moment. Every step below awaits something - the preference clear, the agent's
+     * destruction callback, the request release - and without this each would abandon at its first
+     * suspension, leaving exactly the system state this exists to remove. Each has to run to its own fence.
      */
     private suspend fun retire(session: Session): Unit = withContext(NonCancellable) {
         // Read and written before the first suspension point on the single privileged lane, so two
@@ -814,7 +997,10 @@ object ShizukuTestNetwork {
         val retirement = CompletableDeferred<Unit>()
         session.retirement = retirement
         session.phase = Phase.RETIRING
-        stateFlow.value = State.STOPPING
+        // Cleared rather than replaced by a transition: what this flow says is what a *committed* session is
+        // doing, and from here there is none. The row's own on-ness is the lifespan's to report.
+        session.state = null
+        stateFlow.value = null
         try {
             // Joined, not merely cancelled: cancellation is a request and this needs a completion. Until it
             // returns, an observer could still be inside a config round trip or an epoch advance.
@@ -870,7 +1056,9 @@ object ShizukuTestNetwork {
             // This withdrawal reports itself finished only once every *local* resource is fenced. An agent
             // or a request whose outcome is unknown leaves a native network this process may still own and
             // cannot name, so there is nothing to unregister it by and no retry that would learn more: the
-            // only remaining release is process death, and the row must not read as off beside it.
+            // only remaining release is process death. Intent is already off by then - the user asked and
+            // got their answer - so what this refuses is reporting the *withdrawal* finished, which is the
+            // foreground component's cue to keep the process rather than anything the row shows.
             check(!session.localUnfenced) {
                 app.getString(R.string.shizuku_failure_unfenced, session.toString())
             }
@@ -883,16 +1071,21 @@ object ShizukuTestNetwork {
                 // generation, so no successor session runs in this process until a retry confirms it or the
                 // process ends. The withdrawal itself still finishes, because nothing local is left.
                 session.phase = Phase.RESIDUAL
+                session.residual = e
+                // Recorded rather than shown. Whoever asked for this withdrawal is the one layer that
+                // reports it - the lifespan's finalizer for a stop, [settle]'s own failure for an inherited
+                // debt - so displaying it here as well would make one attempt two reports.
                 Timber.w(e, "Shizuku session ${session.generation} could not confirm its cleanup")
-                SmartSnackbar.make(e).show()
             }
+            session.state = null
             stateFlow.value = null
             Timber.i("Retired Shizuku session ${session.generation}")
             retirement.complete(Unit)
         } catch (e: Throwable) {
             // Nothing local is confirmed, so the next caller retries the steps that are left rather than
-            // returning as though this one had finished. The session stays in [Phase.RETIRING] and the mode
-            // keeps reading as on: its child may still be relaying.
+            // returning as though this one had finished. The session stays in [Phase.RETIRING] and the
+            // process keeps holding it: its child may still be relaying. None of that is on the row, which
+            // has read off since the stop was taken.
             session.retirement = null
             retirement.completeExceptionally(e)
             throw e
@@ -902,8 +1095,9 @@ object ShizukuTestNetwork {
     /**
      * The child exit fence, which everything after it assumes has run: a child that survived still holds the
      * TUN and its upstream sockets, so it would keep relaying clients onto a network this session no longer
-     * owns. Failing here therefore stops the withdrawal with the whole session retained, and the next stop
-     * retries it.
+     * owns. Failing here therefore stops the withdrawal with the whole session retained, and the next
+     * command retries it through [settle] - intent is off already, so a further stop or a fresh start are
+     * the only things left for the user to do with it.
      *
      * Reissuable rather than once-only: closing sockets and waiting for observed exit is idempotent, and a
      * fence that failed is exactly what a retry is for. Runs before the agent is withdrawn, so nothing is
@@ -1082,7 +1276,7 @@ object ShizukuTestNetwork {
         val index = selected?.properties?.interfaceName?.let { Os.if_nametoindex(it) }
         if (index == 0) Timber.w("Cannot resolve the upstream interface index of " +
                 selected?.properties?.interfaceName)
-        return publication.build(stateFlow.value == State.ACTIVE, selected?.network?.networkHandle,
+        return publication.build(state == State.ACTIVE, selected?.network?.networkHandle,
             index?.takeIf { it != 0 })
     }
 
@@ -1102,7 +1296,8 @@ object ShizukuTestNetwork {
             // nothing to retry on either. Stop and reapply is the way back.
             //
             // Reported rather than acted on, because this runs inside the scope a withdrawal cancels: the one
-            // watcher selecting on [Session.failed] owns it, and during startup [publish] checks it directly.
+            // watcher selecting on [Session.failed] is what turns it into an ending, and during startup
+            // [publish] checks it directly. Neither of them withdraws; the lifespan finalizer does.
             Timber.w(e, "Shizuku session $generation lost control of its daemon")
             failed.complete(app.getText(R.string.shizuku_failure_daemon))
         }
@@ -1116,7 +1311,7 @@ object ShizukuTestNetwork {
      * proof rather than a convention. The registered agent returned it; the exact request, whose specifier is
      * this session's own `testtunN` name, resolved to the same value, and no other agent can carry that
      * specifier; and the agent stays registered for as long as this comparison is made, because losing it
-     * enters [State.STOPPING] at once. A `Network` is netId equality, so that last part is what matters: a
+     * ends the lifespan at once. A `Network` is netId equality, so that last part is what matters: a
      * netId is only reissued after the network holding it is destroyed.
      *
      * Classifying a *non*-owned upstream needs the platform, and it needs no privilege to ask.
@@ -1156,5 +1351,32 @@ object ShizukuTestNetwork {
                 null -> State.VERIFYING
             }
         }
+    }
+}
+
+/**
+ * A committed display state together with the lifespan that committed it, and the one rule that decides
+ * whether it may still be shown.
+ *
+ * Top-level, small and deliberately not a mechanism: it exists because "which generation does this label
+ * belong to" cannot be answered by a flow of bare states. Publication onto the display flow is not
+ * cancellable, so an observer belonging to a lifespan that was already cancelled - and that therefore
+ * stopped being the accepted owner - can still finish a write, and no ordering argument makes that
+ * impossible. Sampling the job's liveness does not answer it either: liveness is not identity, so it says
+ * nothing about *whose* label this is, and the check can be overtaken by the very write it guards. Stamping
+ * removes the question instead: a value names its owner, and an owner that is no longer the accepted one
+ * simply is not shown.
+ */
+internal class OwnedState(val owner: Job, val state: ShizukuTestNetwork.State) {
+    companion object {
+        /**
+         * The row's label: the committed state's, but only when [owner] - the accepted intent owner - is
+         * referentially the lifespan that committed it. Off carries no label, and neither does a successor
+         * that has not committed anything yet.
+         */
+        @StringRes
+        fun label(owner: Job?, committed: OwnedState?) =
+            if (owner != null && committed != null && committed.owner === owner) committed.state.label
+            else null
     }
 }

@@ -30,6 +30,7 @@ Prefer resource-owner concurrency over broad locks or global serialization.
 - For ordered command or state transitions, prefer a single owner worker, channel, or pending-state loop over launching independent jobs that can interleave.
 - Use `Dispatchers.Default.limitedParallelism(1, "...")` for non-UI owner-local mutable state confinement when multiple coroutine entry points need a shared lane, but do not rely on it for run-to-completion ordering across suspensions.
 - Use `Mutex` for narrow, local critical sections where the protected invariant is clear. Do not use a daemon/global mutex to hide caller-owned lifecycle races.
+- For a user-toggled service, let that service own the whole lifespan with one cancellable `Job` on its own Main-confined scope - one job, one liveness source, no second root owner or liveness scope (a supervisor child scope for that job's own observers is fine): start installs it and returns, stop cancels it and returns, its `finally` is the sole teardown and runs in the background under `NonCancellable`, and a successor joins its predecessor before authorizing or acquiring anything. Publish stable user intent rather than transitions - a cancellable startup is what removes the need for a starting, stopping, or busy state.
 - Do not run blocking work on Main. Main-confined owners may call suspending/nonblocking APIs, but blocking I/O, sleeps, or CPU-heavy work must stay off Main.
 
 ## Rust Daemon Code Hygiene

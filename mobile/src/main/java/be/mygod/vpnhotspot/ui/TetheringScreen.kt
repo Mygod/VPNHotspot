@@ -303,7 +303,7 @@ fun TetheringScreen(
                 // repeater remain separate root-mode controls; the system-tethering controls are under Manage.
                 if (Build.VERSION.SDK_INT >= 33) row(R.string.shizuku_tethering) {
                     val shizuku by ShizukuTetheringService.status.collectAsStateWithLifecycle(
-                        ShizukuTetheringService.Status(null, on = false, busy = false))
+                        ShizukuTetheringService.Status(null, on = false))
                     TetheringRow(
                         icon = R.drawable.ic_alt_route,
                         title = stringResource(R.string.shizuku_tethering),
@@ -312,9 +312,8 @@ fun TetheringScreen(
                         // switch the user reads while deciding whether it is on.
                         summary = shizuku.label?.let { AnnotatedString(stringResource(it)) },
                         checked = shizuku.on,
-                        switchEnabled = !shizuku.busy,
                         onClick = {
-                            if (!inspectionMode && !shizuku.busy) {
+                            if (!inspectionMode) {
                                 if (shizuku.on) ShizukuTetheringService.stop(context)
                                 else ShizukuTetheringService.start(context)
                             }

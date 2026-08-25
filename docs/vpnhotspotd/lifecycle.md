@@ -203,7 +203,7 @@ because none of them owns one. What the sweep does, in order:
    every admitted flow into, which already holds each live handle exactly once, rather than
    collecting what is due into a list no lease covers.
 
-   `STOPPING` neither pauses a floor nor rearms one. Once the stop's `closeAdmission` has been
+   Closing admission neither pauses a floor nor rearms one. Once the stop's `closeAdmission` has been
    acknowledged it admits no new flow and no new exchange, and it does not refresh a deadline
    from payload it is draining; before that acknowledgement - or before the child is fenced
    when it cannot be obtained - the previous admitting config is still the one in force. Either

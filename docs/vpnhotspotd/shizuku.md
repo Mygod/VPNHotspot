@@ -59,14 +59,14 @@ the recommended path.
 | Owner | Owns | Does not own |
 | --- | --- | --- |
 | [`ShizukuTestNetwork`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/ShizukuTestNetwork.kt) | the one session generation: TUN descriptor, exact request, agent, pinned tethering connector, global preference, child, upstream observation | anything of root mode's; any downstream |
-| [`ShizukuLifecycle`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/ShizukuLifecycle.kt) | command serialization and publication rollback | the resources themselves |
-| [`ShizukuTetheringService`](../../mobile/src/main/java/be/mygod/vpnhotspot/ShizukuTetheringService.kt) | process lifetime and the one ordered command path | session state; the shared notification's text |
+| [`ShizukuLifecycle`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/ShizukuLifecycle.kt) | ordering: the one in-flight lifespan job - a session's or a housekeeping one's - its finalizer, and the process-wide predecessor barrier every command joins | any scope or liveness of its own, any liveness over another instance's job, any published state, any resource, any memory of debt |
+| [`ShizukuTetheringService`](../../mobile/src/main/java/be/mygod/vpnhotspot/ShizukuTetheringService.kt) | the lifespan and the scope it runs on, and the process lifetime behind it | session state; any memory of outstanding debt; the shared notification's text |
 | [`AppUidDaemon`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/AppUidDaemon.kt) | the launched child, its authentication, and the level-triggered config conversation | the dataplane |
 | The daemon's ingress task | every piece of client-keyed dataplane state | the platform's resolver work once submitted |
 
-Three rules hold the Kotlin side together.
+These rules hold the Kotlin side together.
 
-**One session generation at a time.** `ShizukuTestNetwork` publishes exactly one generation, confined to a
+**One resource ledger per generation.** `ShizukuTestNetwork` publishes exactly one generation, confined to a
 single-lane dispatcher, and a successor is admitted only when that generation reaches its final committed
 transition. Each resource is a
 [`SessionResource`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/SessionResource.kt) with named
@@ -74,17 +74,156 @@ states rather than a nullable field, because a resource whose outcome is *unknow
 that was never created and a withdrawal has to act differently on each. What evidence decides which is
 per resource - see [Startup And Commit](#startup-and-commit).
 
-**One command lane.** `ShizukuLifecycle` runs one start or stop at a time. A duplicate press shares the
-start already in flight; a stop issued during publication queues behind it; a stop that arrives while a
-start is still in its interactive half - Shizuku authorization, which can sit on the user's own permission
-dialog - supersedes it instead, because nothing has been created yet. A supersession keeps reporting as a
-stop in progress until the superseded start has unwound, since until then that start still owns the flight a
-duplicate press would share. From the moment publication begins the start either completes or rolls back.
+**One cancellable lifespan, owned by the foreground service.** `ShizukuTetheringService` holds a single
+`Job` on its own main-confined scope, covering preparation, publication, the running session and its
+teardown - the shape `RepeaterService` uses for exactly this, predecessor barrier and all. There is no
+second *root owner or liveness scope*: that job is the only thing that says whether this mode is doing
+anything, and the session's own observers are a supervisor child of it rather than a root of their own.
+`ShizukuLifecycle` holds it and the ordering around it and nothing else - no scope or liveness of its own,
+no published state; the jobs it installs run on the service's scope, which it is given.
 
-**One rollback owner.** A publication that fails throws with its ledger intact; the lane runs the single
-retirement over it. The publication does not also unwind itself, because two owners would mean a failed
-rollback was retried immediately by the start that caused it instead of being left for the next explicit
-stop.
+A job means exactly one thing here: **a lifespan in flight**, and the owner holds at most one of them - the
+most recent. A start installs its job before starting it, and from then on that lifespan is either still the
+current one or has been *superseded*, because a successor may replace it at any point, including while it is
+part-way through its own finalizer. Nothing is ever kept behind after completion to stand for something else.
+
+The clearing is guarded by identity, and the invariant is exactly that split. A lifespan still current when
+its final bookkeeping lands stays installed until that moment, then clears itself and settles once. A
+superseded one is no longer installed - its successor is - so it fails the guard deliberately: it clears
+nothing and settles nothing, because neither the field nor the settlement is its to speak for any more. That
+is why the clearing cannot be unconditional. Concrete resource debt is the ledger's, not a job's; see [the
+fence rule below](#ownership).
+
+`onDestroy` therefore *cancels* an installed lifespan rather than the scope beneath it, and leaves the scope
+alive so a `NonCancellable` finalizer can finish and end the scope itself. That delays the completion of this
+instance's own scope past `onDestroy`; it does not hand the withdrawal to another scope, and no scope outlives
+the process.
+
+It does not, however, choose between cancelling and housekeeping on whatever `idle` says at that instant. It
+always does both, in one order: install a cleanup-only successor *first*, then withdraw and cancel the
+lifespan it replaced. Destruction is the last command this owner will ever get, so a retirement that fails
+under it has nothing behind it - it would settle unfenced, end the scope and abandon a child that may still
+be relaying in a process an activity or another foreground service keeps alive - and idle is not the same as
+owing nothing either, so a destruction that finds nothing in flight still owes an attempt at what a previous
+teardown could not fence. The order is what makes it safe rather than merely thorough: a cancellation can
+resume the outgoing lifespan *inline*, so one cancelled while still the installed lifespan can run its whole
+finalizer and end the scope before a successor could be installed onto it. Installed first, it fails both
+identity guards instead, and the successor already parked on its join is what settles. Component destruction
+and recreation is the documented abnormal path, exactly as it is for `RepeaterService`.
+
+Both commands return immediately. A start installs a lifespan and publishes it as the accepted intent owner;
+a stop withdraws that owner and cancels the job. Cancellation at any suspension point unwinds into the same
+finalizer, which is why there is no starting or stopping state to render and no command the user waits
+behind. A press while intent is already on is that same intent and installs nothing.
+
+Two further commands install no session and are not ones the user presses, and both install the same
+lifespan: one that publishes nothing, prepares nothing and acquires nothing, whose whole body is the
+finalizer. `housekeep` covers the commands that install and cancel nothing - a duplicate press, an idle stop.
+`destroy` installs that same lifespan first and only then cancels the outgoing lifespan it replaced. Either
+way it takes the same barrier, makes the same single cleanup attempt at whatever it inherits, and settles the
+component from the ledger's answer through the same bookkeeping. Exactly one lifespan is the current
+liveness authority; an outgoing predecessor may still finish behind its installed successor, but it can no
+longer wind the component down. Every ledger access stays inside that one ordered chain - a query launched
+*beside* it would be a second owner, and it is exactly what strands a recreated instance.
+
+**One rollback owner, guaranteed by `finally`.** Every way out - a stop, a failed publication, a session that
+lost its machinery - reaches the same finalizer, and that finalizer is the only retirement. It is a real
+`finally`, so a failure while *reporting* cannot skip it, and fatal throwables propagate after it rather than
+being swallowed; operational failures are caught as `Exception`, with an ordinary cancellation distinguished
+from a deadline. An autonomous ending publishes intent off *before* its cleanup starts, so the row never
+encodes a hidden stopping transition and a restart is accepted at once.
+
+**One generation at a time.** A successor is accepted and shown on immediately but joins its predecessor's
+lifespan before it settles a predecessor's debt, authorizes or acquires anything; its own finalization is
+ordered behind that predecessor's too, so the rule survives a restart cancelled mid-wait. The barrier is the
+*process's*, not a component's: the generations it orders belong to `ShizukuTestNetwork`, and a service
+Android destroys mid-teardown leaves its lifespan finalizing on a scope kept alive for it, so a component
+recreated behind one has to join it. `ShizukuLifecycle` therefore holds one process-static reference to the
+most recently installed lifespan, and exactly two things touch it: every command that installs a lifespan -
+a start, an idle housekeeping command or a destruction - reads it to capture the predecessor that lifespan
+will join, and a lifespan reaching its final bookkeeping clears it if it still finds itself there. Nothing
+is cancelled through it, nothing is owned through it, and no liveness question is answered from it. Liveness
+stays per instance: the cancellable job a stop cancels, that answers idle and that settles the foreground
+owner is the instance's own field, because an old component's `onDestroy` must never cancel a new one's job.
+Both references are cleared by identity, each by the lifespan that still finds itself there.
+
+What a finalizer may destroy is decided by how far its own lifespan got, and it is one of three things: the
+generation this lifespan published, from the moment it may have created part of one; an *inherited* debt, for
+a housekeeping lifespan, which exists for nothing else and has not attempted it yet; or nothing at all. A
+live lifespan starts owing nothing, because the settlement in its own body is its start's one attempt - so
+one cancelled on the barrier leaves that debt to the predecessor whose finalizer already owns it, and one
+whose settlement or preparation failed does not immediately try the same thing again. Retiring
+unconditionally would therefore either take back a generation that is not this lifespan's or make one command
+attempt the same debt twice, and one command makes one attempt.
+
+**A teardown that could not fence its resources does not announce success.** Intent stays off - the user
+asked and got their answer - but the service keeps the process, because a child may still be relaying. The
+job is gone by then, as it is after every ending; what says the debt stands is the *ledger*, asked as the
+lifespan finishes and delivered to the service as an unfenced settlement. The question is whether the
+current generation has any local resource still *outstanding*, meaning any descriptor, child or agent that
+is neither absent nor confirmed gone, and it is a suspending call onto the lane the ledger is confined to,
+never a field read from the main thread. A query that cannot be answered counts as outstanding: a lane that
+is gone is not a lane that said nothing is owed. The next command makes the next attempt, in its `settle` -
+a start's first step, or the whole of a housekeeping lifespan - so an idle stop and an `onDestroy` are
+attempts too rather than places the debt is dropped. If nothing ever does, process death owns the residue,
+exactly as it does for a force stop.
+
+**The ledger, not a job, is what remembers debt.** A command that installs and cancels nothing - a duplicate
+or idle stop - has no lifespan to wind the service down, so it cannot simply stop either: idle is not the
+same as owing nothing. It gets a housekeeping lifespan, which joins the process predecessor, makes one
+attempt at whatever that predecessor could not settle, then asks the same suspending ledger predicate once
+and releases the component only on a clear yes. No loop, no timer, no cached answer and no second owner. The
+join is the part that matters: a query asked without it reads the ledger straight through a finalizer that is
+still running, sees the resources it is in the middle of releasing, and keeps a component foreground waiting
+for an owner that will settle somebody else's scope instead.
+
+The settlement itself is not a retry policy. An unfenced answer keeps the component and installs nothing
+further, because without a command there is nothing new to try and reissuing the same attempt on a timer is
+the loop this design does not have. What a destroyed component leaves behind after its own attempt failed is
+owned by process death, explicitly, exactly as it is after a force stop.
+
+**Debt outlives the component, so nothing about it is kept in the component.** The ledger is
+`ShizukuTestNetwork`'s and therefore the process's, so a service Android destroys and recreates in the same
+process settles what is left on exactly the ordinary path - `settle` inspects the ledger before anything else
+happens, whether it is a start's first step or the whole of a housekeeping lifespan.
+
+`settle` runs in front of every *successor-only* prerequisite, and that ordering is load-bearing rather than
+cosmetic. Fencing the child, withdrawing the agent and closing the descriptor issue no Shizuku transaction at
+all; only the request release and the preference clear do, and those authorize a cleanup-only epoch for
+themselves when the session's own is gone. Everything `prepare` asks - a fresh Shizuku authorization, the
+automatic-upstream support check, a tethering service that has not died, the collision scan - belongs to the
+session being *created*, and any of them can refuse one permanently. Behind them, a Shizuku the user revoked
+or a `TetheringManager` connector that died would take away the only retry a recoverable child, descriptor or
+agent still had. A failed successor gate refuses the new session and leaves the old one already withdrawn.
+Process death is the final local fence, and it discards whatever is left with the debt.
+
+The *predecessor barrier* is what orders this, and it reaches across a recreation because it is held once
+per process rather than once per component. A destroyed service does not necessarily leave nothing in flight
+- `onDestroy` deliberately keeps its own scope alive until the installed lifespan's finalizer settles - and
+that finalizer is exactly the predecessor a recreated instance's first start joins, before it authorizes,
+retries its debt or acquires anything.
+
+The ledger is the second line, and it holds on the lane that owns it, for what no ordering states. A start
+finds either a generation the ledger still names, which `settle` clears before anything is created and fails
+the start if it cannot - `prepare` re-checks that and fails closed - or a withdrawal already in flight, which
+`Session.retirement` makes it await rather than duplicate. Neither of those is a statement about *ownership*,
+so the one destructive entry point that a *running* session reaches - `ShizukuTestNetwork.stop`, reached only
+from a lifespan's finalizer - is keyed on the lifespan that published the session: a generation belongs to
+whoever published it, and one found under a different owner is left whole. That makes "a stale finalizer
+cannot retire a replacement" an invariant of the ledger rather than a property of the ordering in front of it.
+
+`settle` is the deliberate exception and the only unkeyed path, because what it settles is by definition some
+other lifespan's generation and no token this one holds could name it. What makes it sound is the barrier
+rather than a key: every caller has joined the complete process predecessor, and every successor from any
+component - a start, or another housekeeping lifespan - orders itself behind the caller, because a
+housekeeping lifespan takes that barrier exactly as a session's does. So while it runs there is no newer
+generation for it to reach.
+
+**One command, one attempt at inherited debt.** A `settle` that clears a predecessor is that command's whole
+attempt: a full retirement that itself ends owing only a privileged release does not then issue that release
+again in the same call, and a lifespan that never reached its own publication does not retire in its
+finalizer either. Either way the command fails and a later one tries again, so a single press is reported
+once.
 
 The app's row is status-only. It shows the current state and its own switch, exactly like every other row on
 that screen, and carries no instructions.
@@ -210,7 +349,9 @@ session owed is discharged rather than retried against a service that has forgot
 The session state is recomputed from the global upstream observation for as long as the session runs.
 **Only `ACTIVE` admits dataplane traffic** - as the rule the applied config carries, not as an instantaneous
 guarantee read off the displayed state. What the daemon admits is whatever the last acknowledged config
-said, so the two agree once that config lands.
+said, so the two agree once that config lands. A teardown clears this flow rather than publishing a
+transition through it: from the moment one begins there is no committed session to describe, and admission
+closes when the stop's `closeAdmission` is acknowledged or the child is fenced.
 
 | State | Meaning | Admits |
 | --- | --- | --- |
@@ -218,7 +359,6 @@ said, so the two agree once that config lands.
 | `VERIFYING` | Tethering names an upstream this session cannot currently classify | no |
 | `ACTIVE` | Tethering reports the exact `Network` this session published | **yes** |
 | `RESTART_REQUIRED` | Tethering reports an ordinary upstream | no |
-| `STOPPING` | Withdrawal published and the ordered stop is running | not once its `closeAdmission` is acknowledged or the child is fenced; the previously applied config may still admit until then |
 
 Ownership is decided by identity against the exact `Network` the agent returned, never by a capability read.
 That is positive proof: the registered agent returned it, the exact request whose specifier is this
@@ -229,24 +369,61 @@ sanitizer never redacts transports, so `TRANSPORT_TEST` is readable for a live n
 A confirmed non-TEST upstream is `RESTART_REQUIRED`; a `TRANSPORT_TEST` one is the terminal collision; a
 network that disappeared between tethering naming it and the read stays `VERIFYING`.
 
-The command lane publishes its own coarser state - preparing, publishing, on, retiring - which is what the
-row renders as busy. It exists because the authorization and startup window has no session state yet, and
-rendering that window as off is what would let the row accept a second start.
+Beside it the accepted lifespan `Job` carries stable user intent, which is what the row's control renders as
+on-ness: installed the moment a start is accepted, cleared the moment a stop is asked for or a lifespan ends
+on its own. It is never a
+transition, so the control is always live and never shows a state the user cannot act on. The two are read
+together, and off never carries a label - the label belongs to a committed session of the lifespan that is
+currently on, and it is withdrawn as intent goes off, so a successor accepted while a predecessor is still
+tearing down cannot inherit one.
+
+Withdrawing it is not enough on its own, because cancellation is cooperative: the observation that keeps a
+session's state current runs on the privileged lane and can pass its last suspension point *after* intent
+went off, and a successor is accepted immediately rather than after its predecessor is joined, so no timing
+argument separates a stale write from a current one. Sampling the job's liveness does not separate them
+either: liveness is not identity, so it cannot say *whose* label a value is, and any check can in any case be
+overtaken by the write it guards. What a late writer is, precisely, is a writer whose lifespan was cancelled
+and which therefore stopped being the accepted owner - not one that has finished.
+
+Ownership does, and it is the same token both halves already use. Stable intent *is* the accepted lifespan
+`Job`, non-null for on. Every committed display state is stored stamped with the `Job` that committed it,
+including the first, and the row shows a label only when the stamp is referentially the current intent
+owner. A late write from a lifespan that was cancelled still lands - it is a structured child of that
+lifespan, so it cannot outlive the job's *completion*, only its cancellation - and is simply stamped as
+somebody else's: it can never label a successor, and no counter, flag or ordering rule is needed to say so.
+
+The session's own current state is kept separately, on the generation, and is what the daemon's config is
+built from. Filtering the row can therefore never change what the dataplane is told: a retired generation
+goes on computing and pushing its own configuration while it withdraws, because the daemon needs the truth
+on the way out.
 
 ### Startup And Commit
 
-Startup has two halves. The first creates no session resource and stays cancellable while it waits on the
-user's authorization; the second creates things and either completes or rolls back. Preparation is not
-mutation-free, though: settling what a previous session in this process still owed can release a privileged
-request or clear the global preference.
+A start settles the *previous* generation before it does anything of its own. That settlement is not one of
+startup's halves: it is mutating - it can fence a child, close the TUN, withdraw the agent, release a
+privileged request and clear the global preference - and its ordered withdrawal is `NonCancellable`, because
+abandoning it mid-step would leave exactly the state it exists to remove. It is also the same call an idle
+command or a destruction makes as the whole of its own cleanup lifespan. Why it runs *ahead* of everything
+below rather than inside preparation is in [Ownership](#ownership): none of the gates below is what a
+withdrawal was missing, and any of them can refuse a session permanently.
 
-Preparation, in order:
+What remains is startup proper, in two halves that are the new session's alone. The first creates no session
+resource; the second creates things and either completes or rolls back. **Both are cancellable throughout** -
+preparation while it waits on the user's own permission dialog, and publication while it is part-way through
+acquiring - which is the whole reason no starting state is needed. A cancellation in either lands in the one
+finalizer, and a publication cancelled with a partly built generation is rolled back there by the same
+ordered withdrawal a completed session gets: the ledger names what exists, so partial acquisition is not a
+special case.
+
+Preparation, in order, and none of it reached until the settlement above has succeeded:
 
 1. Authorize a Shizuku epoch, and on Android 13 require automatic upstream selection. A device that would
-   never consult the preference is refused here rather than left in a permanent `RESTART_REQUIRED`.
-2. Finish whatever a previous session in this process still owed. A fresh epoch is the one thing an
-   outstanding privileged release was missing, so the retry belongs here; a session that still cannot confirm
-   it refuses the start.
+   never consult the preference is refused here rather than left in a permanent `RESTART_REQUIRED`. An
+   outstanding privileged release does not wait on this: the settlement above authorizes a cleanup-only epoch
+   for itself when the session's own is gone.
+2. Refuse to start if the ledger still names a generation. The settlement above either cleared it or threw,
+   so reaching this means the ordering in front of the ledger failed; it fails closed rather than publish a
+   second generation over a live one.
 3. Refuse to start if any `TRANSPORT_TEST` network already exists. A newly started app process has no
    in-memory generation, so a *published* test network that outlived one is only detectable by asking the
    platform - the scan proves that and nothing more, since a TUN with no agent over it is invisible to it -
@@ -320,11 +497,17 @@ work fails per operation and the session resumes on the next selection.
 
 ### Stop, Rollback, Child And Binder Death
 
-A normal stop is ordered, and the order is the platform's rather than a preference.
+**The stop command returns immediately.** It withdraws the accepted intent owner and cancels the lifespan,
+and that is all it does; the ordered withdrawal below runs afterwards in that lifespan's own
+`NonCancellable` finalizer, behind the foreground service's importance. Nothing the user pressed waits on
+it.
 
-1. Install the session's retirement deferred before the first suspension - that, not the published state, is
-   what makes two observations deciding the session is over produce one withdrawal - then publish `STOPPING`
-   as the controller state behind it, and cancel and *join* the session's own observers. Only then ask the
+The withdrawal itself is ordered, and the order is the platform's rather than a preference.
+
+1. Install the session's retirement deferred before the first suspension - that is what makes two
+   observations deciding the session is over produce one withdrawal - clear the published session state,
+   since from here there is no committed session to describe, and cancel and *join* the session's own
+   observers. Only then ask the
    daemon to close admission and await its acknowledgement: until that lands, the config it last applied is
    still in force. A daemon that cannot acknowledge is not left admitting through the next step's
    minute-long deadline - the child fence runs immediately instead.
@@ -349,30 +532,40 @@ A normal stop is ordered, and the order is the platform's rather than a preferen
    a TUN ConnectivityService still exposes.
 6. Release the exact request on the retained handle, then clean the framework's own callback bookkeeping.
 
-A withdrawal reports itself finished only once every *local* resource is fenced, and locally unfenced means
-the descriptor, the child or the agent - not the request. The three unknown outcomes are therefore not the
-same failure.
+A withdrawal reports itself finished only once every *local* resource is fenced, and local means the
+descriptor, the child or the agent - not the request. Two predicates read that ledger, and they answer
+different questions. *Outstanding* is anything not yet proven gone - issuing, live, released but
+unconfirmed, or unknown - and it is what the lifespan owner asks before it lets the process go, because
+release is issued before it can fail and a merely unconfirmed resource may still be relaying. *Unfenced* is
+the narrower, hopeless subset: an outcome no retry could improve on. The three unknown outcomes are
+therefore not the same failure.
 
 - **An unknown agent is locally unfenced.** The absence of `onNetworkCreated` is not proof that no remote
   agent exists, and the unregister transition acts only on a live one, so no later stop can recover it and
-  no retry would learn more. The mode keeps reading as on, because a native network this process may still
-  own and cannot name is exactly what must not be reported as gone; process death is the recovery.
+  no retry would learn more. Intent is off by then and the row says so; what this refuses is reporting the
+  *withdrawal* finished, because a native network this process may still own and cannot name is exactly what
+  must not be treated as gone. The process keeps holding it, and process death is the recovery.
 - **An unknown request is unreleasable residual debt, and implies no native network.** The release path
   refuses to act on it, so local resources still retire completely and the session settles as residual. What
   it costs is a successor: no further session runs in this process until the process ends.
 - **A privileged release that was merely unconfirmed is the recoverable case.** The session is over, a
-  successor is refused meanwhile, and a later start retries it before creating anything.
+  successor is refused meanwhile, and a later command retries it in `settle`, before anything is created.
 
 Rollback is the same ordered withdrawal, idempotent and resumable: the first caller runs the steps and the
 rest await it, each step confirms its own ledger entry so a retry does what is left, and the whole of it is
 non-cancellable because abandoning mid-step would leave exactly the state it exists to remove.
 
-A committed session also ends without being asked, and one watcher owns all of it. It selects on the
-tethering connector's death, the daemon control conversation ending, the agent's destruction, the exact
-request's loss, and the session's own reported failure; the first to fire is reported to the user and hands
-the withdrawal to a scope the withdrawal cannot cancel. The daemon-ended arm is what makes child death
-prompt: a config round trip races it rather than waiting out its acknowledgement deadline, so a child that
-is simply gone is discovered at once instead of a minute later.
+A committed session also ends without being asked, and one watcher owns *noticing* that - the terminal
+selection, the report and the signal, and nothing beyond them. It selects on the tethering connector's
+death, the daemon control conversation ending, the agent's destruction, the exact request's loss, and the
+session's own reported failure; the first to fire is reported to the user, and then the watcher completes the
+session's `ended` signal and does nothing further. The withdrawal is not its: that belongs to the lifespan
+finalizer, as it does for every other ending. It hands the withdrawal to no
+other scope. The lifespan that was suspended on that signal resumes, returns from its own `awaitEnd`, and
+walks into its own `finally` - the same finalizer a stop would have cancelled it into, which is why both
+endings have exactly one teardown and it is always the lifespan's own. The daemon-ended arm is what makes
+child death prompt: a config round trip races it rather than waiting out its acknowledgement deadline, so a
+child that is simply gone is discovered at once instead of a minute later.
 
 **Process death.** Nothing waits for anything. The agent, the request and the native network go with the
 process that hosted them. The child is not bound to its parent by the platform: what ends it is EOF on the
@@ -381,8 +574,10 @@ the ordered stop additionally fences it with TERM then KILL, which process death
 mutations the global preference is the one that can be stranded; the framework-owned netd counter rules
 catalogued alongside it may also remain, but were never a resource this process could release. Both are in
 [External State And Cleanup](#external-state-and-cleanup). A component teardown this mode did not ask for
-runs its withdrawal in a scope outliving the service, which is the abnormal path the design accepts:
-foreground importance cannot be kept past `onDestroy`.
+runs its withdrawal in the service's *own* scope, which `onDestroy` deliberately leaves uncancelled until the
+installed lifespan's finalizer settles it. There is no second scope and nothing outlives the process; what
+outlives `onDestroy` is only the completion of that one scope. It is the abnormal path the design accepts,
+because foreground importance cannot be kept past `onDestroy`.
 
 ## App-UID Dataplane
 
@@ -739,8 +934,8 @@ counted, and appears in the owner reports; there is no path by which it ends a s
 would hand forged input a way to stop one.
 
 **Deadlines are operational failures, whatever their shape.** Internal `withTimeout` gates report themselves
-as cancellations, so the command path distinguishes them from genuine cancellation - its own job going away,
-or a start an explicit stop superseded - and surfaces them through the ordinary user-visible failure path
+as cancellations, so the lifespan distinguishes them from genuine cancellation - its own job going away,
+or a lifespan an explicit stop cancelled - and surfaces them through the ordinary user-visible failure path
 rather than swallowing them.
 
 **Local and optional failures do not end a session.** Losing Echo or remote-ICMP translation for one family
@@ -811,10 +1006,10 @@ Do not claim production support until these are resolved.
 Implementation:
 
 - [`mobile/src/main/java/be/mygod/vpnhotspot/shizuku/`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/) -
-  session ownership, the command lane, the Shizuku epoch, the privileged manager, the agent, the pinned
+  session ownership, the lifespan owner, the Shizuku epoch, the privileged manager, the agent, the pinned
   tethering connector and the child conversation, with
   [`ShizukuTetheringService.kt`](../../mobile/src/main/java/be/mygod/vpnhotspot/ShizukuTetheringService.kt)
-  supplying process lifetime and the one ordered command path;
+  owning the lifespan job, the scope it runs on, and the process lifetime behind it;
 - [`mobile/src/main/rust/vpnhotspotd/src/`](../../mobile/src/main/rust/vpnhotspotd/src/) - the app-UID
   dataplane; `bootstrap.rs` and `app_session.rs` are its entry points, `budget.rs` and
   `shared/admission.rs` the resource owners.
