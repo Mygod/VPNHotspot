@@ -6,7 +6,7 @@ packets reach those listeners.
 
 ## Listener Ownership
 
-[`dns::Runtime::start`](../../mobile/src/main/rust/vpnhotspotd/src/dns.rs)
+[`root::dns::Runtime::start`](../../mobile/src/main/rust/vpnhotspotd/src/root/dns.rs)
 attempts to bind TCP and UDP listeners on ephemeral ports for each allowed
 client MAC. Each MAC/protocol listener is an independent best-effort
 capability. A listener that starts publishes its port to routing; a listener
@@ -65,13 +65,13 @@ public result API.
 
 The rootless TestNetwork path does not share the code above: it has its own
 resolver owner in
-[`resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/resolver.rs), whose
-only caller is `virtual_dns.rs`, while root's DNS proxy keeps
-[`dns.rs`](../../mobile/src/main/rust/vpnhotspotd/src/dns.rs) unchanged. It watches
+[`shizuku/resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shizuku/resolver.rs), whose
+only caller is `shizuku/virtual_dns.rs`, while root's DNS proxy keeps
+[`root/dns.rs`](../../mobile/src/main/rust/vpnhotspotd/src/root/dns.rs) unchanged. It watches
 both directions of the resolver descriptor and treats closure of that descriptor,
 however the platform closes it, as completion of the transaction; the readiness
 bits behind that are in
-[`resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/resolver.rs). Missing a
+[`shizuku/resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shizuku/resolver.rs). Missing a
 closure would hold that query's descriptor and resolver slot until the session
 ends, because transactions carry no timer.
 
@@ -143,7 +143,7 @@ not client-driven, and a failure there is a structured, coalesced nonfatal namin
 its step; see [`errors.md`](errors.md).
 
 A submission therefore has three outcomes, which
-[`resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/resolver.rs) keeps
+[`shizuku/resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shizuku/resolver.rs) keeps
 typed all the way to the owner that acts on them:
 
 - **`NeverReached`** - `android_res_nsend` refused the query, so nothing of

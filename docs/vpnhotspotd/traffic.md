@@ -41,7 +41,7 @@ say who sent anything.
 **Per-client accounting and per-client blocking are unavailable for traffic
 carried while Android has selected this mode's TestNetwork as the tethering
 upstream.** Both are root-mode features of this app: the
-counters come from the per-client `iptables` rules `routing/desired.rs`
+counters come from the per-client `iptables` rules `root/routing/desired.rs`
 installs, and blocking comes from the app's own neighbour-driven routing.
 Android's system tethering supplies neither, so nothing takes over when root
 routing is absent. See [`shizuku.md`](shizuku.md).

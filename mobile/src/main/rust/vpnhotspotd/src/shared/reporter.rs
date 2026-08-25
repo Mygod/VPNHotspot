@@ -672,7 +672,7 @@ mod tests {
             message: "a mapping's receive failed".to_owned(),
             errno: Some(5),
             kind: "Other".to_owned(),
-            file: "src/udp.rs".to_owned(),
+            file: "src/shizuku/udp.rs".to_owned(),
             line,
             column: 1,
             pid: 321,

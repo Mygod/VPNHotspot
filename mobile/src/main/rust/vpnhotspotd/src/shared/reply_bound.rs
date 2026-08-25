@@ -130,8 +130,8 @@ pub fn channel_footprint<T>(depth: usize, producers: usize) -> Option<u64> {
 /// `Vec` stays alive through `udp::handle` or `echo::handle`. On the multi-thread runtime a producer can
 /// refill that freed slot, and every other slot, while the receiver still holds the one it took. So the
 /// physical peak is a full queue *plus* the one in the owner's hand. This is the same shape as the
-/// client-to-upstream peak in [crate::tcp]'s per-flow footprint, and it was short here for the same reason
-/// that one was: a depth-one channel is not a one-buffer bound.
+/// client-to-upstream peak in the app-UID TCP engine's per-flow footprint (`shizuku/tcp.rs`), and it was short
+/// here for the same reason that one was: a depth-one channel is not a one-buffer bound.
 pub fn reply_channel_footprint<T>(depth: usize, producers: usize, max_payload: u64) -> Option<u64> {
     let depth = u64::try_from(depth).ok()?;
     channel_footprint::<T>(depth as usize, producers)?
@@ -798,9 +798,9 @@ mod tests {
     /// The whole production turn, driven on a real nonblocking pipe with a real bounded channel: readiness,
     /// then the slot, then the read, then the slot spent or returned.
     ///
-    /// Every branch here is the one `reply.rs` runs, and the `WouldBlock` in the stale case is the kernel's -
-    /// `try_io` is what turns it into the outer `Err` the stale branch is written for, and no hand-written
-    /// `Err(())` can stand in for that.
+    /// Every branch here is the one `shizuku/reply.rs` runs, and the `WouldBlock` in the stale case is the
+    /// kernel's - `try_io` is what turns it into the outer `Err` the stale branch is written for, and no
+    /// hand-written `Err(())` can stand in for that.
     #[tokio::test]
     async fn the_production_turn_orders_readiness_slot_and_allocation() {
         let pipe = Pipe::new();

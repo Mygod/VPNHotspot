@@ -1,0 +1,620 @@
+use std::collections::HashMap;
+use std::io;
+use std::mem::{take, MaybeUninit};
+use std::net::{IpAddr, Ipv6Addr, SocketAddrV6};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use libc::{EADDRNOTAVAIL, ENOBUFS, MSG_DONTWAIT};
+use rtnetlink::packet_route::{
+    address::{AddressAttribute, AddressMessage},
+    AddressFamily,
+};
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+use tokio::io::unix::AsyncFd;
+use tokio::sync::{Mutex, Notify};
+use tokio::time::{sleep_until, Instant as TokioInstant};
+use tokio::{select, spawn, task::JoinHandle};
+use tokio_util::sync::CancellationToken;
+
+use cidr::Ipv6Inet;
+
+use crate::report;
+use crate::root::netlink;
+use crate::socket::send_packet_to;
+use vpnhotspotd::shared::model::SessionConfig;
+use vpnhotspotd::shared::ra_wire::{
+    is_router_link_local, make_current_ra_packet, make_zero_lifetime_ra_packet,
+    router_advertisement_destination,
+};
+
+const RA_PERIOD: Duration = Duration::from_secs(30);
+const SUPPRESSED_RA_PERIOD: Duration = Duration::from_secs(3);
+const SUPPRESSED_RA_WINDOW: Duration = Duration::from_secs(15);
+const DEFAULT_MTU: u32 = 1500;
+
+enum RaRequest {
+    RouterSolicitation(SocketAddrV6),
+    Ignored,
+    WouldBlock,
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+struct Router {
+    address: Ipv6Addr,
+    interface_index: u32,
+}
+
+enum RaSendError {
+    Setup(io::Error),
+    Transmit(io::Error),
+}
+
+pub(crate) fn spawn_loop(
+    config: Arc<Mutex<SessionConfig>>,
+    config_changed: Arc<Notify>,
+    mut events: netlink::EventConnection,
+    mut netlink: netlink::RequestConnection,
+    stop: CancellationToken,
+    initial: &SessionConfig,
+) -> io::Result<JoinHandle<()>> {
+    let socket = AsyncFd::new(create_recv_socket(&initial.downstream, initial.reply_mark)?)?;
+    Ok(spawn(async move {
+        let mut next_ra = Instant::now();
+        let mut next_suppressed_ra = None;
+        let mut suppressed_prefixes = HashMap::<Ipv6Inet, Instant>::new();
+        let mut buffer = [MaybeUninit::<u8>::uninit(); 1500];
+        let mut last_router = None;
+        let mut address_changed = false;
+        let mut refresh_downstream_prefixes = true;
+        let mut waiting_logged = false;
+        let mut advertising_current_prefix = false;
+        loop {
+            let now = Instant::now();
+            let current = {
+                let current = config.lock().await;
+                if current.ipv6_nat.is_none() {
+                    break;
+                }
+                current.clone()
+            };
+            if current.clients.is_empty() {
+                if advertising_current_prefix {
+                    let mut withdrew_current_prefix = false;
+                    if let Some(ipv6_nat) = current.ipv6_nat.as_ref() {
+                        let mtu = downstream_mtu(
+                            &mut netlink,
+                            &current.downstream,
+                            "nat66.ra_idle_mtu_lookup",
+                        )
+                        .await;
+                        match link_local_router(&mut netlink, &current.downstream).await {
+                            Ok(Some(router)) => {
+                                withdraw_prefixes_once_with_router(
+                                    &current,
+                                    &[ipv6_nat.gateway],
+                                    false,
+                                    router,
+                                    mtu,
+                                )
+                                .await;
+                                withdrew_current_prefix = true;
+                            }
+                            Ok(None) => {}
+                            Err(e) if netlink::is_missing_link(&e) => {}
+                            Err(e) => {
+                                report::io_with_details(
+                                    "nat66.ra_idle_link_local_lookup",
+                                    e,
+                                    [("interface", current.downstream.clone())],
+                                );
+                            }
+                        }
+                    }
+                    if withdrew_current_prefix || current.ipv6_nat.is_none() {
+                        advertising_current_prefix = false;
+                    }
+                }
+                suppressed_prefixes.clear();
+                next_suppressed_ra = None;
+                select! {
+                    _ = stop.cancelled() => break,
+                    _ = config_changed.notified() => refresh_downstream_prefixes = true,
+                    event = events.next() => match event {
+                        Ok(_) => address_changed = true,
+                        Err(e) => {
+                            report::io_with_details(
+                                "nat66.ra_events",
+                                e,
+                                [("downstream", current.downstream.clone())],
+                            );
+                            break;
+                        }
+                    },
+                }
+                continue;
+            }
+            let send_address_changed = take(&mut address_changed);
+            let mut send_current = false;
+            if take(&mut refresh_downstream_prefixes) || send_address_changed {
+                let mtu_prefixes =
+                    match downstream_ipv6_prefixes(&mut netlink, &current.downstream).await {
+                        Ok(prefixes) => prefixes,
+                        Err(e) => {
+                            report::io_with_details(
+                                "nat66.ra_downstream_prefixes",
+                                e,
+                                [("interface", current.downstream.clone())],
+                            );
+                            Vec::new()
+                        }
+                    };
+                if let Some(ipv6_nat) = current.ipv6_nat.as_ref() {
+                    for prefix in mtu_prefixes {
+                        if prefix != ipv6_nat.gateway {
+                            suppressed_prefixes.insert(prefix, now + SUPPRESSED_RA_WINDOW);
+                            send_current = true;
+                        }
+                    }
+                }
+            }
+            let mtu =
+                downstream_mtu(&mut netlink, &current.downstream, "nat66.ra_mtu_lookup").await;
+            let mut missing_interface = false;
+            let router = match link_local_router(&mut netlink, &current.downstream).await {
+                Ok(router) => router,
+                Err(e) if netlink::is_missing_link(&e) => {
+                    missing_interface = true;
+                    None
+                }
+                Err(e) => {
+                    report::io_with_details(
+                        "nat66.ra_link_local_lookup",
+                        e,
+                        [("interface", current.downstream.clone())],
+                    );
+                    None
+                }
+            };
+            let router_changed = router != last_router;
+            if router_changed {
+                last_router = router;
+                if let Some(router) = router {
+                    report::stdout!(
+                        "ra using link-local router address {} on {}",
+                        router.address,
+                        current.downstream
+                    );
+                    waiting_logged = false;
+                }
+            }
+            if router.is_none() {
+                if !waiting_logged {
+                    if missing_interface {
+                        waiting_logged = false;
+                    } else {
+                        report::stdout!(
+                            "ra waiting for link-local router address on {}",
+                            current.downstream
+                        );
+                        waiting_logged = true;
+                    }
+                }
+                if next_ra <= now {
+                    next_ra = now + RA_PERIOD;
+                }
+                next_suppressed_ra = None;
+            }
+            suppressed_prefixes.retain(|_, deadline| *deadline > now);
+            if suppressed_prefixes.is_empty() {
+                next_suppressed_ra = None;
+            }
+            if let Some(router) = router {
+                if !suppressed_prefixes.is_empty()
+                    && next_suppressed_ra.is_none_or(|deadline| deadline <= now)
+                {
+                    withdraw_prefixes_once_with_router(
+                        &current,
+                        &suppressed_prefixes.keys().copied().collect::<Vec<_>>(),
+                        true,
+                        router,
+                        mtu,
+                    )
+                    .await;
+                    next_suppressed_ra = Some(now + SUPPRESSED_RA_PERIOD);
+                }
+                if send_current || router_changed || send_address_changed || next_ra <= now {
+                    match send_ra(&current, router, None, mtu).await {
+                        Ok(()) => advertising_current_prefix = true,
+                        Err(RaSendError::Setup(e)) | Err(RaSendError::Transmit(e))
+                            if is_downstream_address_unavailable(&e) =>
+                        {
+                            report::stdout!(
+                                "ra current advertisement skipped: link-local router address {} no longer available on {}: {}",
+                                router.address,
+                                current.downstream,
+                                e
+                            );
+                        }
+                        Err(RaSendError::Transmit(e))
+                            if is_downstream_transmit_backpressure(&e) =>
+                        {
+                            report::stderr!(
+                                "nat66.ra_send_current: downstream transmit buffer full: interface={} error={}",
+                                current.downstream,
+                                e
+                            );
+                        }
+                        Err(RaSendError::Setup(e)) | Err(RaSendError::Transmit(e)) => {
+                            report::io_with_details(
+                                "nat66.ra_send_current",
+                                e,
+                                [("interface", current.downstream.clone())],
+                            );
+                        }
+                    }
+                    next_ra = now + RA_PERIOD;
+                }
+            }
+            let next_deadline = [Some(next_ra), next_suppressed_ra]
+                .into_iter()
+                .chain([suppressed_prefixes.values().copied().min()])
+                .flatten()
+                .min()
+                .unwrap();
+            select! {
+                _ = stop.cancelled() => break,
+                _ = config_changed.notified() => refresh_downstream_prefixes = true,
+                _ = sleep_until(TokioInstant::from_std(next_deadline)) => {}
+                event = events.next() => match event {
+                    Ok(_) => address_changed = true,
+                    Err(e) => {
+                        report::io_with_details(
+                            "nat66.ra_events",
+                            e,
+                            [("downstream", current.downstream.clone())],
+                        );
+                        break;
+                    }
+                },
+                ready = socket.readable() => {
+                    let mut ready = match ready {
+                        Ok(ready) => ready,
+                        Err(e) => {
+                            report::io("nat66.ra_readable", e);
+                            break;
+                        }
+                    };
+                    loop {
+                        match recv_request(socket.get_ref(), &mut buffer) {
+                            Ok(RaRequest::RouterSolicitation(source)) => {
+                                if let Some(router) = router {
+                                    match send_ra(&current, router, Some(source), mtu).await {
+                                        Ok(()) => advertising_current_prefix = true,
+                                        Err(RaSendError::Setup(e))
+                                        | Err(RaSendError::Transmit(e))
+                                            if is_downstream_address_unavailable(&e) =>
+                                        {
+                                            report::stdout!(
+                                                "ra solicited advertisement skipped: link-local router address {} no longer available on {} while replying to {}: {}",
+                                                router.address,
+                                                current.downstream,
+                                                source,
+                                                e
+                                            );
+                                        }
+                                        Err(RaSendError::Transmit(e))
+                                            if is_downstream_transmit_backpressure(&e) =>
+                                        {
+                                            report::stderr!(
+                                                "nat66.ra_send_solicited: downstream transmit buffer full: interface={} target={} error={}",
+                                                current.downstream,
+                                                source,
+                                                e
+                                            );
+                                        }
+                                        Err(RaSendError::Setup(e))
+                                        | Err(RaSendError::Transmit(e)) => {
+                                            report::io_with_details(
+                                                "nat66.ra_send_solicited",
+                                                e,
+                                                [
+                                                    ("interface", current.downstream.clone()),
+                                                    ("target", source.to_string()),
+                                                ],
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            Ok(RaRequest::Ignored) => continue,
+                            Ok(RaRequest::WouldBlock) => {
+                                ready.clear_ready();
+                                break;
+                            }
+                            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                            Err(e) => {
+                                report::io("nat66.ra_recv", e);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }))
+}
+
+pub(crate) async fn withdraw_prefixes_once(
+    netlink: &mut netlink::RequestConnection,
+    config: &SessionConfig,
+    prefixes: &[Ipv6Inet],
+    keep_router: bool,
+) {
+    if config.ipv6_nat.is_none() {
+        return;
+    }
+    let router = match link_local_router(netlink, &config.downstream).await {
+        Ok(Some(router)) => router,
+        Ok(None) => {
+            report::stdout!(
+                "ra withdraw skipped: missing link-local router address on {}",
+                config.downstream
+            );
+            return;
+        }
+        Err(e) if netlink::is_missing_link(&e) => return,
+        Err(e) => {
+            report::io_with_details(
+                "nat66.ra_withdraw_link_local_lookup",
+                e,
+                [("interface", config.downstream.clone())],
+            );
+            return;
+        }
+    };
+    let mtu = downstream_mtu(netlink, &config.downstream, "nat66.ra_withdraw_mtu_lookup").await;
+    withdraw_prefixes_once_with_router(config, prefixes, keep_router, router, mtu).await;
+}
+
+async fn withdraw_prefixes_once_with_router(
+    config: &SessionConfig,
+    prefixes: &[Ipv6Inet],
+    keep_router: bool,
+    router: Router,
+    mtu: u32,
+) {
+    if config.ipv6_nat.is_none() {
+        return;
+    }
+    let fd = match create_send_socket(&config.downstream, config.reply_mark, router) {
+        Ok(fd) => fd,
+        Err(e) if is_downstream_address_unavailable(&e) => {
+            report::stdout!(
+                "ra withdraw skipped: link-local router address {} no longer available on {}",
+                router.address,
+                config.downstream
+            );
+            return;
+        }
+        Err(e) => {
+            report::io_with_details(
+                "nat66.ra_withdraw_socket",
+                e,
+                [("interface", config.downstream.clone())],
+            );
+            return;
+        }
+    };
+    for prefix in prefixes.iter().cloned() {
+        if let Err(e) = send_zero_lifetime_ra(&fd, router, prefix, keep_router, mtu).await {
+            if is_downstream_transmit_backpressure(&e) {
+                report::stderr!(
+                    "nat66.ra_withdraw_send: downstream transmit buffer full: interface={} prefix={} error={}",
+                    config.downstream,
+                    prefix,
+                    e
+                );
+            } else {
+                report::io_with_details(
+                    "nat66.ra_withdraw_send",
+                    e,
+                    [
+                        ("interface", config.downstream.clone()),
+                        ("prefix", prefix.to_string()),
+                    ],
+                );
+            }
+        }
+    }
+}
+
+fn is_downstream_address_unavailable(error: &io::Error) -> bool {
+    error.raw_os_error() == Some(EADDRNOTAVAIL)
+}
+
+fn is_downstream_transmit_backpressure(error: &io::Error) -> bool {
+    error.raw_os_error() == Some(ENOBUFS)
+}
+
+fn create_recv_socket(interface: &str, mark: u32) -> io::Result<Socket> {
+    let socket = Socket::new(Domain::IPV6, Type::RAW, Some(Protocol::ICMPV6))?;
+    socket.bind_device(Some(interface.as_bytes()))?;
+    socket.set_mark(mark)?;
+    socket.set_unicast_hops_v6(255)?;
+    socket.set_multicast_hops_v6(255)?;
+    socket.set_nonblocking(true)?;
+    Ok(socket)
+}
+
+fn create_send_socket(interface: &str, mark: u32, router: Router) -> io::Result<Socket> {
+    let socket = Socket::new(Domain::IPV6, Type::RAW, Some(Protocol::ICMPV6))?;
+    socket.bind_device(Some(interface.as_bytes()))?;
+    socket.set_mark(mark)?;
+    socket.set_unicast_hops_v6(255)?;
+    socket.set_multicast_hops_v6(255)?;
+    let scope_id = if router.address.is_unicast_link_local() {
+        router.interface_index
+    } else {
+        0
+    };
+    socket.bind(&SockAddr::from(SocketAddrV6::new(
+        router.address,
+        0,
+        0,
+        scope_id,
+    )))?;
+    socket.set_nonblocking(true)?;
+    Ok(socket)
+}
+
+async fn downstream_mtu(
+    handle: &mut netlink::RequestConnection,
+    interface: &str,
+    context: &str,
+) -> u32 {
+    match netlink::link_mtu(handle, interface).await {
+        Ok(mtu) => mtu,
+        Err(e) if netlink::is_missing_link(&e) => DEFAULT_MTU,
+        Err(e) => {
+            report::io_with_details(context, e, [("interface", interface.to_owned())]);
+            DEFAULT_MTU
+        }
+    }
+}
+
+async fn downstream_ipv6_prefixes(
+    handle: &mut netlink::RequestConnection,
+    interface: &str,
+) -> io::Result<Vec<Ipv6Inet>> {
+    let interface_index = match netlink::link_index(handle, interface).await {
+        Ok(index) => index,
+        Err(e) if netlink::is_missing_link(&e) => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    let addresses = match handle.dump_addresses(interface_index).await {
+        Ok(addresses) => addresses,
+        Err(e) if netlink::is_missing_link(&e) => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    let mut prefixes = Vec::new();
+    for message in addresses {
+        if message.header.family != AddressFamily::Inet6 {
+            continue;
+        }
+        if let Some(prefix) = downstream_ipv6_prefix(&message) {
+            if !prefixes.contains(&prefix) {
+                prefixes.push(prefix);
+            }
+        }
+    }
+    Ok(prefixes)
+}
+
+fn downstream_ipv6_prefix(message: &AddressMessage) -> Option<Ipv6Inet> {
+    let mut fallback = None;
+    for attribute in &message.attributes {
+        match attribute {
+            AddressAttribute::Local(IpAddr::V6(address)) => {
+                return routable_ipv6_prefix(*address, message.header.prefix_len);
+            }
+            AddressAttribute::Address(IpAddr::V6(address)) => {
+                fallback = routable_ipv6_prefix(*address, message.header.prefix_len);
+            }
+            _ => {}
+        }
+    }
+    fallback
+}
+
+fn routable_ipv6_prefix(address: Ipv6Addr, prefix_len: u8) -> Option<Ipv6Inet> {
+    if address.is_unicast_link_local() || address.is_loopback() || address.is_multicast() {
+        None
+    } else {
+        Some(Ipv6Inet::new(address, prefix_len).expect("kernel IPv6 prefix length must be <= 128"))
+    }
+}
+
+async fn link_local_router(
+    handle: &mut netlink::RequestConnection,
+    interface: &str,
+) -> io::Result<Option<Router>> {
+    let interface_index = netlink::link_index(handle, interface).await?;
+    let mut router = None;
+    for address in handle.dump_addresses(interface_index).await? {
+        if router.is_none() && address.header.family == AddressFamily::Inet6 {
+            if let Some(address) = router_address(&address) {
+                router = Some(Router {
+                    address,
+                    interface_index,
+                });
+            }
+        }
+    }
+    Ok(router)
+}
+
+fn router_address(message: &AddressMessage) -> Option<Ipv6Addr> {
+    let mut fallback = None;
+    for attribute in &message.attributes {
+        match attribute {
+            AddressAttribute::Local(IpAddr::V6(address)) if is_router_link_local(*address) => {
+                return Some(*address);
+            }
+            AddressAttribute::Address(IpAddr::V6(address)) if is_router_link_local(*address) => {
+                fallback = Some(*address);
+            }
+            _ => {}
+        }
+    }
+    fallback
+}
+
+fn recv_request(socket: &Socket, buffer: &mut [MaybeUninit<u8>]) -> io::Result<RaRequest> {
+    let (size, address) = match socket.recv_from_with_flags(buffer, MSG_DONTWAIT) {
+        Ok(result) => result,
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+            return Ok(RaRequest::WouldBlock)
+        }
+        Err(error) => return Err(error),
+    };
+    if size == 0 || unsafe { buffer[0].assume_init() } != 133 {
+        return Ok(RaRequest::Ignored);
+    }
+    address
+        .as_socket_ipv6()
+        .map(RaRequest::RouterSolicitation)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "expected ipv6 source"))
+}
+
+async fn send_ra(
+    config: &SessionConfig,
+    router: Router,
+    target: Option<SocketAddrV6>,
+    mtu: u32,
+) -> Result<(), RaSendError> {
+    let ipv6_nat = config
+        .ipv6_nat
+        .as_ref()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "missing ipv6 NAT config"))
+        .map_err(RaSendError::Setup)?;
+    let fd = create_send_socket(&config.downstream, config.reply_mark, router)
+        .map_err(RaSendError::Setup)?;
+    let destination = router_advertisement_destination(target, router.interface_index);
+    let packet = make_current_ra_packet(ipv6_nat.gateway, mtu);
+    send_packet_to(&fd, &packet, SockAddr::from(destination))
+        .await
+        .map_err(RaSendError::Transmit)
+}
+
+async fn send_zero_lifetime_ra(
+    socket: &Socket,
+    router: Router,
+    prefix: Ipv6Inet,
+    keep_router: bool,
+    mtu: u32,
+) -> io::Result<()> {
+    let destination = router_advertisement_destination(None, router.interface_index);
+    let packet = make_zero_lifetime_ra_packet(prefix, mtu, keep_router);
+    send_packet_to(socket, &packet, SockAddr::from(destination)).await
+}

@@ -8,9 +8,9 @@ root is much more expensive, so that work lives here instead.
 The same binary has a second, app-UID entry point for Shizuku mode. It owns no
 root state: it receives a duplicate of a TUN the Kotlin side published and owns
 the dataplane over it, described in [`shizuku.md`](shizuku.md). The two entry
-points share the entry dispatch, the frame format and the report builders;
-their runtime state, owned resources and system mutations are independent,
-since no root-side mutation is permitted at the app UID.
+points share control framing, report delivery, low-level socket helpers and the
+platform-neutral library. Their runtime state, owned resources and system
+mutations are independent.
 
 These docs describe the daemon's internal ownership model and cleanup
 invariants. For the IPC schema, see
@@ -21,90 +21,29 @@ invariants. For the IPC schema, see
 This is a locator. The contracts live in the subject documents linked from
 [Documents](#documents) below.
 
-Root path:
+[`src/root/`](../../mobile/src/main/rust/vpnhotspotd/src/root/) contains the root
+entry point and everything it owns: control and session state, routing, NAT66,
+DNS, traffic counters, netlink, neighbour monitoring and the IPsec probe.
 
-- [`control.rs`](../../mobile/src/main/rust/vpnhotspotd/src/control.rs) owns the
-  daemon control loop, active calls, event-style (kotlin Flow) calls that
-  remain active for sessions or monitors, session slots, and the neighbour
-  monitor slot.
-- [`session.rs`](../../mobile/src/main/rust/vpnhotspotd/src/session.rs)
-  composes one session for one downstream interface from DNS, optional NAT66,
-  and routing runtimes.
-- [`routing.rs`](../../mobile/src/main/rust/vpnhotspotd/src/routing.rs) and
-  [`routing/`](../../mobile/src/main/rust/vpnhotspotd/src/routing/) own
-  reversible route, rule, address, firewall, forwarding, and static-address
-  mutations.
-- [`nat66/`](../../mobile/src/main/rust/vpnhotspotd/src/nat66/) owns the IPv6
-  NAT proxy runtimes and helper protocol state.
-- [`dns.rs`](../../mobile/src/main/rust/vpnhotspotd/src/dns.rs) owns the daemon
-  DNS listeners and Android resolver handoff.
-- [`traffic.rs`](../../mobile/src/main/rust/vpnhotspotd/src/traffic.rs) owns
-  daemon traffic-counter reads and the daemon-to-Kotlin counter reporting
-  boundary.
-- [`netlink.rs`](../../mobile/src/main/rust/vpnhotspotd/src/netlink.rs) owns the
-  owner-scoped rtnetlink request and multicast-only event connections.
-- [`neighbour.rs`](../../mobile/src/main/rust/vpnhotspotd/src/neighbour.rs)
-  owns neighbour-monitor connections and converts netlink neighbour and bridge
-  topology state into daemon events.
-- [`ipsec.rs`](../../mobile/src/main/rust/vpnhotspotd/src/ipsec.rs) owns the
-  optional Android 12+ IPsec forwarding-policy probe and emits session events
-  for the Kotlin routing owner to perform the hidden Netd write only when
-  needed.
+[`src/shizuku/`](../../mobile/src/main/rust/vpnhotspotd/src/shizuku/) contains the
+app-UID entry point and dataplane: bootstrap and session control, TUN ingress
+and egress, TCP, UDP, Echo and virtual DNS.
 
-App-UID Shizuku path, under
+The small set of cross-mode Android runtime modules stays directly under
 [`src/`](../../mobile/src/main/rust/vpnhotspotd/src/):
+[`control_wire.rs`](../../mobile/src/main/rust/vpnhotspotd/src/control_wire.rs)
+frames the two control conversations,
+[`report.rs`](../../mobile/src/main/rust/vpnhotspotd/src/report.rs) delivers
+structured reports,
+[`socket.rs`](../../mobile/src/main/rust/vpnhotspotd/src/socket.rs) contains
+shared nonblocking socket operations, and
+[`android_network.rs`](../../mobile/src/main/rust/vpnhotspotd/src/android_network.rs)
+binds a socket to an Android `Network`.
 
-- `bootstrap.rs` owns the handshake and verifies the received TUN descriptor.
-- `app_session.rs` owns the session loop: it applies each configuration, retires
-  what the change invalidates, acknowledges, and owns the control writer.
-- `tun_reader.rs` owns the TUN descriptor, the admission gate and every
-  TUN-visible flow, mapping and transport, plus the tasks they start.
-- `dispatch.rs` routes one read to the transport that owns it and counts what it
-  cannot place.
-- `tun_writer.rs`, `output.rs`, `shared/packet_writer.rs` and
-  `shared/ipv4_identification.rs` are the single TUN egress path: the bounded
-  queue and retirement gate, the size and fragmentation decisions, and the
-  guarded IPv4 Identification allocator.
-- `egress.rs` owns the selected-network sockets - the bind, hop limits, DF modes,
-  error queue and received metadata - and the required raw `libc` calls.
-- `udp.rs`, `reply.rs` and `send_failure.rs` own the UDP relay's mappings, the
-  reply reader shared with Echo, and the errno-to-meaning mapping both use.
-- `echo.rs`, `echo_session.rs` and `echo_socket.rs` own relayed ICMP Echo: the
-  sessions keyed by remote and substituted sequence, and the ping sockets.
-- `tcp.rs`, `tcp_device.rs`, `tcp_flow.rs`, `tcp/terminal.rs` and
-  `tcp/lifetime.rs` own terminated TCP: the flow table and `smoltcp` stack, the
-  TUN adapter, one flow's upstream splice, how a flow ends, and the outer idle
-  floors.
-- `virtual_dns.rs`, `tcp_dns.rs`, `tcp_dns/transactions.rs`, `tcp/dns.rs` and
-  `resolver.rs` own the virtual DNS endpoints, the DNS-over-TCP transports and
-  their transaction table, and one platform resolver transaction.
-- `budget.rs`, `workers.rs` and `shared/preempt.rs` own admission accounting, the
-  boundary that joins a worker before its budget reservation is released, and the
-  waits retirement can interrupt.
-- `gateway.rs` holds the interface's own addresses and picks the source address
-  for an ICMP error the daemon originates.
-- `shared/reporter.rs` and `shared/reporter/coalescer.rs` own an app-UID
-  session's nonfatal coalescing, its single registration, and its finalizer.
-- Platform-neutral and unit tested: `shared/classify.rs` (principals),
-  `shared/extension.rs` (IPv6 extension chains), `shared/reassembly.rs`
-  (ingress reassembly), `shared/tcp_wire.rs` and `shared/udp_wire.rs` (segment
-  and datagram parsing), `shared/echo_wire.rs` (Echo), `shared/icmp_error.rs`
-  and `shared/icmp_translate.rs` (originated and repeated ICMP errors),
-  `shared/send_history.rs` (what a mapping recently sent),
-  `shared/dns_wire.rs` and `shared/dns_debt.rs` (DNS framing and which
-  reservation covers what), `shared/failure.rs` (local setup versus an answer),
-  and
-  `shared/tasks.rs` (task ownership both paths share).
-
-Shared by both paths:
-
-- [`report.rs`](../../mobile/src/main/rust/vpnhotspotd/src/report.rs) and
-  [`shared/protocol.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shared/protocol.rs)
-  build structured daemon reports. Delivery is not shared: root uses one
-  coalescing task behind a process-global channel keyed with
-  [`shared/nonfatal.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shared/nonfatal.rs),
-  an app-UID session uses the reporter above, and dispatch is registry-first
-  with no fall-through. See [`errors.md`](errors.md).
+[`src/shared/`](../../mobile/src/main/rust/vpnhotspotd/src/shared/) is the
+platform-neutral library compiled by host tests. It contains protocol models,
+packet parsing and construction, accounting and task-ownership logic. See
+[`errors.md`](errors.md) for the reporting split.
 
 The Kotlin side has two halves. Root control lives under
 [`mobile/src/main/java/be/mygod/vpnhotspot/root/daemon/`](../../mobile/src/main/java/be/mygod/vpnhotspot/root/daemon/):

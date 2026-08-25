@@ -1,44 +1,9 @@
-mod app_session;
-mod bootstrap;
-mod budget;
-mod control;
-mod dispatch;
-mod dns;
-mod downstream;
-mod echo;
-mod echo_session;
-mod echo_socket;
-mod egress;
-mod firewall;
-mod flow_setup;
-mod gateway;
-mod ipsec;
-mod mailbox;
-mod nat66;
-mod neighbour;
-mod netlink;
-mod output;
-mod owned;
-mod platform;
-mod process_io;
-mod reply;
+mod android_network;
+mod control_wire;
 mod report;
-mod resolver;
-mod routing;
-mod send_failure;
-mod session;
+mod root;
+mod shizuku;
 mod socket;
-mod tcp;
-mod tcp_device;
-mod tcp_dns;
-mod tcp_flow;
-mod traffic;
-mod tun_reader;
-mod tun_writer;
-mod udp;
-mod upstream;
-mod virtual_dns;
-mod workers;
 
 use std::env;
 use std::io;
@@ -69,8 +34,8 @@ async fn main() -> io::Result<()> {
         ));
     }
     if app_uid {
-        bootstrap::run(socket_name).await
+        shizuku::run(socket_name).await
     } else {
-        control::run(socket_name).await
+        root::run(socket_name).await
     }
 }

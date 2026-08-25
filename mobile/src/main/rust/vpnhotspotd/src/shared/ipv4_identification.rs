@@ -301,8 +301,9 @@ impl Ipv4Identifications {
     /// beside real buffers: the real allocation for `capacity` rows exceeds this figure by whatever `std`'s
     /// hash container keeps around them, which it does not document and this does not guess at.
     ///
-    /// So what the sixteenth of the dataplane's measured share in [crate::tun_reader] bounds is this table's
-    /// *cardinality* - how many tuples may exist at once - by way of the row state charged here. It is a
+    /// So what the sixteenth of the dataplane's measured share in the app-UID TUN ingress owner
+    /// (`shizuku/tun_reader.rs`) bounds is this table's *cardinality* - how many tuples may exist at once - by
+    /// way of the row state charged here. It is a
     /// policy budget for that charged state and not a claim about the backing, which scales with the same
     /// count and stays unquantified. See the Resource Policy note on what the byte total does and does not
     /// claim.

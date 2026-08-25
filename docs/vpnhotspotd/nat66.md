@@ -7,7 +7,7 @@ headers.
 
 ## Runtime Shape
 
-[`nat66::Runtime`](../../mobile/src/main/rust/vpnhotspotd/src/nat66/mod.rs) is
+[`root::nat66::Runtime`](../../mobile/src/main/rust/vpnhotspotd/src/root/nat66/mod.rs) is
 optional per session. If `SessionConfig.ipv6_nat` is absent, NAT66 startup
 returns `None` and routing must not install NAT66 interception.
 
@@ -46,8 +46,8 @@ NAT66 state is split by lifetime:
 | --- | --- | --- |
 | Process | `IcmpDispatcher` | NFQUEUE task on queue `30000`, ICMP session registrations, shared Echo state, upstream ICMP sockets |
 | Process | `ReplySocketPool` | daemon reply mark, exact UDP reply-source registry, socket leases shared across sessions |
-| Session | `nat66::Runtime` | committed per-MAC TCP/UDP capabilities, optional RA task, ICMP registration, cleanup prefixes, counter store |
-| RA task | `nat66/ra.rs` | IPv6-address event and request connections, raw ICMPv6 receive socket, periodic/suppression state |
+| Session | `root::nat66::Runtime` | committed per-MAC TCP/UDP capabilities, optional RA task, ICMP registration, cleanup prefixes, counter store |
+| RA task | `root/nat66/ra.rs` | IPv6-address event and request connections, raw ICMPv6 receive socket, periodic/suppression state |
 | Client | per-MAC runtime | TCP/UDP listener ports, stop token, active DNS/NAT66 tasks, source-scoped counters |
 | Listener | TCP/UDP loops | Accepted TCP connections, UDP association table, per-listener DNS reply-socket anchor |
 | Flow | TCP task, UDP association task, or UDP DNS query task | MAC/downstream accounting context, upstream socket, downstream reply path and reply-socket lease, ICMP error registration where applicable |
@@ -277,7 +277,7 @@ address outside the committed MAC set are dropped and reported as structured
 nonfatals. The dispatcher must not fall back to source IPv6 neighbour lookup.
 Malformed packets and ICMP that NAT66 does not own are dropped or accepted based
 on the ownership decision in
-`nat66/icmp/downstream.rs`.
+`root/nat66/icmp/downstream.rs`.
 
 Routable Echo Requests are copied, then the original queued packet is dropped.
 The daemon allocates a rewritten Echo identifier/sequence, records the original

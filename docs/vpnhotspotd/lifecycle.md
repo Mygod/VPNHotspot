@@ -209,7 +209,7 @@ IPv6 NAT firewall base chains are attempted before the session runtime starts.
 Failure there is reported as a structured nonfatal tied to the start call and
 IPv6 NAT is disabled for that session start.
 
-[`Session::start`](../../mobile/src/main/rust/vpnhotspotd/src/session.rs)
+[`Session::start`](../../mobile/src/main/rust/vpnhotspotd/src/root/session.rs)
 constructs the session in this order:
 
 1. Open a temporary link/IPv4 event connection and the request connection that

@@ -5,11 +5,11 @@ ports and capabilities produced by DNS and NAT66 startup, then turns
 `SessionConfig` into concrete kernel, netfilter, and netd state.
 
 This document is a mutation catalog. Every route, rule, address, firewall, and
-`ndc` mutation made by `routing.rs` and `routing/` should be listed here.
+`ndc` mutation made under `root/routing/` should be listed here.
 
 ## Mutation Model
 
-[`routing.rs`](../../mobile/src/main/rust/vpnhotspotd/src/routing.rs)
+[`root/routing/mod.rs`](../../mobile/src/main/rust/vpnhotspotd/src/root/routing/mod.rs)
 represents session routing state as `RoutingMutation` values:
 
 | Mutation | External apply | Session rollback |
@@ -35,14 +35,14 @@ can retry the ensure later.
 The `applied` list is only the current process rollback list. It is not
 persisted and is not a Clean source of truth.
 
-`routing::Runtime` owns one rtnetlink request connection for the session
+`root::routing::Runtime` owns one rtnetlink request connection for the session
 lifetime. Startup transfers the connection used for downstream discovery;
 replacement and normal stop reuse it. Request failures are reported and later
 operations remain best effort; the runtime does not reconnect.
 
 ## Session Desired Mutations
 
-[`routing/desired.rs`](../../mobile/src/main/rust/vpnhotspotd/src/routing/desired.rs)
+[`root/routing/desired.rs`](../../mobile/src/main/rust/vpnhotspotd/src/root/routing/desired.rs)
 builds this desired state. The order below follows the producer order.
 
 ### IP Forwarding
@@ -106,7 +106,7 @@ Rollback:
 - no session rollback for the `vpnhotspot_dns_nat` chain itself.
 
 Routing only redirects packets. MAC ownership and DNS upstream selection belong
-to [`dns.rs`](../../mobile/src/main/rust/vpnhotspotd/src/dns.rs). A DNS
+to [`root/dns.rs`](../../mobile/src/main/rust/vpnhotspotd/src/root/dns.rs). A DNS
 listener is not committed unless both the listener and matching MAC redirect
 and direct-port guard rules exist.
 
@@ -598,7 +598,7 @@ MAC set before proxying or counting it.
 
 ## Process-Wide NAT66 Firewall Base
 
-[`control.rs`](../../mobile/src/main/rust/vpnhotspotd/src/control.rs) calls
+[`root/control/mod.rs`](../../mobile/src/main/rust/vpnhotspotd/src/root/control/mod.rs) calls
 `ensure_ipv6_nat_firewall_base` before starting the first session that requests
 NAT66. This is outside per-session desired state. Failure is reported as a
 structured nonfatal tied to the start-session call and disables NAT66 for that
@@ -633,7 +633,7 @@ Process/session cleanup:
 ## Static Address Replacement
 
 `ReplaceStaticAddressesCommand` is not session routing, but it is implemented
-under `routing/` and mutates interface addresses.
+under `root/routing/` and mutates interface addresses.
 
 External mutations:
 
@@ -755,7 +755,7 @@ it.
 This mode makes **none** of the mutations above, and it cannot: every one of them needs
 root, while the daemon and the app both run at the app UID. It is catalogued here so this
 document stays complete about what the app does to the system, not because routing owns
-any of it. Nothing here is reachable from `routing.rs`, and `CleanRoutingCommand` neither
+any of it. Nothing here is reachable from `root/routing/`, and `CleanRoutingCommand` neither
 creates nor removes any of it, so **Clean applies to no row below**. The feature-level
 invariants are in [`shizuku.md`](shizuku.md#external-state-and-cleanup).
 

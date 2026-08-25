@@ -493,7 +493,7 @@ is explicitly unproven, and the *Topology* column says what each result came fro
   connector and the child conversation;
   [`ShizukuTetheringService.kt`](../../mobile/src/main/java/be/mygod/vpnhotspot/ShizukuTetheringService.kt)
   owns the job and the process lifetime behind it.
-- [`mobile/src/main/rust/vpnhotspotd/src/`](../../mobile/src/main/rust/vpnhotspotd/src/) - the app-UID
+- [`mobile/src/main/rust/vpnhotspotd/src/shizuku/`](../../mobile/src/main/rust/vpnhotspotd/src/shizuku/) - the app-UID
   dataplane; see the source map in [`README.md`](README.md).
 - [`routing.md`](routing.md#rootless-shizuku-mode) - the external-state and cleanup catalog;
   [`lifecycle.md`](lifecycle.md#app-uid-bootstrap) - bootstrap and
