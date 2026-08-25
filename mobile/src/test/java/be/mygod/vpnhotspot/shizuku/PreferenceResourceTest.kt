@@ -2,7 +2,6 @@ package be.mygod.vpnhotspot.shizuku
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -59,11 +58,9 @@ class PreferenceResourceTest {
     /** No answer leaves the handler free to have mutated, so the clear is owed just the same. */
     @Test
     fun anUnansweredSetIsAlsoOwedAClear() {
-        val cause = IllegalStateException("deadline")
         preference.settingIssued()
-        preference.settingUnknown(cause)
+        preference.settingUnknown()
         assertEquals(ResourceState.UNKNOWN, preference.state)
-        assertSame(cause, preference.cause)
         assertTrue(preference.clearable)
         assertTrue(preference.outstanding)
         assertFalse(preference.terminal)
@@ -99,7 +96,7 @@ class PreferenceResourceTest {
     @Test
     fun aDeniedClearOfAnUnknownDebtStaysUnknown() {
         preference.settingIssued()
-        preference.settingUnknown(IllegalStateException("deadline"))
+        preference.settingUnknown()
         preference.clearingIssued()
         preference.clearingDenied()
         assertEquals(ResourceState.UNKNOWN, preference.state)
@@ -112,7 +109,7 @@ class PreferenceResourceTest {
         preference.settingIssued()
         preference.settingMutated()
         preference.clearingIssued()
-        preference.clearingUnknown(IllegalStateException("epoch replaced"))
+        preference.clearingUnknown()
         assertEquals(ResourceState.UNKNOWN, preference.state)
         assertTrue(preference.clearable)
         preference.clearingIssued()
@@ -131,7 +128,7 @@ class PreferenceResourceTest {
             { },
             { settingIssued() },
             { settingIssued(); settingMutated() },
-            { settingIssued(); settingUnknown(IllegalStateException("deadline")) },
+            { settingIssued(); settingUnknown() },
             { settingIssued(); settingMutated(); clearingIssued() },
         )) {
             val resource = PreferenceResource()

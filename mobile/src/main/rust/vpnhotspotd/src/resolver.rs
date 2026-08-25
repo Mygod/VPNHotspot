@@ -114,51 +114,12 @@ impl Drop for ResolverQuery {
     }
 }
 
-#[cfg(not(test))]
 #[link(name = "android")]
 unsafe extern "C" {
     fn android_res_nsend(network: u64, msg: *const u8, msglen: usize, flags: u32) -> c_int;
     fn android_res_nresult(fd: c_int, rcode: *mut c_int, answer: *mut u8, anslen: usize) -> c_int;
     fn android_res_cancel(nsend_fd: c_int);
 }
-
-/// The platform's resolver, replaced by refusals when this binary is built as a test harness.
-///
-/// A host has no `libandroid` to link against, so without these the binary's own modules could not be tested
-/// at all. Deliberately *not* a fake that answers queries: a resolver fake is a second implementation of the
-/// thing under test, and every test in this crate supplies its answers through the same channel the real task
-/// sends them on instead.
-///
-/// # Safety
-///
-/// Nothing is dereferenced, so calling any of them is unconditionally sound.
-#[cfg(test)]
-unsafe fn android_res_nsend(_network: u64, _msg: *const u8, _msglen: usize, _flags: u32) -> c_int {
-    -1
-}
-
-/// See [android_res_nsend].
-///
-/// # Safety
-///
-/// Nothing is dereferenced, so calling it is unconditionally sound.
-#[cfg(test)]
-unsafe fn android_res_nresult(
-    _fd: c_int,
-    _rcode: *mut c_int,
-    _answer: *mut u8,
-    _anslen: usize,
-) -> c_int {
-    -1
-}
-
-/// See [android_res_nsend].
-///
-/// # Safety
-///
-/// Nothing is dereferenced, so calling it is unconditionally sound.
-#[cfg(test)]
-unsafe fn android_res_cancel(_nsend_fd: c_int) {}
 
 /// A transaction the platform has accepted, waiting only to be read.
 ///
@@ -168,7 +129,7 @@ unsafe fn android_res_cancel(_nsend_fd: c_int) {}
 /// task first got scheduled, so a query classified under one config could reach the resolver *after* its
 /// successor had been acknowledged - on a `Network` the session had already stopped claiming. Handing the
 /// submission back as a value lets the owner perform it in its own serial order and poll only the wait.
-pub(crate) struct Submitted {
+pub(crate) struct Resolving {
     /// Taken at the terminal, which is what hands the descriptor to `android_res_nresult` to read and close.
     /// Absent afterwards, so a second poll cannot read a descriptor this transaction has already given up.
     fd: Option<AsyncFd<ResolverQuery>>,
@@ -197,9 +158,9 @@ pub(crate) enum Completed {
     /// not go on to adopt a config and admit more work.
     ///
     /// That is an argument about a dependency's internals, and no owner here is built on it. The submission
-    /// case has no such caveat, `#[cfg(test)]` reaches the poll case directly, and a runtime bump could change
-    /// the reasoning without changing a single test. Owners therefore treat this outcome as terminal on its
-    /// own terms - see the generation-versus-observability ordering in [crate::tcp::dns].
+    /// case has no such caveat, and a runtime bump could change the reasoning. Owners therefore treat this
+    /// outcome as terminal on its own terms - see the generation-versus-observability ordering in
+    /// [crate::tcp::dns].
     Unobservable(Failure),
 }
 
@@ -218,7 +179,7 @@ impl Completed {
     }
 }
 
-impl Submitted {
+impl Resolving {
     /// Polls this transaction to its terminal, on the owner's own task rather than in one of its own.
     ///
     /// `dnsproxyd`'s resnsend handler writes one result and then drops the client socket, so what says the
@@ -237,7 +198,7 @@ impl Submitted {
     /// transaction that never reaches a terminal at all: a descriptor record, a logical token and a query
     /// held until the session ends, with no timer by design. So the write direction is polled too, purely as
     /// a close detector, and its readiness is cleared when it says only that the socket is writable.
-    fn poll_result(&mut self, cx: &mut Context<'_>) -> Poll<Completed> {
+    pub(crate) fn poll_result(&mut self, cx: &mut Context<'_>) -> Poll<Completed> {
         let Some(fd) = self.fd.as_ref() else {
             // Unreachable: an owner removes a transaction the moment it produces a result, so nothing polls
             // one twice. Answered rather than asserted, because a panic here would take the process with it -
@@ -287,6 +248,11 @@ impl Submitted {
         let answer = fd.into_inner().finish().map_err(Failure::platform);
         Poll::Ready(Completed::Answered(answer))
     }
+
+    /// Awaits this transaction's terminal, for an owner that runs it in a task of its own.
+    pub(crate) async fn read(mut self) -> Completed {
+        poll_fn(|cx| self.poll_result(cx)).await
+    }
 }
 
 /// What one submission at the syscall boundary came to.
@@ -332,179 +298,7 @@ pub(crate) fn submit(network: Network, message: &[u8]) -> Submission {
         return Submission::Unobservable(Failure::local(NONBLOCK)(e));
     }
     match AsyncFd::new(fd) {
-        Ok(fd) => Submission::Accepted(Resolving::Platform(Submitted { fd: Some(fd) })),
+        Ok(fd) => Submission::Accepted(Resolving { fd: Some(fd) }),
         Err(e) => Submission::Unobservable(Failure::local(REGISTER)(e)),
-    }
-}
-
-/// Where a submitted question's answer comes from.
-///
-/// The daemon has exactly one: the platform resolver, on the network the owner chose. A host running this
-/// crate's own tests has no platform, so it hands answers in through a channel instead - and that channel is
-/// the *only* part of an exchange that is not this daemon's own code. Everything either side of it is real:
-/// the debt, the identity, the retained worker, its terminal, the delivery split, the parking and the
-/// acknowledgment. Deliberately not a resolver fake, which would be a second implementation of the thing
-/// under test rather than a way of feeding it.
-///
-/// Held by both Shizuku-mode owners - the UDP handoff and the DNS-over-TCP transaction table - because the
-/// property each of them has to prove is the same one: a query that was never admitted is a query the
-/// platform never heard about, and "never heard about" is not something the refusing host stub can answer.
-#[derive(Clone)]
-pub(crate) enum Answers {
-    Platform,
-    #[cfg(test)]
-    Channel {
-        answers: tokio::sync::mpsc::UnboundedSender<Asked>,
-        /// Which of the three syscall-boundary outcomes the next submission takes. Here rather than in the
-        /// answering side, because the distinction this injects is made *before* any answer exists - and it
-        /// is the only part of the boundary a host cannot otherwise reach.
-        injected: std::sync::Arc<Injected>,
-    },
-}
-
-/// One question a test's answering side has been handed, and where its answer goes back.
-#[cfg(test)]
-pub(crate) struct Asked {
-    /// The handle the submission really went out on, so a test can see which network reached the platform
-    /// call rather than which one a config decoded to.
-    pub(crate) network: Network,
-    pub(crate) message: Vec<u8>,
-    pub(crate) answer: tokio::sync::oneshot::Sender<Vec<u8>>,
-}
-
-/// Which outcome the syscall boundary takes for one submission.
-///
-/// Deliberately the *only* thing a test injects. Everything either side of it is the daemon's own: the debt,
-/// the row, the quarantine, the refund and the report. What a host cannot otherwise produce is a submission
-/// Android accepted and this process then failed to watch, which is exactly the ownership the quarantine
-/// exists for.
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Outcome {
-    /// `android_res_nsend` refused it: nothing of the platform's is held.
-    NeverReached,
-    /// Android took it and this process's own wrapper then failed, before there was ever anything to poll.
-    Unobservable,
-    /// Android took it, this process watched it, and then lost the registration it was watching with. The
-    /// same ownership as [Outcome::Unobservable], reached at the other end of the same transaction.
-    LostWhileWatching,
-}
-
-/// The outcomes forced at the syscall boundary, in order. An empty queue is the ordinary accepted one.
-#[cfg(test)]
-#[derive(Default)]
-pub(crate) struct Injected {
-    forced: std::sync::Mutex<std::collections::VecDeque<Outcome>>,
-}
-
-#[cfg(test)]
-impl Injected {
-    /// Forces the next submission - and only the next one - to take this outcome.
-    pub(crate) fn force(&self, outcome: Outcome) {
-        self.forced
-            .lock()
-            .expect("the injected queue is never held across an await")
-            .push_back(outcome);
-    }
-
-    fn next(&self) -> Option<Outcome> {
-        self.forced
-            .lock()
-            .expect("the injected queue is never held across an await")
-            .pop_front()
-    }
-}
-
-/// A transaction the answering side has accepted, waiting only to be read.
-///
-/// Split from the read for the same reason [Submitted] is. What it no longer carries is a failure: a
-/// submission that never produced a transaction is [Submission::NeverReached] or
-/// [Submission::Unobservable], answered where the syscall was made rather than pretended to be a transaction
-/// its owner has to poll.
-pub(crate) enum Resolving {
-    Platform(Submitted),
-    #[cfg(test)]
-    Channel {
-        answered: tokio::sync::oneshot::Receiver<Vec<u8>>,
-        /// Forced at the boundary: this transaction's readiness observation is lost rather than completing.
-        /// The answering side still has the question, which is the whole shape of the outcome - Android's
-        /// slot is taken and nothing here can watch it.
-        lost: bool,
-    },
-}
-
-impl Answers {
-    /// Hands one query over, synchronously. Runs on the owner, in its own serial order with the config, which
-    /// is what keeps a query from first reaching the resolver on a `Network` a successor has replaced.
-    pub(crate) fn submit(&self, network: Network, message: &[u8]) -> Submission {
-        match self {
-            Self::Platform => submit(network, message),
-            #[cfg(test)]
-            Self::Channel { answers, injected } => {
-                let forced = injected.next();
-                if forced == Some(Outcome::NeverReached) {
-                    // Nothing is handed to the answering side, because nothing reached the platform.
-                    return Submission::NeverReached(Failure::platform(io::Error::other(
-                        "the resolver refused this query",
-                    )));
-                }
-                let (answer, answered) = tokio::sync::oneshot::channel();
-                if answers
-                    .send(Asked {
-                        network,
-                        message: message.to_vec(),
-                        answer,
-                    })
-                    .is_err()
-                {
-                    return Submission::NeverReached(Failure::platform(io::Error::other(
-                        "no answering side",
-                    )));
-                }
-                // Handed over, and then the local wrapper failed: the answering side has the question and
-                // this process has nothing left to read the answer with, which is the real shape.
-                if forced == Some(Outcome::Unobservable) {
-                    return Submission::Unobservable(Failure::local(REGISTER)(io::Error::other(
-                        "the descriptor could not be registered",
-                    )));
-                }
-                Submission::Accepted(Resolving::Channel {
-                    answered,
-                    lost: forced == Some(Outcome::LostWhileWatching),
-                })
-            }
-        }
-    }
-}
-
-impl Resolving {
-    /// Polls this transaction to its terminal on the owner's own task. Everything it can answer is the
-    /// platform's, except the loss of the registration it was being watched with.
-    pub(crate) fn poll_result(&mut self, cx: &mut Context<'_>) -> Poll<Completed> {
-        match self {
-            Self::Platform(submitted) => submitted.poll_result(cx),
-            // Forced at the boundary: the registration watching a question the answering side really has is
-            // gone, which is what a failed readiness poll is and what no channel could otherwise produce.
-            #[cfg(test)]
-            Self::Channel { lost: true, .. } => {
-                let gone = io::Error::other("the readiness registration is gone");
-                Poll::Ready(Completed::Unobservable(Failure::local(REGISTER)(gone)))
-            }
-            #[cfg(test)]
-            Self::Channel { answered, .. } => {
-                let polled = std::future::Future::poll(std::pin::Pin::new(answered), cx);
-                polled.map(|answer| {
-                    let answer = answer.map_err(|_| {
-                        Failure::platform(io::Error::other("the answering side went away"))
-                    });
-                    Completed::Answered(answer)
-                })
-            }
-        }
-    }
-
-    /// Awaits this transaction's terminal, for an owner that runs it in a task of its own.
-    pub(crate) async fn read(mut self) -> Completed {
-        poll_fn(|cx| self.poll_result(cx)).await
     }
 }

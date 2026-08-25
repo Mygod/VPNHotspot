@@ -9,14 +9,7 @@ path = "src/lib.rs"
 [[bin]]
 name = "vpnhotspotd"
 path = "src/main.rs"
-# Tested, which the host harness pays for in one way: the bionic and log owners this binary declares are
-# already gated on `cfg(not(test))`, with unlinked refusals in their place, because a host has neither
-# library to link against. `platform::android_api_level` is deliberately *not* among them - it is the real
-# Android extern, ungated, and no fake stands in for it - so tests are structured to avoid the paths that
-# reach it rather than to fake a device. Nothing else changes: the daemon's own code is what runs, and what
-# it buys is that the owners which cannot leave this crate, the TCP engine and its resolver transactions,
-# can be proved where they live rather than through a stand-in for them.
-test = true
+test = false
 
 [dependencies]
 cidr = "0.3.2"

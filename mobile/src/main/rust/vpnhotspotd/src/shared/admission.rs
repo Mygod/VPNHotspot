@@ -33,8 +33,8 @@
 //!
 //! Capacity, not length, is the unit that matters. A byte charge is taken for the capacity or bound an owner
 //! prepared, not for what is in it, so expiring an entry refunds the entry's *record*, frees its logical slot,
-//! and refunds bytes only when the owner says an allocation really went - through [Admission::shrink], a
-//! growth replacement, or its own release. Nothing about a container's own memory is inferred either way.
+//! and refunds bytes only when the owner says an allocation really went - through [Admission::shrink] or its
+//! own release. Nothing about a container's own memory is inferred either way.
 //!
 //! # Leases, and why they do not refund themselves
 //!
@@ -203,25 +203,6 @@ pub struct Lease {
     id: u64,
 }
 
-impl Lease {
-    /// The identity, for a worker record that wants to name its lease in a log line. Reading it grants
-    /// nothing: every operation still needs the lease itself and the admission that issued it.
-    pub fn id(&self) -> u64 {
-        self.id
-    }
-}
-
-/// A replacement in flight, holding both grants at once so the peak is real rather than assumed.
-///
-/// The old lease is *inside* this, which is what stops a caller from using it while the replacement is
-/// undecided: resizing a buffer means both allocations exist for a moment, and an accounting that charged
-/// only the larger of the two would be describing a moment that never happened.
-#[derive(Debug)]
-pub struct Replacement {
-    old: Lease,
-    new: Lease,
-}
-
 /// One grant, as the ledger holds it.
 #[derive(Debug, Clone, Copy)]
 struct Entry {
@@ -280,8 +261,8 @@ impl Admission {
     ///
     /// `ledger_slots` is derived rather than chosen: the record total bounds how many record-backed owners
     /// can exist at once, and to that are added the statically known byte-only owners - the retained tables,
-    /// the fixed queues, the engine scratch - plus one slot for the single owner-confined replacement or
-    /// split that may be in flight. That is the ledger's logical maximum, it is what its own bytes are charged
+    /// the fixed queues, the engine scratch - plus one slot for the single owner-confined split that may be
+    /// in flight. That is the ledger's logical maximum, it is what its own bytes are charged
     /// for here, and it is the one condition [Admission::take_slot] refuses on - so no grant is ever recorded
     /// against a row the accounting did not allow for.
     ///
@@ -366,8 +347,8 @@ impl Admission {
     }
 
     /// How many rows the ledger is built for: one per record-backed owner that can exist at once, plus the
-    /// statically known byte-only owners, plus one for the single owner-confined replacement or split in
-    /// flight. `None` when that sum does not fit, which is a configuration this cannot record and therefore
+    /// statically known byte-only owners, plus one for the single owner-confined split in flight. `None` when
+    /// that sum does not fit, which is a configuration this cannot record and therefore
     /// must not accept.
     pub fn ledger_slots(record_total: u32, byte_only_owners: u32) -> Option<u32> {
         record_total.checked_add(byte_only_owners)?.checked_add(1)
@@ -692,33 +673,6 @@ impl Admission {
         })
     }
 
-    /// Holds a new grant *beside* an existing one, so a resize is charged for the moment both allocations
-    /// exist.
-    ///
-    /// The old lease moves in here, which is what stops it being used while the outcome is undecided.
-    pub fn begin_replace(
-        &mut self,
-        old: Lease,
-        new: Request,
-    ) -> Result<Replacement, (Lease, Denied)> {
-        match self.reserve(new) {
-            Ok(new) => Ok(Replacement { old, new }),
-            Err(why) => Err((old, why)),
-        }
-    }
-
-    /// The resize happened: the old allocation is gone, so its grant is released and the new one is the lease.
-    pub fn commit_replace(&mut self, replacement: Replacement) -> Lease {
-        self.release(replacement.old);
-        replacement.new
-    }
-
-    /// The resize did not happen: the new allocation is gone, so the old grant is unchanged.
-    pub fn rollback_replace(&mut self, replacement: Replacement) -> Lease {
-        self.release(replacement.new);
-        replacement.old
-    }
-
     /// Gives a grant back, and only after everything it accounted for is actually gone: the task retired, the
     /// record erased, the allocation dropped.
     ///
@@ -730,12 +684,6 @@ impl Admission {
             self.invariant_violations += 1;
             return;
         }
-        // Dated before the balance moves, so a buffer's own drop can say which side of this release it fell
-        // on. Compiled only into this crate's own test harness: production runs the two statements below and
-        // nothing else, and the binary crate - which links this one as an ordinary dependency - never sees
-        // this at all. See [releases].
-        #[cfg(test)]
-        releases::one_more();
         match self.ledger.remove(&lease.id) {
             Some(entry) => self.unapply(entry.granted),
             None => self.invariant_violations += 1,
@@ -814,41 +762,6 @@ pub struct Totals {
     /// Owners that hold bytes and no record: retained tables, fixed queues, engine scratch. Used only to
     /// derive the ledger's own size.
     pub byte_only_owners: u32,
-}
-
-/// Charges a prepared collection's growth as the replacement it is, and hands back whichever grant survived.
-///
-/// The whole reason growth is a call rather than an allocation: while a collection is being rebuilt at a
-/// larger capacity, both the old allocation and its replacement exist, and an accounting that charged only
-/// the larger of them would be describing a moment that never happened. So the new footprint is reserved
-/// beside the old, the move runs, and only then is one of them released. For a table that is a charge on two
-/// sets of row state rather than a measurement of two allocations, which is the same shape either way: what
-/// the owner may hold doubles for the length of the move and then settles at the larger figure.
-///
-/// `grow` answers whether it actually grew. A `false` rolls back to the original grant, which is what keeps a
-/// refused or redundant growth from shrinking an allocation a charge still covers. `Err` returns the original
-/// lease untouched, so a caller that cannot grow simply carries on at the capacity it has.
-pub fn grow_prepared<F, G>(
-    admission: &mut Admission,
-    lease: Lease,
-    to: usize,
-    class: Class,
-    footprint: F,
-    grow: G,
-) -> Result<Lease, (Lease, Denied)>
-where
-    F: Fn(usize) -> Option<u64>,
-    G: FnOnce(usize) -> bool,
-{
-    let Some(bytes) = footprint(to) else {
-        return Err((lease, Denied::Arithmetic));
-    };
-    let replacement = admission.begin_replace(lease, Request::bytes(bytes, class))?;
-    if grow(to) {
-        Ok(admission.commit_replace(replacement))
-    } else {
-        Err((admission.rollback_replace(replacement), Denied::Arithmetic))
-    }
 }
 
 /// The largest prepared count whose per-item cost and its own tables both fit what is left.
@@ -1024,44 +937,6 @@ impl fmt::Display for Misconfigured {
 }
 
 impl std::error::Error for Misconfigured {}
-
-impl fmt::Display for Admission {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.describe())
-    }
-}
-
-/// How many releases this thread has performed, in order. Test-only, and compiled out of everything else.
-///
-/// Not a statistic. Whether an owner gave a buffer back before or after the capacity covering it is an
-/// *ordering*, and an ordering is invisible in a balance that ends up the same either way - so the count is
-/// read from the buffer's own `Drop`, where the alternative would be reading an `Admission` the release is
-/// holding exclusively.
-///
-/// `cfg(test)` throughout, which is what keeps production free of it: the daemon's `release` is the two
-/// statements above and nothing more, and no build that is not this crate's own test harness contains a
-/// thread-local, a counter or a branch for this. That also fixes its reach, deliberately - a binary crate
-/// links this one as an ordinary dependency and cannot see a `cfg(test)` item here - so what it dates is the
-/// ownership this crate itself owns: [crate::shared::dns_debt]'s deliveries, which is where the delivery
-/// grant and the buffers it covers actually meet. Owners in the binary crate keep their end of the same
-/// property by going *through* those functions rather than releasing a delivery lease themselves.
-#[cfg(test)]
-pub(crate) mod releases {
-    use std::cell::Cell;
-
-    thread_local! {
-        static RELEASES: Cell<u64> = const { Cell::new(0) };
-    }
-
-    pub(super) fn one_more() {
-        RELEASES.with(|releases| releases.set(releases.get() + 1));
-    }
-
-    /// How many have happened on this thread so far.
-    pub(crate) fn so_far() -> u64 {
-        RELEASES.with(Cell::get)
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -1267,48 +1142,6 @@ mod tests {
         );
         admission.release(lease);
         assert_eq!(admission.fragment_bytes_charged(), 0);
-    }
-
-    /// A resize charges for the moment both allocations exist, and rollback leaves the original grant
-    /// untouched.
-    #[test]
-    fn a_replacement_charges_the_peak_and_rolls_back_cleanly() {
-        let mut admission = admission();
-        let lease = admission.reserve(general(1, 1_000)).expect("granted");
-        let before = admission.bytes_charged();
-        let replacement = admission
-            .begin_replace(lease, general(1, 2_000))
-            .map_err(|(_, why)| why)
-            .expect("both grants fit at once");
-        // Both are held: the peak is real.
-        assert_eq!(admission.bytes_charged(), before + 2_000);
-        let lease = admission.rollback_replace(replacement);
-        assert_eq!(admission.bytes_charged(), before);
-        assert_eq!(admission.granted(&lease).expect("still held").bytes, 1_000);
-
-        // And a commit keeps the new grant rather than the old one.
-        let replacement = admission
-            .begin_replace(lease, general(1, 2_000))
-            .map_err(|(_, why)| why)
-            .expect("both grants fit at once");
-        let lease = admission.commit_replace(replacement);
-        assert_eq!(admission.granted(&lease).expect("still held").bytes, 2_000);
-        admission.release(lease);
-        assert_eq!(admission.bytes_charged(), before - 1_000);
-    }
-
-    /// A denied replacement hands the old lease back rather than consuming it, so the caller is not left
-    /// without the grant it still owns.
-    #[test]
-    fn a_denied_replacement_returns_the_original_lease() {
-        let mut admission = admission();
-        let lease = admission.reserve(general(1, 1_000)).expect("granted");
-        let (lease, why) = admission
-            .begin_replace(lease, general(1, 10_000_000))
-            .expect_err("the replacement cannot fit");
-        assert_eq!(why, Denied::Bytes);
-        assert_eq!(admission.granted(&lease).expect("still held").bytes, 1_000);
-        admission.release(lease);
     }
 
     /// Expiring a record does not refund the bytes the collection it lived in still owns. Shrinking is the
@@ -1967,56 +1800,6 @@ mod tests {
             );
             assert!(admission.general_record_ceiling() <= admission.record_total());
         }
-    }
-
-    /// Growing a prepared collection charges the moment both allocations exist, and a growth that does not
-    /// happen leaves the original grant exactly as it was.
-    #[test]
-    fn a_prepared_collection_grows_under_one_replacement() {
-        let mut admission = admission();
-        let footprint = |slots: usize| Some(slots as u64 * 100);
-        let lease = admission
-            .reserve(Request::bytes(footprint(4).unwrap(), Class::General))
-            .expect("granted");
-        let before = admission.bytes_charged();
-
-        // The peak is real: both are held while the move runs.
-        let mut peak = 0;
-        let lease = grow_prepared(&mut admission, lease, 8, Class::General, footprint, |to| {
-            assert_eq!(to, 8);
-            true
-        })
-        .map_err(|(_, why)| why)
-        .expect("the replacement fits");
-        peak = peak.max(before + 800);
-        assert!(peak >= before);
-        assert_eq!(admission.granted(&lease).expect("held").bytes, 800);
-        assert_eq!(admission.bytes_charged(), before - 400 + 800);
-
-        // A growth the collection refuses rolls back to the original grant rather than shrinking it.
-        let charged = admission.bytes_charged();
-        let (lease, why) =
-            grow_prepared(&mut admission, lease, 8, Class::General, footprint, |_| {
-                false
-            })
-            .expect_err("not actually larger");
-        assert_eq!(why, Denied::Arithmetic);
-        assert_eq!(admission.granted(&lease).expect("held").bytes, 800);
-        assert_eq!(admission.bytes_charged(), charged);
-
-        // And a denied replacement hands the original back untouched.
-        let (lease, why) = grow_prepared(
-            &mut admission,
-            lease,
-            1_000_000,
-            Class::General,
-            footprint,
-            |_| panic!("nothing may be rebuilt when the peak was denied"),
-        )
-        .expect_err("the peak cannot fit");
-        assert_eq!(why, Denied::Bytes);
-        assert_eq!(admission.granted(&lease).expect("held").bytes, 800);
-        admission.release(lease);
     }
 
     /// A bound is solved against *general* headroom, so protected capacity can never inflate ordinary work.

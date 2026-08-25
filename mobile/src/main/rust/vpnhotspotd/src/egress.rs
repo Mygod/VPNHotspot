@@ -20,19 +20,11 @@ use nix::sys::socket::{
 };
 use socket2::{Domain, Protocol, Socket, Type};
 use tokio::io::unix::AsyncFd;
-use tokio::time::timeout;
 use vpnhotspotd::shared::failure::Failure;
 use vpnhotspotd::shared::icmp_translate::{Quote, Reported, QUOTE_BYTES};
 use vpnhotspotd::shared::model::Network;
 
 use crate::upstream::set_socket_network;
-
-/// Bounds one probe round trip, taken from the platform resolver's own base per-attempt timeout
-/// (`RES_TIMEOUT`, 5000 ms) rather than chosen: the probe targets are resolvers, so what the platform
-/// considers a reasonable wait for one answer is the right bound here too.
-///
-/// https://android.googlesource.com/platform/packages/modules/DnsResolver/+/refs/tags/android-17.0.0_r1/resolv_private.h#76
-const PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_millis(5000);
 
 /// `IP_PMTUDISC_OMIT`, which the `libc` crate does not export for Android. Clears DF and skips the
 /// path-MTU cache, which is what lets Android's downstream fragment an oversized relayed datagram.
@@ -507,84 +499,6 @@ pub(crate) struct QueuedError {
     pub(crate) errno: i32,
     /// Protocol-specific. For `EMSGSIZE` it is the path MTU, which is the whole reason this is read.
     pub(crate) info: u32,
-}
-
-/// Exercises every primitive the dataplane depends on, against destinations the app supplies, and reports
-/// one line per check. Debug-only: production sends no targets, so nothing here runs.
-///
-/// This is the step 6 proof. It answers the question that cannot be answered from source - whether an
-/// app-UID process may bind sockets to the selected `Network` and set the options the design assumes -
-/// and it does so through the same functions the dataplane will use, not through a separate harness.
-pub(crate) async fn probe(network: Network, targets: &[SocketAddr]) -> Vec<String> {
-    let mut results = Vec::new();
-    for ipv6 in [false, true] {
-        let family = if ipv6 { "IPv6" } else { "IPv4" };
-        match open_udp(network, ipv6) {
-            Ok(socket) => {
-                results.push(format!(
-                    "{family} UDP socket bound to the selected network: ok"
-                ));
-                if !ipv6 {
-                    for fragmentation in [Fragmentation::Prohibited, Fragmentation::Permitted] {
-                        results.push(match set_fragmentation(&socket, fragmentation) {
-                            Ok(()) => format!("IPv4 DF {fragmentation:?}: ok"),
-                            Err(e) => format!("IPv4 DF {fragmentation:?}: {e}"),
-                        });
-                    }
-                }
-                for target in targets.iter().filter(|target| target.is_ipv6() == ipv6) {
-                    results.push(probe_round_trip(&socket, *target).await);
-                }
-                // The one construction site with no owner to lend one: this whole function is debug-only
-                // and runs against destinations the app supplies, so there is no session accounting for it to
-                // belong to and nothing traffic-driven about how often it happens.
-                let mut scratch = ErrorQueue::new();
-                results.push(match drain_local_error(&socket, &mut scratch) {
-                    Ok(queued) => format!("{family} error queue readable: ok ({queued:?})"),
-                    Err(e) => format!("{family} error queue readable: {e}"),
-                });
-            }
-            Err(e) => results.push(format!("{family} UDP socket: {e}")),
-        }
-        results.push(match open_ping(network, ipv6) {
-            Ok(_) => format!("{family} ping socket: ok"),
-            Err(e) => format!("{family} ping socket: {e}"),
-        });
-    }
-    for target in targets {
-        results.push(match connect_tcp(network, *target).await {
-            Ok(_) => format!("TCP connect to {target}: ok"),
-            Err(failure) => format!("TCP connect to {target}: {failure}"),
-        });
-    }
-    results
-}
-
-/// One DNS query for the root zone, which is the smallest well-formed request a resolver answers, so the
-/// round trip proves the send, the reply, and the metadata rather than just the bind.
-async fn probe_round_trip(socket: &Socket, target: SocketAddr) -> String {
-    const QUERY: [u8; 17] = [
-        0x2b, 0xad, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0x02, 0, 1,
-    ];
-    if let Err(e) = send_to(socket, target, &QUERY, 64) {
-        return format!("send to {target}: {e}");
-    }
-    let mut buffer = [0u8; 512];
-    let fd = match AsyncFd::new(socket.as_raw_fd()) {
-        Ok(fd) => fd,
-        Err(e) => return format!("readiness for {target}: {e}"),
-    };
-    match timeout(PROBE_TIMEOUT, fd.readable()).await {
-        Ok(Ok(_ready)) => match receive(socket, &mut buffer) {
-            Ok(received) => format!(
-                "round trip with {target}: ok, {} bytes from {} hop_limit {} interface {}",
-                received.bytes, received.source, received.hop_limit, received.interface
-            ),
-            Err(e) => format!("reply from {target}: {e}"),
-        },
-        Ok(Err(e)) => format!("readiness for {target}: {e}"),
-        Err(_) => format!("round trip with {target}: timed out"),
-    }
 }
 
 fn socket_address(storage: &SockaddrStorage) -> Option<SocketAddr> {

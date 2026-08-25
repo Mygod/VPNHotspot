@@ -1,8 +1,7 @@
 //! One flow's depth-one payload mailbox, and the sequential handover that keeps it at depth one.
 //!
-//! Here rather than beside the TCP engine because the property it carries is an ownership one, and ownership
-//! is what a host test can check. `H` is whatever the owner names a flow's transport slot by - smoltcp's
-//! `SocketHandle` in the daemon - so nothing here depends on the stack it serves.
+//! `H` is whatever the owner names a flow's transport slot by - smoltcp's `SocketHandle` in the daemon - so
+//! the ownership rule does not depend on the stack it serves.
 //!
 //! # Depth one means one chunk exists
 //!
@@ -16,6 +15,7 @@ use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::owned;
+use vpnhotspotd::shared::fair::FlowId;
 use vpnhotspotd::shared::preempt::hand_over;
 
 /// What one flow's producer puts in its mailbox.
@@ -34,29 +34,17 @@ pub(crate) enum Chunk {
 /// statement about buffers that exist rather than about buffers someone is still waiting on.
 pub(crate) type Payload = owned::Owned;
 
-/// A payload-free wake naming exactly which flow may have work.
-///
-/// Both halves of the identity, and that is not belt-and-braces: a transport stack reuses its slot handles,
-/// so a handle alone names a slot rather than a flow, and a marker from a closed flow would otherwise be
-/// indistinguishable from one belonging to whatever reused its handle. The owner validates the pair before it
-/// touches anything.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct Marker<H> {
-    pub(crate) handle: H,
-    pub(crate) worker: u64,
-}
-
 /// One flow's end of the arrangement: where its chunks go, how it is woken, and how it learns one was
 /// consumed.
 pub(crate) struct Mailbox<H> {
     pub(crate) chunks: mpsc::Sender<Chunk>,
-    pub(crate) ready: mpsc::Sender<Marker<H>>,
+    pub(crate) ready: mpsc::Sender<FlowId<H>>,
     /// Signalled by the owner when a chunk has been *consumed* - fully written into the client's send buffer,
     /// not merely delivered. Waiting for it is what makes depth one mean depth one: without it a second chunk
     /// could be built while the first was still being written, which is two chunks of buffer per flow under
     /// exactly the conditions that made the bound necessary.
     pub(crate) consumed: mpsc::Receiver<()>,
-    pub(crate) identity: Marker<H>,
+    pub(crate) identity: FlowId<H>,
 }
 
 impl<H: Copy> Mailbox<H> {

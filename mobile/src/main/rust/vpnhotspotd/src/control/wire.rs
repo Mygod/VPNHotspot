@@ -90,7 +90,7 @@ where
     Ok(buffer)
 }
 
-async fn send_packet<W>(socket: &mut W, packet: &[u8]) -> io::Result<()>
+pub(crate) async fn send_packet<W>(socket: &mut W, packet: &[u8]) -> io::Result<()>
 where
     W: AsyncWrite + Unpin,
 {

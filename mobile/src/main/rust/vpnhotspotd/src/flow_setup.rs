@@ -1,10 +1,9 @@
 //! Every resource one intercepted TCP flow needs before it may exist, and the exact reverse of acquiring
 //! them.
 //!
-//! Here rather than beside the engine because this is the part a host can check: a lease, a socket with two
-//! buffers in a real set, five bounded channels and a worker identity, taken in an order where each step can
-//! undo the ones before it. The engine keeps what it cannot share - the record it stores, the future it
-//! spawns, the reports it writes - and calls these two functions for the rest.
+//! A lease, a socket with two buffers in a real set, five bounded channels and a worker identity are taken in
+//! an order where each step can undo the ones before it. The engine keeps the record it stores, the future it
+//! spawns and the reports it writes, and calls these two functions for the rest.
 //!
 //! # Why preparation and release are one pair
 //!
@@ -19,13 +18,14 @@ use smoltcp::socket::tcp::{ListenError, Socket, SocketBuffer};
 use smoltcp::wire::IpListenEndpoint;
 use tokio::sync::mpsc;
 
-use crate::mailbox::{Chunk, Mailbox, Marker};
+use crate::mailbox::{Chunk, Mailbox};
 use crate::owned::Owned;
 use crate::report;
 use crate::tcp_dns::{Control, Serving};
 use crate::workers::{Identity, Workers};
 use vpnhotspotd::shared::admission::Admission;
 use vpnhotspotd::shared::dns_debt::{self, Connection};
+use vpnhotspotd::shared::fair::FlowId;
 use vpnhotspotd::shared::reply_bound::built_depth;
 
 /// The client-side stack's socket storage, and how much of it has ever really been allocated.
@@ -37,40 +37,22 @@ use vpnhotspotd::shared::reply_bound::built_depth;
 /// Nothing is inferred from handles, which name slots and say nothing about how many exist.
 pub(crate) struct Sockets {
     set: SocketSet<'static>,
-    /// How many slots the backing vector holds, which is what the engine was charged for.
-    #[cfg(test)]
-    pub(crate) slots: usize,
-    #[cfg(test)]
-    occupied: usize,
 }
 
 impl Sockets {
     pub(crate) fn new(prepared: usize) -> Self {
         Self {
             set: SocketSet::new(Vec::with_capacity(prepared)),
-            #[cfg(test)]
-            slots: 0,
-            #[cfg(test)]
-            occupied: 0,
         }
     }
 
     /// Adds one socket, pushing a slot only when none is free - which is exactly when the backing vector
     /// grows.
     fn add(&mut self, socket: Socket<'static>) -> SocketHandle {
-        #[cfg(test)]
-        {
-            self.occupied += 1;
-            self.slots = self.slots.max(self.occupied);
-        }
         self.set.add(socket)
     }
 
     pub(crate) fn remove(&mut self, handle: SocketHandle) -> smoltcp::socket::Socket<'static> {
-        #[cfg(test)]
-        {
-            self.occupied -= 1;
-        }
         self.set.remove(handle)
     }
 }
@@ -89,8 +71,7 @@ impl std::ops::DerefMut for Sockets {
     }
 }
 
-/// How large the pieces of one flow are. The engine's, so a test cannot quietly agree with itself about a
-/// size the daemon does not use.
+/// How large the pieces of one flow are, shared by the engine's bound and its allocation path.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Sizing {
     /// What the composite grant covers: both stack buffers, the read scratch that is really live at once,
@@ -175,7 +156,7 @@ pub(crate) fn prepare<R>(
     admission: &mut Admission,
     sockets: &mut Sockets,
     workers: &mut Workers<SocketHandle, R>,
-    ready: &mpsc::Sender<Marker<SocketHandle>>,
+    ready: &mpsc::Sender<FlowId<SocketHandle>>,
     sizing: Sizing,
     endpoint: IpListenEndpoint,
 ) -> Result<Prepared, Denied> {
@@ -223,10 +204,7 @@ pub(crate) fn prepare<R>(
         chunks,
         ready: ready.clone(),
         consumed: acknowledged,
-        identity: Marker {
-            handle,
-            worker: identity.id,
-        },
+        identity: FlowId::new(handle, identity.id),
     };
     Ok(Prepared {
         connection,

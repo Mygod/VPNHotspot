@@ -13,10 +13,10 @@ import android.os.ParcelFileDescriptor
  * check failed may well have released it; neither answer is available.
  *
  * The names are shared because the states mean the same thing everywhere. The *transitions* are not shared,
- * which is why there is no generic owner below: the exact request, the agent, the descriptor, the connector
- * and the global preference are acquired by different mechanisms, prove themselves with different evidence,
- * and differ in whether a failed release may be reissued at all. A helper that inferred one machine from all
- * five would have to guess exactly the things this ledger exists to refuse to guess.
+ * which is why there is no generic owner below: each resource is acquired by a different mechanism, proves
+ * itself with different evidence, and differs in whether a failed release may be reissued at all. A helper
+ * that inferred one machine for all of them would have to guess exactly the things this ledger exists to
+ * refuse to guess.
  */
 internal enum class ResourceState {
     /** Nothing is owed: either nothing was created, or the platform proved nothing was. */
@@ -48,10 +48,6 @@ internal enum class ResourceState {
 internal sealed class SessionResource(private val name: String) {
     var state = ResourceState.ABSENT
         protected set
-    /** Why this resource's outcome is unknown, for the report that has to name it. */
-    var cause: Throwable? = null
-        protected set
-
     protected fun expect(vararg allowed: ResourceState) {
         check(state in allowed) { "$name is $state" }
     }
@@ -104,7 +100,7 @@ internal class DescriptorResource : SessionResource("TUN descriptor") {
 
 /**
  * The launched child, owned from `ProcessBuilder.start()` rather than from a completed handshake: a process
- * exists the moment it is spawned, and it may already hold a duplicate of the TUN before it authenticates.
+ * exists the moment it is spawned, and a later readiness failure may leave it holding a duplicate of the TUN.
  *
  * Its release is an exit fence - EOF, SIGTERM, SIGKILL, observed exit - which is idempotent and is exactly
  * what a retry is for, so a fence that failed stays reissuable rather than becoming unknown.
@@ -213,10 +209,9 @@ internal class PreferenceResource : SessionResource("tethering preference") {
         state = ResourceState.LIVE
     }
 
-    fun settingUnknown(cause: Throwable?) {
+    fun settingUnknown() {
         expect(ResourceState.ISSUING)
         state = ResourceState.UNKNOWN
-        this.cause = cause
     }
 
     /** Nothing to clear, and nothing owed: only a set that was proven or unproven owes a clear. */
@@ -239,10 +234,9 @@ internal class PreferenceResource : SessionResource("tethering preference") {
         state = ResourceState.CONFIRMED
     }
 
-    fun clearingUnknown(cause: Throwable?) {
+    fun clearingUnknown() {
         expect(ResourceState.RELEASE_ISSUED)
         state = ResourceState.UNKNOWN
-        this.cause = cause
     }
 
     /**
@@ -302,13 +296,12 @@ internal class ExactRequestResource : SessionResource("exact request") {
      * since that invalidates the *answer*, not the request. Null is the absence of an answer rather than
      * proof of absence, so it is unknown and process-terminal.
      */
-    fun settle(handle: NetworkRequest?, cause: Throwable?) {
+    fun settle(handle: NetworkRequest?) {
         expect(ResourceState.ISSUING)
         if (handle != null) {
             state = ResourceState.LIVE
         } else {
             state = ResourceState.UNKNOWN
-            this.cause = cause
         }
     }
 
@@ -363,13 +356,12 @@ internal class AgentResource : SessionResource("network agent") {
      * call did afterwards. Null after issuance is unknown and process-terminal: the absence of
      * `onNetworkCreated` is not proof that no remote agent exists, so the local network cannot be fenced.
      */
-    fun settle(network: Network?, cause: Throwable?) {
+    fun settle(network: Network?) {
         expect(ResourceState.ISSUING)
         if (network != null) {
             state = ResourceState.LIVE
         } else {
             state = ResourceState.UNKNOWN
-            this.cause = cause
         }
     }
 

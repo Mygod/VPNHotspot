@@ -29,8 +29,6 @@
 //!   `sync/mpsc/list.rs:194-241`. So a channel cycled at a shallow depth keeps blocks in hand rather than
 //!   returning them, and the bound has to allow for that rather than for `depth` alone.
 
-use std::marker::PhantomData;
-
 use crate::shared::admission::linear_footprint;
 
 /// The value slots one charged block covers: the *largest* `BLOCK_CAP` across the pinned targets.
@@ -252,7 +250,7 @@ pub trait ErrorSource {
 /// What one error-queue read did: which message it saw, and what became of the slot it was holding.
 #[derive(Debug)]
 pub enum Taken {
-    Took { drained: Drained, slot: Disposition },
+    Took { slot: Disposition },
     Failed(std::io::Error),
 }
 
@@ -265,7 +263,6 @@ pub enum Taken {
 pub fn take_one<S: ErrorSource + ?Sized>(source: &mut S) -> Taken {
     match source.next() {
         Ok(drained) => Taken::Took {
-            drained,
             slot: disposition(drained),
         },
         Err(e) => Taken::Failed(e),
@@ -419,29 +416,6 @@ where
                 }
             },
         }
-    }
-}
-
-/// A marker for the payload type a footprint was taken for, so a caller cannot charge one channel's shape and
-/// build another's.
-#[derive(Debug)]
-pub struct Charged<T> {
-    depth: usize,
-    kind: PhantomData<fn() -> T>,
-}
-
-impl<T> Charged<T> {
-    /// Records that a channel of this depth and payload has been charged for. Built only by an owner that has
-    /// a granted lease in hand.
-    pub fn new(depth: usize) -> Self {
-        Self {
-            depth,
-            kind: PhantomData,
-        }
-    }
-
-    pub fn depth(&self) -> usize {
-        self.depth
     }
 }
 

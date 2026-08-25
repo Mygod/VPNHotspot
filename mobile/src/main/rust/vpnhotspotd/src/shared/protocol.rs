@@ -140,12 +140,6 @@ pub struct DaemonReportError {
     report: DaemonErrorReport,
 }
 
-impl DaemonReportError {
-    pub fn report(&self) -> &DaemonErrorReport {
-        &self.report
-    }
-}
-
 impl fmt::Display for DaemonReportError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(

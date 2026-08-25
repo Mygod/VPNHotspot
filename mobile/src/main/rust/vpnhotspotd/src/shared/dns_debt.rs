@@ -46,7 +46,7 @@ use crate::shared::admission::{Admission, Class, Denied, Lease, Request};
 /// The token is *moved onto a grant its owner already holds* - the retained-table lease that owner keeps for
 /// its whole session - rather than split into a lease per token. The ledger is derived as one row per
 /// record-backed owner, plus the statically known byte-only owners, plus **one** spare for the single
-/// owner-confined split or replacement in flight (see `Admission::ledger_slots`). A row per quarantined
+/// owner-confined split in flight (see `Admission::ledger_slots`). A row per quarantined
 /// token would therefore consume rows the derivation never budgeted, and the first quarantine that found
 /// none would be refused - handing a token back while Android still holds its slot, which is the exact
 /// fail-open this type exists to prevent. A move onto an existing row needs no slot at all, so it cannot be
@@ -109,12 +109,8 @@ impl Quarantine {
     }
 
     /// How many tokens this session has had to give up on.
-    pub fn len(&self) -> u32 {
+    pub fn count(&self) -> u32 {
         self.held
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.held == 0
     }
 }
 
@@ -153,6 +149,7 @@ impl Connection {
 }
 
 impl QueryDebt {
+    #[cfg(test)]
     pub fn id(&self) -> u64 {
         self.id
     }
@@ -290,13 +287,12 @@ impl Stranded {
 ///
 /// # Every path that does not release the token
 ///
-/// Three of them, and they used to be one. A connection that names an outstanding question and whose token
-/// did not reach that question's debt may not have its grant released, because the token would go back into
+/// A connection that names an outstanding question and whose token did not reach that question's debt may
+/// not have its grant released, because the token would go back into
 /// circulation while the platform's slot for that question is still taken - and a token that looked free for
 /// an instant is a second query admitted against a limiter with no room for it. So the transfer failing,
 /// `debt` naming a *different* question, and `debt` being absent altogether are all the same answer:
-/// [Stranded], with the grant handed back rather than released. They were previously the ordinary release
-/// case, which was a fail-open on the one dimension this module exists to get right.
+/// [Stranded], with the grant handed back rather than released.
 ///
 /// The exception is a connection that is not actually holding a token - asked of the ledger rather than
 /// assumed - where there is nothing at risk and keeping its bytes and its record would be a leak for no
@@ -356,17 +352,7 @@ pub struct Delivery {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DeliveryId(u64);
 
-impl DeliveryId {
-    pub fn get(self) -> u64 {
-        self.0
-    }
-}
-
 impl Delivery {
-    pub fn id(&self) -> DeliveryId {
-        self.id
-    }
-
     pub fn lease(&self) -> &Lease {
         &self.lease
     }
@@ -384,45 +370,6 @@ pub enum Acked {
     Absent,
 }
 
-/// What one submitted query's owner holds while its resolver task runs.
-///
-/// The answer channel is here rather than with the transport, and that is the ordering the whole delivery
-/// path depends on: the transport used to await the resolver directly, so it could frame an answer, hand
-/// every piece over, take the last acknowledgment and report "delivered" before its own worker's terminal had
-/// even been read - and parking happens at that terminal, so the report found nothing and the grant sat there
-/// until the flow closed.
-#[derive(Debug)]
-pub struct Outstanding<R> {
-    debt: QueryDebt,
-    /// Where the resolver task leaves its finished answer. Read by the owner at the joined terminal, and by
-    /// nothing before it.
-    resolved: tokio::sync::oneshot::Receiver<R>,
-}
-
-impl<R> Outstanding<R> {
-    pub fn new(debt: QueryDebt, resolved: tokio::sync::oneshot::Receiver<R>) -> Self {
-        Self { debt, resolved }
-    }
-
-    pub fn debt(&self) -> &QueryDebt {
-        &self.debt
-    }
-
-    /// The joined terminal: takes whatever the task left behind, ends the descriptor record and any logical
-    /// token, and answers with what the delivery owner must now be given.
-    ///
-    /// The task's future is dropped by the time a terminal exists, so a value it sent is already here and one
-    /// it never sent reads as closed. No waiting, and no window in which the transport could have seen it
-    /// first.
-    pub fn joined(mut self, admission: &mut Admission, delivery_bytes: u64) -> Settled<R> {
-        let answer = self.resolved.try_recv().ok();
-        Settled {
-            delivery: settle(admission, self.debt, delivery_bytes),
-            answer,
-        }
-    }
-}
-
 /// A settled query, waiting to be parked on the flow that will deliver it.
 ///
 /// The answer is *in* here and there is no way to take it out except [Parked::park], which parks first. That
@@ -438,9 +385,9 @@ impl<R> Settled<R> {
     ///
     /// Nothing about the ordering changes: the answer is *inside* from the moment this exists and
     /// [Parked::park] is still the only way out of it, so a transport still cannot be handed an answer whose
-    /// delivery is not somewhere an acknowledgment will find it. What differs from [Outstanding::joined] is
-    /// only where the answer came from - a query refused before the platform was asked, answered under the
-    /// grant that already covered it and reconciled down to what physically survives.
+    /// delivery is not somewhere an acknowledgment will find it. The answer came from a query refused before
+    /// the platform was asked, under the grant that already covered it and reconciled down to what physically
+    /// survives.
     ///
     /// `delivery` carries an id from the same counter a submitted query's does, and that is not a
     /// convenience: an acknowledgment names one delivery for the life of the process, so a refusal numbered
@@ -544,11 +491,6 @@ pub struct Parked {
 }
 
 impl Parked {
-    /// Whether anything is parked, and which delivery it is.
-    pub fn id(&self) -> Option<DeliveryId> {
-        self.delivery.as_ref().map(|delivery| delivery.id)
-    }
-
     /// Parks a settled delivery on this flow and *then* hands its answer out.
     ///
     /// One call, so the order cannot be written the other way round. The transport learns the answer only
@@ -850,7 +792,7 @@ mod tests {
             .take(&mut admission, stranded.lease(), &session)
             .expect("a move onto a row that already exists");
         stranded.released(&mut admission);
-        assert_eq!(quarantine.len(), 1);
+        assert_eq!(quarantine.count(), 1);
         assert_eq!(
             admission.granted(&session).expect("held").dns_tokens,
             1,
@@ -889,67 +831,6 @@ mod tests {
         // A second settle would need a second debt, and there is no way to make one from the first: `settle`
         // consumes it. What a stale terminal can do instead is name a query the table no longer holds, which
         // never reaches here at all.
-    }
-
-    /// A buffer that reports which release it was dropped before or after, read from the aggregate's own
-    /// release ledger rather than from the aggregate - which the release is holding exclusively at the time.
-    struct Reports {
-        at: std::rc::Rc<std::cell::Cell<Option<u64>>>,
-    }
-
-    impl Drop for Reports {
-        fn drop(&mut self) {
-            self.at
-                .set(Some(crate::shared::admission::releases::so_far()));
-        }
-    }
-
-    /// A discarded delivery gives its buffer back *before* the capacity that covered it.
-    ///
-    /// The order is the property, and it is invisible in a balance: the delivery is released exactly once
-    /// either way and the buffer is dropped exactly once either way, so an owner that refunds first and then
-    /// drops looks identical from outside. What tells them apart is asking the buffer, at its own drop, how
-    /// many releases had happened by then - and neither that count nor the drop is written by the function
-    /// under test. Refunding first is a refund for memory this process is still holding, for the whole rest
-    /// of the function.
-    ///
-    /// The answer arrives the way the daemon's does: through the channel its resolver task sends on, taken by
-    /// the owner at the joined terminal. Nothing is handed to [Settled] directly.
-    #[test]
-    fn a_discarded_delivery_drops_its_answer_before_it_refunds() {
-        let mut admission = admission();
-        let empty = admission.bytes_charged();
-        let dropped_at = std::rc::Rc::new(std::cell::Cell::new(None));
-
-        let debt = submit(&mut admission, 11, EXCHANGE_BYTES).expect("granted");
-        let (finished, resolved) = tokio::sync::oneshot::channel();
-        finished
-            .send(Reports {
-                at: dropped_at.clone(),
-            })
-            .ok()
-            .expect("the owner has not read it yet");
-        let settled = Outstanding::new(debt, resolved).joined(&mut admission, DELIVERY_BYTES);
-        assert!(settled.has_answer());
-        assert_eq!(dropped_at.get(), None, "still held after the join");
-
-        // Nobody will consume it - there is no flow left to deliver to. This is the last owner that can end
-        // it.
-        let before = crate::shared::admission::releases::so_far();
-        settled.discard(&mut admission);
-        assert_eq!(
-            dropped_at.get(),
-            Some(before),
-            "the answer was dropped before the release, not after it"
-        );
-        assert_eq!(
-            crate::shared::admission::releases::so_far(),
-            before + 1,
-            "and the delivery was released exactly once"
-        );
-        assert_eq!(admission.bytes_charged(), empty);
-        assert_eq!(admission.records_charged(), 0);
-        assert_eq!(admission.invariant_violations(), 0);
     }
 
     /// A conservative delivery reservation covers the largest answer there is, framed, with a chunk being

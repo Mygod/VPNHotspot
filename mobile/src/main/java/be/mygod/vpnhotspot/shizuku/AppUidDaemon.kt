@@ -11,12 +11,7 @@ import androidx.annotation.RequiresApi
 import be.mygod.librootkotlinx.io.pid
 import be.mygod.librootkotlinx.net.ALocalServerSocket
 import be.mygod.librootkotlinx.net.ALocalSocket
-import io.ktor.utils.io.ByteReadChannel
-import io.ktor.utils.io.ByteWriteChannel
-import be.mygod.vpnhotspot.BuildConfig
-import be.mygod.vpnhotspot.net.monitor.Upstream
 import be.mygod.vpnhotspot.root.daemon.BootstrapConfig
-import be.mygod.vpnhotspot.root.daemon.BootstrapHello
 import be.mygod.vpnhotspot.root.daemon.BootstrapReady
 import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.root.daemon.DaemonException
@@ -26,13 +21,14 @@ import be.mygod.vpnhotspot.root.daemon.ShizukuDaemonFrame
 import be.mygod.vpnhotspot.root.daemon.ShizukuSessionConfig
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.widget.SmartSnackbar
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.ByteWriteChannel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.job
@@ -42,10 +38,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import timber.log.Timber
 import java.io.IOException
-import java.net.Inet6Address
 import java.lang.Process as ChildProcess
-import java.util.concurrent.TimeUnit
 import java.nio.ByteBuffer
+import java.util.concurrent.TimeUnit
 import kotlin.random.Random
 
 /**
@@ -58,11 +53,8 @@ import kotlin.random.Random
  */
 @RequiresApi(33)
 class AppUidDaemon private constructor(
-    private val child: Child,
-    private val socket: ALocalSocket,
     private val input: ByteReadChannel,
     private val output: ByteWriteChannel,
-    private val scope: CoroutineScope,
     /**
      * The session's own axes owner, which stamps the sequence as a config is written. Shared rather than
      * counted here, because the sequence is one of the three axes the daemon acknowledges together and
@@ -73,33 +65,28 @@ class AppUidDaemon private constructor(
     /**
      * The launched child, owned from `ProcessBuilder.start()` rather than from a completed handshake.
      *
-     * Ownership has to begin at launch, because a child whose authentication or handshake never completes is
-     * still a process this app started under its own UID, and it may already hold a duplicate of the TUN: the
-     * descriptor travels with the config frame, which is written before the readiness frame is read. So a
-     * failed launch runs the same EOF/SIGTERM/SIGKILL/observed-exit fence a normal stop does, and it runs
-     * before the app closes the TUN or reports the session gone.
+     * Ownership begins at launch because the process exists before it connects. A failure after the config
+     * frame is written may also leave it holding a duplicate of the TUN. Once [spawn] returns, any later
+     * failure leaves the caller's ledger to run the same exit fence as a normal stop before closing the TUN.
      */
     class Child internal constructor(
         private val process: ChildProcess,
         /**
          * Read from the launched process at `start()` and never from anything the peer says, because this is
          * what SIGKILL names. A child that never connects has no peer credentials at all, and one that
-         * connects with the wrong nonce is somebody else - so taking the pid from the connection would leave
+         * connects from another process is somebody else - so taking the pid from the connection would leave
          * the first case unfenceable and let the second redirect the fence at an innocent process.
          *
          * `java.lang.Process` has no `pid()` member on any supported release; the accessor is
          * [be.mygod.librootkotlinx.io.pid], which owns the `java.lang.UNIXProcess.pid` reflection, and its
          * availability is probed before the session mutates anything.
          */
-        internal val pid: Int,
+        private val pid: Int,
         private val server: ALocalServerSocket,
-        internal val scope: CoroutineScope,
-        private val nonce: Long,
+        private val scope: CoroutineScope,
     ) {
         /** The accepted control socket, closed first because EOF on it is the child's cancellation signal. */
         private var socket: ALocalSocket? = null
-
-        internal fun done() = server.close()
 
         /**
          * Ordered shutdown, and a fence rather than a signal: everything downstream assumes the child is
@@ -144,12 +131,11 @@ class AppUidDaemon private constructor(
         }
 
         /**
-         * Peer credentials, then the nonce, both before a descriptor is handed over. The uid check rejects
-         * any other app that guessed the abstract socket name; the pid check rejects anything that is not the
-         * process this launch created, including another copy of this app's own daemon; and the nonce is the
-         * last gate before the descriptor moves, since it travels in argv, which no other app can read.
+         * Peer credentials are checked before a descriptor is handed over. The uid check rejects any other
+         * app that guessed the abstract socket name, and the pid check rejects anything that is not the
+         * process this launch created, including another copy of this app's own daemon.
          *
-         * A peer that fails any of the three is dropped and the loop keeps accepting. Nothing it presented is
+         * A peer that fails either check is dropped and the loop keeps accepting. Nothing it presented is
          * retained - above all not its pid, which stays the launched one, because a same-UID impostor that
          * could redirect the fence would be pointing SIGKILL at an innocent process while the real child kept
          * relaying.
@@ -174,9 +160,7 @@ class AppUidDaemon private constructor(
                     // ancillary descriptors are state of LocalSocketImpl's output stream: a channel that
                     // writes the raw descriptor by another route silently drops them.
                     val input = accepted.openReadChannel()
-                    val hello = BootstrapHello.ADAPTER.decode(DaemonIpc.readFrame(input))
-                    if (hello.nonce != nonce) throw IOException("$BINARY_NAME presented a wrong nonce")
-                    // Retained only now, with all three checks passed: this is the socket whose EOF is the
+                    // Retained only now, with both checks passed: this is the socket whose EOF is the
                     // child's cancellation signal, so it must not be one an impostor holds.
                     socket = accepted
                     keep = true
@@ -194,8 +178,9 @@ class AppUidDaemon private constructor(
                         throw IOException("$BINARY_NAME reported interface ${ready.interface_name}")
                     }
                     Timber.i("$BINARY_NAME ${credentials.pid} is ready on ${config.interface_name}")
-                    return AppUidDaemon(this, accepted, input, accepted.openWriteChannel(), scope,
-                        publication).also { daemon ->
+                    // Authentication is complete and this child is the only accepted peer.
+                    server.close()
+                    return AppUidDaemon(input, accepted.openWriteChannel(), publication).also { daemon ->
                         // Started only now, because the handshake above reads the same channel. From here
                         // nothing else does.
                         scope.launch { daemon.receive() }
@@ -274,16 +259,11 @@ class AppUidDaemon private constructor(
                     "$BINARY_NAME is admitting ${applied.admitting} for config ${next.sequence}, " +
                             "which asked for ${next.admit}"
                 }
-                admitting = applied.admitting
             }
         } finally {
             applying = false
         }
     }
-
-    /** What the daemon last confirmed it is serving, which is never assumed from what was sent. */
-    var admitting = false
-        private set
 
     /**
      * Awaits the acknowledgement of the config [apply] is currently waiting on. Null while none is in
@@ -344,21 +324,6 @@ class AppUidDaemon private constructor(
         }
     }
 
-    /**
-     * Closes admission without ending the session, which is step 1 of the ordered stop: the daemon keeps
-     * serving what it already owns and admits nothing new.
-     *
-     * Throws when the child could not acknowledge it, because the caller has to know: acknowledgement is what
-     * lets the slow preference clear run before the child is fenced, and a child that is still admitting
-     * would spend that whole window - up to a minute - taking on new flows, mappings, queries and fragments
-     * on a network the session is giving up. So the ordered stop reads the outcome and runs the exit fence
-     * first when this fails, instead of leaving a still-admitting child running through the wait.
-     */
-    suspend fun closeAdmission(config: ShizukuSessionConfig) = apply(config)
-
-    /** Ordered shutdown. See [Child.stop]: everything below this assumes the child is gone. */
-    suspend fun stop() = child.stop()
-
     companion object {
         private const val BINARY_NAME = "vpnhotspotd"
 
@@ -380,28 +345,18 @@ class AppUidDaemon private constructor(
         }
 
         /**
-         * Transfers a duplicate of [tun] and keeps the original open in the app process, which is what
-         * makes app-process death close the daemon's copy too. The descriptor is set nonblocking before
-         * duplicating, because the flag belongs to the shared file description; the daemon re-checks it
-         * anyway, since this side cannot prove what arrived.
-         */
-        /**
          * Starts the child and returns ownership of it, without yet talking to it. Split from [Child.connect]
          * so that the caller records the child in its own resource ledger *before* the handshake can fail:
          * `ProcessBuilder.start()` is the moment a process exists, not the moment it authenticates.
          */
         fun spawn(): Child {
             // same binary, same ABI check, same in-place APK exec as the root path
-            val command = DaemonController.daemonCommand
             val socketName = "$BINARY_NAME.${Process.myPid()}.${Random.nextLong().toHexString()}"
-            val nonce = Random.nextLong()
             val scope = CoroutineScope(privilegedDispatcher + SupervisorJob())
             val server = ALocalServerSocket(LocalServerSocket(socketName), Services.mainHandler)
             var process: ChildProcess? = null
             val pid = try {
-                // formatted unsigned, because the same 64 bits are a signed Long here, an unsigned
-                // integer in argv, and a proto uint64 on the wire
-                process = ProcessBuilder(command + listOf(socketName, nonce.toULong().toString()))
+                process = ProcessBuilder(DaemonController.daemonCommand + listOf("--app-uid", socketName))
                     .redirectErrorStream(true)
                     .start()
                 // Read immediately, because everything below owns a process that can only be fenced by pid.
@@ -429,7 +384,7 @@ class AppUidDaemon private constructor(
                     Timber.tag(BINARY_NAME).d(e)
                 }
             }
-            return Child(process, pid, server, scope, nonce)
+            return Child(process, pid, server, scope)
         }
 
         /**
@@ -449,28 +404,12 @@ class AppUidDaemon private constructor(
             interfaceName: String,
             mtu: Int,
             publication: SessionPublication,
-            /**
-             * Only the startup egress probe reads this, and only in a debug build. What the dataplane binds
-             * to is the selection carried by every [ShizukuSessionConfig], which is level-triggered and can
-             * change while the session runs; this is a snapshot taken before the first one exists.
-             */
-            upstream: Upstream?,
         ): AppUidDaemon {
             Os.fcntlInt(tun.fileDescriptor, OsConstants.F_SETFL,
                 Os.fcntlInt(tun.fileDescriptor, OsConstants.F_GETFL, 0) or OsConstants.O_NONBLOCK)
-            val daemon = withTimeout(CONTROL_RESULT_DEADLINE) {
-                child.connect(tun, BootstrapConfig(interface_name = interfaceName, mtu = mtu,
-                    probe_network = upstream?.network?.networkHandle ?: 0L,
-                    probe_targets = if (!BuildConfig.DEBUG) emptyList() else {
-                        upstream?.properties?.dnsServers.orEmpty().map {
-                            if (it is Inet6Address) "[${it.hostAddress}]:53" else "${it.hostAddress}:53"
-                        }
-                    }), publication)
+            return withTimeout(CONTROL_RESULT_DEADLINE) {
+                child.connect(tun, BootstrapConfig(interface_name = interfaceName, mtu = mtu), publication)
             }
-            // Nothing else accepts on it once the control connection is up, and a child that reconnected
-            // would not be this daemon.
-            child.done()
-            return daemon
         }
     }
 }

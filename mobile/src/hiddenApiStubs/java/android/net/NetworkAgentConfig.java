@@ -1,10 +1,9 @@
 package android.net;
 
-import android.os.Parcelable;
 import androidx.annotation.RequiresApi;
 
 @RequiresApi(30)
-public abstract class NetworkAgentConfig implements Parcelable {
+public abstract class NetworkAgentConfig {
     public static final class Builder {
         public Builder() {
         }

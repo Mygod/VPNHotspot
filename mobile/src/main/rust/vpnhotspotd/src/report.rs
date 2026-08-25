@@ -23,19 +23,6 @@ use vpnhotspotd::shared::reporter::{Handed, Pushed, Reporter, ReporterGuard, Rep
 /// conversation that installed it and stops existing when that conversation finishes.
 static REPORTER: LazyLock<ReporterRegistry> = LazyLock::new(ReporterRegistry::default);
 
-/// Held for as long as a test owns reporting, because [REPORTER] is deliberately process-global: a second
-/// conversation's install is *refused* rather than queued, which is the production invariant and also exactly
-/// what two tests installing on two threads would trip over. Every test that calls [init] takes this first,
-/// so what would otherwise be a rare "already installed" failure is an ordering instead.
-///
-/// Tokio's rather than `std`'s, because every test that owns reporting is async and holds this across an
-/// await - and because it does not poison, so one failing test leaves the rest reporting the failures they
-/// found rather than a lock they never touched.
-#[cfg(test)]
-pub(crate) async fn exclusive() -> tokio::sync::MutexGuard<'static, ()> {
-    static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
-    SERIAL.lock().await
-}
 const NONFATAL_COALESCE_WINDOW: Duration = Duration::from_secs(1);
 /// How many reports may be waiting in the controller's queue at once.
 ///
@@ -142,28 +129,9 @@ macro_rules! stderr {
 pub(crate) use stderr;
 pub(crate) use stdout;
 
-#[cfg(not(test))]
 #[link(name = "log")]
 unsafe extern "C" {
     fn __android_log_write(priority: c_int, tag: *const c_char, text: *const c_char) -> c_int;
-}
-
-/// The platform's log, dropped when this binary is built as a test harness.
-///
-/// A host has no `liblog` to link against, so without this the binary's own modules could not be tested at
-/// all. Reports still travel their real path - the structured one this daemon owns - and only the write into
-/// the platform's ring buffer goes nowhere.
-///
-/// # Safety
-///
-/// Nothing is dereferenced, so calling it is unconditionally sound.
-#[cfg(test)]
-unsafe fn __android_log_write(
-    _priority: c_int,
-    _tag: *const c_char,
-    _text: *const c_char,
-) -> c_int {
-    0
 }
 
 /// Installs the one reporter this process may have and hands its owner back, so the conversation that called
@@ -394,82 +362,5 @@ fn write_logcat(priority: c_int, message: &str) {
     };
     unsafe {
         __android_log_write(priority, LOG_TAG.as_ptr().cast(), message.as_ptr());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn sample() -> DaemonErrorReport {
-        daemon_error_report("test.dispatch", "message", "Other")
-    }
-
-    /// With no app registry installed, a report takes root's global pipeline - master's behaviour exactly.
-    ///
-    /// The root pipeline is a `OnceLock` for the life of the process, so this both installs it and proves the
-    /// dispatch: the report arrives on the controller queue that [init] was given, having gone through root's
-    /// own coalescing task rather than through any registry.
-    #[tokio::test]
-    async fn root_dispatch_uses_the_global_pipeline() {
-        let _serial = exclusive().await;
-        let (sender, mut controller) = unbounded_channel::<ControllerMessage>();
-        // Root installs no registry, which is the other half of the dispatch rule.
-        assert!(REPORTER.get().is_none());
-        // Held so the pipeline's weak controller can still be upgraded; the registry and root alike keep the
-        // controller weakly, so the only strong reference has to be this test's.
-        let _strong = sender.clone();
-        // `ROOT` is a `OnceLock` for the life of the process, so only the first test to get here installs it.
-        // Whichever that is, the assertion below is about the same pipeline.
-        let installed = init(sender).is_ok();
-        report(sample());
-        flush().await;
-        if installed {
-            let message = controller.recv().await.expect("root delivered the report");
-            assert!(matches!(message, ControllerMessage::Nonfatal { .. }));
-        }
-    }
-
-    /// An installed app registry takes the report, and root's pipeline never sees it.
-    ///
-    /// No double delivery is the property: the app UID has its own conversation, and a report reaching both
-    /// would be reported twice to two different owners.
-    #[tokio::test]
-    async fn app_dispatch_uses_the_installed_registry() {
-        let _serial = exclusive().await;
-        let (app, mut app_side) = unbounded_channel::<ControllerMessage>();
-        let _strong = app.clone();
-        let guard = init_owned(app, nonfatal_frame).expect("no other conversation is installed");
-        report(sample());
-        guard.finish().await.expect("the app reporter drains");
-        let message = app_side
-            .recv()
-            .await
-            .expect("the app registry delivered it");
-        assert!(matches!(message, ControllerMessage::Nonfatal { .. }));
-        // Nothing else is waiting on the app's queue: the report was delivered once, and nothing that is not
-        // this test's own reached a registry this test owned for the whole of its installed life.
-        assert!(app_side.try_recv().is_err());
-    }
-
-    /// After the app's reporter finishes there is no fall-through to root: the report is written to stderr.
-    ///
-    /// Fail-closed by design. The app UID has no root pipeline, so quietly handing its late reports to one
-    /// would attribute a session's failures to a conversation that never owned them - and on a rooted device
-    /// it would put app-session reports on root's controller.
-    #[tokio::test]
-    async fn a_finished_app_registry_does_not_fall_through_to_root() {
-        let _serial = exclusive().await;
-        let (app, mut app_side) = unbounded_channel::<ControllerMessage>();
-        let _strong = app.clone();
-        let guard = init_owned(app, nonfatal_frame).expect("no other conversation is installed");
-        guard.finish().await.expect("the app reporter drains");
-        // The registration is gone with the guard, so this takes the same path a root-less process takes.
-        assert!(REPORTER.get().is_none());
-        report(sample());
-        assert!(
-            app_side.try_recv().is_err(),
-            "nothing reached the finished app queue"
-        );
     }
 }

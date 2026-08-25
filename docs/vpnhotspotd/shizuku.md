@@ -468,9 +468,7 @@ plainly what this mode does and does not protect.
 
 Device behaviour is qualified by hand; this repository has no instrumented tests. Anything not listed below
 is explicitly unproven, and the *Topology* column says what each result came from. These passes used Android
-17 debug builds, except the security row, which is separate historical evidence from its own harness. Debug
-builds emit bootstrap DNS, ping and TCP probes a release build does not, so captures from these passes
-contain traffic a shipped build would not produce.
+17 debug builds, except the security row, which is separate historical evidence from its own harness.
 
 ### Verified
 

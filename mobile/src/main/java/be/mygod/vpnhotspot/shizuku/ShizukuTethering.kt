@@ -102,7 +102,7 @@ class PinnedTetheringConnector private constructor(
             if (e !is TetheringManagerCompat.Failure) {
                 // Anything else - the deadline, a replaced epoch, this caller going away - leaves the
                 // handler free to have mutated, and no answer this app can act on.
-                if (prefer) debt.settingUnknown(e) else debt.clearingUnknown(e)
+                if (prefer) debt.settingUnknown() else debt.clearingUnknown()
             }
             throw e
         }
@@ -147,25 +147,24 @@ class PinnedTetheringConnector private constructor(
          * it is wrapped afterwards. Reuses the acquisition shape
          * [TetheringManagerCompat.stopTethering] already relies on.
          */
-        suspend fun acquire(epoch: ShizukuEpoch) = withTimeout(CONTROL_RESULT_DEADLINE) { acquireBlocking(epoch) }
-
-        private suspend fun acquireBlocking(epoch: ShizukuEpoch): PinnedTetheringConnector =
-                suspendCancellableCoroutine { cont ->
-            val handler = object : InvocationHandler {
-                override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?) = when {
-                    method.matches("onConnectorAvailable", ITetheringConnector::class.java) -> {
-                        val binder = (args!![0] as ITetheringConnector).asBinder()
-                        // a connector delivered after cancellation still has a linked recipient
-                        cont.resume(PinnedTetheringConnector(epoch, binder,
-                            UnblockCentral.ITetheringConnector_asInterface(null, epoch.wrap(binder))
-                                    as ITetheringConnector)) { _, value, _ -> value.unlink() }
+        suspend fun acquire(epoch: ShizukuEpoch) = withTimeout(CONTROL_RESULT_DEADLINE) {
+            suspendCancellableCoroutine { cont ->
+                val handler = object : InvocationHandler {
+                    override fun invoke(proxy: Any, method: Method, args: Array<out Any?>?) = when {
+                        method.matches("onConnectorAvailable", ITetheringConnector::class.java) -> {
+                            val binder = (args!![0] as ITetheringConnector).asBinder()
+                            // a connector delivered after cancellation still has a linked recipient
+                            cont.resume(PinnedTetheringConnector(epoch, binder,
+                                UnblockCentral.ITetheringConnector_asInterface(null, epoch.wrap(binder))
+                                        as ITetheringConnector)) { _, value, _ -> value.unlink() }
+                        }
+                        else -> callSuper(UnblockCentral.TetheringManager_ConnectorConsumer, proxy, method, args)
                     }
-                    else -> callSuper(UnblockCentral.TetheringManager_ConnectorConsumer, proxy, method, args)
                 }
+                UnblockCentral.TetheringManager_getConnector(Services.tethering, Proxy.newProxyInstance(
+                    UnblockCentral.TetheringManager_ConnectorConsumer.classLoader,
+                    arrayOf(UnblockCentral.TetheringManager_ConnectorConsumer), handler))
             }
-            UnblockCentral.TetheringManager_getConnector(Services.tethering, Proxy.newProxyInstance(
-                UnblockCentral.TetheringManager_ConnectorConsumer.classLoader,
-                arrayOf(UnblockCentral.TetheringManager_ConnectorConsumer), handler))
         }
     }
 }

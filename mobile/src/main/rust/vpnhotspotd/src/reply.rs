@@ -70,9 +70,8 @@ const MAX_DATAGRAM: usize = u16::MAX as usize;
 
 /// One socket's error queue, as the shared turn sees it.
 ///
-/// The adapter exists so the turn can be driven without a socket in a test and with one here, and so that it
-/// *borrows* the scratch: a source that built its own would give this worker a second ancillary buffer beside
-/// the one it already owns for its life.
+/// The adapter lets the shared turn borrow the scratch: a source that built its own would give this worker a
+/// second ancillary buffer beside the one it already owns for its life.
 struct Bound<'a> {
     queue: &'a mut egress::ErrorQueue,
     socket: &'a Socket,
@@ -120,9 +119,8 @@ pub(crate) fn reply_channel_bytes<K>() -> Option<u64> {
 
 /// Builds one reply channel, at the depth [reply_channel_bytes] was charged for.
 ///
-/// Called only after that charge has been granted. The assertion is what makes the split safe: the channel
-/// that exists is checked against the figure the owner reserved, so a depth changed in one place and not the
-/// other fails a test rather than becoming a queue nobody paid for.
+/// Called only after that charge has been granted. The assertion checks the channel against the figure the
+/// owner reserved, so a depth changed in one place cannot silently become a queue nobody paid for.
 pub(crate) fn reply_channel<K>() -> ReplyChannel<K> {
     let (sender, receiver) = mpsc::channel(REPLY_QUEUE_DEPTH);
     debug_assert_eq!(

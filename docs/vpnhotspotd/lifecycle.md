@@ -1,9 +1,9 @@
 # Lifecycle
 
-The binary has two entry contracts, selected by argument count in
-[`main.rs`](../../mobile/src/main/rust/vpnhotspotd/src/main.rs): one argument is
-the root-side control socket, and a second argument is the Shizuku-mode
-bootstrap nonce. They share the APK library lookup, the linker invocation and
+The binary has two entry contracts in
+[`main.rs`](../../mobile/src/main/rust/vpnhotspotd/src/main.rs): a socket name
+alone selects the root path, while `--app-uid` followed by a socket name selects
+the Shizuku path. They share the APK library lookup, the linker invocation and
 the frame format, and little else - routing, firewall, `ndc` and NFQUEUE
 mutations exist only on the root path, because none of them is permitted at the
 app UID.
@@ -63,23 +63,18 @@ APK library lookup, the linker invocation and the ABI check are shared with the
 root path: there is no root command in between, and the app keeps the `Process`
 handle it needs to signal the child.
 
-The handshake is three frames, and the daemon speaks first, because the app has
-to authenticate the peer before handing over a descriptor:
+The handshake is two frames. Before sending either, the app accepts only a peer
+whose Unix credentials report this app's own `uid` and the exact `pid` of the
+process this launch created. A rejected peer is discarded, and shutdown always
+keeps naming the launched `pid`.
 
-1. the daemon sends `BootstrapHello` with the nonce it was launched with. The app
-   accepts only a peer whose Unix credentials report this app's own `uid` and the
-   exact `pid` of the process this launch created, and whose nonce matches, in
-   that order. The `pid` check is what ties the connection to the launched child;
-   the nonce travels in argv, so it is the last of three checks rather than a
-   secret the design rests on. Anything a rejected peer presented is discarded,
-   and the shutdown sequence below keeps naming the launched `pid`;
-2. the app sends `BootstrapConfig` with the interface name and MTU, carrying
+1. the app sends `BootstrapConfig` with the interface name and MTU, carrying
    exactly one `SCM_RIGHTS` descriptor: a duplicate of the TUN. The daemon's
    descriptor is independent of the app's from that moment, so closing the app's
    copy does not close the daemon's. Only the child dropping it does that, at
    session teardown or on exit: control-socket EOF makes a healthy child tear
    down and exit, while a wedged one can keep both itself and the descriptor;
-3. the daemon replies `BootstrapReady` after re-checking the descriptor against
+2. the daemon replies `BootstrapReady` after re-checking the descriptor against
    the config: exactly one descriptor arrived, it is nonblocking, `TUNGETIFF`
    reports the expected interface, the flags include `IFF_TUN | IFF_NO_PI`, and
    `SIOCGIFMTU` reports the declared MTU. The sender cannot prove what arrived, and

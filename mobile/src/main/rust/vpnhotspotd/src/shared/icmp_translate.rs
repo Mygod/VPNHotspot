@@ -134,7 +134,7 @@ pub enum Correlation {
 /// error would be a flood it controls.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Untranslatable {
-    /// A type and code this slice does not carry.
+    /// A type and code this translator does not carry.
     Unsupported,
     /// A type whose claim is about one datagram, offered with only address-level proof. Not a refusal of the
     /// error so much as of the evidence: the same error with a matched send behind it is repeated.

@@ -274,10 +274,6 @@ Other:
   allowed-UID set, so the restricted agent submits one without calling the blocked `setAllowedUids`.
   Omitting `NET_CAPABILITY_NOT_RESTRICTED` is what makes the published network a restricted netd
   network; the empty allowed-UID set cannot be read back reliably on Android 13-17.
-* (since API 33) Setting the tethering test-network preference is assumed not to trigger
-  upstream reselection by itself, so a hotspot that already holds an ordinary upstream keeps it until
-  Android reevaluates or the user cycles tethering. This app never starts or stops tethering to force
-  it.
 * (since API 33) `ConnectivityManager.getAllNetworks` is assumed to require only
   `ACCESS_NETWORK_STATE` and to return every network the service tracks, unfiltered by ownership, on
   Android 13 through 17; and `getNetworkCapabilities` to need the same permission and no ownership or
@@ -287,14 +283,6 @@ Other:
   transports, the collision distinction is lost and a foreign test network is reported as needing a
   hotspot cycle instead; `ACTIVE` is unaffected, being identity against the network this session
   published.
-* (since API 33) Rootless mode's egress is whatever `Network` Android has already made
-  this app's own default — a VPN when one applies to this UID, otherwise the ordinary per-UID default.
-  The *Upstream* preferences are root-only, so changing them cannot move a rootless session's egress.
-* (since API 33) The upstream network's `LinkProperties.getInterfaceName` is assumed to be
-  visible to this app and `Os.if_nametoindex` to resolve it, because the rootless dataplane needs the
-  arrival interface to tell a late reply to a retired UDP or ICMP mapping from a reply to whatever reused
-  its port. If it were redacted or unresolvable, rootless mode reports no upstream rather than relaying
-  unchecked.
 * (since API 33) Android is assumed to delegate a globally scoped `/64` from a restricted
   test network's `LinkProperties` to the oldest active tethered downstream, and to clamp the derived
   downstream MTU into 1280-1500. Only one downstream receives the prefix; a local-only downstream that

@@ -298,18 +298,12 @@ fun TetheringScreen(
                         onCheckedChange = if (onConfigureTemporaryHotspot == null) null else toggleLocalOnly,
                     )
                 }
-                // A single global row rather than one per interface, because this mode owns no downstream: it
-                // publishes an upstream and lets Android's system tethering choose it. Local-only hotspot and
-                // repeater remain separate root-mode controls; the system-tethering controls are under Manage.
                 if (Build.VERSION.SDK_INT >= 33) row(R.string.shizuku_tethering) {
                     val shizuku by ShizukuTetheringService.status.collectAsStateWithLifecycle(
                         ShizukuTetheringService.Status(null, on = false))
                     TetheringRow(
                         icon = R.drawable.ic_alt_route,
                         title = stringResource(R.string.shizuku_tethering),
-                        // The current state and nothing else, like every other row on this page. What the
-                        // mode is and what it does and does not protect belongs in README.md, not under a
-                        // switch the user reads while deciding whether it is on.
                         summary = shizuku.label?.let { AnnotatedString(stringResource(it)) },
                         checked = shizuku.on,
                         onClick = {

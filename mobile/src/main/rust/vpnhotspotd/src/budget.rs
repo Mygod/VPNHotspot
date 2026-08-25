@@ -256,9 +256,7 @@ async fn available_memory() -> io::Result<u64> {
     parse_available_memory(&meminfo)
 }
 
-/// Parsed apart from the read so that what the device provides and what is done with it are separable, which
-/// is as far as this can go: the binary crate is `test = false`, so a unit test here would never run and is
-/// not written.
+/// Parsed apart from the read so that what the device provides and what is done with it stay separate.
 ///
 /// `u64` throughout, and it stays `u64`: the byte total is a `u64` dimension in the aggregate, so a 32-bit
 /// Android ABI does not narrow it. What the address space can actually hold on such an ABI is a separate

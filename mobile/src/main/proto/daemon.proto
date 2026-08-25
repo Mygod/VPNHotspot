@@ -6,21 +6,15 @@ option java_package = "be.mygod.vpnhotspot.root.daemon";
 option java_outer_classname = "DaemonProto";
 option optimize_for = LITE_RUNTIME;
 
-// Shizuku-mode bootstrap, which is a fixed three-frame handshake ahead of any call, not part of the
-// ClientEnvelope/DaemonEnvelope conversation below. The daemon speaks first here, because the app has
-// to authenticate the peer before it hands over a file descriptor.
-//
-// The app already knows the child's pid and uid from the launch and from SO_PEERCRED, so neither is
-// carried on the wire; the nonce is what binds this connection to the process the app launched.
+// Shizuku-mode bootstrap, which is a fixed two-frame handshake ahead of any call, not part of the
+// ClientEnvelope/DaemonEnvelope conversation below. The app verifies the accepted peer's uid and pid
+// through SO_PEERCRED before it hands over a file descriptor.
 //
 // Deliberately carries no protocol version. The daemon is not a separately installed component: it is
 // exec'd in place from the same APK as the dex that launched it, so the two cannot disagree. An app
 // upgrade kills the app's processes and removes the old APK path, a leftover daemon from a previous
 // version connects to a socket name that no longer exists, and a tampered APK controls both sides
 // anyway. Add one only if the daemon ever ships or updates independently of the dex.
-message BootstrapHello {
-  uint64 nonce = 1;
-}
 
 // Sent with exactly one SCM_RIGHTS descriptor, which must be the TUN the daemon will own. The sender
 // cannot prove what arrived, so every field here is something the receiver re-checks against the
@@ -28,14 +22,6 @@ message BootstrapHello {
 message BootstrapConfig {
   string interface_name = 1;
   uint32 mtu = 2;
-  // The network the startup egress probe binds to, and nothing else: what the dataplane binds to is
-  // ShizukuSessionConfig.upstream_network, which is level-triggered and changes on every handover, while
-  // this is a snapshot from before the first session config exists. Zero means nothing was selectable
-  // then, and the probe is skipped.
-  uint64 probe_network = 3;
-  // Debug-only egress probe targets as "host:port", empty in production. Non-empty asks the daemon to
-  // exercise the egress primitives once at startup and report each outcome; see the Step 6 proof.
-  repeated string probe_targets = 4;
 }
 
 // Local readiness only: the descriptor was received, is a nonblocking TUN, and names the expected

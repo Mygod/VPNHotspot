@@ -14,25 +14,9 @@ pub(crate) enum UpstreamConnectError {
     Connect(io::Error),
 }
 
-#[cfg(not(test))]
 #[link(name = "android")]
 unsafe extern "C" {
     fn android_setsocknetwork(network: u64, fd: c_int) -> c_int;
-}
-
-/// The platform's, replaced by a refusal when this binary is built as a test harness.
-///
-/// A host has no `libandroid` to link against, so without this the binary's own modules could not be tested
-/// at all - which is why everything worth proving used to have to be moved out of them. Refuses rather than
-/// panics: a test that reaches an upstream open is testing the wrong thing, and it should see the ordinary
-/// failure rather than take the process down.
-///
-/// # Safety
-///
-/// Nothing is dereferenced, so calling it is unconditionally sound.
-#[cfg(test)]
-unsafe fn android_setsocknetwork(_network: u64, _fd: c_int) -> c_int {
-    -1
 }
 
 pub(crate) async fn connect_tcp(

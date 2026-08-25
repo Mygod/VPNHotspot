@@ -438,13 +438,6 @@ impl Serving {
         self.transaction = transaction;
     }
 
-    /// What this flow has parked. Read by a test: the acknowledgment path names its own delivery, so nothing
-    /// in the daemon has to ask which one is there.
-    #[cfg(test)]
-    pub(crate) fn parked(&self) -> Option<DeliveryId> {
-        self.delivery.id()
-    }
-
     pub(crate) fn acknowledge(
         &mut self,
         admission: &mut Admission,
@@ -480,11 +473,7 @@ impl Serving {
         if let Some(reserved) = drained.reserved {
             reserved.end(admission);
         }
-        Closed {
-            transaction,
-            #[cfg(test)]
-            refundable_at: drained.at,
-        }
+        Closed { transaction }
     }
 }
 
@@ -504,10 +493,6 @@ struct Closing {
 /// A reservation whose covered buffers are provably gone.
 struct Drained {
     reserved: Option<Reserved>,
-    /// Where on the buffer clock the grant became refundable, so a test can order it against the death of the
-    /// query it covered. Zero-sized and unwritten outside a test harness.
-    #[cfg(test)]
-    at: u64,
 }
 
 impl Closing {
@@ -525,13 +510,7 @@ impl Closing {
         while filled.try_recv().is_ok() {}
         drop(filled);
         drop(control);
-        Drained {
-            reserved,
-            // Taken after both endpoints and the query are gone, which is the whole of the ordering claim: a
-            // reversal that yielded the reservation first would date this before those deaths.
-            #[cfg(test)]
-            at: crate::owned::mark(),
-        }
+        Drained { reserved }
     }
 }
 
@@ -539,9 +518,6 @@ impl Closing {
 pub(crate) struct Closed {
     /// The transaction this transport left outstanding, which its close has to hand a token to.
     pub(crate) transaction: Option<u64>,
-    /// See [Drained::at].
-    #[cfg(test)]
-    pub(crate) refundable_at: u64,
 }
 
 /// Answers one query the platform will never be asked about, under the grant that already covers it.

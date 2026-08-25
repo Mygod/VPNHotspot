@@ -531,8 +531,7 @@ mod tests {
         packet[6] = 0;
         packet[7] = 1;
         assert_eq!(parse(&packet), Err(Reject::Fragmented));
-        // Reassembly is a later slice, so this must stay distinguishable from a protocol nobody handles: the
-        // two are counted separately and only one of them will ever start working.
+        // Keep fragmentation distinguishable from an unsupported protocol so the two are counted separately.
         let mut packet = client_request(CLIENT6, REMOTE6, 1, 1, b"probe");
         packet[6] = IpNumber::IPV6_FRAGMENTATION_HEADER.0;
         assert_eq!(parse(&packet), Err(Reject::Fragmented));

@@ -76,11 +76,8 @@ class PrivilegedConnectivity private constructor(
          * instead. Both members are `unsupported` rather than `blocked`, and the shape is identical on
          * Android 13 and 17.
          *
-         * Earlier drafts named JNI `AllocObject` as the fallback if a release stopped exposing the field.
-         * There is no such fallback here: this project ships no native code of its own in the app process,
-         * and adding a JNI library for one call is not worth it against a member that has been greylisted
-         * unchanged across the whole supported range. Absence is therefore terminal for the session, which
-         * costs nothing beyond the mode - it happens before any TUN, request, preference or agent mutation.
+         * If either member is unavailable, the session fails before any TUN, request, preference or agent
+         * mutation.
          *
          * https://android.googlesource.com/platform/libcore/+/refs/tags/android-13.0.0_r1/ojluni/src/main/java/sun/misc/Unsafe.java#57
          * https://android.googlesource.com/platform/libcore/+/refs/tags/android-17.0.0_r1/ojluni/src/main/java/sun/misc/Unsafe.java#63

@@ -59,13 +59,9 @@ pub type Tuple = (Ipv4Addr, Ipv4Addr, u8);
 /// fragments it turns into, which is what makes those fragments reassemble into one datagram rather than
 /// several.
 ///
-/// The tuple and the value are the whole of it, and an earlier draft carried a bucket incarnation beside
-/// them to tell a terminal for a reclaimed occupant from one for the current tenant. That case cannot
-/// happen, and paying per entry and per message to recognise it was paying for nothing: a bucket is only
-/// reclaimed when its occupant has no packet outstanding, and every accepted packet is outstanding until its
-/// terminal arrives, so no terminal can outlive the entry it names. What is retained instead is the one
-/// comparison the decrement needs anyway - a settlement for a tuple with nothing pending is not this table's
-/// to apply - which is bounded, fail-closed, and reachable rather than hypothetical.
+/// The tuple and the value are the whole identity. A bucket is reclaimed only when its occupant has no packet
+/// outstanding, and every accepted packet remains outstanding until its terminal arrives, so no terminal can
+/// outlive the entry it names. A settlement for a tuple with nothing pending is not this table's to apply.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Guarded {
     tuple: Tuple,
@@ -250,10 +246,9 @@ pub struct Ipv4Identifications {
     ///
     /// Narrower than "a duplicated ending", and deliberately so. The count is per tuple, not per packet, so
     /// a second copy of one datagram's ending is caught only when nothing else of that tuple is outstanding;
-    /// while another packet of the same tuple is pending it would be applied to that one instead. Telling
-    /// those apart needs a per-registration identity, which an earlier draft carried and which was removed
-    /// because the case cannot arise: the writer sends one settlement per packet it accepted. This is what
-    /// the aggregate check does catch, and it is here so a session can say it stayed at zero.
+    /// while another packet of the same tuple is pending it would be applied to that one instead. The writer
+    /// sends one settlement per accepted packet, and this aggregate catches settlements that name no pending
+    /// packet.
     stale: u64,
 }
 

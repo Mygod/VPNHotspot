@@ -127,17 +127,7 @@ pub struct Round {
     budget: usize,
 }
 
-impl Round {
-    pub fn remaining(&self) -> usize {
-        self.budget
-    }
-}
-
-/// Registering a flow would have to grow the collections holding it, which is not this module's to decide.
-///
-/// Answered rather than done, because the growth is an accounting event: both allocations exist beside their
-/// replacements for the duration, and the owner has to charge that peak before it happens and give the old
-/// capacity back only after it is gone. See [FairQueue::footprint] and [FairQueue::grow_to].
+/// Registering a flow would exceed the fixed bound charged through [FairQueue::footprint].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AtCapacity {
     pub prepared: usize,
@@ -202,28 +192,6 @@ impl<H: Copy + Eq + std::hash::Hash, P: std::ops::Deref<Target = [u8]>> FairQueu
     /// The logical maximum: how many live identities this queue admits at once.
     pub fn prepared(&self) -> usize {
         self.prepared
-    }
-
-    /// Rebuilds at a larger logical maximum, moving what is already here.
-    ///
-    /// Both bounds' worth of state exists while the move runs, which is exactly why this is a separate call:
-    /// the owner reserves the replacement beside the original in [crate::shared::admission::Admission], calls
-    /// this, and only then commits - so the charge covers the moment both existed rather than the smaller of
-    /// them. A request that is not actually larger is refused, so a rollback cannot silently shrink a bound a
-    /// charge still covers.
-    pub fn grow_to(&mut self, flows: usize) -> bool {
-        if flows <= self.prepared {
-            return false;
-        }
-        // The new logical maximum, which is what the charge for this replacement covered.
-        let mut flows_map = HashMap::with_capacity(flows);
-        flows_map.extend(self.flows.drain());
-        let mut order = VecDeque::with_capacity(flows);
-        order.extend(self.order.drain(..));
-        self.flows = flows_map;
-        self.order = order;
-        self.prepared = flows;
-        true
     }
 
     /// Registers a flow, inside the prepared bound.
@@ -850,36 +818,6 @@ mod tests {
             Err(AtCapacity { prepared: 64 }),
             "and the bound is what refuses the next one"
         );
-    }
-
-    /// Growth is a real replacement: it happens only when the owner asks for something larger, and a request
-    /// that is not larger is refused so a rollback cannot shrink the allocation a charge still covers.
-    #[test]
-    fn growth_is_refused_unless_it_is_actually_growth() {
-        let mut queue = FairQueue::with_capacity(2);
-        queue.admit(a()).expect("prepared");
-        queue.deliver(a(), vec![7; 3]).expect("free");
-        queue.admit(b()).expect("prepared");
-
-        assert!(!queue.grow_to(2), "not larger");
-        assert!(!queue.grow_to(1), "smaller");
-        assert_eq!(queue.prepared(), 2);
-        // The denial left everything exactly as it was, so an owner whose Admission refused the peak can
-        // simply not grow.
-        assert_eq!(
-            queue.admit(FlowId::new(3, 300)),
-            Err(AtCapacity { prepared: 2 })
-        );
-
-        // And a real growth carries the existing state across untouched.
-        assert!(queue.grow_to(8));
-        assert_eq!(queue.prepared(), 8);
-        assert_eq!(queue.len(), 2);
-        assert_eq!(queue.peek(a()), Some(&[7, 7, 7][..]));
-        assert_eq!(queue.ready_len(), 1);
-        queue.admit(FlowId::new(3, 300)).expect("room now");
-        let mut round = queue.begin_round();
-        assert_eq!(queue.next(&mut round), Some(a()));
     }
 
     /// An emptied queue keeps its bound and takes the whole of it again, and every re-admitted flow works.

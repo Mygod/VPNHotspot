@@ -43,20 +43,24 @@ mod workers;
 use std::env;
 use std::io;
 
-/// One argument is the root-side control socket. A second argument is a Shizuku-mode bootstrap nonce,
-/// which selects the app-UID path instead: that path owns a TUN and no system state, because nothing
-/// the root control loop does is permitted at the app UID.
+/// One argument is the root-side control socket. `--app-uid` followed by a socket selects the app-UID path
+/// instead: that path owns a TUN and no system state, because nothing the root control loop does is permitted
+/// at the app UID.
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let mut args = env::args().skip(1);
-    let socket_name = args
+    let first = args
         .next()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing socket name"))?;
-    let nonce = match args.next() {
-        None => return control::run(socket_name).await,
-        Some(nonce) => nonce
-            .parse()
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, format!("bad nonce: {e}")))?,
+    let (app_uid, socket_name) = if first == "--app-uid" {
+        (
+            true,
+            args.next().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidInput, "missing socket name")
+            })?,
+        )
+    } else {
+        (false, first)
     };
     if let Some(arg) = args.next() {
         return Err(io::Error::new(
@@ -64,5 +68,9 @@ async fn main() -> io::Result<()> {
             format!("unexpected argument {arg}"),
         ));
     }
-    bootstrap::run(socket_name, nonce).await
+    if app_uid {
+        bootstrap::run(socket_name).await
+    } else {
+        control::run(socket_name).await
+    }
 }

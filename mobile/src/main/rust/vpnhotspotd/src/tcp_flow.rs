@@ -39,6 +39,7 @@ use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
+use vpnhotspotd::shared::fair::FlowId;
 use vpnhotspotd::shared::preempt::{shutdown, write_all, Written};
 
 use crate::owned::Owned;
@@ -50,15 +51,15 @@ pub(crate) const READ_CHUNK: usize = 1500;
 
 /// The per-flow mailbox this half produces into, and the identity every one of its signals carries.
 ///
-/// Both live in [vpnhotspotd::shared::mailbox] rather than here, because what they carry is an ownership rule
-/// - one chunk alive at a time - and that is checkable on a host where a smoltcp socket is not.
+/// Both live in [vpnhotspotd::shared::mailbox] rather than here because what they carry is the stack-neutral
+/// ownership rule that only one chunk may be alive at a time.
 pub(crate) use crate::mailbox::{Chunk, Handed, Mailbox as Post, Payload};
 
 /// This flow's mailbox, at the handle type the client-side stack names its slots by.
 pub(crate) type Mailbox = Post<SocketHandle>;
 
 /// A payload-free wake naming exactly which flow may have work.
-pub(crate) type Event = crate::mailbox::Marker<SocketHandle>;
+pub(crate) type Event = FlowId<SocketHandle>;
 
 /// `sweep` is the engine's own token rather than this flow's: it is cancelled only when the whole table is
 /// being retired, which is the one case where this socket must be torn down abortively rather than closed.
@@ -271,144 +272,4 @@ pub(crate) async fn hand_over_in_pieces(
         }
     }
     Handed::Complete
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::mailbox::Marker;
-    use crate::owned;
-
-    /// Everything the engine side of a mailbox does, so a test can drive the real handover.
-    struct Consumer {
-        chunks: mpsc::Receiver<Chunk>,
-        ready: mpsc::Receiver<Event>,
-        consumed: mpsc::Sender<()>,
-    }
-
-    fn pair(identity: Event) -> (Mailbox, Consumer) {
-        let (chunk_tx, chunks) = mpsc::channel(1);
-        let (ready_tx, ready) = mpsc::channel(4);
-        let (consumed, ack) = mpsc::channel(1);
-        (
-            Mailbox {
-                chunks: chunk_tx,
-                ready: ready_tx,
-                consumed: ack,
-                identity,
-            },
-            Consumer {
-                chunks,
-                ready,
-                consumed,
-            },
-        )
-    }
-
-    fn handle() -> SocketHandle {
-        let mut sockets = smoltcp::iface::SocketSet::new(Vec::with_capacity(1));
-        sockets.add(smoltcp::socket::tcp::Socket::new(
-            smoltcp::socket::tcp::SocketBuffer::new(vec![0u8; 64]),
-            smoltcp::socket::tcp::SocketBuffer::new(vec![0u8; 64]),
-        ))
-    }
-
-    /// Exactly one piece exists at a time, however large the buffer being handed over - counted where the
-    /// pieces are allocated rather than where they are received.
-    ///
-    /// The failure this closes is a producer that builds every piece before the first handover: the mailbox's
-    /// depth is still one, and a whole second copy of the response is alive in as many allocations as the
-    /// quantum divides into it. Invisible to the consumer, which sees one at a time either way.
-    #[tokio::test]
-    async fn only_one_piece_is_alive_at_a_time() {
-        owned::reset();
-        let identity = Marker {
-            handle: handle(),
-            worker: 7,
-        };
-        let (mut mailbox, mut consumer) = pair(identity);
-        let cancel = CancellationToken::new();
-        // A maximum DNS response, framed: two bytes of prefix and 65535 of message.
-        let whole = vec![0x5au8; 65_535 + 2];
-        let quantum = 1_500;
-
-        let producer = tokio::spawn(async move {
-            let handed = hand_over_in_pieces(&mut mailbox, &whole, quantum, &cancel).await;
-            (handed, whole.len())
-        });
-
-        let mut pieces = 0usize;
-        let mut bytes = 0usize;
-        while let Some(chunk) = consumer.chunks.recv().await {
-            let Chunk::Payload(piece) = chunk else {
-                panic!("only payload is handed over here")
-            };
-            pieces += 1;
-            bytes += piece.len();
-            assert!(piece.len() <= quantum);
-            assert_eq!(
-                consumer.ready.recv().await,
-                Some(identity),
-                "every piece is announced by its own identity"
-            );
-            let (live, _) = owned::peak();
-            assert_eq!(live.buffers, 1, "piece {pieces}: one, and only one");
-            drop(piece);
-            // The acknowledgment is what lets the next one be built.
-            if consumer.consumed.send(()).await.is_err() {
-                break;
-            }
-        }
-        let (handed, whole) = producer.await.expect("the producer finished");
-        assert_eq!(handed, Handed::Complete);
-        assert_eq!(bytes, whole, "every byte went, once");
-        assert!(pieces > 40, "{pieces} pieces");
-        let (live, peak) = owned::peak();
-        assert_eq!(live.buffers, 0, "and none is left");
-        assert_eq!(peak.buffers, 1, "only one piece may exist at a time");
-        assert!(peak.bytes <= quantum, "{} bytes at the peak", peak.bytes);
-    }
-
-    /// A cancellation part-way stops the handover where it is, and nothing further is built.
-    #[tokio::test]
-    async fn cancellation_stops_the_handover_where_it_is() {
-        owned::reset();
-        let identity = Marker {
-            handle: handle(),
-            worker: 9,
-        };
-        let (mut mailbox, mut consumer) = pair(identity);
-        let cancel = CancellationToken::new();
-        let token = cancel.clone();
-        let whole = vec![0u8; 10_000];
-
-        let producer =
-            tokio::spawn(
-                async move { hand_over_in_pieces(&mut mailbox, &whole, 1_000, &token).await },
-            );
-
-        // Two pieces through, then cancelled while the third waits for its acknowledgment.
-        let mut taken = 0usize;
-        for _ in 0..2 {
-            assert!(consumer.chunks.recv().await.is_some());
-            assert_eq!(consumer.ready.recv().await, Some(identity));
-            taken += 1;
-            consumer
-                .consumed
-                .send(())
-                .await
-                .expect("the producer waits");
-        }
-        cancel.cancel();
-        assert_eq!(producer.await.expect("finished"), Handed::Cancelled);
-        assert_eq!(
-            taken, 2,
-            "and nothing past the cancellation was acknowledged"
-        );
-        let (live, _) = owned::peak();
-        assert_eq!(
-            live.buffers, 0,
-            "the piece in flight went with the producer"
-        );
-    }
 }

@@ -12,6 +12,7 @@
 //! Options, and a packet that carries one is rejected rather than fragmented incorrectly.
 
 use std::net::IpAddr;
+#[cfg(test)]
 use std::net::Ipv6Addr;
 use std::time::Instant;
 
@@ -598,7 +599,8 @@ pub fn outcome(emitted: Emitted) -> Outcome {
     }
 }
 
-/// Builds a minimal IPv6 header for tests and for locally originated packets.
+/// Builds a minimal IPv6 header for this module's packetization tests.
+#[cfg(test)]
 pub fn ipv6_header(
     source: Ipv6Addr,
     destination: Ipv6Addr,

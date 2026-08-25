@@ -1,9 +1,8 @@
 //! How a terminating flow ends, and the one place everything it owns is given back.
 //!
-//! Here rather than in [crate::tcp] because the four endings are one decision with one exit, and because the
-//! engine file they came out of is the largest in the daemon. What they have in common is the fence: a flow's
-//! record, its socket and its charge may only be released once every physical owner covered by its grants is
-//! gone, and [Engine::reclaim] is the only code that releases them.
+//! The four endings are one decision with one exit. What they have in common is the fence: a flow's record,
+//! its socket and its charge may only be released once every physical owner covered by its grants is gone,
+//! and [Engine::reclaim] is the only code that releases them.
 //!
 //! # A worker finishing is not the same as a flow ending
 //!
@@ -32,21 +31,13 @@
 //! a clean terminal is an intermediate handoff rather than a removal, and the flow it detached is removed
 //! later by its client finishing, by its floor, by a retirement, or by shutdown - whichever comes first.
 //!
-//! # Where the tests are
-//!
-//! In [crate::tcp::lifetime]'s test module rather than here, and deliberately: every one of them drives a
-//! real client through real smoltcp phase transitions, which is what that module's harness exists for, and
-//! the phase a flow ends in is inseparable from the floor it was sitting on. `a_clean_terminal_keeps_the_
-//! client_side_until_its_teardown_finishes`, `a_dns_transport_that_finished_asking_keeps_its_closing_
-//! socket`, `a_detached_flow_is_settled_by_a_config_and_by_shutdown` and
-//! `a_reported_worker_failure_still_resets_and_ends_at_once` are the four endings above, one each.
-
 use smoltcp::iface::SocketHandle;
 use smoltcp::socket::tcp::{Socket, State};
 use vpnhotspotd::shared::admission::Admission;
 use vpnhotspotd::shared::dns_debt;
+use vpnhotspotd::shared::fair::FlowId;
 
-use super::{identity, lifetime, Engine, Flow};
+use super::{lifetime, Engine, Flow};
 use crate::output::Output;
 use crate::report;
 use crate::tcp_dns;
@@ -115,7 +106,7 @@ impl Engine {
             self.counters.stale += 1;
             return;
         }
-        drop(self.fair.begin_retire(identity(handle, worker)));
+        drop(self.fair.begin_retire(FlowId::new(handle, worker)));
         self.reclaim(handle, worker, admission);
     }
 
@@ -148,7 +139,7 @@ impl Engine {
         // terminal may not take a flow's unacknowledged bytes with it, and a cancelled one may only bypass
         // that wait once the owner has committed to dropping what the wait was for. Idempotent, because the
         // poll above may already have begun this exact retirement when it saw the socket close.
-        let flow_id = identity(key, id);
+        let flow_id = FlowId::new(key, id);
         drop(self.fair.begin_retire(flow_id));
         // A clean terminal from a flow nobody asked to stop, whose client side is still finishing, hands the
         // flow on rather than ending it. The worker's own state is already gone - its task ran to completion,
@@ -213,7 +204,7 @@ impl Engine {
     /// inside it is the accounting invariant - the socket and this flow's own endpoints die before the DNS
     /// state releases the grant covering them, and the connection's grant goes last of all.
     fn reclaim(&mut self, key: SocketHandle, id: u64, admission: &mut Admission) {
-        self.fair.finish_retire(identity(key, id));
+        self.fair.finish_retire(FlowId::new(key, id));
         self.outgoing.retain(|handle| *handle != key);
         let Some(flow) = self.flows.retire(&key, id) else {
             // Unreachable: every caller has validated this exact pair and nothing since has awaited.
@@ -246,10 +237,6 @@ impl Engine {
         // control endpoints, and only then the reservation's grant. See [tcp_dns::Serving::close].
         let closed = serving.close(admission);
         let transaction = closed.transaction;
-        #[cfg(test)]
-        {
-            self.refundable_at = Some(closed.refundable_at);
-        }
         // One call, which is what keeps the two halves of this from disagreeing: a DNS-over-TCP transport
         // whose question is still outstanding hands that question its own token rather than giving it back -
         // the platform's slot is still taken, and a moment where the token looked free would admit a second

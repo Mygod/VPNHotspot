@@ -13,8 +13,6 @@ import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
 import kotlinx.coroutines.CompletableDeferred
 
-internal const val AGENT_TAG = "VpnHotspotTestNetwork"
-
 /**
  * The app-hosted agent that publishes one session's TUN, and its own destruction barriers.
  *
@@ -34,7 +32,7 @@ internal class RestrictedAgent(
     capabilities: NetworkCapabilities,
     properties: LinkProperties,
     legacyType: Int,
-) : NetworkAgent(context, Services.mainHandler.looper, AGENT_TAG, capabilities, properties,
+) : NetworkAgent(context, Services.mainHandler.looper, "VpnHotspotTestNetwork", capabilities, properties,
     NetworkScore.Builder().setLegacyInt(1).build(),
     NetworkAgentConfig.Builder().setLegacyType(legacyType).setLegacyTypeName("TEST").build(), null) {
     /**

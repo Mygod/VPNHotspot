@@ -58,29 +58,6 @@ impl Output {
         }
     }
 
-    /// An output for a harness that is not about the Identification window, with that window already behind
-    /// it so guarded output is not denied merely for being early.
-    ///
-    /// Test-only because production reads the session's real opening instant, and a constructor that
-    /// backdated it would be the one thing the window exists to prevent. What the Identification allocator
-    /// itself does is proved in [vpnhotspotd::shared::ipv4_identification] and
-    /// [vpnhotspotd::shared::packet_writer], where the clock is injected rather than read.
-    #[cfg(test)]
-    pub(crate) fn testing(mtu: usize, tuples: usize, writer: Writer) -> Self {
-        let now = Instant::now();
-        Self::new(
-            mtu,
-            Prepared {
-                tuples,
-                tracked: crate::tun_writer::TERMINAL_DEPTH,
-                opened: now
-                    .checked_sub(vpnhotspotd::shared::ipv4_identification::NONREUSE_WINDOW)
-                    .unwrap_or(now),
-            },
-            writer,
-        )
-    }
-
     /// Applies one ending the TUN writer sent back for a guarded packet it owned.
     ///
     /// The only path by which a wire time reaches the allocator, and the reason the ingress loop selects on
@@ -161,9 +138,8 @@ impl Output {
         // issued, which counter moves, and whether anything is reported. A caller that passed its own idea of
         // "oversized" or incremented its own counter would be deciding what this exists to decide.
         //
-        // The clock is read here rather than inside the owner so that the owner stays injectable: what an
-        // Identification may be reused for is a statement about elapsed time, and a test that could not
-        // choose the time could not make it.
+        // The clock is read here rather than inside the emitter so the packet policy remains a pure decision
+        // over its inputs.
         self.emitter.emit(
             Instant::now(),
             Addressed {

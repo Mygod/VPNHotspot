@@ -285,12 +285,7 @@ wire {
         rpcRole = "none"
     }
 }
-// No instrumented tests exist here - there is no `src/androidTest`, no runner, and nothing declared in
-// `androidTestImplementation` (AGP still creates that configuration; it is simply empty) - and without this
-// AGP would still create the component for every variant, leaving a full set of `*DebugAndroidTest` compile,
-// package, install and `connectedDebugAndroidTest` tasks that build nothing and run nothing. Turned off at the
-// builder, before variants are created, because that is the phase the API offers for it; disabling the tasks
-// afterwards would leave the component in place and only hide it. JVM unit tests are untouched.
+// This repository has no instrumented tests.
 androidComponents.beforeVariants { variant ->
     variant.enableAndroidTest = false
 }

@@ -1,10 +1,9 @@
 package android.net;
 
-import android.os.Parcelable;
 import androidx.annotation.RequiresApi;
 
 @RequiresApi(31)
-public abstract class NetworkScore implements Parcelable {
+public abstract class NetworkScore {
     public static final class Builder {
         public Builder() {
         }

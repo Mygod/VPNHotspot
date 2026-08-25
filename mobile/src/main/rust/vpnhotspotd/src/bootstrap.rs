@@ -1,8 +1,7 @@
 //! Shizuku-mode bootstrap.
 //!
 //! The app UID launches this binary directly, so there is no root shell and no privileged dataplane.
-//! Before anything else happens the daemon authenticates itself to the app with the nonce it was
-//! launched with, then receives the TUN it will own over `SCM_RIGHTS`.
+//! Before anything else happens the daemon receives the TUN it will own over `SCM_RIGHTS`.
 //!
 //! The app cannot prove what arrived on its side of that transfer: it only sets the descriptor
 //! nonblocking before duplicating it and keeps the original. Everything the app asserts about the
@@ -15,12 +14,10 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 use libc::{c_int, c_short, ioctl, F_GETFL, IFF_NO_PI, IFF_TUN, IFNAMSIZ, O_NONBLOCK};
 use nix::sys::socket::{recvmsg, ControlMessageOwned, MsgFlags};
 use prost::Message;
-use tokio::io::AsyncWriteExt;
 use tokio::net::UnixStream;
-use vpnhotspotd::shared::proto::daemon::{BootstrapConfig, BootstrapHello, BootstrapReady};
+use vpnhotspotd::shared::proto::daemon::{BootstrapConfig, BootstrapReady};
 
-use crate::control::wire::{connect_control_socket, MAX_CONTROL_PACKET_SIZE};
-use crate::report;
+use crate::control::wire::{connect_control_socket, send_packet, MAX_CONTROL_PACKET_SIZE};
 
 /// Keeps the failing syscall's errno while naming what was being attempted, since a bare errno on a
 /// descriptor check says nothing about which check failed.
@@ -32,9 +29,8 @@ fn context(message: &str) -> io::Error {
 /// `TUNGETIFF`, which is the only way to learn which interface a descriptor belongs to. Not exported
 /// by the `libc` crate for Android, so it is spelled out here: `_IOR('T', 210, unsigned int)`.
 ///
-/// Kept as `u32` and cast at the call site, because bionic's `ioctl` takes an `int` request where
-/// glibc takes an `unsigned long`: this file has to satisfy both, since the Android build is what
-/// ships but a host `cargo check` is what the repo's tooling runs.
+/// Kept as `u32` and cast at the call site because bionic's `ioctl` takes an `int` request while other libc
+/// signatures use an `unsigned long`.
 const TUNGETIFF: u32 = 0x8004_54d2;
 
 /// `SIOCGIFMTU`, cast at the call site for the same reason as [TUNGETIFF].
@@ -72,14 +68,13 @@ struct IfReqMtu {
     padding: [u8; 20],
 }
 
-pub(crate) async fn run(socket_name: String, nonce: u64) -> io::Result<()> {
+pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     let mut stream = connect_control_socket(&socket_name).await?;
-    send_frame(&mut stream, &BootstrapHello { nonce }.encode_to_vec()).await?;
     let (payload, tun) = recv_frame_with_descriptor(&stream).await?;
     let config = BootstrapConfig::decode(payload.as_slice())
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     let (interface_name, gateway) = verify_tun(&tun, &config)?;
-    send_frame(
+    send_packet(
         &mut stream,
         &BootstrapReady {
             interface_name: interface_name.clone(),
@@ -87,12 +82,6 @@ pub(crate) async fn run(socket_name: String, nonce: u64) -> io::Result<()> {
         .encode_to_vec(),
     )
     .await?;
-    // debug-only, and the only thing that reaches the network in this slice
-    if !config.probe_targets.is_empty() {
-        for line in probe_egress(&config).await {
-            report::stdout!("egress probe: {line}");
-        }
-    }
     // the bootstrap's job ends here; the session owns the descriptor and the control socket from now on
     //
     // Nothing here coordinates with root mode, and nothing needs to: this daemon relays a TUN that Android's
@@ -100,33 +89,6 @@ pub(crate) async fn run(socket_name: String, nonce: u64) -> io::Result<()> {
     // installed independently of it. When both are running, root's routing takes precedence over whatever
     // upstream Android picked, by the ordinary root design and without either side being told.
     crate::app_session::run(stream, tun, interface_name, gateway, config.mtu as usize).await
-}
-
-/// Parses the debug targets and runs the egress probe, reporting a rejected target rather than skipping
-/// it: a probe that silently drops half its inputs proves less than it appears to.
-async fn probe_egress(config: &BootstrapConfig) -> Vec<String> {
-    let mut targets = Vec::with_capacity(config.probe_targets.len());
-    let mut results = Vec::new();
-    for target in &config.probe_targets {
-        match target.parse() {
-            Ok(address) => targets.push(address),
-            Err(e) => results.push(format!("unparseable target {target}: {e}")),
-        }
-    }
-    if config.probe_network == 0 {
-        results.push("no selected network; egress probe skipped".to_owned());
-        return results;
-    }
-    results.extend(crate::egress::probe(config.probe_network, &targets).await);
-    results
-}
-
-async fn send_frame(stream: &mut UnixStream, payload: &[u8]) -> io::Result<()> {
-    stream
-        .write_all(&(payload.len() as u32).to_be_bytes())
-        .await?;
-    stream.write_all(payload).await?;
-    stream.flush().await
 }
 
 /// Reads one frame entirely through `recvmsg`, because a plain `read` that consumes the bytes the

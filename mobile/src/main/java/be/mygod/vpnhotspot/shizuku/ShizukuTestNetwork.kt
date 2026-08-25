@@ -1,12 +1,10 @@
 package be.mygod.vpnhotspot.shizuku
 
 import android.annotation.SuppressLint
-import android.net.ConnectivityManager
 import android.net.IpPrefix
 import android.net.LinkAddress
 import android.net.LinkProperties
 import android.net.Network
-import android.net.NetworkAgent
 import android.net.NetworkCapabilities
 import android.net.`NetworkCapabilities$Builder`
 import android.net.NetworkRequest
@@ -28,7 +26,6 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
@@ -197,10 +194,6 @@ object ShizukuTestNetwork {
          * Tethering still reports an ordinary upstream. The preference only takes effect on the next
          * reselection, so this clears itself when Android reevaluates or the user independently cycles
          * the separate tethering toggle. This mode never cycles it.
-         *
-         * Its [label] therefore asks for a cycle and says a single one may not be enough, rather than
-         * reading as an error: reselection races the upstream monitor's own map, so the same session and the
-         * same build can reach [ACTIVE] on the first cycle or stay here across three.
          */
         RESTART_REQUIRED(R.string.shizuku_state_restart_required),
     }
@@ -688,16 +681,11 @@ object ShizukuTestNetwork {
                 if (current.network != null) current.push()
             }
         }
-        // The plan launches the daemon before the TUN exists and transfers the descriptor
-        // afterwards; this slice couples the two, because splitting them would mean holding a
-        // half-finished handshake for no gain until there is a dataplane to configure.
-        //
-        // Ownership begins at `spawn`, not at a completed handshake: the config frame carries the TUN
-        // descriptor, so a child that fails authentication may already hold one, and the ledger below is
-        // what fences it either way.
+        // Ownership begins at `spawn`, not at a completed handshake. A failure after the config frame is
+        // sent may leave the child holding a TUN descriptor, and the ledger below fences it either way.
         val child = current.child.live(AppUidDaemon.spawn())
         val daemon = AppUidDaemon.connect(child, descriptor, current.interfaceName, TEST_NETWORK_MTU,
-            current.publication, current.selected)
+            current.publication)
         current.daemon = daemon
         // the deprecated overload is the point: it is what produces a TestNetworkSpecifier
         // without the blocked TestNetworkSpecifier constructor
@@ -789,7 +777,7 @@ object ShizukuTestNetwork {
             registration?.addSuppressed(e) ?: Timber.w(e, "Cannot read back the exact NetworkRequest")
             null
         }
-        current.request.settle(handle, registration)
+        current.request.settle(handle)
         registration?.let { throw it }
         check(current.request.state == ResourceState.LIVE) {
             "Registration gave no exact NetworkRequest back for $exact"
@@ -818,7 +806,7 @@ object ShizukuTestNetwork {
         // Same classification as the request, and for the same reason: `register()` assigns the agent's
         // `Network` before returning, so reading it back covers the throwing path too, and its absence
         // is the absence of an answer rather than proof that no remote agent exists.
-        current.agent.settle(agent.published, registering)
+        current.agent.settle(agent.published)
         registering?.let { throw it }
         val network = checkNotNull(agent.published) { "Agent registration returned no network" }
         epoch.ensureCurrent()
@@ -850,15 +838,6 @@ object ShizukuTestNetwork {
         // below is what notices afterwards.
         check(!callback.lost.isCompleted) { "The request lost its network during startup" }
         check(!agent.destroyed.isCompleted) { "The test network was destroyed during startup" }
-        // The read [commit] classifies a non-owned upstream with, aimed at the network this session
-        // just published, which is the same case: restricted, inaccessible to the app UID, and
-        // carrying no owner or administrator UID, so the sanitizer treats it no differently than
-        // somebody else's. Failing it means a release began redacting transports, which costs only
-        // the collision distinction - a compatibility finding rather than a startup failure.
-        val classifiable = Services.connectivity.getNetworkCapabilities(network)
-        if (classifiable?.hasTransport(TRANSPORT_TEST) != true) {
-            Timber.w(Exception("Cannot classify $network as a test network unprivileged: $classifiable"))
-        }
         current.network = network
         current.phase = Phase.RUNNING
         val committed = current.commit()
@@ -1012,13 +991,12 @@ object ShizukuTestNetwork {
             val daemon = session.daemon
             val admissionClosed = if (daemon == null) {
                 // No control connection means nothing can be *told* to stop admitting, and that is only
-                // harmless when there is no child to admit anything: a child spawned whose handshake never
-                // completed already holds a duplicate of the TUN, because the descriptor travels with the
-                // config frame. Treating a null daemon as "nothing left to do" is what would let such a
-                // child relay through the whole preference clear below.
+                // harmless when there is no child to admit anything: a child whose handshake failed after
+                // the config frame was sent may already hold a duplicate of the TUN. Treating a null daemon
+                // as "nothing left to do" would let such a child relay through the preference clear below.
                 !session.child.outstanding
             } else try {
-                daemon.closeAdmission(session.config())
+                daemon.apply(session.config())
                 true
             } catch (e: Exception) {
                 if (e is CancellationException && e !is TimeoutCancellationException) throw e
