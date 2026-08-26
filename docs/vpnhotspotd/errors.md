@@ -82,7 +82,6 @@ The two paths share the report builders and differ in delivery and keying:
 | --- | --- | --- |
 | Owner | one process-global channel and coalescer | one reporter per session, flushed as part of its result |
 | Coalescing key | `(context, kind, errno, file, line)` | Rust source file, line and column only, because context, kind and errno are traffic-controlled there and would otherwise let one forged packet per variation open another window |
-| Batch content | first occurrence plus a count | newest occurrence plus a count |
 | Call ID | present | absent |
 
 Dispatch is registry-first with no fall-through, so neither path's reports can
