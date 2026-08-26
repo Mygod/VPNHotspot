@@ -121,6 +121,13 @@ class PreferenceResourceTest {
     /**
      * The tethering service dying is the one thing that discharges the debt without a call: the flag lives in
      * that process, so a restarted service starts from false.
+     *
+     * Every arrangement, because the owners that reach this cannot agree on where the debt had got to. The
+     * preference call classifies from the process-terminal latch on any failure, so it can arrive here from
+     * a set or a clear in flight; the cleanup path discharges when *acquiring* a connector proves the death,
+     * where the clear was never issued at all and the state is whatever the last attempt left. `clearable`
+     * is asserted alongside, because it is the question those owners ask next to decide whether to reach for
+     * a connector again.
      */
     @Test
     fun serviceDeathDischargesEveryDebt() {
@@ -130,13 +137,43 @@ class PreferenceResourceTest {
             { settingIssued(); settingMutated() },
             { settingIssued(); settingUnknown() },
             { settingIssued(); settingMutated(); clearingIssued() },
+            // A clear in flight over a set that was never answered, which is the state a withdrawal retries
+            // from and therefore the state its own death lands on.
+            { settingIssued(); settingUnknown(); clearingIssued() },
+            // A clear that came back unknown, which is exactly what leaves the debt for the cleanup attempt
+            // whose connector acquisition then proves the process is gone.
+            { settingIssued(); settingMutated(); clearingIssued(); clearingUnknown() },
+            // A denial proves that one transaction did not mutate and restores the debt it came from, so
+            // these are the states death has to be able to supersede: a result code outranks nothing once
+            // the process holding the flag has gone.
+            { settingIssued(); settingDenied() },
+            { settingIssued(); settingMutated(); clearingIssued(); clearingDenied() },
+            { settingIssued(); settingUnknown(); clearingIssued(); clearingDenied() },
         )) {
             val resource = PreferenceResource()
             resource.arrange()
             resource.lostWithService()
             assertEquals(ResourceState.CONFIRMED, resource.state)
             assertFalse(resource.outstanding)
+            assertFalse(resource.clearable)
         }
+    }
+
+    /**
+     * Reaching the same proof twice settles it once, which is what lets the owners above stay independent:
+     * the preference call discharges the debt from the latch and then rethrows, and the cleanup path
+     * discharges it again on the way out because acquisition may equally have been what proved the death.
+     * Neither has to know whether the other already did it.
+     */
+    @Test
+    fun serviceDeathIsIdempotent() {
+        preference.settingIssued()
+        preference.settingMutated()
+        preference.lostWithService()
+        preference.lostWithService()
+        assertEquals(ResourceState.CONFIRMED, preference.state)
+        assertFalse(preference.outstanding)
+        assertFalse(preference.clearable)
     }
 
     /** Every transition the table does not name is refused rather than silently reinterpreted. */

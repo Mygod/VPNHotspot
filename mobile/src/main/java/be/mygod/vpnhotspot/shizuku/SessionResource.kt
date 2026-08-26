@@ -102,8 +102,9 @@ internal class DescriptorResource : SessionResource("TUN descriptor") {
  * The launched child, owned from `ProcessBuilder.start()` rather than from a completed handshake: a process
  * exists the moment it is spawned, and a later readiness failure may leave it holding a duplicate of the TUN.
  *
- * Its release is an exit fence - EOF, SIGTERM, SIGKILL, observed exit - which is idempotent and is exactly
- * what a retry is for, so a fence that failed stays reissuable rather than becoming unknown.
+ * Its release is an exit fence - close the control socket, then wait for observed exit - which is
+ * idempotent and is exactly what a retry is for, so a fence that failed stays reissuable rather than
+ * becoming unknown.
  */
 internal class ChildResource : SessionResource("vpnhotspotd") {
     var value: AppUidDaemon.Child? = null
@@ -171,9 +172,10 @@ internal class ConnectorResource : SessionResource("tethering connector") {
  * `TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION` **before** it posts anything, and `Tethering` answers
  * `TETHER_ERROR_NO_ERROR` from inside the posted runnable, after the mutation. So the two answers are not
  * merely success and failure: a nonzero code is authoritative proof that nothing moved, and only a zero code
- * paired with an epoch that still holds proves that something did. Anything else - a deadline with no
- * answer, an epoch that changed after issuance - leaves the handler free to have mutated, which is
- * [ResourceState.UNKNOWN].
+ * paired with an epoch that still holds proves that something did. Anything else - an epoch that changed
+ * after issuance, a caller that went away with the answer still owed - leaves the handler free to have
+ * mutated, which is [ResourceState.UNKNOWN]. Service death is deliberately not one of those: it answers the
+ * question rather than leaving it open, and [lostWithService] is what that answer means.
  *
  * Unlike the agent and the exact request, unknown here is *not* terminal. Clearing is idempotent, so the
  * retained cleanup reissues it under a fresh same-effective-UID epoch until it is confirmed, and the mode's
@@ -245,6 +247,17 @@ internal class PreferenceResource : SessionResource("tethering preference") {
      * is discharged rather than pretended to be live - even though the *process* is finished either way,
      * since `TetheringManager` caches the dead connector permanently.
      *
+     * The one transition with no state guard, and that is the point: three owners reach it and none of them
+     * can know where the others left the debt. The session's ending watcher reaches it with nothing in
+     * flight; [PinnedTetheringConnector.setPreferTestNetworks] reaches it when the death interrupted a set or
+     * a clear that was still owed an answer, or even *answered* - a nonzero code proves that one transaction
+     * did not mutate and restores the debt it came from, and this proof then supersedes that restoration,
+     * because the flag it would have restored lives in the process that has gone; and a withdrawal's own
+     * cleanup attempt reaches it when what proved the death was acquiring or unlinking a connector rather
+     * than calling through one, where no result was ever in flight at all. Whichever it was, the answer has
+     * stopped mattering - so there is no prior state this proof does not settle, it is idempotent for the
+     * owners that both reach it, and there is nothing for an `expect` to defend.
+     *
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#467
      */
     fun lostWithService() {
@@ -303,6 +316,22 @@ internal class ExactRequestResource : SessionResource("exact request") {
         } else {
             state = ResourceState.UNKNOWN
         }
+    }
+
+    /**
+     * The timed request reached `onUnavailable`, which is the one release this session never has to issue.
+     *
+     * Both halves are proven gone rather than merely unheld: ConnectivityService removes the remote request
+     * before it sends that callback, and `ConnectivityManager` removes its `sCallbacks` entry and tombstones
+     * the callback before invoking it - see [RequestCallback.unavailable]. So this is
+     * [ResourceState.CONFIRMED] rather than [ResourceState.ABSENT], because a request did exist and is now
+     * provably released, and unlike [released] it leaves no [localCleanup]: the framework already did that
+     * half itself, so no cleanup epoch is owed and no successor is forbidden by this.
+     */
+    fun expired() {
+        expect(ResourceState.LIVE)
+        state = ResourceState.CONFIRMED
+        value = null
     }
 
     /** Reissuable: a release whose closing check failed may have been authorized against the wrong UID. */

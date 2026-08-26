@@ -70,11 +70,41 @@ Tie the report to a call ID when the failure belongs to a specific active call.
 Use process-level nonfatal reports only for daemon-global background failures or
 when no meaningful call owns the failure.
 
-The app-UID path raises the same reports over its own frame. `ShizukuDaemonFrame`
-carries either an applied acknowledgement or a `DaemonErrorReport`, and the app
+The app-UID path raises the same reports in the same `DaemonEnvelope`. The app
 reads that stream continuously rather than only while a configuration is in
-flight. A report from that path carries no call ID, because there are no calls at
-the app UID.
+flight, because a background failure arrives when it happens rather than in reply
+to anything.
+
+An app-UID failure that belongs to a call is not a nonfatal at all: the start call
+is answered with an `ErrorFrame` for anything that refuses the descriptor or the
+dataplane and for whatever ends the session, and a configuration call with one for
+whatever refuses it ([`lifecycle.md`](lifecycle.md#app-uid-session-start)). Exactly
+one of those two calls is answered per session, and that answer is the session's
+last frame.
+
+Each failure has exactly one destination, chosen by the session at teardown: the
+terminal frame this session owes when nothing has claimed it yet, nothing when the
+failure is the one that frame already carries, and a nonfatal otherwise. Owners do
+not emit their own reports - the TUN writer and the session seed attach a report to
+the error they return and leave the delivery to the session - because emitting at
+the owner as well would make one fatal failure arrive twice, once as a
+`NonFatalFrame` and once as the `ErrorFrame` carrying the identical report.
+Whichever destination is used, the report delivered is the one the failing site
+built, so the errno, the details and the Rust source location are its own. What
+the dataplane reports in the background carries no call ID, because packet work is
+not owned by a call.
+
+Every terminal frame of an app-UID session is enqueued after that session's
+reporter has finished, and is the last daemon-to-app frame the session writes.
+That holds for a refused configuration's `ErrorFrame` exactly as it does for the
+start call's: the app's reader returns on the first terminal frame it sees, so a
+nonfatal enqueued behind one is a nonfatal the app never reads. Refusing a
+configuration therefore describes the failure where the check happened - which is
+what keeps its context, errno, details and Rust source location - and leaves the
+frame to the session's teardown, so the reports the teardown itself discovers and
+the summaries still held in a coalescing window both go out first. A report raised
+after the reporter has finished has nowhere left to go and is written to stderr
+rather than enqueued behind the terminal frame.
 
 The two paths share the report builders and differ in delivery and keying:
 
@@ -82,11 +112,12 @@ The two paths share the report builders and differ in delivery and keying:
 | --- | --- | --- |
 | Owner | one process-global channel and coalescer | one reporter per session, flushed as part of its result |
 | Coalescing key | `(context, kind, errno, file, line)` | Rust source file, line and column only, because context, kind and errno are traffic-controlled there and would otherwise let one forged packet per variation open another window |
-| Call ID | present | absent |
+| Call ID | present | carried when a call owns the failure, absent for the dataplane's own background reports |
 
 Dispatch is registry-first with no fall-through, so neither path's reports can
 reach the other's. App-UID contexts are prefixed `shizuku.` and name the owner and
-operation, such as `shizuku.udp_send` or `shizuku.tun_output`. Details carry the
+operation, such as `shizuku.udp_send`, `shizuku.tun_output`,
+`shizuku.handoff.tungetiff` or `shizuku.control.config`. Details carry the
 TUN-visible source, the destination and the family, and never label
 `platform_dns`, `platform_ipv4` or `platform_ipv6` as a physical client, because
 none of them is one.

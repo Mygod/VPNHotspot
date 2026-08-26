@@ -1,11 +1,14 @@
-//! Shizuku-mode bootstrap.
+//! The TUN handoff: receiving the descriptor the app-UID session will own, and proving it is what the app
+//! said it was.
 //!
-//! The app UID launches this binary directly, so there is no root shell and no privileged dataplane.
-//! Before anything else happens the daemon receives the TUN it will own over `SCM_RIGHTS`.
+//! The app UID launches this binary directly, so there is no root shell and no privileged dataplane. The TUN
+//! arrives over `SCM_RIGHTS` on the very first control frame, which is the session's start call - the
+//! descriptor and the call that owns it cannot be separated, so they travel together.
 //!
-//! The app cannot prove what arrived on its side of that transfer: it only sets the descriptor
-//! nonblocking before duplicating it and keeps the original. Everything the app asserts about the
-//! descriptor is therefore re-checked here against the descriptor itself.
+//! The app cannot prove what arrived on its side of that transfer: it only sets the descriptor nonblocking
+//! before duplicating it and keeps the original. Everything the app asserts about the descriptor is therefore
+//! re-checked here against the descriptor itself, and every check below is a failure the start call is
+//! answered with.
 
 use std::io;
 use std::net::Ipv4Addr;
@@ -13,17 +16,23 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
 
 use libc::{c_int, c_short, ioctl, F_GETFL, IFF_NO_PI, IFF_TUN, IFNAMSIZ, O_NONBLOCK};
 use nix::sys::socket::{recvmsg, ControlMessageOwned, MsgFlags};
-use prost::Message;
 use tokio::net::UnixStream;
-use vpnhotspotd::shared::proto::daemon::{BootstrapConfig, BootstrapReady};
+use vpnhotspotd::shared::protocol::{IoErrorReportExt, IoResultReportExt};
 
-use crate::control_wire::{connect_control_socket, send_packet, MAX_CONTROL_PACKET_SIZE};
+use crate::control_wire::MAX_CONTROL_PACKET_SIZE;
 
 /// Keeps the failing syscall's errno while naming what was being attempted, since a bare errno on a
-/// descriptor check says nothing about which check failed.
-fn context(message: &str) -> io::Error {
-    let error = io::Error::last_os_error();
-    io::Error::new(error.kind(), format!("{message}: {error}"))
+/// descriptor check says nothing about which check failed. `#[track_caller]` so the report names the check
+/// rather than this line.
+#[track_caller]
+fn context(message: &'static str) -> io::Error {
+    io::Error::last_os_error().with_report_context(message)
+}
+
+#[track_caller]
+fn refused(message: String) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, message)
+        .with_report_context("shizuku.handoff.verify_tun")
 }
 
 /// `TUNGETIFF`, which is the only way to learn which interface a descriptor belongs to. Not exported
@@ -68,34 +77,15 @@ struct IfReqMtu {
     padding: [u8; 20],
 }
 
-pub(crate) async fn run(socket_name: String) -> io::Result<()> {
-    let mut stream = connect_control_socket(&socket_name).await?;
-    let (payload, tun) = recv_frame_with_descriptor(&stream).await?;
-    let config = BootstrapConfig::decode(payload.as_slice())
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    let (interface_name, gateway) = verify_tun(&tun, &config)?;
-    send_packet(
-        &mut stream,
-        &BootstrapReady {
-            interface_name: interface_name.clone(),
-        }
-        .encode_to_vec(),
-    )
-    .await?;
-    // the bootstrap's job ends here; the session owns the descriptor and the control socket from now on
-    //
-    // Nothing here coordinates with root mode, and nothing needs to: this daemon relays a TUN that Android's
-    // tethering may or may not have selected as its upstream, and root mode's own per-interface routing is
-    // installed independently of it. When both are running, root's routing takes precedence over whatever
-    // upstream Android picked, by the ordinary root design and without either side being told.
-    crate::shizuku::app_session::run(stream, tun, interface_name, gateway, config.mtu as usize)
-        .await
-}
-
-/// Reads one frame entirely through `recvmsg`, because a plain `read` that consumes the bytes the
+/// Reads the first frame entirely through `recvmsg`, because a plain `read` that consumed the bytes the
 /// descriptor is attached to would discard it. Ancillary data is collected across every call, since the
 /// sender's write boundaries are not something this side can rely on.
-async fn recv_frame_with_descriptor(stream: &UnixStream) -> io::Result<(Vec<u8>, OwnedFd)> {
+///
+/// Runs before the stream is split, and therefore before there is any writer to answer on: a frame this
+/// malformed names no call, so it can only end the conversation. Every later frame is an ordinary read,
+/// which is safe because a descriptor attached to one would be dropped by the kernel rather than leaked into
+/// this process.
+pub(crate) async fn recv_start_frame(stream: &UnixStream) -> io::Result<(Vec<u8>, Vec<OwnedFd>)> {
     let mut received = Vec::new();
     let mut header = [0u8; 4];
     let mut filled = 0;
@@ -106,7 +96,7 @@ async fn recv_frame_with_descriptor(stream: &UnixStream) -> io::Result<(Vec<u8>,
     if length == 0 || length > MAX_CONTROL_PACKET_SIZE {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            format!("invalid bootstrap frame length {length}"),
+            format!("invalid start frame length {length}"),
         ));
     }
     let mut payload = vec![0u8; length];
@@ -114,19 +104,7 @@ async fn recv_frame_with_descriptor(stream: &UnixStream) -> io::Result<(Vec<u8>,
     while filled < length {
         filled += recv_into(stream, &mut payload[filled..], &mut received).await?;
     }
-    let mut descriptors = received.into_iter();
-    let descriptor = descriptors.next().ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidData, "no descriptor was transferred")
-    })?;
-    // extra descriptors are closed rather than leaked, then the handshake fails
-    let extra = descriptors.count();
-    if extra > 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("{} extra descriptors were transferred", extra),
-        ));
-    }
-    Ok((payload, descriptor))
+    Ok((payload, received))
 }
 
 async fn recv_into(
@@ -170,7 +148,7 @@ async fn recv_into(
                 if bytes == 0 {
                     return Err(io::Error::new(
                         io::ErrorKind::UnexpectedEof,
-                        "control socket closed during bootstrap",
+                        "control socket closed before the session started",
                     ));
                 }
                 return Ok(bytes);
@@ -181,21 +159,43 @@ async fn recv_into(
     }
 }
 
-/// Requires a nonblocking TUN naming the expected interface. The flags matter as much as the name: a
-/// TAP descriptor, or one created without `IFF_NO_PI`, would carry a different framing than every
-/// parser above assumes.
-fn verify_tun(descriptor: &OwnedFd, config: &BootstrapConfig) -> io::Result<(String, Ipv4Addr)> {
+/// Turns what the start call transferred into the one descriptor this session owns, or refuses it.
+///
+/// Takes the whole set by value so that a refusal closes every descriptor rather than leaking the ones it
+/// did not want: dropping an [OwnedFd] closes it, and nothing here hands one out except on the path that
+/// accepted exactly one.
+///
+/// Requires a nonblocking TUN naming the expected interface. The flags matter as much as the name: a TAP
+/// descriptor, or one created without `IFF_NO_PI`, would carry a different framing than every parser above
+/// assumes.
+pub(crate) fn verify_tun(
+    received: Vec<OwnedFd>,
+    interface_name: &str,
+    mtu: u32,
+) -> io::Result<(OwnedFd, Ipv4Addr)> {
+    let count = received.len();
+    let mut descriptors = received.into_iter();
+    let Some(descriptor) = descriptors.next() else {
+        return Err(
+            io::Error::new(io::ErrorKind::InvalidData, "no descriptor was transferred")
+                .with_report_context("shizuku.handoff.descriptors"),
+        );
+    };
+    if count > 1 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{} descriptors were transferred", count),
+        )
+        .with_report_context("shizuku.handoff.descriptors"));
+    }
     let fd = descriptor.as_raw_fd();
     // SAFETY: fd is owned and open for the duration of this call.
     let flags = unsafe { libc::fcntl(fd, F_GETFL) };
     if flags < 0 {
-        return Err(context("failed to read descriptor flags"));
+        return Err(context("shizuku.handoff.descriptor_flags"));
     }
     if flags & O_NONBLOCK == 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "transferred descriptor is blocking",
-        ));
+        return Err(refused("transferred descriptor is blocking".to_owned()));
     }
     let mut request = IfReqFlags {
         name: [0; IFNAMSIZ],
@@ -204,7 +204,7 @@ fn verify_tun(descriptor: &OwnedFd, config: &BootstrapConfig) -> io::Result<(Str
     };
     // SAFETY: TUNGETIFF writes an ifreq, and request is exactly that layout.
     if unsafe { ioctl(fd, TUNGETIFF as _, &mut request as *mut IfReqFlags) } < 0 {
-        return Err(context("transferred descriptor is not a TUN"));
+        return Err(context("shizuku.handoff.tungetiff"));
     }
     let end = request
         .name
@@ -212,32 +212,27 @@ fn verify_tun(descriptor: &OwnedFd, config: &BootstrapConfig) -> io::Result<(Str
         .position(|byte| *byte == 0)
         .unwrap_or(IFNAMSIZ);
     let name = String::from_utf8_lossy(&request.name[..end]).into_owned();
-    if name != config.interface_name {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!(
-                "transferred TUN is {name} but {} was expected",
-                config.interface_name
-            ),
-        ));
+    if name != interface_name {
+        return Err(refused(format!(
+            "transferred TUN is {name} but {interface_name} was expected"
+        )));
     }
     let expected = (IFF_TUN | IFF_NO_PI) as c_short;
     if request.flags & expected != expected {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("transferred TUN has flags {:#x}", request.flags),
-        ));
+        return Err(refused(format!(
+            "transferred TUN has flags {:#x}",
+            request.flags
+        )));
     }
-    let mtu = interface_mtu(&request.name)?;
-    if mtu != config.mtu {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!("{name} has MTU {mtu} but {} was declared", config.mtu),
-        ));
+    let interface = interface_mtu(&request.name)?;
+    if interface != mtu {
+        return Err(refused(format!(
+            "{name} has MTU {interface} but {mtu} was declared"
+        )));
     }
     // Read here, where the descriptor is, and compared later against the address each config declares: this is
     // the one field of that declaration the daemon can check against the interface at all.
-    Ok((name, interface_address(&request.name)?))
+    Ok((descriptor, interface_address(&request.name)?))
 }
 
 /// The interface's primary IPv4 address, which is the one field of the app's declaration the daemon can check
@@ -252,7 +247,7 @@ fn interface_address(name: &[u8; IFNAMSIZ]) -> io::Result<Ipv4Addr> {
     // SAFETY: an AF_INET datagram socket needs no privilege and is only an ioctl target here.
     let probe = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
     if probe < 0 {
-        return Err(context("failed to open an ioctl socket"));
+        return Err(context("shizuku.handoff.ioctl_socket"));
     }
     // SAFETY: probe is owned by this function and closed on every path below.
     let probe = unsafe { OwnedFd::from_raw_fd(probe) };
@@ -272,13 +267,14 @@ fn interface_address(name: &[u8; IFNAMSIZ]) -> io::Result<Ipv4Addr> {
         )
     } < 0
     {
-        return Err(context("failed to read the interface address"));
+        return Err(context("shizuku.handoff.interface_address"));
     }
     if request.family != libc::AF_INET as u16 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("interface address is family {}", request.family),
-        ));
+        )
+        .with_report_context("shizuku.handoff.interface_address"));
     }
     Ok(Ipv4Addr::from(request.address))
 }
@@ -290,7 +286,7 @@ fn interface_mtu(name: &[u8; IFNAMSIZ]) -> io::Result<u32> {
     // SAFETY: an AF_INET datagram socket needs no privilege and is only an ioctl target here.
     let probe = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
     if probe < 0 {
-        return Err(context("failed to open an ioctl socket"));
+        return Err(context("shizuku.handoff.ioctl_socket"));
     }
     // SAFETY: probe is owned by this function and closed on every path below.
     let probe = unsafe { OwnedFd::from_raw_fd(probe) };
@@ -308,8 +304,9 @@ fn interface_mtu(name: &[u8; IFNAMSIZ]) -> io::Result<u32> {
         )
     } < 0
     {
-        return Err(context("failed to read the interface MTU"));
+        return Err(context("shizuku.handoff.interface_mtu"));
     }
     u32::try_from(request.mtu)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("negative MTU: {e}")))
+        .with_report_context("shizuku.handoff.interface_mtu")
 }

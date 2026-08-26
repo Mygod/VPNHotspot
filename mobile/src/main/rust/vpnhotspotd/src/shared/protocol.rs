@@ -108,10 +108,13 @@ where
 
 /// The structured form an error is already carrying, if it has one.
 ///
-/// Public because "has this failure already been described to the app?" is a question the app session's
-/// teardown has to answer: it describes what converged on it, and a task that converged on its own failure -
-/// the TUN writer, the session seed - attaches what it emitted so the same failure is not put in front of
-/// the app twice.
+/// Attaching a report is not delivering it. A failing site builds one where the errno, the details and the
+/// source location are still its own, and leaves the delivery to whoever owns the conversation - the app
+/// session picks exactly one destination per failure, and the root daemon's callers pick theirs. So the
+/// question this answers is "does this failure already carry a report built where it happened?", and the two
+/// callers that ask it both use the answer to avoid replacing that report with one built somewhere less
+/// informative: [describe_io_error] hands it back as-is, and [IoErrorReportExt::with_report_context] leaves
+/// an already-described error alone.
 pub fn reported_io_error_report(error: &io::Error) -> Option<DaemonErrorReport> {
     error
         .get_ref()?
@@ -230,6 +233,12 @@ pub fn traffic_counters_frame(id: u64, counters: Vec<daemon::TrafficCounter>) ->
         id,
         daemon::reply_frame::Payload::TrafficCounters(daemon::TrafficCounters { counters }),
     )
+}
+
+/// One config call's answer: the axes the daemon really applied, which is what lets the app tell that the
+/// previous epoch's state is gone rather than merely asked to go.
+pub fn shizuku_applied_reply_frame(id: u64, applied: daemon::ShizukuApplied) -> Vec<u8> {
+    reply_frame(id, daemon::reply_frame::Payload::ShizukuApplied(applied))
 }
 
 pub fn ack_event_frame(id: u64) -> Vec<u8> {
@@ -476,6 +485,61 @@ mod tests {
                 value: "iptables-restore".to_owned(),
             }],
         }
+    }
+
+    /// The property single delivery rests on: an owner attaches its report at the failing site, and whoever
+    /// later puts that failure on the wire - the start call's terminal frame, or the nonfatal fallback -
+    /// hands over that same report rather than building a new one from the describing site. Without this,
+    /// removing the owner's own emission would trade a duplicate for a loss of errno, details and location.
+    #[test]
+    fn describing_a_reported_error_hands_back_the_owner_s_report() {
+        let attached = io::Error::from_raw_os_error(libc::ENOBUFS)
+            .with_report_context_details("shizuku.tun_egress", [("written", 7), ("stale", 1)]);
+        let owner = reported_io_error_report(&attached).expect("the owner attached a report");
+
+        // Described by a teardown that knows neither the errno nor the counters, and names itself.
+        let delivered = describe_io_error(
+            "shizuku.app_session",
+            &attached,
+            std::iter::empty::<(&str, &str)>(),
+        );
+        // The same call site, on an error carrying nothing.
+        let rebuilt = describe_io_error(
+            "shizuku.app_session",
+            &io::Error::from_raw_os_error(libc::ENOBUFS),
+            std::iter::empty::<(&str, &str)>(),
+        );
+
+        assert_eq!(delivered, owner);
+        assert_eq!(delivered.context, "shizuku.tun_egress");
+        assert_eq!(delivered.errno, Some(libc::ENOBUFS));
+        assert_eq!(delivered.details.len(), 2);
+        // The contrast is the point: the describing site names itself only when there is nothing to reuse.
+        assert_eq!(rebuilt.context, "shizuku.app_session");
+        assert_ne!(rebuilt.line, delivered.line);
+    }
+
+    #[test]
+    fn applied_reply_frame_names_its_call() {
+        let applied = daemon::ShizukuApplied {
+            sequence: 4,
+            upstream_generation: 2,
+            downstream_epoch: 3,
+            admitting: true,
+        };
+
+        let envelope =
+            daemon::DaemonEnvelope::decode(shizuku_applied_reply_frame(9, applied).as_slice())
+                .unwrap();
+
+        let Some(daemon::daemon_envelope::Frame::Reply(reply)) = envelope.frame else {
+            panic!("expected a reply frame, got {envelope:?}");
+        };
+        assert_eq!(reply.call_id, 9);
+        assert_eq!(
+            reply.payload,
+            Some(daemon::reply_frame::Payload::ShizukuApplied(applied))
+        );
     }
 
     #[test]

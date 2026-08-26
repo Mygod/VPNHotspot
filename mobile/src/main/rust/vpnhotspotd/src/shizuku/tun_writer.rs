@@ -44,7 +44,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use vpnhotspotd::shared::ipv4_identification::{Guarded, Terminal};
 use vpnhotspotd::shared::packet_writer::validate;
-use vpnhotspotd::shared::protocol::{describe_io_error, IoErrorReportExt};
+use vpnhotspotd::shared::protocol::IoErrorReportExt;
 use vpnhotspotd::shared::reply_bound::{channel_footprint, reply_channel_footprint};
 
 use crate::report;
@@ -307,16 +307,15 @@ pub(crate) async fn run(
         "tun egress: written {written} stale {stale} rejected {oversized} retired {retired} \
          settled {settled}"
     );
-    // Reported as well as returned, and the two are not alternatives. The result ends the session, which
-    // tells the app that something stopped; this is what tells it which errno stopped it, in which context,
-    // with what the writer had managed beforehand. Raised here rather than at the point of failure because
-    // this is the one place every fatal way out of the loop converges, and raised before the session's own
-    // teardown finishes the reporter, so it is still carried rather than dropped.
+    // Described here and delivered nowhere: attaching the report is this task's whole reporting duty, and
+    // [crate::shizuku::app_session] is what puts it in front of the app - as the start call's terminal
+    // `ErrorFrame` when that call is still owed one, and as a nonfatal when it is not. Raised here rather
+    // than at the point of failure because this is the one place every fatal way out of the loop converges,
+    // so the counts below are attached to whichever errno stopped it.
     //
-    // Attached first and emitted from the attachment, so there is one report rather than two equal ones: the
-    // error carries exactly what was sent, which is how [crate::shizuku::app_session] knows this failure has already
-    // been described and does not describe it again. The errno survives the attachment, because that is what
-    // the report records.
+    // Emitting it here as well would be the second copy of one failure: this task's result reaches the
+    // session, and the session has exactly one place to put it. The errno survives the attachment, because
+    // that is what the report records.
     let result = result.map_err(|e| {
         e.with_report_context_details(
             "shizuku.tun_egress",
@@ -328,13 +327,6 @@ pub(crate) async fn run(
             ],
         )
     });
-    if let Err(e) = &result {
-        report::report(describe_io_error(
-            "shizuku.tun_egress",
-            e,
-            std::iter::empty::<(&str, &str)>(),
-        ));
-    }
     // Last, and explicitly. The lines above are deliberately inside the sender's life so that a reader cannot
     // reorder them without noticing what the ingress task is waiting on.
     drop(terminals);

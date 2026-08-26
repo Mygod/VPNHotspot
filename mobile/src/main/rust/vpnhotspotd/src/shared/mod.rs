@@ -1,4 +1,6 @@
 pub mod admission;
+pub mod app_control;
+pub mod app_terminal;
 pub mod classify;
 pub mod dns_counter;
 pub mod dns_debt;

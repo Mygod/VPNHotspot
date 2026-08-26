@@ -29,7 +29,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,8 +37,6 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import okio.ByteString.Companion.toByteString
 import java.net.InetAddress
@@ -121,6 +118,39 @@ object ShizukuTestNetwork {
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/Tethering/src/android/net/ip/IpServer.java#894
      */
     private const val TEST_NETWORK_MTU = 1500
+    /**
+     * How long the exact request stays registered while ConnectivityService creates and publishes this
+     * session's native network, which is the only thing that bounds it.
+     *
+     * What is bounded is the request, not a wait. `updateNetworkInfo` returns the moment
+     * `createNativeNetwork` fails, so netd or DnsResolver refusing the network leaves an agent that is
+     * registered, never created and never matched, and no negative NetworkAgent callback exists to say so -
+     * every publication barrier below would wait on a callback nothing will ever send. The timed
+     * `requestNetwork` overload is the platform's own answer to exactly that: it removes the unsatisfied
+     * request and delivers `onUnavailable`, which is the negative terminal this startup rolls back on.
+     *
+     * It cannot bound a session that published. `notifyNetworkAvailable` removes the pending timeout
+     * message before it dispatches `CALLBACK_AVAILABLE`, so a satisfied request has no lifetime left at all
+     * and a committed session can never be taken back by this.
+     *
+     * The platform states no bound on native network creation, so the value is borrowed rather than derived:
+     * one minute is `TetheringManager`'s own `DEFAULT_TIMEOUT_MS`, the bound it puts on its synchronous
+     * service-result and initial-callback waits - `RequestDispatcher.waitForResult` and
+     * `TetheringCallbackInternal.waitForStarted` - at both ends of the supported range. That is a precedent
+     * for the length and nothing more. It is not a bound on this session's own preference call, which
+     * deliberately bypasses `TetheringManager` and waits on the connector's direct result with no
+     * elapsed-time terminal at all - which is exactly why that call is issued before this lifetime starts.
+     *
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/service/src/com/android/server/ConnectivityService.java#9223
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/service/src/com/android/server/ConnectivityService.java#9326
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#63
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#431
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#13527
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#13699
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#73
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#546
+     */
+    private const val EXACT_REQUEST_LIFETIME_MILLIS = 60_000
 
     /**
      * `NetworkCapabilities.TRANSPORT_TEST`, blocked and therefore hardcoded. Checked at both ends of the
@@ -151,7 +181,7 @@ object ShizukuTestNetwork {
      * The deprecated `String` network-specifier overload only yields a `TestNetworkSpecifier` because
      * `TRANSPORT_TEST` is already set on the builder; otherwise it produces an
      * `EthernetNetworkSpecifier` that can never match this agent. Asserting the resulting type turns
-     * that silent mismatch into an explicit failure instead of a publication timeout.
+     * that silent mismatch into an explicit failure instead of a publication that never arrives.
      *
      * The same branch on the transport is present at both ends of the supported range, so the ordering
      * requirement is not a property of one release.
@@ -244,12 +274,17 @@ object ShizukuTestNetwork {
         /** Assigned the moment `createTunInterface` names it, which is also when [descriptor] is recorded. */
         var interfaceName = ""
         /**
-         * A committed session has lost the machinery it needs, carrying what the user is told. Completed by
-         * whichever observer noticed rather than acted on there, because those observers run inside the scope
-         * a withdrawal cancels; signalling is all they do. The one watcher that selects on this reports it
-         * and completes [ended], and the withdrawal itself is the lifespan finalizer's alone.
+         * A committed session has lost the machinery it needs, carrying the operational exception that says
+         * so. Completed by whichever observer noticed rather than acted on there, because those observers run
+         * inside the scope a withdrawal cancels; signalling is all they do. The one watcher that selects on
+         * this reports it and completes [ended], and the withdrawal itself is the lifespan finalizer's alone.
+         *
+         * The exception rather than a message, because the daemon's own failures are structured: a refused
+         * config arrives as a [be.mygod.vpnhotspot.root.daemon.DaemonException] naming the context, the errno
+         * and the Rust source line, and flattening it here would leave the one place that reports it with
+         * nothing to report. It is turned into text at that boundary and nowhere earlier.
          */
-        val failed = CompletableDeferred<CharSequence>()
+        val failed = CompletableDeferred<Throwable>()
         /**
          * Completed once this session has lost the machinery it needs and its one watcher has said so. What
          * the lifespan awaits: returning from it sends that same lifespan into its own finalizer, which is
@@ -290,7 +325,7 @@ object ShizukuTestNetwork {
         val preference = PreferenceResource()
         val agent = AgentResource()
 
-        /** The one live [AppUidDaemon] this session's [child] is speaking, once the handshake completed. */
+        /** The one live [AppUidDaemon] this session's [child] is speaking, once its start call was ACKed. */
         var daemon: AppUidDaemon? = null
         /**
          * The cleanup-only epoch, authorized only after [epoch] is gone, purely to finish releasing what
@@ -384,16 +419,6 @@ object ShizukuTestNetwork {
      * Internal because the carrier is: only this module projects it, through [OwnedState.label].
      */
     internal val state = stateFlow.asStateFlow()
-    /**
-     * The tethering service died under a session, so `TetheringManager`'s permanently cached connector in
-     * this process is dead and AOSP states that no recovery is possible. Nothing this app can do brings it
-     * back, so a further session is refused with that in so many words rather than left to fail obscurely
-     * at connector acquisition.
-     *
-     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#467
-     */
-    private var tetheringDied = false
-
     private val intentFlow = MutableStateFlow<Job?>(null)
 
     /**
@@ -447,11 +472,11 @@ object ShizukuTestNetwork {
      *
      * Reached from a live lifespan as that start's one attempt, and from a cleanup-only one as the whole of
      * what it exists for. Either way it runs *before* anything only a new session needs - the Shizuku
-     * authorization, the automatic-upstream support check, [tetheringDied], the collision scan - because
-     * none of those is what a withdrawal is missing: fencing the child, withdrawing the agent and closing
-     * the descriptor issue no Shizuku transaction at all, and only the request release and the preference
-     * clear do, which is what [Session.cleanupEpoch] authorizes for itself when the session's own epoch is
-     * gone. Ordering a successor's gates in front of this would let a Shizuku the user revoked, or a
+     * authorization, the automatic-upstream support check, [PinnedTetheringConnector.died], the collision
+     * scan - because none of those is what a withdrawal is missing: fencing the child, withdrawing the agent
+     * and closing the descriptor issue no Shizuku transaction at all, and only the request release and the
+     * preference clear do, which is what [Session.cleanupEpoch] authorizes for itself when the session's own
+     * epoch is gone. Ordering a successor's gates in front of this would let a Shizuku the user revoked, or a
      * tethering service that died permanently, take away the only retry a recoverable child, descriptor or
      * agent still had.
      *
@@ -477,7 +502,7 @@ object ShizukuTestNetwork {
             try {
                 releasePrivileged(previous)
             } catch (e: Exception) {
-                if (e is CancellationException && e !is TimeoutCancellationException) throw e
+                if (e is CancellationException) throw e
                 throw IllegalStateException(app.getString(R.string.shizuku_failure_cleanup_unconfirmed), e)
             }
             finish(previous)
@@ -518,7 +543,13 @@ object ShizukuTestNetwork {
         // mode at all and a permanent RESTART_REQUIRED is the worst available outcome
         PinnedTetheringConnector.requireAutomaticUpstream()
         withContext(privilegedDispatcher) {
-            check(!tetheringDied) { app.getString(R.string.shizuku_failure_tethering_died) }
+            // The process-terminal fact, read from where every observation of it lands: a death recipient
+            // firing under any session, or a `linkToDeath` that refused an already dead binder. A flag of
+            // this file's own would have to be written by one of those observers, and the one that matters
+            // most - the connector that could never be linked at all - belongs to no session.
+            check(!PinnedTetheringConnector.died.isCompleted) {
+                app.getString(R.string.shizuku_failure_tethering_died)
+            }
             // The ledger's own half of one-generation-at-a-time, on the lane that owns it. [settle] above
             // either cleared this or threw, so reaching it non-null means the ordering in front of the
             // ledger failed; fail closed rather than publish a second generation over a live one.
@@ -565,8 +596,9 @@ object ShizukuTestNetwork {
         // exist would leave a session that cannot be taken back. No transaction, no side effect.
         UnblockCentral.IConnectivityManager_releaseNetworkRequest
         UnblockCentral.NetworkCallback_networkRequest
-        // Same reason, for the fence: the launched child's pid is what SIGKILL names, and one that never
-        // authenticates leaves no peer credentials to take it from.
+        // Same reason, for the child: the launched process's pid is what its control connection is
+        // authenticated against, and one that never authenticates leaves no peer credentials to take it
+        // from.
         UnblockCentral.UNIXProcess_pid
         val privileged = PrivilegedConnectivity.create(epoch)
         val service = UnblockCentral.ITestNetworkManager_asInterface(null, epoch.wrap(
@@ -605,6 +637,13 @@ object ShizukuTestNetwork {
             }
         }
         check(current.interfaceName.isNotEmpty()) { "The created TUN has no interface name" }
+        // Acquired here, ahead of the observation below and not merely ahead of the preference it is used
+        // for further down. Linking death is what makes the tethering process's own ending observable at
+        // all - nothing else in this app surfaces it - and the wait below is on the first thing only that
+        // process can produce, so without a recipient linked in front of it a crash in that window would
+        // leave a startup waiting on an observation nothing can ever make. One acquisition and one recipient
+        // for the whole session, reused for the preference rather than linked a second time.
+        val connector = current.connector.live(PinnedTetheringConnector.acquire(epoch))
         // Observation is registered before the preference and the agent, which are the only
         // mutations that can move tethering's upstream, so the snapshot below still predates
         // everything that matters. It is not atomic and does not need to be: the callback is
@@ -615,44 +654,70 @@ object ShizukuTestNetwork {
         // downstream, so a membership change is not its business and its own MTU contract is fixed.
         val snapshot = CompletableDeferred<Unit>()
         current.scope.launch {
-            TetheringManagerCompat.eventFlow.collect { event ->
-                // Level-triggered and repeating its current value, so an observation that changed
-                // nothing is dropped here rather than costing an epoch and a config round trip.
-                if (event !is TetheringManagerCompat.Event.UpstreamChanged) return@collect
-                snapshot.complete(Unit)
-                if (event.network == current.upstream) return@collect
-                current.upstream = event.network
-                if (current.network == null) return@collect
-                val next = try {
-                    current.commit()
-                } catch (e: CollisionException) {
-                    // Terminal, and signalled to the one watcher that completes [Session.ended] rather
-                    // than withdrawn from here: this collector is inside the scope a withdrawal
-                    // cancels, and withdrawing is not an observer's to do.
-                    Timber.w(e)
-                    current.failed.complete(e.readableMessage)
-                    return@collect
+            try {
+                TetheringManagerCompat.eventFlow.collect { event ->
+                    // Level-triggered and repeating its current value, so an observation that changed
+                    // nothing is dropped here rather than costing an epoch and a config round trip.
+                    if (event !is TetheringManagerCompat.Event.UpstreamChanged) return@collect
+                    snapshot.complete(Unit)
+                    if (event.network == current.upstream) return@collect
+                    current.upstream = event.network
+                    if (current.network == null) return@collect
+                    val next = try {
+                        current.commit()
+                    } catch (e: CollisionException) {
+                        // Terminal, and signalled to the one watcher that completes [Session.ended] rather
+                        // than withdrawn from here: this collector is inside the scope a withdrawal
+                        // cancels, and withdrawing is not an observer's to do.
+                        Timber.w(e)
+                        current.failed.complete(e)
+                        return@collect
+                    }
+                    // Anything other than arriving at ACTIVE breaks the correspondence between a
+                    // TUN-visible tuple and a client: tethering may have rebuilt its NAT behind an
+                    // unchanged Network handle, so continuity has to be established rather than assumed
+                    // from a short absence.
+                    if (next != State.ACTIVE) {
+                        current.publication.advanceDownstream()
+                    } else if (current.state == next) return@collect
+                    current.state = next
+                    // Stamped with the lifespan that produced it rather than filtered by when it lands. This
+                    // write is not cancellable, so an observer can reach it after its own lifespan was
+                    // cancelled and stopped being the accepted one, but a stamped value can only ever label
+                    // the owner it names - so a late write is harmless and the daemon's config above still
+                    // gets the truth on the way out.
+                    stateFlow.value = OwnedState(current.lifespan, next)
+                    Timber.i("Shizuku session ${current.generation} is $next, upstream " +
+                            "${current.upstream}, epoch ${current.publication.downstreamEpoch}")
+                    current.push()
                 }
-                // Anything other than arriving at ACTIVE breaks the correspondence between a
-                // TUN-visible tuple and a client: tethering may have rebuilt its NAT behind an
-                // unchanged Network handle, so continuity has to be established rather than assumed
-                // from a short absence.
-                if (next != State.ACTIVE) {
-                    current.publication.advanceDownstream()
-                } else if (current.state == next) return@collect
-                current.state = next
-                // Stamped with the lifespan that produced it rather than filtered by when it lands. This
-                // write is not cancellable, so an observer can reach it after its own lifespan was cancelled
-                // and stopped being the accepted one, but a stamped value can only ever label the owner it
-                // names - so a late write is harmless and the daemon's config above still gets the truth on
-                // the way out.
-                stateFlow.value = OwnedState(current.lifespan, next)
-                Timber.i("Shizuku session ${current.generation} is $next, upstream " +
-                        "${current.upstream}, epoch ${current.publication.downstreamEpoch}")
-                current.push()
+            } catch (e: Throwable) {
+                // A cancellation is this lifespan's own stop, and the waiter below is inside the lifespan
+                // being cancelled, so there is nothing to hand it and nothing to report.
+                if (e is CancellationException) throw e
+                // Exactly one owner otherwise. Before readiness that owner is the wait below, and it is the
+                // only reader this failure can have: registering the callback is part of the startup, this
+                // collector is a supervisor child, and a registration or collection failure isolated here
+                // would leave that wait on an observation nothing will ever make. Afterwards the deferred
+                // has long since been answered, so there is nobody left to hand it to and the scope's own
+                // reporting is all there is - which is exactly what an observer failure had before this
+                // reader existed.
+                if (!snapshot.completeExceptionally(e)) throw e
             }
         }
-        withTimeout(CONTROL_RESULT_DEADLINE) { snapshot.await() }
+        // Ended by the first observation, by that observation having become impossible - the process that
+        // would make it has gone, and `TetheringManager` never produces another connector - or by the owner
+        // cancelling this lifespan, and by nothing else. Death is raced because it is terminal and not
+        // because it is a bound: a level-triggered callback that has not fired yet is waited out however
+        // long tethering takes. Biased to the observation, so one already delivered still wins the turn it
+        // shares with the death that followed it.
+        select<Unit> {
+            snapshot.onAwait { }
+            PinnedTetheringConnector.died.onAwait {
+                throw PinnedTetheringConnector.DiedException(
+                    app.getString(R.string.shizuku_failure_tethering_died))
+            }
+        }
         // Not awaited, unlike the tethering snapshot: no selectable network is a legitimate steady
         // state rather than a startup value still to arrive, so there is nothing to wait for and
         // waiting would refuse to start a session that works as soon as a VPN connects.
@@ -681,7 +746,7 @@ object ShizukuTestNetwork {
                 if (current.network != null) current.push()
             }
         }
-        // Ownership begins at `spawn`, not at a completed handshake. A failure after the config frame is
+        // Ownership begins at `spawn`, not at an acknowledged start call. A failure after the start frame is
         // sent may leave the child holding a TUN descriptor, and the ledger below fences it either way.
         val child = current.child.live(AppUidDaemon.spawn())
         val daemon = AppUidDaemon.connect(child, descriptor, current.interfaceName, TEST_NETWORK_MTU,
@@ -745,6 +810,14 @@ object ShizukuTestNetwork {
                 InetAddress.getByName(VIRTUAL_DNS_IPV6)))
             mtu = TEST_NETWORK_MTU
         }
+        // Recorded as owed from the moment the transaction is issued, not from a successful result; the
+        // connector classifies the answer, because only the service's own result code can separate "did
+        // not act" from "may have acted".
+        //
+        // Ahead of the exact request rather than after it, because this wait has no bound of its own - it
+        // ends on the service's answer, on that service dying, or on a stop - and running it inside the
+        // request's lifetime would let a merely slow tethering service spend the publication's.
+        connector.setPreferTestNetworks(true, current.preference)
         val exact = ExactRequest()
         // The precheck is synchronous and comes *before* the ledger records anything, which is the whole
         // point of splitting them: a stale epoch here proves no Binder call was issued at all, so the
@@ -761,7 +834,8 @@ object ShizukuTestNetwork {
         // above is not the exact handle and cannot stand in for it.
         current.request.issuing(exact)
         val registration = try {
-            privileged.manager.requestNetwork(request, exact.callback, Services.mainHandler)
+            privileged.manager.requestNetwork(request, exact.callback, Services.mainHandler,
+                EXACT_REQUEST_LIFETIME_MILLIS)
             null
         } catch (e: Throwable) {
             e
@@ -784,13 +858,6 @@ object ShizukuTestNetwork {
         }
         epoch.ensureCurrent()
         val callback = exact.callback
-        // acquired before the preference mutation, because connector death is what silently
-        // undoes it, and a session never leaves a death recipient linked behind
-        val connector = current.connector.live(PinnedTetheringConnector.acquire(epoch))
-        // Recorded as owed from the moment the transaction is issued, not from a successful result; the
-        // connector classifies the answer, because only the service's own result code can separate "did
-        // not act" from "may have acted".
-        connector.setPreferTestNetworks(true, current.preference)
         val agent = RestrictedAgent(privileged.context, capabilities, properties, TYPE_TEST)
         // Same split as the request, for the same reason: constructing an agent registers nothing, so a
         // stale epoch caught here proves no registration was issued and leaves nothing owed.
@@ -811,12 +878,28 @@ object ShizukuTestNetwork {
         val network = checkNotNull(agent.published) { "Agent registration returned no network" }
         epoch.ensureCurrent()
         agent.markConnected()
-        val (published, readback) = withTimeout(CONTROL_RESULT_DEADLINE) {
-            agent.created.await()
-            check(callback.available.await() == network) {
+        // Every one of these is raced against the request's own expiry, because none of them has a negative
+        // of its own: a native network ConnectivityService could not create is announced to nobody, so an
+        // agent that never reaches `onNetworkCreated` and a request that never matches it are indistinguishable
+        // from a publication still in progress. The expiry is the platform's answer, and it is authoritative
+        // for all four alike - it is delivered only to a request that was never satisfied, and a request that
+        // was satisfied has already had its expiry cancelled.
+        val published: NetworkCapabilities
+        val readback: LinkProperties
+        try {
+            awaitNetworkRequest(agent.created, callback.unavailable)
+            check(awaitNetworkRequest(callback.available, callback.unavailable) == network) {
                 "Request matched a different network than the one published"
             }
-            callback.capabilities.await() to callback.properties.await()
+            published = awaitNetworkRequest(callback.capabilities, callback.unavailable)
+            readback = awaitNetworkRequest(callback.properties, callback.unavailable)
+        } catch (e: NetworkRequestExpiredException) {
+            // Both halves of the request are provably gone before `onUnavailable` runs - ConnectivityService
+            // removes it, and `ConnectivityManager` drops its `sCallbacks` entry and tombstones the callback -
+            // so the debt is discharged on this privileged lane instead of being left to a retirement that
+            // would reacquire Shizuku to release what the platform has already taken back.
+            current.request.expired()
+            throw e
         }
         // an asynchronous result is only trustworthy if the epoch still holds when it arrives
         epoch.ensureCurrent()
@@ -843,11 +926,13 @@ object ShizukuTestNetwork {
         val committed = current.commit()
         current.state = committed
         stateFlow.value = OwnedState(current.lifespan, committed)
-        current.push()
-        // The push above is the first one to reach the daemon, so it is also the first thing that
-        // can end this session. Turning it into a startup failure keeps one retirement in charge: the
-        // watcher below is installed only after this line, so nothing can be ending this session yet.
-        check(!current.failed.isCompleted) { "The daemon stopped answering during startup" }
+        // The first config to reach the daemon, and so the first thing that can end this session. Applied
+        // here rather than through [push] because this one failure is this function's own: the watcher that
+        // turns a later one into an ending is installed below this line, so there is nothing yet to signal -
+        // and because what a refused config throws *is* the report, which routing it through
+        // [Session.failed] and a `check` would replace with a sentence of this file's own invention.
+        // Throwing it keeps one retirement in charge exactly as the check did: the caller's rollback runs.
+        daemon.apply(current.config())
         Timber.i("Published restricted test network $network on ${current.interfaceName} as " +
                 "$committed, upstream ${current.upstream}: $published $readback")
         // Only a committed session is watched for these. Until commit, the retirement [ShizukuLifecycle]
@@ -864,24 +949,26 @@ object ShizukuTestNetwork {
         // complete [Session.ended] - the lifespan resumes on that and withdraws in its own finalizer.
         current.scope.launch {
             val failure = select {
-                connector.died.onAwait {
+                PinnedTetheringConnector.died.onAwait {
                     // The network stack has already reset the preference and reselected an ordinary
                     // upstream. That is positive proof rather than an assumption - the flag lives in the
                     // process that just died - so the clear this session owed is discharged here instead
-                    // of being retried against a service that has forgotten it. TetheringManager caches
-                    // its connector permanently, so nothing in this process can obtain a working one
-                    // again.
-                    tetheringDied = true
+                    // of being retried against a service that has forgotten it. The process-terminal half
+                    // of the same fact was latched by the death recipient that completed this, so what is
+                    // left to do here is this generation's ledger and nothing wider.
                     current.preference.lostWithService()
                     app.getText(R.string.shizuku_failure_tethering_died)
                 }
-                daemon.ended.onAwait { app.getText(R.string.shizuku_failure_daemon) }
+                // The daemon names its own ending whenever it could: the session call's structured error
+                // is what the app shows instead of a generic message. A null cause is the conversation
+                // simply stopping - EOF, or a child that died - which has nothing more specific to say.
+                daemon.ended.onAwait { it?.readableMessage ?: app.getText(R.string.shizuku_failure_daemon) }
                 // Agent or request loss keeps [State.ACTIVE] honest as well as ending the session:
                 // [commit] compares netIds, and a netId can only be reissued to an unrelated
                 // network once this one is destroyed, which is exactly what these observe.
                 agent.destroyed.onAwait { app.getText(R.string.shizuku_failure_network) }
                 callback.lost.onAwait { app.getText(R.string.shizuku_failure_network) }
-                current.failed.onAwait { it }
+                current.failed.onAwait { it.readableMessage }
             }
             Timber.w("Shizuku session ${current.generation} ended: $failure")
             SmartSnackbar.make(failure).show()
@@ -986,25 +1073,27 @@ object ShizukuTestNetwork {
             session.scope.coroutineContext.job.cancelAndJoin()
             // Step 1 of the ordered stop, and the daemon's half of it: closing admission in the app alone
             // would leave Rust admitting new flows, mappings, queries and fragments for the whole of the
-            // potentially 60-second preference clear below. It throws when the child could not acknowledge
-            // that it stopped admitting, and then the child fence runs first rather than after that wait.
+            // preference clear below, which waits on the tethering service. It throws when the child could
+            // not acknowledge that it stopped admitting, and then the child fence runs first rather than
+            // after that wait.
             val daemon = session.daemon
             val admissionClosed = if (daemon == null) {
                 // No control connection means nothing can be *told* to stop admitting, and that is only
-                // harmless when there is no child to admit anything: a child whose handshake failed after
-                // the config frame was sent may already hold a duplicate of the TUN. Treating a null daemon
+                // harmless when there is no child to admit anything: a child whose start call failed after
+                // the start frame was sent may already hold a duplicate of the TUN. Treating a null daemon
                 // as "nothing left to do" would let such a child relay through the preference clear below.
                 !session.child.outstanding
             } else try {
                 daemon.apply(session.config())
                 true
             } catch (e: Exception) {
-                if (e is CancellationException && e !is TimeoutCancellationException) throw e
+                if (e is CancellationException) throw e
                 Timber.w(e, "Shizuku session ${session.generation} could not close admission")
                 false
             }
-            // Immediately, and before the clear that can take a minute, whenever admission is not provably
-            // shut. The fence is idempotent, so the ordinary one below simply finds nothing left.
+            // Immediately, and before the clear that waits on the tethering service, whenever admission is
+            // not provably shut. The fence is idempotent, so the ordinary one below simply finds nothing
+            // left.
             if (!admissionClosed) fenceChild(session)
             // Cleared before the agent is withdrawn: this is the one piece of system state that outlives
             // the session, so it is dropped while there is still a live connector to drop it through.
@@ -1012,10 +1101,10 @@ object ShizukuTestNetwork {
                 try {
                     if (session.preference.clearable) connector.setPreferTestNetworks(false, session.preference)
                 } catch (e: Exception) {
-                    if (e is CancellationException && e !is TimeoutCancellationException) throw e
+                    if (e is CancellationException) throw e
                     // The ledger already knows which of the two this was: a denied clear proves the flag is
-                    // untouched and is still owed, while a deadline or a replaced epoch leaves it unknown.
-                    // Either way the withdrawal continues and [releasePrivileged] retries what is left.
+                    // untouched and is still owed, while a replaced epoch leaves it unknown. Either way
+                    // the withdrawal continues and [releasePrivileged] retries what is left.
                     Timber.w(e, "Shizuku session ${session.generation} could not clear the preference")
                 } finally {
                     session.connector.unlinking()?.unlink()
@@ -1044,7 +1133,7 @@ object ShizukuTestNetwork {
                 releasePrivileged(session)
                 finish(session)
             } catch (e: Exception) {
-                if (e is CancellationException && e !is TimeoutCancellationException) throw e
+                if (e is CancellationException) throw e
                 // Explicit and fail closed: the request or the preference may still be held by a retired
                 // generation, so no successor session runs in this process until a retry confirms it or the
                 // process ends. The withdrawal itself still finishes, because nothing local is left.
@@ -1080,8 +1169,8 @@ object ShizukuTestNetwork {
      * Reissuable rather than once-only: closing sockets and waiting for observed exit is idempotent, and a
      * fence that failed is exactly what a retry is for. Runs before the agent is withdrawn, so nothing is
      * still reading the TUN when the network it belongs to disappears - and out of order, immediately after a
-     * failed admission close, so a child that is still admitting never runs through the preference clear's
-     * deadline.
+     * failed admission close, so a child that is still admitting never relays through the preference
+     * clear's own wait on the tethering service.
      */
     private suspend fun fenceChild(session: Session) {
         session.child.fencing()?.let { child ->
@@ -1116,19 +1205,15 @@ object ShizukuTestNetwork {
         // from `NetworkAgentInfo.disconnect()` whether or not a native network was created, so it - not the
         // absence of a callback - is what proves a *known* agent is gone. `onNetworkDestroyed` is owed only
         // once `onNetworkCreated` arrived, and `onLost` only once the request reached `onAvailable`.
-        val proven = withTimeoutOrNull(CONTROL_RESULT_DEADLINE) {
-            agent.unwanted.await()
-            if (agent.created.isCompleted) agent.destroyed.await()
-            if (callback?.available?.isCompleted == true) callback.lost.await()
-            Unit
-        } != null
-        // Keep the agent and retry rather than declaring the network gone and releasing a request that still
-        // names it. Deliberately unconditional: a known agent always owes [RestrictedAgent.unwanted], so
-        // there is no "nothing was owed" case left to excuse - the old one existed only because destruction
-        // was the barrier, and callback absence is never proof that no remote agent exists.
-        check(proven) {
-            "Shizuku session ${session.generation} could not prove its agent was withdrawn: $agent"
-        }
+        //
+        // Awaited exactly, and for as long as the platform takes. Declaring the network gone without its
+        // proof would release a request that still names it, and there is nothing to substitute that proof
+        // with: a known agent always owes [RestrictedAgent.unwanted], and callback absence is never proof
+        // that no remote agent exists. So a barrier that never arrives leaves this withdrawal - and the
+        // successor joining it - fenced, still holding the agent that a later command's retry would need.
+        agent.unwanted.await()
+        if (agent.created.isCompleted) agent.destroyed.await()
+        if (callback?.available?.isCompleted == true) callback.lost.await()
         session.agent.confirm()
     }
 
@@ -1154,13 +1239,35 @@ object ShizukuTestNetwork {
             "Shizuku session ${session.generation} cannot release ${session.request}"
         }
         val epoch = session.cleanupEpoch()
-        if (session.preference.clearable) {
+        if (session.preference.clearable) try {
             val connector = PinnedTetheringConnector.acquire(epoch)
             try {
                 connector.setPreferTestNetworks(false, session.preference)
             } finally {
                 connector.unlink()
             }
+        } catch (e: Exception) {
+            // Asked here rather than inside, because the `finally` above is where the last synchronous chance
+            // to learn of this death is: `unlinkToDeath` answering false latches it, and that happens while
+            // this attempt is still unwinding. Only once it has run does the failure in hand mean anything
+            // definite - so a clear that failed *unknown* and then proved the death is settled in this
+            // attempt, not the next command's.
+            if (!PinnedTetheringConnector.died.isCompleted) throw e
+            // The process is gone, so the flag went with it whatever this attempt managed or failed to do -
+            // by acquisition being handed a binder `linkToDeath` refuses, by the call, or by the unlink. The
+            // debt is discharged here rather than reported as residue, because residue is a debt a later
+            // command is supposed to settle and there is nothing left that could: `TetheringManager` caches
+            // its connector permanently. Letting it out would also skip the exact request's release below,
+            // which owes tethering nothing and is still owed.
+            session.preference.lostWithService()
+            // A cancellation stays a cancellation. The discharge above is the latch's fact and holds either
+            // way, but this caller went away, and that is nobody's operational failure to report.
+            if (e is CancellationException) throw e
+            // Consumed, not suppressed: what it was about is provably settled, so there is no retry for it to
+            // ask for and nothing for the caller to act on. Logged with its own context all the same -
+            // [PinnedTetheringConnector.DiedException] is the shape expected here, and anything else is a
+            // failure this is the only record of.
+            Timber.w(e, "Shizuku session ${session.generation} lost its tethering preference with the service")
         }
         // The direct service call on the retained handle, never `unregisterNetworkCallback`: the release is
         // authorized against the UID stored with the request, so it has to go out under an epoch whose
@@ -1263,21 +1370,25 @@ object ShizukuTestNetwork {
         try {
             daemon.apply(config())
         } catch (e: Exception) {
-            // A plain cancellation is this session's own withdrawal cancelling the observer that called this,
-            // not a daemon failure, and treating it as one would report a session that is already stopping as
-            // broken. The acknowledgement deadline is a `CancellationException` too, and that one is exactly
-            // the daemon failing to answer.
-            if (e is CancellationException && e !is TimeoutCancellationException) throw e
+            // A cancellation is this session's own withdrawal cancelling the observer that called this, not
+            // a daemon failure, and treating it as one would report a session that is already stopping as
+            // broken. It is the only shape one can arrive in: a config round trip ends on its answer, on the
+            // conversation ending, or on that withdrawal, and never on elapsed time.
+            if (e is CancellationException) throw e
             // An update that cannot be carried or confirmed ends the session, and that is not defensive
             // teardown: the app can no longer tell what the child is bound to, and retirement is daemon-side
             // work it has no way to ask for again - a failed frame write desynchronizes the stream, so there is
             // nothing to retry on either. Stop and reapply is the way back.
             //
             // Reported rather than acted on, because this runs inside the scope a withdrawal cancels: the one
-            // watcher selecting on [Session.failed] is what turns it into an ending, and during startup
-            // [publish] checks it directly. Neither of them withdraws; the lifespan finalizer does.
+            // watcher selecting on [Session.failed] is what turns it into an ending. Startup does not come
+            // through here at all - [publish] applies its first config directly and lets the exception
+            // propagate, because it runs before that watcher exists. Neither path withdraws; the lifespan
+            // finalizer does.
             Timber.w(e, "Shizuku session $generation lost control of its daemon")
-            failed.complete(app.getText(R.string.shizuku_failure_daemon))
+            // The exception itself, not a message: a config the daemon refused carries its structured report,
+            // and the one watcher that selects on this is where it becomes text.
+            failed.complete(e)
         }
     }
 

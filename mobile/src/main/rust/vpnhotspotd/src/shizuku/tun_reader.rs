@@ -26,7 +26,7 @@
 //! here, and the answer is what says it finished.
 
 use std::io;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use std::time::Instant;
@@ -35,7 +35,7 @@ use tokio::io::unix::AsyncFd;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::sleep_until;
 use tokio_util::sync::CancellationToken;
-use vpnhotspotd::shared::protocol::{describe_io_error, IoErrorReportExt};
+use vpnhotspotd::shared::protocol::{IoErrorReportExt, IoResultReportExt};
 use vpnhotspotd::shared::reassembly;
 
 use crate::shizuku::budget::MAX_DATAGRAM;
@@ -52,7 +52,7 @@ use crate::shizuku::output::Output;
 use crate::shizuku::tcp;
 use vpnhotspotd::shared::ipv4_identification::{Ipv4Identifications, Prepared, Terminal};
 
-use crate::shizuku::tun_writer::{self, Stamp, Writer, TERMINAL_DEPTH};
+use crate::shizuku::tun_writer::{self, Stamp, TERMINAL_DEPTH};
 use crate::shizuku::udp;
 use crate::shizuku::virtual_dns;
 use vpnhotspotd::shared::egress::Egress;
@@ -100,16 +100,23 @@ const IDENTIFICATION_SHARE: u64 = 16;
 pub(crate) struct Dataplane {
     admission: Admission,
     fixed: Fixed,
-    writer: Writer,
     terminals: mpsc::Receiver<Terminal>,
-    /// When this session's Identification allocator opened, taken before anything it will be compared
-    /// against exists. Its first sixty seconds deny every guarded datagram, because a session that started a
-    /// moment after its predecessor stopped would otherwise hand out values the predecessor had just written
-    /// and a receiver could still be holding - see [vpnhotspotd::shared::ipv4_identification].
-    opened: Instant,
-    /// This session's seed for the client-side TCP stack, read from the kernel before anything exists to use
-    /// it - see [session_seed] and [crate::shizuku::tcp::Engine::new].
-    seed: u64,
+    /// The packet emitter and the writer handle it enqueues through. Built here rather than in [run] because
+    /// it holds the writer half of the reserved channels, and the failure fence below needs to drop it.
+    output: Output,
+    buffer: Vec<u8>,
+    fragments: reassembly::Table,
+    /// The four traffic owners, every one of which can be denied. They are constructed here, before the ACK,
+    /// which is the whole point of this bundle: a denial is a start that failed rather than a session the app
+    /// was told was ready.
+    relay: udp::Relay,
+    events: mpsc::Receiver<crate::shizuku::reply::Event<SocketAddr>>,
+    echo: echo::Relay,
+    echoes: mpsc::Receiver<crate::shizuku::reply::Event<crate::shizuku::echo_socket::Family>>,
+    dns: virtual_dns::Handoff,
+    tcp: tcp::Engine,
+    flows: mpsc::Receiver<crate::shizuku::tcp_flow::Event>,
+    asking: mpsc::Receiver<crate::shizuku::tcp_dns::Ask>,
 }
 
 /// What a seed failure is called when the app is told about it.
@@ -154,27 +161,13 @@ fn seed_from(fill: impl FnOnce(&mut [u8; 8]) -> io::Result<usize>) -> io::Result
 /// dependency, the call is one syscall with no state to keep, and eight bytes is far below the 256 the kernel
 /// delivers whole once its pool is initialised.
 ///
-/// A failure is *reported* as well as returned. [crate::report::init] has already run by the time [prepare]
-/// is called, so without this the app sees the control socket reach EOF and a generic process failure with
-/// nothing in it about entropy; the returned error still ends the session, and nothing here continues on a
-/// seed it did not get.
+/// A failure is *described* rather than emitted here. It happens before the start call has been
+/// acknowledged, so the session it refuses is one the app is still waiting on, and
+/// [crate::shizuku::app_session] answers that call with exactly this report - errno, context and location
+/// included. Emitting it here as well would put one entropy failure in front of the user twice, once as a
+/// nonfatal and once as the start call's error.
 fn session_seed(fill: impl FnOnce(&mut [u8; 8]) -> io::Result<usize>) -> io::Result<u64> {
-    match seed_from(fill) {
-        Ok(seed) => Ok(seed),
-        Err(failed) => {
-            // Attached first and emitted from the attachment, so this failure is described exactly once: the
-            // error the caller ends the session with carries the very report that was sent, which is how
-            // [crate::shizuku::app_session] knows not to describe it again at teardown. The errno survives, because
-            // that is what the report records.
-            let failed = failed.with_report_context(SEED_CONTEXT);
-            report::report(describe_io_error(
-                SEED_CONTEXT,
-                &failed,
-                std::iter::empty::<(&str, &str)>(),
-            ));
-            Err(failed)
-        }
-    }
+    seed_from(fill).map_err(|failed| failed.with_report_context(SEED_CONTEXT))
 }
 
 /// The kernel's eight bytes, for the one caller that wants a real seed rather than a decided one.
@@ -182,11 +175,16 @@ fn kernel_seed_bytes(bytes: &mut [u8; 8]) -> io::Result<usize> {
     rustix::rand::getrandom(bytes, rustix::rand::GetRandomFlags::empty()).map_err(io::Error::from)
 }
 
-/// Reserves everything fixed, and only then builds what those reservations pay for.
+/// Reserves everything fixed, and only then builds every owner those reservations pay for.
 ///
-/// Fails rather than starting a dataplane whose accounting does not fit, and fails having built nothing: on
-/// either error below the channels do not exist yet, so nothing is left allocated and uncharged.
-pub(crate) fn prepare(
+/// All of it, and before either dataplane task exists. That is the readiness boundary: the start call is
+/// acknowledged on this returning, so every fallible step a usable session needs happens here rather than
+/// inside [run], and a denial can no longer be answered as ready and only then terminate. [run] receives a
+/// dataplane that already fits, which is why it constructs nothing.
+///
+/// Fails having left nothing allocated and uncharged: the reserves taken before a failing step are given
+/// back through the same fence a running session ends by.
+pub(crate) async fn prepare(
     measured: Measured,
     mtu: usize,
 ) -> io::Result<(Dataplane, tun_writer::Queue)> {
@@ -194,56 +192,25 @@ pub(crate) fn prepare(
     // Before any *dataplane* owner is charged or allocated, because it is the one thing here the accounting
     // has no opinion about: a session whose TCP stack cannot be seeded does not start. Not before
     // everything - the control writer and the reporter are already up, deliberately, which is what lets the
-    // refusal below reach the app as a structured report and be flushed rather than as a closed socket.
+    // refusal below reach the app as this call's structured error rather than as a closed socket.
     let seed = session_seed(kernel_seed_bytes)?;
     // The one admission owner, built here and never shared: every owner below reaches it through the ingress
     // task, which is the only thing that reads client traffic. A worker never sees it at all.
-    let mut admission = Admission::new(measured.totals).map_err(io::Error::other)?;
+    let mut admission = Admission::new(measured.totals)
+        .map_err(io::Error::other)
+        .with_report_context("shizuku.dataplane.admission")?;
     // Every fixed owner is charged before a single byte of it is allocated, and each failure is a session
     // that does not start rather than a denial blamed on traffic later.
-    let fixed = reserve_fixed(&mut admission, mtu).map_err(|why| {
-        io::Error::other(format!(
-            "the dataplane's fixed reservations do not fit: {why:?}"
-        ))
-    })?;
+    let fixed = reserve_fixed(&mut admission, mtu)
+        .map_err(|why| {
+            io::Error::other(format!(
+                "the dataplane's fixed reservations do not fit: {why:?}"
+            ))
+        })
+        .with_report_context("shizuku.dataplane.reserve_fixed")?;
     // Reserved above, allocated here, and in that order deliberately.
     let (writer, queue, terminals) = tun_writer::channel();
-    Ok((
-        Dataplane {
-            admission,
-            fixed,
-            writer,
-            terminals,
-            opened,
-            seed,
-        },
-        queue,
-    ))
-}
-
-pub(crate) async fn run(
-    fd: Arc<AsyncFd<OwnedFd>>,
-    mtu: usize,
-    dataplane: Dataplane,
-    mut configs: mpsc::Receiver<Applied>,
-    cancel: CancellationToken,
-) -> io::Result<()> {
-    let Dataplane {
-        mut admission,
-        fixed,
-        writer,
-        mut terminals,
-        opened,
-        seed,
-    } = dataplane;
-    let mut counters = Counters::default();
-    let mut admitting = false;
-    let mut stamp = Stamp::default();
-    let mut virtual_addresses = Arc::new(Vec::new());
-    let mut gateways = Gateways::new();
-    // one MTU is the largest packet the interface can deliver, so a full read is never truncated
-    let mut buffer = vec![0u8; mtu];
-    let mut output = Output::new(
+    let output = Output::new(
         mtu,
         Prepared {
             tuples: fixed.tuples,
@@ -255,50 +222,108 @@ pub(crate) async fn run(
         },
         writer,
     );
-    let mut fragments = reassembly::Table::with_capacity(FRAGMENT_CONTEXTS);
-    let started = (|| {
+    // one MTU is the largest packet the interface can deliver, so a full read is never truncated
+    let buffer = vec![0u8; mtu];
+    let fragments = reassembly::Table::with_capacity(FRAGMENT_CONTEXTS);
+    let owners = (|| {
         let (relay, events) = udp::Relay::new(&mut admission)?;
         let (echo, echoes) = echo::Relay::new(&mut admission)?;
         let dns = virtual_dns::Handoff::new(&mut admission)?;
         let (tcp, flows, asking) = tcp::Engine::new(mtu, seed, &mut admission)?;
         Ok::<_, Denied>((relay, events, echo, echoes, dns, tcp, flows, asking))
     })();
-    let (mut relay, mut events, mut echo, mut echoes, mut dns, mut tcp, mut flows, mut asking) =
-        match started {
-            Ok(started) => started,
-            Err(why) => {
-                // Through the same fence as every other exit rather than a bare return. No traffic owner
-                // exists to stop, but the writer's channels and the Identification table do, and they are
-                // charged: returning here would give their bytes back while they were still allocated, or -
-                // worse - never give them back at all and never say so.
-                let failed = io::Error::other(format!(
-                    "the dataplane's owners do not fit the measured totals: {why:?}"
-                ));
-                release_fixed(
-                    output,
-                    buffer,
-                    fragments,
-                    terminals,
-                    fixed,
-                    &mut admission,
-                    None,
-                )
-                .await;
-                // Said before the line below rather than left for a reader to misread. An owner that was
-                // built before the failing one has been *dropped* - its memory is gone - but a lease is an
-                // inert identity and dropping it releases nothing, so those rows are still charged in the
-                // counts that follow. The direction is fail-closed, an over-charge on a session that is
-                // ending anyway; releasing them in order would mean unwinding four differently-typed
-                // constructors by hand, which is a larger change than the diagnostic is worth.
-                report::stdout!(
-                    "tun ingress: startup failed after {} lease(s) were taken; owners built before the \
-                     failure were dropped rather than released, so they are counted below",
-                    admission.outstanding_leases()
-                );
-                report::stdout!("admission {}", admission.describe());
-                return Err(failed);
-            }
-        };
+    let (relay, events, echo, echoes, dns, tcp, flows, asking) = match owners {
+        Ok(owners) => owners,
+        Err(why) => {
+            // Through the same fence as a running session's exit rather than a bare return. No traffic owner
+            // exists to stop, but the writer's channels and the Identification table do, and they are
+            // charged: returning here would give their bytes back while they were still allocated, or -
+            // worse - never give them back at all and never say so.
+            // Named here, at the constructor set that was denied, so a start refused for want of budget
+            // says which half of the dataplane did not fit rather than reaching the app as a session that
+            // failed at teardown for no stated reason.
+            let failed = io::Error::other(format!(
+                "the dataplane's owners do not fit the measured totals: {why:?}"
+            ))
+            .with_report_context("shizuku.dataplane.owners");
+            // First, because the queue holds the settlement channel's sending half and the fence below waits
+            // for exactly that half to go. Nothing has been spawned yet, so this frame is its only owner.
+            drop(queue);
+            release_fixed(
+                output,
+                buffer,
+                fragments,
+                terminals,
+                fixed,
+                &mut admission,
+                None,
+            )
+            .await;
+            // Said before the line below rather than left for a reader to misread. An owner that was
+            // built before the failing one has been *dropped* - its memory is gone - but a lease is an
+            // inert identity and dropping it releases nothing, so those rows are still charged in the
+            // counts that follow. The direction is fail-closed, an over-charge on a session that is
+            // ending anyway; releasing them in order would mean unwinding four differently-typed
+            // constructors by hand, which is a larger change than the diagnostic is worth.
+            report::stdout!(
+                "dataplane startup failed after {} lease(s) were taken; owners built before the \
+                 failure were dropped rather than released, so they are counted below",
+                admission.outstanding_leases()
+            );
+            report::stdout!("admission {}", admission.describe());
+            return Err(failed);
+        }
+    };
+    Ok((
+        Dataplane {
+            admission,
+            fixed,
+            terminals,
+            output,
+            buffer,
+            fragments,
+            relay,
+            events,
+            echo,
+            echoes,
+            dns,
+            tcp,
+            flows,
+            asking,
+        },
+        queue,
+    ))
+}
+
+pub(crate) async fn run(
+    fd: Arc<AsyncFd<OwnedFd>>,
+    dataplane: Dataplane,
+    mut configs: mpsc::Receiver<Applied>,
+    cancel: CancellationToken,
+) -> io::Result<()> {
+    // Nothing is constructed here, and nothing here can fail before the loop: [prepare] owns every fallible
+    // step, so a task that exists at all is one whose dataplane already fits.
+    let Dataplane {
+        mut admission,
+        fixed,
+        mut terminals,
+        mut output,
+        mut buffer,
+        mut fragments,
+        mut relay,
+        mut events,
+        mut echo,
+        mut echoes,
+        mut dns,
+        mut tcp,
+        mut flows,
+        mut asking,
+    } = dataplane;
+    let mut counters = Counters::default();
+    let mut admitting = false;
+    let mut stamp = Stamp::default();
+    let mut virtual_addresses = Arc::new(Vec::new());
+    let mut gateways = Gateways::new();
     // Whatever ends this loop - EOF, cancellation, or a failure - the fence below it runs. A failure that
     // returned from inside would leave every worker to be aborted by the runtime instead of joined, which is
     // the one thing this task must never do with a descriptor.
@@ -332,7 +357,7 @@ pub(crate) async fn run(
                 // would drop a client's packet for no reason.
                 if stamp != retired {
                     if let Err(e) = output.writer().retire(stamp).await {
-                        break Err(e);
+                        break Err(e.with_report_context("shizuku.tun_ingress.retire"));
                     }
                 }
                 output.set_floor(config.downstream_mtu_floor);
@@ -374,7 +399,8 @@ pub(crate) async fn run(
                 // Only now, with every worker of the previous stamp joined and every refund made, may the
                 // session acknowledge the config.
                 if config.retired.send(()).is_err() {
-                    break Err(io::Error::other("the session abandoned a config it sent"));
+                    break Err(io::Error::other("the session abandoned a config it sent")
+                        .with_report_context("shizuku.tun_ingress.acknowledge"));
                 }
                 continue;
             }
@@ -510,15 +536,20 @@ pub(crate) async fn run(
             }
             readable = fd.readable() => readable,
         };
+        // Both of the descriptor's own failures are described where they happen. Attached rather than
+        // emitted: this ends the session, so the report travels out on the error and the session decides its
+        // one destination - see [crate::shizuku::app_session]. Describing them only at teardown would name
+        // that teardown and its source line, which says nothing about which half of the ingress descriptor
+        // stopped working, and would drop nothing of the errno but everything of where it came from.
         let mut guard = match readable {
             Ok(guard) => guard,
-            Err(e) => break Err(e),
+            Err(e) => break Err(e.with_report_context("shizuku.tun_ingress.readable")),
         };
         let read = match guard.try_io(|inner| {
             rustix::io::read(inner.get_ref(), buffer.as_mut_slice()).map_err(io::Error::from)
         }) {
             Ok(Ok(read)) => read,
-            Ok(Err(e)) => break Err(e),
+            Ok(Err(e)) => break Err(e.with_report_context("shizuku.tun_ingress.read")),
             // readiness was stale; wait for it again
             Err(_would_block) => continue,
         };
@@ -592,7 +623,7 @@ pub(crate) async fn run(
 ///
 /// - `fragments` is retired against its own lease while it is still here, then dropped.
 /// - `output` goes next, and dropping it is what starts everything else: it owns the Identification table
-///   those bytes were reserved for, and the only [Writer] in the process, so the writer's packet and
+///   those bytes were reserved for, and the only [tun_writer::Writer] in the process, so the writer's packet and
 ///   retirement senders die with it.
 /// - The egress task then finds its packet channel closed - or, if it is parked waiting for a kernel that
 ///   will not take a write, finds its retirement channel closed, which preempts it exactly as a real
@@ -600,6 +631,8 @@ pub(crate) async fn run(
 /// - That task's last act is to drop its settlement sender, so draining this receiver to `None` is proof
 ///   that the queue, both receivers and any packet it had in hand are gone. It is the channel the writer's
 ///   own reservation already paid for, so nothing here needs a second handshake to say the same thing.
+///   [prepare]'s own failure path has no such task, and drops the queue itself before calling this for the
+///   same reason: what the drain waits for is that sending half going away, whoever holds it.
 /// - The drained receiver is then dropped, and that is what finally frees the channel. A closed channel is
 ///   not a freed one: the sender going away is what ends the wait, but the shared state and its blocks live
 ///   until the last endpoint does, and this is the last endpoint. Releasing on the close alone would give

@@ -1,7 +1,7 @@
-//! Shizuku daemon bootstrap, session control and app-UID TUN dataplane.
+//! The app-UID control conversation, its session control and its TUN dataplane.
 
+mod app_config;
 mod app_session;
-mod bootstrap;
 mod budget;
 mod dispatch;
 mod echo;
@@ -10,6 +10,7 @@ mod echo_socket;
 mod egress;
 mod flow_setup;
 mod gateway;
+mod handoff;
 mod mailbox;
 mod output;
 mod owned;
@@ -26,4 +27,4 @@ mod udp;
 mod virtual_dns;
 mod workers;
 
-pub(super) use bootstrap::run;
+pub(super) use app_session::run;

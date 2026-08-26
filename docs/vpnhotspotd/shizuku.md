@@ -55,7 +55,7 @@ Root mode has none of these, and remains the recommended path.
 | [`ShizukuTestNetwork`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/ShizukuTestNetwork.kt) | one session at a time: TUN descriptor, exact request, agent, pinned tethering connector, global preference, child, upstream observation, and the record of what each still owes |
 | [`ShizukuLifecycle`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/ShizukuLifecycle.kt) | ordering only: the one job in flight, its finalizer, and the process-wide reference a successor waits on |
 | [`ShizukuTetheringService`](../../mobile/src/main/java/be/mygod/vpnhotspot/ShizukuTetheringService.kt) | that job, the scope it runs on, and the process lifetime behind it |
-| [`AppUidDaemon`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/AppUidDaemon.kt) | the launched child, its authentication, and the configuration stream |
+| [`AppUidDaemon`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/AppUidDaemon.kt) | the launched child, its authentication, and the RPC conversation with it |
 | The daemon's ingress task | every TUN-visible flow, mapping and transport, and the tasks they start |
 
 The lifecycle contract is:
@@ -88,6 +88,33 @@ Every Android control operation runs inside a
 [`ShizukuEpoch`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/ShizukuEpoch.kt): an authorized
 Shizuku identity, its wrapped binders, and the effective UID they act as. It brackets each transaction, so a
 replaced or dead identity is caught before a result is believed.
+
+Authorization itself can wait on the user's own permission dialog for as long as they take, and three things
+end that wait: their answer, the lifespan being cancelled by a stop, or the exact Shizuku publication the
+request was issued against being superseded. The last is compared by publication identity rather than by
+binder equality - a redelivery of the same binder counts - and it is terminal for the *authorization* rather
+than for the answer: what has gone is the identity the request belonged to, so even a grant could no longer
+produce an epoch. Nothing about a successor has been validated, so supersession fails the authorization and
+never re-asks against it: re-asking is a new authorization rather than that one continuing.
+
+The answer itself is not publication-scoped. Shizuku hands every service the same process-global
+`IShizukuApplication` and dispatches every permission result to one process-global listener list, so a
+replaced-but-live service can still answer a request an attempt has already given up on - and answer it after
+a successor has asked its own question. Every attempt therefore takes a distinct request code and accepts no
+other, and accepts even its own only while the publication it was issued against is still current. An
+abandoned attempt's late answer completes nothing, whether it reaches a successor's listener or its own, and
+which of the two endings an attempt reports does not depend on when its owner gets around to waiting: the
+publication swap and the result delivery both land on Shizuku's handler, so one strictly precedes the other.
+
+The request and the app's own authorization check are both dispatched through the pinned publication's raw
+binder rather than through `Shizuku.requestPermission`/`Shizuku.checkSelfPermission`, which resolve Shizuku's
+mutable current service and cache the grant across replacements. A publication already known stale - by
+publication identity, by Shizuku's own binder having moved, or by that binder being dead - issues no request
+at all, and a grant is only accepted once that same publication answers the check again. Shizuku exposes no
+way to retract a dialog it has already launched, so the window between that check and the transaction is
+irreducible, and so is the interval between the last cancellation check and that same transaction: a
+replacement or a stop landing inside either can leave a dialog whose answer this app will refuse, and the
+user may see a second one when they start the row again.
 
 ConnectivityService authorizes `releaseNetworkRequest` against the UID stored with the request, and does so
 asynchronously, so a release issued under a different effective UID silently does nothing while the
@@ -145,8 +172,13 @@ This mode sets one global flag and observes the result. It sends
 ([source](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#2241))
 and without `NETWORK_SETTINGS` the service reports `TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION` through the
 listener instead of throwing, so a denial is otherwise silent. The call is `oneway`, so the answer arrives
-separately under a deadline, and both writes go to the one pinned connector because `IBinder` orders one-way
-calls only per object.
+separately, and exactly three things end that wait: the result, the tethering process's death, or the owner
+cancelling the session. Death is raced because it is terminal rather than because it is a bound - the
+listener would answer through a process that has gone - and it is classified as **positive proof that the
+flag is discharged**, exactly as a committed session's own death watcher classifies it: `mPreferTestNetworks`
+lives in the process that died and a restarted service begins `false`, so nothing is left to clear. Only an
+epoch change or a caller going away leaves the flag unknown and still owed. Both writes go to the one pinned
+connector because `IBinder` orders one-way calls only per object.
 
 **Success only means the flag moved.** It is not a reselection trigger and never proof that tethering
 selected this network: tethering holding an ordinary upstream keeps it until Android reevaluates or
@@ -160,8 +192,47 @@ and later force automatic mode on.
 Tethering-service death is terminal for this process, because `TetheringManager` caches its connector
 permanently and AOSP states that no recovery is possible
 ([source](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#467)).
-The session ends, further sessions are refused with that reason, and the preference clear is discharged
-rather than retried, since the flag died with the process that held it.
+It is therefore one latched fact owned at the connector boundary rather than one per session, and it is
+completed by every way this app can observe that death synchronously:
+
+- a death recipient firing, on any connector this process linked;
+- a connector delivery whose `linkToDeath` refuses a binder that has already gone, which is answered as the
+  acquisition's own failure because AOSP holds consumers in a wait queue and its drain catches
+  `RemoteException` per consumer and moves on
+  ([source](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#480),
+  [source](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#365)),
+  so an exception left to escape there would resume nothing at all;
+- `unlinkToDeath` answering `false`, which Binder defines as the target having already died with its
+  recipient "has been (or soon will be) called"
+  ([source](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-17.0.0_r1/core/java/android/os/IBinder.java#375),
+  [source](https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-13.0.0_r1/core/java/android/os/IBinder.java#351)).
+  In the second half of that the notification is still in flight against a connector withdrawal is about to
+  drop, so reading the Boolean is what keeps a successor from passing the startup gate ahead of the callback.
+
+Reading that latch is what refuses a later session; awaiting it is what ends each of the three waits only a
+live tethering process could otherwise end - the preference result, the first upstream observation a startup
+needs, and a committed session's own terminal watcher.
+
+**A latch known complete settles the preference before anything else proceeds or returns.** Every owner that
+touches the flag asks it at its own boundary rather than once at the start, because the death can become
+knowable at any of them:
+
+- the preference call asks it first on every failure, ahead of even the result code. A nonzero code is
+  authoritative that *that transaction* did not mutate, and it restores the debt it came from - but a debt
+  restored to live is a flag in a process that has gone, so the latch supersedes the restoration. The same
+  death also arrives as a plain throw out of the `oneway` send, which is why the latch rather than the shape
+  of the failure is the question;
+- a withdrawal's cleanup attempt asks it again *after* unlinking its connector, since `unlinkToDeath`
+  answering false is the last synchronous chance to learn of the death and it happens while that attempt is
+  still unwinding. So a clear that failed unknown and only then proved the death is discharged in the same
+  attempt, and the exact request's own release still runs - that release is authorized by ConnectivityService
+  and owes tethering nothing. A cancellation is still propagated as a cancellation, after the discharge.
+
+No known death is reported as residual debt, and none defers settlement to a second command. A failure with
+*no* observed death does leave the flag `UNKNOWN`, on purpose: clearing is idempotent, so retrying an unknown
+clear costs nothing while a wrong discharge cannot be taken back. A death with nothing in flight and no
+session simply latches; there is no debt to settle. What the latch never carries is a *session's* debt: that
+is the ledger's, and it is the process-level fact that outlives it.
 
 Two platform facts shape what the daemon sees. **Double NAT**: Android's forwarding and MASQUERADE run
 before packets reach the TUN, so Android owns the inner mapping, filtering and timeouts and the daemon never
@@ -199,34 +270,79 @@ the same rollback.
    every prerequisite below, since none of those is what cleanup was missing while any of them can refuse a
    new session permanently. One command makes one attempt.
 2. **Prerequisites.** Authorize Shizuku; on Android 13 require automatic upstream selection; refuse to start
-   while a session is still recorded, or while any `TRANSPORT_TEST` network exists. The collision scan runs
-   before this session registers an agent, so it cannot match itself.
+   once tethering-service death has been latched in this process, while a session is still recorded, or
+   while any `TRANSPORT_TEST` network exists. The collision scan runs before this session registers an
+   agent, so it cannot match itself.
 3. **Publication.** Resolve the reflective members cleanup will need, so a member the installed module does
-   not expose refuses the session before anything is created; create the TUN; register the upstream and
-   egress observations and await the first upstream value, before either of the two mutations that can move
-   tethering's upstream; spawn the child and complete the
-   bootstrap handshake ([`lifecycle.md`](lifecycle.md#app-uid-bootstrap)); register the exact request,
-   acquire the pinned connector and link its death recipient, then set the preference, in that order,
-   because connector death silently undoes the preference; register and connect the agent and validate the
-   capabilities and `LinkProperties` that come back.
+   not expose refuses the session before anything is created; create the TUN; acquire the pinned connector
+   and link its death recipient, which has to come before the wait below because that death is the only
+   thing other than a stop that can end it; register the upstream and egress observations and await the
+   first upstream value, raced against that death, before either of the two mutations that can move
+   tethering's upstream - a callback registration or collection failure before that first value fails the
+   startup rather than staying isolated in the session's observer scope; spawn the child and complete the
+   session start call ([`lifecycle.md`](lifecycle.md#app-uid-session-start)); set the preference through that
+   same already-linked connector, since connector death silently undoes the preference and one session links
+   one recipient, and ahead of the exact request because that wait has no bound of its own and would otherwise
+   run inside the request's lifetime; register the exact request, with the one-minute lifetime below; register
+   and connect the agent and validate the capabilities and `LinkProperties` that come back, racing every one
+   of those barriers against that request's expiry.
 4. **Commit.** Publish a state, send the first configuration, and start watching for the terminal events
    below.
 
-Ownership of the child begins at spawn, not at a completed handshake, because a failure after the
-descriptor transfer can leave the child holding its copy. The request, the preference and the agent are
+Ownership of the child begins at spawn, not at a completed start call, because a failure after the
+descriptor transfer can leave the child holding its copy. A child that exits before it ever connects fails
+the start with its exit status and captured output rather than leaving the start waiting on a connection
+nothing will ever make, and passes through the same withdrawal; once it has connected and been authenticated,
+what its own conversation says takes precedence over what its exit says. The first configuration is sent by the startup itself, so a daemon that
+refuses it fails the start with that structured refusal rather than with a message of the app's own. The
+request, the preference and the agent are
 recorded as owed from the moment their transaction is issued, because for these a thrown exception is not
 proof that nothing happened; each is then classified from the handle, `Network` or result code the platform
 returns. What cannot be classified stays `UNKNOWN`, which withdrawal treats as still existing.
+
+**A native network ConnectivityService cannot create is the one publication failure it announces to nobody.**
+When `createNativeNetwork` fails - netd or DnsResolver refusing the netId -
+[`updateNetworkInfo`](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#13527)
+logs and returns, sending no agent callback at all, so `onNetworkCreated` never arrives, the request never
+matches, and every barrier phase 3 waits on would wait forever. The exact request is therefore registered
+through the timed `requestNetwork` overload, and its `onUnavailable` is the negative terminal each of those
+barriers is raced against - with failure priority, so an expiry sharing a turn with a queued positive result
+still wins rather than committing a result its request can no longer own. This bounds the *request*, not the
+wait: it is the platform's own request lifetime,
+[`notifyNetworkAvailable`](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#13699)
+cancels it before dispatching availability so a published session can never be taken back by it, and no other
+Shizuku or tethering wait in this mode has an elapsed-time terminal - those still end on their answer, on the
+tethering process dying, or on a stop. The value is borrowed rather than derived, because the platform states
+no bound on native network creation: one minute is `TetheringManager`'s own `DEFAULT_TIMEOUT_MS`, the bound it
+puts on its synchronous service-result and initial-callback waits
+([source](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#546)),
+at both ends of the supported range. That is a precedent for the length and nothing more, and it is not a
+bound on this session's preference call, which bypasses `TetheringManager` altogether and waits on the
+connector's direct result with no elapsed-time terminal - which is why that call is issued before this
+lifetime starts.
+
+Expiry is an ordinary startup failure and enters the same ordered rollback, with one difference: it settles
+the exact request's own debt on the spot instead of leaving it to that rollback. ConnectivityService removes
+the request before it sends the callback and `ConnectivityManager` drops its `sCallbacks` entry and tombstones
+the callback before invoking it, so both halves are proven gone, no cleanup identity is needed, and no
+successor is forbidden by it. Everything else the session had reached - the preference, the child, the agent,
+the TUN - is still owed and is withdrawn in the order below. What no app can clean up is ConnectivityService's
+own residue: `createNativeNetwork` is not atomic, and a network destroy is
+[guarded](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#6079)
+on a creation that by definition did not complete, so netd state from a half-finished create is left for the
+platform to reconcile. It is invisible to public callbacks, this app never held it, and it is not what the
+rollback is for.
 
 The ordered withdrawal is the same for a stop, a failed publication and an autonomous ending, is idempotent
 and resumable, and is non-cancellable. Its order is what the platform requires:
 
 1. stop the session's observers, then ask the daemon to close admission and await the acknowledgement; if
-   that cannot be obtained, terminate the child immediately instead of leaving it admitting through the next
-   step's minute-long deadline;
-2. clear `preferTestNetworks` through the still-live connector, then unlink its death recipient, since this
-   is the one piece of system state that outlives a session;
-3. terminate the child and confirm its exit ([`lifecycle.md`](lifecycle.md#app-uid-bootstrap)); everything
+   that cannot be obtained, fence the child immediately instead of leaving it admitting through the next
+   step's wait on the tethering service;
+2. clear `preferTestNetworks` through the still-live connector, then unlink its death recipient - reading
+   that unlink's answer, since a refusal is itself the death - because this is the one piece of system state
+   that outlives a session;
+3. terminate the child and confirm its exit ([`lifecycle.md`](lifecycle.md#app-uid-session-start)); everything
    after this step assumes the child is gone;
 4. withdraw the agent and prove the network is gone before releasing the request, because
    ConnectivityService emits the request's loss when the agent disconnects, before it removes the network,
@@ -236,7 +352,11 @@ and resumable, and is non-cancellable. Its order is what the platform requires:
    after Shizuku death;
 5. close the descriptor - never earlier, or a successor would relay through a TUN ConnectivityService still
    exposes;
-6. release the exact request on the retained handle, then clean the framework's callback bookkeeping.
+6. release the exact request on the retained handle, then clean the framework's callback bookkeeping. A
+   preference clear still owed at this point is reissued under a cleanup identity first; if anything in that
+   attempt proves the tethering process gone - the acquisition, the call, or the unlink after it - that debt
+   is discharged and this release still runs, because it is authorized by ConnectivityService and has nothing
+   to do with tethering.
 
 Withdrawal reports itself finished only when the descriptor, the child and the agent are proven gone. Three
 outcomes are not equally recoverable:
@@ -249,7 +369,10 @@ outcomes are not equally recoverable:
 
 A committed session also ends on its own when it loses the tethering connector, the daemon control
 conversation, the agent, the exact request, or reports its own failure. Whichever occurs first is shown to
-the user; the withdrawal above then runs in the same finalizer a stop would have used.
+the user, and the operational exception is what travels there: a structured daemon report and a frame the
+app refused are both shown as themselves, while a control stream that simply ended has nothing more specific
+to say and shows the generic message. The withdrawal above then runs in the same finalizer a stop would have
+used.
 
 ## Upstream Generation And Downstream Epoch
 
@@ -273,10 +396,18 @@ fails per operation and the session resumes on the next selection.
 
 ## App-UID Dataplane
 
-The child is the same `vpnhotspotd` binary root mode uses, exec'd in place from the APK at the app UID. It
-receives a configuration stream instead of the root call/reply conversation: the newest configuration is the
-whole truth, and each is acknowledged only once whatever the change retires is really gone rather than
-asked to go. Platform resolver work is the documented exception ([`dns.md`](dns.md)).
+The child is the same `vpnhotspotd` binary root mode uses, exec'd in place from the APK at the app UID, and
+it speaks the same call/reply/event/error conversation - `ClientEnvelope` in, `DaemonEnvelope` out - over a
+command family of its own. Root's commands describe mutations that need root, so none of them is served
+here and neither daemon serves the other's.
+
+The start call carries the TUN and owns the session for as long as it runs; each configuration is an
+ordinary one-shot call keyed to it ([`lifecycle.md`](lifecycle.md#app-uid-session-start)). Configuration
+stays level-triggered - the newest configuration is the whole truth, and each is answered only once whatever
+the change retires is really gone rather than asked to go. Platform resolver work is the documented
+exception ([`dns.md`](dns.md)). What the shared lifecycle buys is attribution: a descriptor the daemon
+refuses, a dataplane it cannot build and a configuration it will not accept each come back as that call's
+own structured error rather than as a socket that closed.
 
 Every packet read from the TUN is untrusted input from an unknown local principal. Destinations are compared
 against the session's exact virtual-address set before attribution, reassembly or transport dispatch. The
@@ -412,8 +543,9 @@ feature-level facts belong here:
   process ending, without depending on a database, a preference or daemon memory surviving.
 - **Process death is not a substitute for the ordered stop.** It releases only what the app process itself
   owns. The child is not bound to its parent by the platform: control-socket EOF makes a healthy child exit
-  and drop its own independent TUN descriptor, but nothing signals a wedged one, so both the child and that
-  descriptor can survive the app. The global `preferTestNetworks` flag is likewise left set.
+  and drop its own independent TUN descriptor, but nothing signals a wedged one - the SIGTERM/SIGKILL
+  escalation that would do so belongs to the ordered stop, which is exactly what did not run - so both the
+  child and that descriptor can survive the app. The global `preferTestNetworks` flag is likewise left set.
 - **The netd counter residue must not be removed.** Counter-chain state naming each dead `testtunN` was
   observed accumulating on the qualified Android 17 device and cleared there by a reboot. It lives in a
   chain netd owns alongside rules for live interfaces, so deleting it from the app side is exactly the
@@ -450,11 +582,14 @@ plainly what this mode does and does not protect.
 [`errors.md`](errors.md) owns report shape and classification. Specific to a session:
 
 - **Startup failures are terminal and enter the ordered rollback**: missing authorization, Binder,
-  permissions or hidden-API access; native launch, authentication or descriptor-transfer failure; TUN,
-  request, agent, preference, publication or security-readback failure; agent or request loss before commit;
-  a foreign TestNetwork collision; and deadline expiry. Rollback usually leaves nothing behind, but a
-  failure around an ambiguous Binder publication can end in one of the unknown or residual outcomes
-  tabulated above.
+  permissions or hidden-API access; Shizuku being superseded while the permission request is outstanding;
+  tethering-service death, or a tethering-callback failure, before the first upstream observation; native
+  launch, authentication or descriptor-transfer failure; TUN, request, agent, preference, publication or
+  security-readback failure; the exact request expiring before ConnectivityService publishes the native
+  network, which is the only announcement a failed native creation has; agent or request loss before commit;
+  and a foreign TestNetwork collision.
+  Rollback usually leaves nothing behind, but a failure around an ambiguous Binder publication can end in one
+  of the unknown or residual outcomes tabulated above.
 - **A committed session ends** when the control conversation cannot carry or confirm an update, the TUN or
   writer becomes unusable, the agent or exact request is lost, or the tethering connector dies.
 - **Local and optional failures do not end a session**: losing Echo or ICMP translation for one family,
@@ -482,7 +617,7 @@ is explicitly unproven, and the *Topology* column says what each result came fro
 | VPN handover | Existing TCP flows reset in both transition directions as designed and fresh connections immediately succeeded; three VPN off/on cycles under UDP and DNS load left no stale residue and no resolver `EBUSY` | rooted with root-backed Shizuku, USB tethering. Not tethering start/stop cycles |
 | Root coexistence | With both modes up, root's own policy rules sat ahead of Android's tethering upstream rule and won automatically; starting or stopping either mode changed no state of the other | rooted with root-backed Shizuku, USB tethering |
 | Bounded dataplane | IPv4 path-MTU behaviour, 8 KiB IPv4 and IPv6 fragmentation, TCP half-close, NXDOMAIN, malformed-DNS recovery, and 16 concurrent 512 KiB downloads with no fatal, admission or invariant failure | rooted with root-backed Shizuku, USB tethering, one external client |
-| Failure injection, partial | Killing the app-UID daemon while the app stayed alive produced prompt network removal and session retirement instead of a deadline-length stall. Force-stopping the app removed the network with the process, but ran no finalizer, so `preferTestNetworks` was left set | rooted with root-backed Shizuku, USB tethering |
+| Failure injection, partial | Killing the app-UID daemon while the app stayed alive produced prompt network removal and session retirement rather than a session left believing it still owned a dataplane. Force-stopping the app removed the network with the process, but ran no finalizer, so `preferTestNetworks` was left set | rooted with root-backed Shizuku, USB tethering |
 | Cleanup | Ordered cleanup on normal stop, leaving no network, request, TUN, child or foreground service | rooted with root-backed Shizuku, and stock non-rooted with shell-backed Shizuku |
 | Security boundary | Restricted `Network`-handle selection is enforced against a separately signed app and against the owner UID alike; direct interface injection succeeds. Isolation was tested and **failed** | separately signed out-of-repository attacker harness plus TUN packet capture, distinct from the rows above and proving nothing about release behaviour |
 
@@ -496,11 +631,11 @@ is explicitly unproven, and the *Topology* column says what each result came fro
 - [`mobile/src/main/rust/vpnhotspotd/src/shizuku/`](../../mobile/src/main/rust/vpnhotspotd/src/shizuku/) - the app-UID
   dataplane; see the source map in [`README.md`](README.md).
 - [`routing.md`](routing.md#rootless-shizuku-mode) - the external-state and cleanup catalog;
-  [`lifecycle.md`](lifecycle.md#app-uid-bootstrap) - bootstrap and
+  [`lifecycle.md`](lifecycle.md#app-uid-session-start) - the start call and
   [`#selected-network-handover`](lifecycle.md#selected-network-handover) - handover;
   [`dns.md`](dns.md), [`errors.md`](errors.md), [`traffic.md`](traffic.md) and
   [`invariants.md`](invariants.md) - resolver handoff, reports, accounting scope and cross-module rules.
-- [`daemon.proto`](../../mobile/src/main/proto/daemon.proto) - the wire schema, including
-  `ShizukuSessionConfig`;
+- [`daemon.proto`](../../mobile/src/main/proto/daemon.proto) - the wire schema, including the app-UID
+  command family and `ShizukuSessionConfig`;
   [`mobile/src/hiddenApiStubs/README.md`](../../mobile/src/hiddenApiStubs/README.md) and the root
   [`README.md`](../../README.md) - API inventory and compatibility assumptions.

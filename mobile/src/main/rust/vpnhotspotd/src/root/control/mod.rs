@@ -424,6 +424,14 @@ async fn handle_command(
                 )?;
             Ok(CallOutput::Reply(ack_reply_frame(id)))
         }
+        // The two command families are never served by the same process. Refused on the call rather than
+        // ignored, so an app that sent one to the wrong daemon learns which boundary it crossed.
+        daemon::client_envelope::Command::StartShizukuSession(_)
+        | daemon::client_envelope::Command::ApplyShizukuConfig(_) => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "app-UID command sent to the root daemon",
+        )
+        .with_report_context("control.handle_command")),
         daemon::client_envelope::Command::CleanRouting(command) => {
             let sessions = state.drain_sessions().await;
             let mut complete_ids = Vec::new();

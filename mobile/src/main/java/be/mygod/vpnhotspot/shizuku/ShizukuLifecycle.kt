@@ -5,7 +5,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -286,11 +285,11 @@ class ShizukuLifecycle(private val scope: CoroutineScope, private val session: S
                     owed = Owed.OWN
                     publish()
                     session.awaitEnd()
-                } catch (e: CancellationException) {
-                    // An ordinary cancellation is a stop, possibly still behind the barrier, and says
-                    // nothing worth reporting. A deadline is an operational failure however it is shaped,
-                    // and `withTimeout` shapes it as one of these.
-                    if (e is TimeoutCancellationException) session.report(e)
+                } catch (_: CancellationException) {
+                    // A stop, possibly still behind the barrier, and it says nothing worth reporting. The
+                    // only thing that cancels this half is the user, and every wait in it ends on its own
+                    // result or on that stop - so there is no elapsed-time ending left to tell apart from
+                    // one and report as an operational failure.
                 } catch (e: Exception) {
                     session.report(e)
                 }
@@ -320,9 +319,10 @@ class ShizukuLifecycle(private val scope: CoroutineScope, private val session: S
                                 Owed.OWN -> session.retire(self)
                             }
                         } catch (e: CancellationException) {
-                            // Already inside [NonCancellable], so this is a deadline or a lost epoch rather
-                            // than a caller going away: the withdrawal did not finish, whatever shape the
-                            // cancellation arrived in, and a silent one would be a teardown nobody hears of.
+                            // Already inside [NonCancellable], so this is a lost epoch or a cancelled
+                            // channel rather than a caller going away: the withdrawal did not finish,
+                            // whatever shape the cancellation arrived in, and a silent one would be a
+                            // teardown nobody hears of.
                             session.report(e)
                         } catch (e: Exception) {
                             session.report(e)

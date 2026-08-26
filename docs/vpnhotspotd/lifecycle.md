@@ -17,10 +17,9 @@ state and exits. Everything from [Calls](#calls) onwards describes this path.
 
 **App-UID mode.** The child is launched by
 [`AppUidDaemon`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/AppUidDaemon.kt)
-and receives a configuration stream rather than calls: no call IDs, no session
-commands, and no root mutations. Its session is built from the bootstrap
-handshake below, and the feature it serves is described in
-[`shizuku.md`](shizuku.md).
+and speaks the same call conversation over a command family of its own: one
+session per connection, and no root mutations. Its session is started by the call
+below, and the feature it serves is described in [`shizuku.md`](shizuku.md).
 
 ## Process Startup
 
@@ -55,52 +54,148 @@ the listening socket and accepts only a peer whose Unix socket credentials have
 `uid=0`; non-root peers are closed and the controller keeps waiting within the
 startup timeout. The daemon connects to that single controller.
 
-## App-UID Bootstrap
+## App-UID Session Start
 
 Shizuku mode launches the same binary from the app process with `ProcessBuilder`,
 so the child inherits the app UID and is an ordinary child of the app. Only the
 APK library lookup, the linker invocation and the ABI check are shared with the
 root path: there is no root command in between, and the app keeps the `Process`
-handle it needs to signal the child.
+handle it needs to read the child's `pid`, signal it and observe its exit.
 
-The handshake is two frames. Before sending either, the app accepts only a peer
-whose Unix credentials report this app's own `uid` and the exact `pid` of the
-process this launch created. A rejected peer is discarded, and shutdown always
-keeps naming the launched `pid`.
+There is no separate handshake protocol. The connection carries the same
+`ClientEnvelope`/`DaemonEnvelope` conversation root uses, with an app-UID command
+family of its own - `StartShizukuSessionCommand` and `ApplyShizukuConfigCommand`.
+Neither daemon serves the other's family: each refuses it as an error on the
+offending call. Before writing anything, the app accepts only a peer whose Unix
+credentials report this app's own `uid` and the exact `pid` of the process this
+launch created. A rejected peer is discarded, and shutdown always keeps naming the
+launched `pid`.
 
-1. the app sends `BootstrapConfig` with the interface name and MTU, carrying
-   exactly one `SCM_RIGHTS` descriptor: a duplicate of the TUN. The daemon's
-   descriptor is independent of the app's from that moment, so closing the app's
-   copy does not close the daemon's. Only the child dropping it does that, at
-   session teardown or on exit: control-socket EOF makes a healthy child tear
-   down and exit, while a wedged one can keep both itself and the descriptor;
-2. the daemon replies `BootstrapReady` after re-checking the descriptor against
-   the config: exactly one descriptor arrived, it is nonblocking, `TUNGETIFF`
-   reports the expected interface, the flags include `IFF_TUN | IFF_NO_PI`, and
-   `SIOCGIFMTU` reports the declared MTU. The sender cannot prove what arrived, and
-   the MTU is immutable for the session, so both are read from the interface.
+`StartShizukuSessionCommand` is an event-style call whose call ID owns the session
+for as long as it runs:
 
-The descriptor rides on that one frame, so the app writes it with a single `write`
-on the socket and the daemon reads the whole frame with `recvmsg`.
+1. the app writes it with the interface name and MTU, carrying exactly one
+   `SCM_RIGHTS` descriptor: a duplicate of the TUN. The daemon's descriptor is
+   independent of the app's from that moment, so closing the app's copy does not
+   close the daemon's. Only the child dropping it does that, at session teardown
+   or on exit: control-socket EOF makes a healthy child tear down and exit, while
+   a wedged one can keep both itself and the descriptor. The descriptor rides on
+   that one frame, so the app writes it with a single `write` on the socket and
+   the daemon reads the whole frame with `recvmsg`;
+2. the daemon splits the stream and starts its control writer *before* it looks at
+   what the call says, and that writer is what makes everything after it
+   answerable: a terminal `ErrorFrame` travels on it, not through the reporter. It
+   then reads the call ID and the command, and installs the conversation's one
+   nonfatal reporter once that call ID has been accepted - a nonfatal needs a
+   conversation to belong to, and nothing before that point has one. It then
+   re-checks the descriptor against the call: exactly one descriptor arrived, it is
+   nonblocking, `TUNGETIFF` reports the expected interface, the flags include
+   `IFF_TUN | IFF_NO_PI`, and `SIOCGIFMTU` reports the declared MTU. The sender
+   cannot prove what arrived, and the MTU is immutable for the session, so both are
+   read from the interface. A refusal closes every descriptor that arrived rather
+   than keeping any;
+3. the daemon registers the TUN with the reactor, reads the session's TCP seed,
+   measures the descriptor budget, and reserves *and builds* every dataplane owner
+   the session needs - the fixed byte reservations, the writer's channels, the
+   reassembly table, and the UDP, Echo, virtual-DNS and TCP owners, each of which
+   the admission budget can refuse. A refusal here releases what had already been
+   reserved through the same fence a running session ends by;
+4. it starts the ingress and egress tasks over what step 3 built, and only then
+   sends the event ACK, which is the readiness the app returns on. Neither task
+   constructs anything, so a task that exists at all owns a dataplane that fits.
 
-After the handshake the child is driven by a configuration stream: the newest
-configuration is the whole truth, and each is acknowledged only once whatever
-the change retires is really gone rather than asked to go. Retiring a UDP
-mapping, for instance, cancels its receive task, waits for that task to run to
-completion, drops the mapping's share of the socket, and releases the
-descriptor's budget reservation only then. Platform resolver work is the one
-exception, because it cannot be cancelled or joined; [`dns.md`](dns.md) owns
-what it still holds.
+Anything that fails in steps 2 to 4 is answered as an `ErrorFrame` on the start
+call, carrying the structured report with its errno and Rust source location, so a
+start that failed says why rather than closing the socket under the app. Two
+failures cannot be answered and are not disguised as anything else: a frame
+malformed before any call ID could be read, and a control writer that can no
+longer carry a frame at all.
+
+Observed child exit is raced only while no authenticated peer exists - around the
+app's `accept` - so a child that dies in the linker or before it ever connects
+fails the start at once with its exit status and the output it printed, rather
+than leaving the start waiting on a connection nothing will ever make. Once the
+exact `uid`/`pid` peer is accepted and the start call is written, that
+conversation is authoritative: the app reads whatever the daemon already enqueued
+before it believes the socket's EOF, and falls back to the process's exit status
+only when the stream ended with no frame to attribute.
+
+Each configuration is an ordinary one-shot call keyed to the start call's ID. The
+newest configuration is the whole truth, and each is answered with a
+`ShizukuApplied` reply only once whatever the change retires is really gone rather
+than asked to go. Retiring a UDP mapping, for instance, cancels its receive task,
+waits for that task to run to completion, drops the mapping's share of the socket,
+and releases the descriptor's budget reservation only then. Platform resolver work
+is the one exception, because it cannot be cancelled or joined; [`dns.md`](dns.md)
+owns what it still holds. A configuration the daemon refuses is answered with an
+`ErrorFrame` on its own call and ends the session, and the start call then gets no
+second frame carrying the same failure. That `ErrorFrame` is described where the
+refusal happened and written where the session ends, not at the refusal: like every
+other terminal frame it is the session's last frame, so it follows the dataplane
+join and the reporter's flush. A `CancelCommand` naming a call that is no longer
+active asks for nothing: that is what an app whose caller was cancelled
+mid-configuration leaves behind, and the conversation is serial, so the daemon
+reads such a cancel only after it has already replied to the configuration it
+names.
+
+The start call's terminal frame is whichever of these the ending is: an
+`ErrorFrame` with the one failure that ended the session, a `CompleteFrame` when
+the dataplane finished cleanly with the app still connected, or nothing at all
+when the app closed the control socket or cancelled the call.
+
+Exactly one call is owed a terminal frame, and every terminal frame is the last
+daemon-to-app frame the session writes; the control stream's EOF follows it. The
+app reads this conversation with a single reader that returns on the first terminal
+frame it sees - a terminal frame *is* how the session ends, whichever call it
+names - so a frame written before the session's last reports would lose them. The
+daemon therefore cancels and joins the dataplane, routes every failure the join
+found, finishes the reporter, and only then enqueues the one frame it owes: the
+start call's, or the `ErrorFrame` answering a refused configuration. It drops its
+last writer sender afterwards, which is what ends the stream. No frame is enqueued
+after the terminal frame, and a report raised after the reporter has finished goes
+to stderr rather than onto the queue behind it.
+
+One failure is delivered exactly once, and the session routes each to one of three
+destinations: the terminal frame this session owes when nothing has claimed it yet;
+no second delivery at all when the failure is the one that frame already carries,
+which is a refused configuration; a structured nonfatal otherwise. No owner emits
+its own report - the TUN writer and the session seed attach one to the error they
+return and emit nothing - so a fatal egress failure or an entropy refusal reaches
+the app as the start call's error, not as that error *and* a nonfatal saying the
+same thing. The report delivered is the one the failing site built, so its errno,
+details and Rust source location are that site's rather than the teardown's.
 
 Shutdown waits for the child to be gone, because everything downstream assumes
 it is: close the control socket, wait 10 seconds for exit, `destroy()` for
 SIGTERM, wait 5 more, then SIGKILL the launched child PID and wait up to 5
 seconds for observed exit, failing if exit is never observed; then cancel and
-join the scope that reads the child's output and control stream. The PID comes
-from the process the app started, never from the connection, so a child that
-never connects is still signalable. `destroyForcibly()` is not an escalation on
-Android: it calls `destroy()`, whose native side is already
-`kill(pid, SIGTERM)`.
+join the scope that reads the child's output and control stream.
+
+Closing the socket is the whole of the *request*, since EOF on it is what the
+daemon reads as cancellation and what makes it cancel and join its dataplane,
+deliver what it still owed and close its copy of the TUN before returning from
+`main`. No signal can ask for that - the daemon installs no handler, since its
+Tokio build does not include the `signal` feature, so anything delivered to it
+terminates it outright - which is why the escalation runs only after the graceful
+window and never instead of it. The windows are the cleanup budget of a process
+the app launched and still owns, not a deadline on any call: calls end on their
+result or on the owner's cancellation and never on elapsed time. The policy is
+the one `RootManager` already applies to the root process librootkotlinx starts
+for it - a different process, reaped by a different owner, given the same
+windows. The escalation exists because this teardown is non-cancellable, so a
+child that will not act on EOF cannot be given up on by a user stop, and waiting
+on it forever would leave it holding a duplicate of the TUN while the withdrawal,
+and the next start joining it, stayed fenced with nothing left to recover them.
+The final wait bounds an assertion rather than cooperation: nothing but an
+uninterruptible sleep outlives SIGKILL, so exit that is still unobserved
+afterwards fails the fence and retains the session instead of reporting it gone.
+
+`destroyForcibly()` is not an escalation on Android: it calls `destroy()`, whose
+native side is already `kill(pid, SIGTERM)`, so SIGKILL is sent explicitly, and
+`ESRCH` from it is the child exiting between the check and the signal. The PID
+comes from the process the app started, never from the connection, so a child
+that never connects is still signalable, and it is also what the accepted
+socket's peer credentials are checked against.
 
 ## Selected-Network Handover
 
@@ -152,16 +247,28 @@ Having no selectable `Network` is not a failure: the configuration carries no
 handle, upstream work fails per operation, and the session resumes on the next
 selection.
 
-An update that cannot be carried or confirmed - a mid-frame write failure, or a
-missing or mismatched acknowledgement - ends the session, because the app can no
-longer tell what the child is bound to. Stop and reapply is the way back.
+An update that cannot be carried or confirmed - a mid-frame write failure, a
+refusal, or a missing or mismatched reply - ends the session, because the app can
+no longer tell what the child is bound to. Stop and reapply is the way back. A
+refused configuration reaches the app as that call's own structured error and is
+reported as itself rather than as a generic message.
+
+Cancellation of a configuration call is split at the write. A `CancelCommand` is
+sent only when the whole command frame went out and the caller was then cancelled
+awaiting its answer, which is the case the root controller cancels a call in.
+Cancellation *inside* the write leaves a stream with no frame boundary left to
+resynchronize on; appending a cancel there would write into the middle of a
+configuration, so it is not attempted and the failure is terminal for the
+connection.
 
 Control-socket EOF ends the session too, and retires everything rather than only
 what a configuration changed: the ingress task cancels and joins every owner
 however its loop ended, and the session then joins both dataplane tasks, finishes
-the reporter and joins the control writer, in that order. The session also watches
-those two tasks directly, so a dataplane half that died ends it at once instead of
-waiting for the app to speak.
+the reporter, answers whichever call is still owed a terminal frame - the start
+call, or the configuration call a refusal named, and none at all after EOF - drops
+its last writer sender, and joins the control writer, in that order. The session
+also watches those two tasks directly, so a dataplane half that died ends it at once
+instead of waiting for the app to speak.
 
 ## Calls
 
@@ -178,7 +285,10 @@ There are two call shapes:
 
 `StartSessionCommand` and `StartNeighbourMonitorCommand` are event calls.
 `ReplaceSessionCommand`, `ReadTrafficCountersCommand`,
-`ReplaceStaticAddressesCommand`, and `CleanRoutingCommand` are one-shot calls.
+`ReplaceStaticAddressesCommand`, and `CleanRoutingCommand` are one-shot calls. The
+app-UID path uses the same two shapes with its own command family - see
+[App-UID Session Start](#app-uid-session-start) - and neither daemon serves the
+other's family.
 
 `StartSessionCommand` sends an event ACK after the session is established, then
 keeps the call active as the session owner. The session event stream may later

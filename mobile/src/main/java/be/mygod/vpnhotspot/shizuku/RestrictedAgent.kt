@@ -12,6 +12,8 @@ import android.net.NetworkScore
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.selects.select
 
 /**
  * The app-hosted agent that publishes one session's TUN, and its own destruction barriers.
@@ -76,6 +78,26 @@ internal class RestrictedAgent(
     override fun toString() = "network agent(${network ?: "unregistered"})"
 }
 
+/** The exact request expired before ConnectivityService could publish the restricted TestNetwork. */
+internal class NetworkRequestExpiredException : Exception(
+    "ConnectivityService did not publish the restricted TestNetwork before its request expired")
+
+/**
+ * Awaits one positive publication barrier until the exact request reports its authoritative negative result.
+ *
+ * [unavailable] is registered first deliberately, because `select` is biased to its first clause: if both
+ * callbacks were already queued when this coroutine resumes, expiry wins and the startup rolls back rather
+ * than accepting a result belonging to a request ConnectivityService has already removed. Neither this nor
+ * cancellation is caught here - a stop is still the terminal for a wait the platform has said nothing about.
+ *
+ * A free function rather than a [RequestCallback] method because that is what makes it testable: the callback
+ * extends a framework class no JVM test can construct, while this takes only the two barriers.
+ */
+internal suspend fun <T> awaitNetworkRequest(result: Deferred<T>, unavailable: Deferred<Unit>): T = select {
+    unavailable.onAwait { throw NetworkRequestExpiredException() }
+    result.onAwait { it }
+}
+
 /**
  * Observation alone does not keep a score-1 agent wanted, so this is registered through `requestNetwork`
  * rather than as a passive callback. It is also the only permission-correct readback source: it was
@@ -86,6 +108,22 @@ internal class RequestCallback : ConnectivityManager.NetworkCallback() {
     val available = CompletableDeferred<Network>()
     val lost = CompletableDeferred<Unit>()
     /**
+     * The timed exact request did not match a network and has been removed by ConnectivityService.
+     *
+     * This is the negative result [NetworkAgent.onNetworkCreated] does not have: a native network
+     * ConnectivityService could not create is only logged there, and no agent callback says so. It is also
+     * the one callback that leaves nothing to release: `handleTimedOutNetworkRequest` removes the remote
+     * request before it sends this, and `ConnectivityManager` drops its `sCallbacks` entry and tombstones
+     * this callback with `ALREADY_UNREGISTERED` before invoking it - which is why a later message naming the
+     * same request finds no callback and is dropped, so nothing positive can arrive after this one.
+     *
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/service/src/com/android/server/ConnectivityService.java#4713
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/ConnectivityManager.java#4083
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#6714
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/ConnectivityManager.java#4657
+     */
+    val unavailable = CompletableDeferred<Unit>()
+    /**
      * Separate barrier inputs rather than fields read after `onAvailable`: repeated publication observed
      * availability arriving before the initial capabilities and link-properties callbacks, so treating
      * availability as proof that the readback had arrived failed intermittently.
@@ -95,6 +133,7 @@ internal class RequestCallback : ConnectivityManager.NetworkCallback() {
 
     override fun onAvailable(network: Network) = available.complete(network).run { }
     override fun onLost(network: Network) = lost.complete(Unit).run { }
+    override fun onUnavailable() = unavailable.complete(Unit).run { }
     override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
         this.capabilities.complete(capabilities).run { }
     }

@@ -4,18 +4,12 @@ import android.content.pm.PackageManager
 import android.os.IBinder
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.Services
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import moe.shizuku.server.IShizukuService
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuBinderWrapper
-
-/**
- * Every Shizuku-mode callback and privileged result is bounded by this, so a wedged remote cannot
- * strand a session start. Matches the tethering service's own listener timeout.
- */
-internal const val CONTROL_RESULT_DEADLINE = 60_000L
 
 /**
  * Wrapped transactions are blocking Binder calls that must stay ordered behind one owner, so all
@@ -120,7 +114,6 @@ class ShizukuEpoch private constructor(
             "android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS",
             "android.permission.NETWORK_SETTINGS",
         )
-        private const val PERMISSION_REQUEST_CODE = 0x5a75
 
         private val publisher = BinderPublisher<IBinder>()
 
@@ -140,6 +133,24 @@ class ShizukuEpoch private constructor(
         }
 
         /**
+         * The three questions that decide whether a publication may still be acted on at all, asked
+         * wherever this authorization is about to read something or commit a side effect against it. Shared
+         * rather than repeated, because "known stale" has to mean the same thing at every one of those
+         * points: the publication being pinned is still the current one, Shizuku's own binder is still that
+         * publication's, and that binder is alive. Answers with the pinned binder, which is the only one
+         * anything here may transact through.
+         */
+        private fun ensurePinned(publication: BinderPublisher.Publication<IBinder>, where: String): IBinder {
+            val binder = publication.binder ?: throw UnavailableException("Shizuku Binder unavailable")
+            if (!publisher.holds(publication)) {
+                throw UnavailableException("Shizuku $publication superseded $where")
+            }
+            if (Shizuku.getBinder() !== binder) throw UnavailableException("Shizuku Binder replaced")
+            if (!binder.isBinderAlive) throw UnavailableException("Shizuku Binder died")
+            return binder
+        }
+
+        /**
          * Everything an identity is decided by, read against one publication and rejected if that
          * publication is superseded at any point along the way.
          *
@@ -151,15 +162,16 @@ class ShizukuEpoch private constructor(
          * mismatch would already be baked in. Bracketing them is what makes the answer one identity's.
          */
         private fun readIdentity(publication: BinderPublisher.Publication<IBinder>): ShizukuEpoch {
-            val binder = publication.binder ?: throw UnavailableException("Shizuku Binder unavailable")
-            fun ensure(where: String) {
-                if (!publisher.holds(publication)) {
-                    throw UnavailableException("Shizuku $publication superseded $where")
-                }
-                if (Shizuku.getBinder() !== binder) throw UnavailableException("Shizuku Binder replaced")
-                if (!binder.isBinderAlive) throw UnavailableException("Shizuku Binder died")
+            // This app's own authorization, asked of the pinned binder itself. `Shizuku.checkSelfPermission`
+            // would answer from a process-global flag that an *earlier* service's grant can have left set,
+            // and otherwise transact through Shizuku's mutable current service - so it can report an
+            // authorization that belongs to an identity this epoch is not being pinned to. Read here rather
+            // than only where the request is issued, because being authorized is part of what an identity is
+            // and the grant is what the dialog above was waiting for.
+            if (!IShizukuService.Stub.asInterface(ensurePinned(publication, "before the identity was read"))
+                    .checkSelfPermission()) {
+                throw UnavailableException("Shizuku $publication has not authorized this app")
             }
-            ensure("before the identity was read")
             val uid = Shizuku.getUid()
             for (permission in requiredPermissions) {
                 if (Shizuku.checkRemotePermission(permission) != PackageManager.PERMISSION_GRANTED) {
@@ -171,34 +183,72 @@ class ShizukuEpoch private constructor(
                 packages?.find { it == SHELL_PACKAGE } ?: packages?.firstOrNull()
                     ?: throw UnavailableException("No package owns Shizuku identity uid $uid")
             }
-            ensure("while the identity was read")
+            ensurePinned(publication, "while the identity was read")
             return ShizukuEpoch(publication, uid, opPackage)
         }
 
         suspend fun authorize(): ShizukuEpoch {
             listeners
-            val publication = withTimeout(CONTROL_RESULT_DEADLINE) { publisher.awaitBinder() }
+            val publication = publisher.awaitBinder()
             return withContext(privilegedDispatcher) {
                 if (Shizuku.isPreV11()) {
                     throw UnavailableException("Shizuku ${Shizuku.getVersion()} predates the permission API")
                 }
-                if (Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED) {
-                    val granted = CompletableDeferred<Int>()
-                    val listener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
-                        if (requestCode == PERMISSION_REQUEST_CODE) granted.complete(grantResult)
-                    }
+                // Both of these go to the binder this authorization pinned, never to whatever
+                // `Shizuku.checkSelfPermission` and `Shizuku.requestPermission` would pick out of Shizuku's
+                // mutable current service: a replacement landing between the two would otherwise launch the
+                // dialog against a successor nothing here has validated, and answer the question about it.
+                if (!IShizukuService.Stub.asInterface(
+                        ensurePinned(publication, "before its permission was checked")).checkSelfPermission()) {
+                    val attempt = publisher.Attempt(publication)
+                    val listener = Shizuku.OnRequestPermissionResultListener(attempt::deliver)
                     Shizuku.addRequestPermissionResultListener(listener, Services.mainHandler)
                     try {
-                        Shizuku.requestPermission(PERMISSION_REQUEST_CODE)
-                        if (withTimeout(CONTROL_RESULT_DEADLINE) { granted.await() } !=
-                            PackageManager.PERMISSION_GRANTED) {
+                        // Refused here rather than only once the answer is in, because the request is a side
+                        // effect Shizuku offers no way to retract: a publication already known stale must
+                        // launch no dialog at all, and neither must a lifespan the user has already stopped.
+                        // Registering the listener above suspends nowhere, so a stop landing in that
+                        // interval has no other point at which to be noticed before the dialog is up.
+                        //
+                        // Asked twice deliberately. The first is for precedence: a stop and a stale
+                        // publication can both be true, and a caller that pressed stop should get its own
+                        // cancellation rather than the superseded-Shizuku failure that would be reported to
+                        // them instead. The second is the last statement before the transaction, because
+                        // validating the publication and building the proxy are themselves work a stop can
+                        // land in the middle of. What is left between that check and the transaction cannot
+                        // be closed from here at all - Shizuku takes no cancellation - so a stop or a
+                        // replacement inside it can still leave a dialog whose answer this authorization
+                        // will refuse.
+                        ensureActive()
+                        val service = IShizukuService.Stub.asInterface(
+                            ensurePinned(publication, "before its permission request was issued"))
+                        ensureActive()
+                        service.requestPermission(attempt.token)
+                        // Waited on for as long as the human takes: the dialog is theirs to answer whenever
+                        // they like, and exactly three things end this wait - their answer, the exact
+                        // publication that was asked being superseded, and the lifespan being cancelled by a
+                        // stop. The middle one is not a bound on the human but a terminal fact about *this
+                        // authorization*: what has gone is the identity the request belonged to, so even a
+                        // grant could no longer produce an epoch here.
+                        //
+                        // It is not that nothing could still deliver the answer. Shizuku hands every service
+                        // the same process-global application binder and dispatches every result to one
+                        // process-global listener list, so a replaced-but-live service can still answer a
+                        // request this attempt has given up on - which is what the attempt refuses, by its
+                        // own token and by taking nothing at all once its publication has gone. A successor
+                        // is never quietly authorized against: re-asking is a new authorization rather than
+                        // this one continuing.
+                        val result = attempt.await() ?: throw UnavailableException(
+                            "Shizuku $publication superseded by ${publisher.current} with its permission " +
+                                    "request outstanding")
+                        if (result != PackageManager.PERMISSION_GRANTED) {
                             throw UnavailableException("Shizuku permission denied")
                         }
                     } finally {
                         Shizuku.removeRequestPermissionResultListener(listener)
                     }
                 }
-                // The permission dialog above can sit on a human for a minute, and Shizuku may well have
+                // The permission dialog above can sit on a human indefinitely, and Shizuku may well have
                 // been replaced or have died while it did, so nothing read before this point is trusted:
                 // the identity is read as one bracketed unit against the publication being pinned.
                 readIdentity(publication)

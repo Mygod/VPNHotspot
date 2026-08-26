@@ -26,8 +26,8 @@ entry point and everything it owns: control and session state, routing, NAT66,
 DNS, traffic counters, netlink, neighbour monitoring and the IPsec probe.
 
 [`src/shizuku/`](../../mobile/src/main/rust/vpnhotspotd/src/shizuku/) contains the
-app-UID entry point and dataplane: bootstrap and session control, TUN ingress
-and egress, TCP, UDP, Echo and virtual DNS.
+app-UID entry point and dataplane: the control conversation, the TUN handoff and
+config calls, TUN ingress and egress, TCP, UDP, Echo and virtual DNS.
 
 The small set of cross-mode Android runtime modules stays directly under
 [`src/`](../../mobile/src/main/rust/vpnhotspotd/src/):

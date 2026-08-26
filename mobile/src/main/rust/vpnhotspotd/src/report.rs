@@ -109,11 +109,6 @@ impl ControllerSenderExt for ControllerSender {
     }
 }
 
-/// How a report is put on the wire, which is the one thing the two control conversations do not share.
-/// The root path wraps it in a `DaemonEnvelope`; the app-UID path has its own frame, because none of the
-/// call/reply vocabulary around that envelope means anything at the app UID.
-pub(crate) type NonfatalEncoder = fn(Option<u64>, DaemonErrorReport) -> Vec<u8>;
-
 macro_rules! stdout {
     ($($arg:tt)*) => {
         $crate::report::write_stdout(format_args!($($arg)*))
@@ -144,19 +139,15 @@ unsafe extern "C" {
 ///
 /// Fails when another conversation's reporter is still installed, and fails having started nothing at all -
 /// the registration is what admits the window task, so an overlapping second conversation cannot leak one.
-pub(crate) fn init_owned(
-    sender: ControllerSender,
-    encoder: NonfatalEncoder,
-) -> io::Result<ReporterGuard> {
+pub(crate) fn init_owned(sender: ControllerSender) -> io::Result<ReporterGuard> {
     let controller = sender.downgrade();
     REPORTER.install(Reporter::new(
         NONFATAL_COALESCE_WINDOW,
         NONFATAL_QUEUE,
         move |NonfatalReport { call_id, report }, place| match controller.upgrade() {
             Some(sender) => {
-                let frame = encoder(call_id, report.clone());
                 match sender.send(ControllerMessage::Nonfatal {
-                    frame,
+                    frame: nonfatal_frame(call_id, report.clone()),
                     report,
                     _place: Some(place),
                 }) {

@@ -6,38 +6,23 @@ option java_package = "be.mygod.vpnhotspot.root.daemon";
 option java_outer_classname = "DaemonProto";
 option optimize_for = LITE_RUNTIME;
 
-// Shizuku-mode bootstrap, which is a fixed two-frame handshake ahead of any call, not part of the
-// ClientEnvelope/DaemonEnvelope conversation below. The app verifies the accepted peer's uid and pid
-// through SO_PEERCRED before it hands over a file descriptor.
-//
 // Deliberately carries no protocol version. The daemon is not a separately installed component: it is
 // exec'd in place from the same APK as the dex that launched it, so the two cannot disagree. An app
 // upgrade kills the app's processes and removes the old APK path, a leftover daemon from a previous
 // version connects to a socket name that no longer exists, and a tampered APK controls both sides
 // anyway. Add one only if the daemon ever ships or updates independently of the dex.
 
-// Sent with exactly one SCM_RIGHTS descriptor, which must be the TUN the daemon will own. The sender
-// cannot prove what arrived, so every field here is something the receiver re-checks against the
-// descriptor itself.
-message BootstrapConfig {
-  string interface_name = 1;
-  uint32 mtu = 2;
-}
-
-// Local readiness only: the descriptor was received, is a nonblocking TUN, and names the expected
-// interface. No external reachability is probed.
-message BootstrapReady {
-  string interface_name = 1;
-}
-
-// Shizuku-mode session control, which is its own conversation rather than a SessionConfig variant. None
-// of the root-side session vocabulary applies at the app UID: downstream, masquerade, ipv6_nat and the
-// per-MAC client list all describe mutations that need root, so a shared message would mean one type
-// whose meaning depends on which UID reads it.
+// Shizuku-mode session control, which is the same conversation shape as root - ClientEnvelope in,
+// DaemonEnvelope out, every failure attributable to the call that caused it - and none of root's
+// vocabulary. Downstream, masquerade, ipv6_nat and the per-MAC client list all describe mutations that need
+// root, so a shared config message would mean one type whose meaning depends on which UID reads it.
 //
-// Both axes are level-triggered and the newest config is the whole truth: retire this epoch, bind to this
-// network, and serve or do not. That is what lets the app coalesce - one pending slot holding the latest
-// update - without the daemon having to replay a history it was never sent.
+// A process answers one of the two command families and refuses the other outright: the root daemon rejects
+// an app-UID command and the app-UID daemon rejects a root command, both as an error on the offending call.
+//
+// Both config axes are level-triggered and the newest config is the whole truth: retire this epoch, bind to
+// this network, and serve or do not. That is what lets the app coalesce - one pending slot holding the
+// latest update - without the daemon having to replay a history it was never sent.
 message ShizukuSessionConfig {
   // Nonzero and strictly increasing, so an acknowledgement can be matched to the config that produced it
   // and a zero-initialised view of it can never look current. A superseded config is never sent at all: the
@@ -92,23 +77,6 @@ message ShizukuApplied {
   bool admitting = 4;
 }
 
-// The daemon's half of the Shizuku conversation. An envelope rather than a bare ShizukuApplied because
-// unexpected background failures arrive when they happen rather than in reply to anything, so the app
-// reads this stream continuously instead of only while a config is in flight.
-//
-// Deliberately not DaemonEnvelope: every other frame in that envelope is part of the call/reply
-// vocabulary this conversation does not have. The report itself is shared, because a structured failure
-// means the same thing at either UID.
-message ShizukuDaemonFrame {
-  oneof frame {
-    ShizukuApplied applied = 1;
-    // Coalesced by the daemon before it is sent, because packet input is attacker-influenced and an
-    // uncoalesced report per failure would be a flood by construction. Never names platform_dns,
-    // platform_ipv4 or platform_ipv6 as a physical client, because none of them is one.
-    DaemonErrorReport report = 2;
-  }
-}
-
 message ClientEnvelope {
   uint64 call_id = 1;
   oneof command {
@@ -119,10 +87,31 @@ message ClientEnvelope {
     StartNeighbourMonitorCommand start_neighbour_monitor = 6;
     CleanRoutingCommand clean_routing = 7;
     ReplaceStaticAddressesCommand replace_static_addresses = 8;
+    StartShizukuSessionCommand start_shizuku_session = 9;
+    ApplyShizukuConfigCommand apply_shizuku_config = 10;
   }
 }
 
 message CancelCommand {}
+
+// The app-UID session's start call, and an event-style call like StartSessionCommand: its call ID owns the
+// dataplane for as long as the session runs, and its ACK is the readiness the app waits for.
+//
+// Sent with exactly one SCM_RIGHTS descriptor, which must be the TUN the daemon will own. The sender cannot
+// prove what arrived, so every field here is something the receiver re-checks against the descriptor itself.
+// The descriptor rides on this one frame, so the app writes it with a single write and the daemon reads the
+// whole frame with recvmsg.
+message StartShizukuSessionCommand {
+  string interface_name = 1;
+  uint32 mtu = 2;
+}
+
+// One level-triggered config, keyed to the start call that owns the session. A one-shot call: its reply is
+// the ShizukuApplied acknowledgement, and its error is the refusal that ends the session.
+message ApplyShizukuConfigCommand {
+  uint64 session_id = 1;
+  ShizukuSessionConfig config = 2;
+}
 
 message StartSessionCommand {
   SessionConfig config = 1;
@@ -201,6 +190,7 @@ message ReplyFrame {
   oneof payload {
     Ack ack = 2;
     TrafficCounters traffic_counters = 3;
+    ShizukuApplied shizuku_applied = 4;
   }
 }
 
