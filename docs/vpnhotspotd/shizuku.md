@@ -32,7 +32,7 @@ Root mode has none of these, and remains the recommended path.
   packets reach the TUN, and any app with network access can forge a source. There is no per-client blocking
   and no per-client accounting; see [`traffic.md`](traffic.md).
 - **Bounded traffic support.** TCP, UDP, DNS terminated at the virtual resolver addresses, ICMP Echo, and a
-  bounded set of translated ICMP errors. ESP, GRE, SCTP, unknown IP protocols and downstream link control
+  bounded set of translated ICMP errors. AH, ESP, GRE, SCTP, unknown IP protocols and downstream link control
   (RA/RS/ND, DHCP, ARP) are not carried; Android tethering owns downstream link control.
 - **IPv6 reaches at most one downstream.** Tethering delegates an upstream `/64` only to the oldest active
   downstream
@@ -321,7 +321,7 @@ which covers what a predecessor may have written just before it stopped. IPv6 fr
 session-wide wrapping sequence and carry no such rule.
 
 Ingress reassembly is bounded in both families by overlap, extension, length and timeout rules; IPv6
-extension-header parsing is bounded and refuses forbidden chains.
+extension-header parsing keeps Fragment headers for reassembly and refuses unsupported or source-routing chains.
 
 ### Resource Bounds
 

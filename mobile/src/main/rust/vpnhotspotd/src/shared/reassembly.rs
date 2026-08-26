@@ -19,14 +19,18 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
+#[cfg(test)]
+use std::net::Ipv6Addr;
 use std::ops::Range;
 use std::time::{Duration, Instant};
 
 use crate::shared::admission::{logical_footprint, Admission, Class, Lease, Request};
 
-use etherparse::{IpNumber, Ipv4Header};
+use etherparse::{IpNumber, Ipv4Header, Ipv6FragmentHeaderSlice};
 
+use crate::shared::ip_wire::Packet;
+#[cfg(test)]
 use crate::shared::packet_writer::{IPV4_HEADER_LEN, IPV6_FRAGMENT_HEADER_LEN, IPV6_HEADER_LEN};
 
 /// RFC 8200 section 4.5 requires 60 seconds for IPv6, and RFC 791 allows up to it for IPv4, so one number
@@ -748,99 +752,69 @@ fn shape(offset: usize, more: bool, payload: usize) -> Result<(), Reject> {
 }
 
 fn parse(packet: &[u8]) -> Result<Fragment<'_>, Reject> {
-    match packet.first().map(|byte| byte >> 4) {
-        Some(4) => {
-            let header_length = ((packet[0] & 0xf) as usize) * 4;
-            if header_length < IPV4_HEADER_LEN || packet.len() < header_length {
-                return Err(Reject::Malformed("IPv4 header does not fit"));
-            }
-            let total_length = u16::from_be_bytes([packet[2], packet[3]]) as usize;
-            if total_length != packet.len() || total_length < header_length {
-                return Err(Reject::Malformed("IPv4 total length disagrees"));
-            }
-            let flags = u16::from_be_bytes([packet[6], packet[7]]);
-            let offset = ((flags & 0x1fff) as usize) * 8;
-            let more = flags & 0x2000 != 0;
+    match Packet::parse(packet).map_err(|error| Reject::Malformed(error.message()))? {
+        Packet::Ipv4 { header, payload } => {
+            let offset = usize::from(header.fragments_offset().byte_offset());
+            let more = header.more_fragments();
             if !more && offset == 0 {
                 return Err(Reject::Malformed("IPv4 packet is not a fragment"));
             }
-            shape(offset, more, packet.len() - header_length)?;
+            shape(offset, more, payload.len())?;
             Ok(Fragment {
                 key: Key {
-                    source: IpAddr::V4(Ipv4Addr::from(
-                        <[u8; 4]>::try_from(&packet[12..16]).unwrap(),
-                    )),
-                    destination: IpAddr::V4(Ipv4Addr::from(
-                        <[u8; 4]>::try_from(&packet[16..20]).unwrap(),
-                    )),
-                    identification: u32::from(u16::from_be_bytes([packet[4], packet[5]])),
-                    protocol: packet[9],
+                    source: IpAddr::V4(header.source_addr()),
+                    destination: IpAddr::V4(header.destination_addr()),
+                    identification: u32::from(header.identification()),
+                    protocol: header.protocol().0,
                 },
                 offset,
                 more,
                 header: if offset == 0 {
                     // A header longer than one can be was already refused by the length check above, so this
                     // cannot be `None` here - and if it ever were, refusing the fragment is the right answer.
-                    Some(
-                        Header::new(&packet[..header_length]).ok_or(Reject::Malformed(
-                            "IPv4 header is longer than a header can be",
-                        ))?,
-                    )
+                    Some(Header::new(header.slice()).ok_or(Reject::Malformed(
+                        "IPv4 header is longer than a header can be",
+                    ))?)
                 } else {
                     None
                 },
-                payload: &packet[header_length..],
+                payload,
             })
         }
-        Some(6) => {
-            if packet.len() < IPV6_HEADER_LEN + IPV6_FRAGMENT_HEADER_LEN {
-                return Err(Reject::Malformed("IPv6 fragment header does not fit"));
-            }
-            if u16::from_be_bytes([packet[4], packet[5]]) as usize != packet.len() - IPV6_HEADER_LEN
-            {
-                return Err(Reject::Malformed("IPv6 payload length disagrees"));
-            }
-            if IpNumber(packet[6]) != IpNumber::IPV6_FRAGMENTATION_HEADER {
+        Packet::Ipv6 { header, payload } => {
+            if header.next_header() != IpNumber::IPV6_FRAGMENTATION_HEADER {
                 return Err(Reject::Malformed("IPv6 packet is not a fragment"));
             }
-            let control = u16::from_be_bytes([packet[42], packet[43]]);
-            // the top thirteen bits are the offset in eight-octet units, so masking yields bytes directly
-            let offset = (control & 0xfff8) as usize;
-            let more = control & 1 != 0;
-            shape(
-                offset,
-                more,
-                packet.len() - IPV6_HEADER_LEN - IPV6_FRAGMENT_HEADER_LEN,
-            )?;
-            let mut header = None;
+            let fragment = Ipv6FragmentHeaderSlice::from_slice(payload)
+                .map_err(|_| Reject::Malformed("IPv6 fragment header does not fit"))?;
+            let offset = usize::from(fragment.fragment_offset().byte_offset());
+            let more = fragment.more_fragments();
+            let payload = &payload[fragment.slice().len()..];
+            shape(offset, more, payload.len())?;
+            let mut zero = None;
             if offset == 0 {
                 // The Fragment header is spliced out and the header it pointed at promoted, which is what
                 // makes the result an ordinary IPv6 packet rather than one every parse has to special-case.
                 // Patched in the inline copy rather than in a heap one: the fixed IPv6 header is well inside
                 // [MAX_HEADER], so this cannot fail.
-                let mut zero = Header::new(&packet[..IPV6_HEADER_LEN])
+                let mut first = Header::new(header.slice())
                     .ok_or(Reject::Malformed("IPv6 header does not fit"))?;
-                zero.bytes[6] = packet[40];
-                header = Some(zero);
+                first.bytes[6] = fragment.next_header().0;
+                zero = Some(first);
             }
             Ok(Fragment {
                 key: Key {
-                    source: IpAddr::V6(Ipv6Addr::from(
-                        <[u8; 16]>::try_from(&packet[8..24]).unwrap(),
-                    )),
-                    destination: IpAddr::V6(Ipv6Addr::from(
-                        <[u8; 16]>::try_from(&packet[24..40]).unwrap(),
-                    )),
-                    identification: u32::from_be_bytes(packet[44..48].try_into().unwrap()),
+                    source: IpAddr::V6(header.source_addr()),
+                    destination: IpAddr::V6(header.destination_addr()),
+                    identification: fragment.identification(),
                     protocol: 0,
                 },
                 offset,
                 more,
-                header,
-                payload: &packet[IPV6_HEADER_LEN + IPV6_FRAGMENT_HEADER_LEN..],
+                header: zero,
+                payload,
             })
         }
-        _ => Err(Reject::Malformed("not an IPv4 or IPv6 packet")),
     }
 }
 

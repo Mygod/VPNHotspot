@@ -5,8 +5,8 @@
 //! process-default fallback and no alternate network, because a packet leaving on the wrong network is
 //! the one outcome this mode exists to prevent.
 //!
-//! Raw `libc` lives at this boundary deliberately: `socket2` does not expose the error queue, the
-//! per-message hop limit, or `IP_MTU_DISCOVER`, and all three are load-bearing here.
+//! `IP_MTU_DISCOVER` is the one load-bearing option below that neither `socket2` nor `nix` exposes, so its
+//! raw `libc` call stays at this socket-owner boundary.
 
 use std::io;
 use std::mem::size_of;
@@ -15,8 +15,8 @@ use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
 
 use libc::{c_int, c_void};
 use nix::sys::socket::{
-    recvmsg, sendmsg, ControlMessage, ControlMessageOwned, MsgFlags, SockaddrIn, SockaddrIn6,
-    SockaddrStorage,
+    recvmsg, sendmsg, setsockopt, sockopt, ControlMessage, ControlMessageOwned, MsgFlags,
+    SockaddrIn, SockaddrIn6, SockaddrStorage,
 };
 use socket2::{Domain, Protocol, Socket, Type};
 use tokio::io::unix::AsyncFd;
@@ -50,13 +50,13 @@ pub(crate) struct Received {
     pub(crate) interface: u32,
 }
 
-fn set_option(fd: BorrowedFd<'_>, level: c_int, name: c_int, value: c_int) -> io::Result<()> {
+fn set_ipv4_mtu_discover(fd: BorrowedFd<'_>, value: c_int) -> io::Result<()> {
     // SAFETY: value outlives the call and its length is exactly what the kernel reads for an int option.
     if unsafe {
         libc::setsockopt(
             fd.as_raw_fd(),
-            level,
-            name,
+            libc::IPPROTO_IP,
+            libc::IP_MTU_DISCOVER,
             &value as *const c_int as *const c_void,
             size_of::<c_int>() as libc::socklen_t,
         )
@@ -74,15 +74,14 @@ fn set_option(fd: BorrowedFd<'_>, level: c_int, name: c_int, value: c_int) -> io
 /// alone, so a late reply to a retired mapping can be delivered to whatever socket now holds that
 /// identity; requiring the arrival interface to match the current generation's is what rejects it.
 pub(crate) fn configure_metadata(socket: &Socket, ipv6: bool) -> io::Result<()> {
-    let fd = socket.as_fd();
     if ipv6 {
-        set_option(fd, libc::IPPROTO_IPV6, libc::IPV6_RECVERR, 1)?;
-        set_option(fd, libc::IPPROTO_IPV6, libc::IPV6_RECVHOPLIMIT, 1)?;
-        set_option(fd, libc::IPPROTO_IPV6, libc::IPV6_RECVPKTINFO, 1)?;
+        setsockopt(socket, sockopt::Ipv6RecvErr, &true).map_err(io::Error::from)?;
+        setsockopt(socket, sockopt::Ipv6RecvHopLimit, &true).map_err(io::Error::from)?;
+        setsockopt(socket, sockopt::Ipv6RecvPacketInfo, &true).map_err(io::Error::from)?;
     } else {
-        set_option(fd, libc::IPPROTO_IP, libc::IP_RECVERR, 1)?;
-        set_option(fd, libc::IPPROTO_IP, libc::IP_RECVTTL, 1)?;
-        set_option(fd, libc::IPPROTO_IP, libc::IP_PKTINFO, 1)?;
+        setsockopt(socket, sockopt::Ipv4RecvErr, &true).map_err(io::Error::from)?;
+        setsockopt(socket, sockopt::Ipv4RecvTtl, &true).map_err(io::Error::from)?;
+        setsockopt(socket, sockopt::Ipv4PacketInfo, &true).map_err(io::Error::from)?;
     }
     Ok(())
 }
@@ -90,10 +89,8 @@ pub(crate) fn configure_metadata(socket: &Socket, ipv6: bool) -> io::Result<()> 
 /// Applied immediately before each IPv4 send and never left to another task to interleave, because one
 /// unconnected socket carries datagrams whose DF bits differ.
 pub(crate) fn set_fragmentation(socket: &Socket, fragmentation: Fragmentation) -> io::Result<()> {
-    set_option(
+    set_ipv4_mtu_discover(
         socket.as_fd(),
-        libc::IPPROTO_IP,
-        libc::IP_MTU_DISCOVER,
         match fragmentation {
             Fragmentation::Prohibited => libc::IP_PMTUDISC_DO,
             Fragmentation::Permitted => IP_PMTUDISC_OMIT,

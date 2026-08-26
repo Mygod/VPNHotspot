@@ -1,9 +1,11 @@
 package be.mygod.vpnhotspot.shizuku
 
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -68,8 +70,12 @@ class BinderPublisherTest {
         val binder = FakeBinder("one")
         val first = publisher.received(binder)
         val second = publisher.received(binder)
+        assertNotSame(first, second)
+        assertSame(binder, first.binder)
         assertSame(binder, second.binder)
-        assertTrue(!publisher.holds(first))
+        assertEquals(first.generation + 1, second.generation)
+        assertFalse(publisher.holds(first))
+        assertTrue(publisher.holds(second))
     }
 
     @Test
@@ -90,10 +96,7 @@ class BinderPublisherTest {
         assertSame(published, seen)
     }
 
-    /**
-     * A death while somebody is waiting must wake them too, or they would park on a publication nothing will
-     * ever complete. Waking and re-reading is how a waiter learns it has to keep waiting.
-     */
+    /** A death while somebody is waiting leaves them pending until a later live publication arrives. */
     @Test
     fun awaitingSurvivesADeathAndResumesOnTheNextDelivery() = runBlocking {
         var seen: BinderPublisher.Publication<FakeBinder>? = null
@@ -113,15 +116,15 @@ class BinderPublisherTest {
      * superseded, because that is precisely the combination an epoch check exists to reject.
      */
     @Test
-    fun aWaiterNeverResumesOnASupersededPublication() = runBlocking {
+    fun immediateDeliveryAndDeathStayPendingForTheNextDelivery() = runBlocking {
         var seen: BinderPublisher.Publication<FakeBinder>? = null
-        val waiter = launch { seen = publisher.awaitBinder() }
-        yield()
-        publisher.received(FakeBinder("one"))
+        val waiter = launch(start = CoroutineStart.UNDISPATCHED) { seen = publisher.awaitBinder() }
+        val superseded = publisher.received(FakeBinder("one"))
         publisher.died()
         yield()
-        // It woke, re-read, found no binder and parked again rather than returning the dead generation.
+        // The dead successor wins before the waiter can return the briefly live publication.
         assertNull(seen)
+        assertFalse(publisher.holds(superseded))
         val published = publisher.received(FakeBinder("two"))
         waiter.join()
         assertSame(published, seen)

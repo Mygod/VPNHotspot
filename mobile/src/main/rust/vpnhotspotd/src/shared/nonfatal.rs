@@ -4,8 +4,8 @@ use std::time::{Duration, Instant};
 use crate::shared::proto::daemon::{DaemonErrorReport, ErrorDetail};
 use crate::shared::protocol::MAX_ERROR_DETAILS;
 
-const SUPPRESSED_COUNT_DETAIL: &str = "coalesced.suppressed_count";
-const WINDOW_MS_DETAIL: &str = "coalesced.window_ms";
+pub(crate) const SUPPRESSED_COUNT_DETAIL: &str = "coalesced.suppressed_count";
+pub(crate) const WINDOW_MS_DETAIL: &str = "coalesced.window_ms";
 
 #[derive(Debug, Clone)]
 pub struct NonfatalReport {
@@ -126,7 +126,7 @@ impl From<&DaemonErrorReport> for ReportKey {
     }
 }
 
-fn add_coalesced_details(
+pub(crate) fn add_coalesced_details(
     report: &mut DaemonErrorReport,
     suppressed_count: usize,
     window: Duration,

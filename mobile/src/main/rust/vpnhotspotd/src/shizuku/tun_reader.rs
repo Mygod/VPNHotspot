@@ -515,19 +515,7 @@ pub(crate) async fn run(
             Err(e) => break Err(e),
         };
         let read = match guard.try_io(|inner| {
-            // SAFETY: buffer is owned here and its length is what the kernel is told to write.
-            let read = unsafe {
-                libc::read(
-                    std::os::fd::AsRawFd::as_raw_fd(inner.get_ref()),
-                    buffer.as_mut_ptr().cast(),
-                    buffer.len(),
-                )
-            };
-            if read < 0 {
-                Err(io::Error::last_os_error())
-            } else {
-                Ok(read as usize)
-            }
+            rustix::io::read(inner.get_ref(), buffer.as_mut_slice()).map_err(io::Error::from)
         }) {
             Ok(Ok(read)) => read,
             Ok(Err(e)) => break Err(e),

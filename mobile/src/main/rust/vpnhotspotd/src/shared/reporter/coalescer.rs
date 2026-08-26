@@ -19,12 +19,8 @@
 use std::collections::{hash_map::Entry, HashMap};
 use std::time::{Duration, Instant};
 
-use crate::shared::nonfatal::NonfatalReport;
-use crate::shared::proto::daemon::{DaemonErrorReport, ErrorDetail};
-use crate::shared::protocol::MAX_ERROR_DETAILS;
-
-const SUPPRESSED_COUNT_DETAIL: &str = "coalesced.suppressed_count";
-const WINDOW_MS_DETAIL: &str = "coalesced.window_ms";
+use crate::shared::nonfatal::{add_coalesced_details, NonfatalReport};
+use crate::shared::proto::daemon::DaemonErrorReport;
 
 #[derive(Debug)]
 pub struct SiteCoalescer {
@@ -165,30 +161,10 @@ impl From<&DaemonErrorReport> for SiteKey {
     }
 }
 
-fn add_coalesced_details(
-    report: &mut DaemonErrorReport,
-    suppressed_count: usize,
-    window: Duration,
-) {
-    let summary_details = [
-        ErrorDetail {
-            key: SUPPRESSED_COUNT_DETAIL.to_owned(),
-            value: suppressed_count.to_string(),
-        },
-        ErrorDetail {
-            key: WINDOW_MS_DETAIL.to_owned(),
-            value: window.as_millis().to_string(),
-        },
-    ];
-    report
-        .details
-        .truncate(MAX_ERROR_DETAILS.saturating_sub(summary_details.len()));
-    report.details.extend(summary_details);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shared::nonfatal::SUPPRESSED_COUNT_DETAIL;
 
     fn report(context: &str, kind: &str, line: u32, column: u32) -> DaemonErrorReport {
         DaemonErrorReport {

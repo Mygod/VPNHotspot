@@ -8,6 +8,7 @@ import android.system.ErrnoException
 import android.system.Os
 import android.system.OsConstants
 import androidx.annotation.RequiresApi
+import be.mygod.librootkotlinx.io.awaitExit
 import be.mygod.librootkotlinx.io.pid
 import be.mygod.librootkotlinx.net.ALocalServerSocket
 import be.mygod.librootkotlinx.net.ALocalSocket
@@ -36,12 +37,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import java.io.IOException
 import java.lang.Process as ChildProcess
 import java.nio.ByteBuffer
-import java.util.concurrent.TimeUnit
 import kotlin.random.Random
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The Shizuku-mode daemon, launched directly by the app process under the app UID. Not a Shizuku
@@ -126,9 +128,8 @@ class AppUidDaemon private constructor(
             Timber.i("$BINARY_NAME $pid exited with ${process.exitValue()}")
         }
 
-        private suspend fun awaitExit(seconds: Long) = withContext(Dispatchers.IO) {
-            process.waitFor(seconds, TimeUnit.SECONDS)
-        }
+        private suspend fun awaitExit(seconds: Long) =
+            withTimeoutOrNull(seconds.seconds) { process.awaitExit() } != null
 
         /**
          * Peer credentials are checked before a descriptor is handed over. The uid check rejects any other

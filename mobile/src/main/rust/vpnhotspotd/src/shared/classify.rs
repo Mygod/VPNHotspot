@@ -10,6 +10,12 @@
 
 use std::net::IpAddr;
 
+#[cfg(test)]
+use etherparse::Ipv6Header;
+use etherparse::{IpFragOffset, IpNumber, Ipv6FragmentHeaderSlice};
+
+use crate::shared::ip_wire::Packet;
+
 /// The three shared principals. None of them is a client identity: per-client principals were the original
 /// design and are not achievable, since nothing distinguishes a tethered client's source address from one
 /// a local app chose.
@@ -53,10 +59,7 @@ pub enum Classified {
 
 const PROTOCOL_TCP: u8 = 6;
 const PROTOCOL_UDP: u8 = 17;
-const IPV6_FRAGMENT: u8 = 44;
 const DNS_PORT: u16 = 53;
-const IPV4_MIN_HEADER: usize = 20;
-const IPV6_HEADER: usize = 40;
 
 /// What the header said, as far as classification needs it.
 struct Parsed {
@@ -125,65 +128,47 @@ pub fn classify(packet: &[u8], virtual_addresses: &[IpAddr]) -> Classified {
 }
 
 fn parse(packet: &[u8]) -> Option<Parsed> {
-    match packet.first()? >> 4 {
-        4 => {
-            let header_length = ((packet[0] & 0xf) as usize) * 4;
-            if header_length < IPV4_MIN_HEADER || packet.len() < header_length {
-                return None;
-            }
-            if u16::from_be_bytes([packet[2], packet[3]]) as usize != packet.len() {
-                return None;
-            }
-            let fragment_field = u16::from_be_bytes([packet[6], packet[7]]);
-            // more-fragments flag, or a non-zero offset
-            let fragment = fragment_field & 0x2000 != 0 || fragment_field & 0x1fff != 0;
-            let first = fragment_field & 0x1fff == 0;
-            let protocol = packet[9];
+    match Packet::parse(packet).ok()? {
+        Packet::Ipv4 { header, payload } => {
+            let fragment = header.is_fragmenting_payload();
+            let first = header.fragments_offset() == IpFragOffset::ZERO;
+            let protocol = header.protocol().0;
             Some(Parsed {
-                destination: IpAddr::from(<[u8; 4]>::try_from(&packet[16..20]).ok()?),
+                destination: IpAddr::V4(header.destination_addr()),
                 protocol,
                 destination_port: if first {
-                    destination_port(&packet[header_length..], protocol)
+                    destination_port(payload, protocol)
                 } else {
                     None
                 },
                 fragment,
             })
         }
-        6 => {
-            if packet.len() < IPV6_HEADER {
-                return None;
-            }
-            if u16::from_be_bytes([packet[4], packet[5]]) as usize != packet.len() - IPV6_HEADER {
-                return None;
-            }
-            let destination = IpAddr::from(<[u8; 16]>::try_from(&packet[24..40]).ok()?);
-            let next_header = packet[6];
-            if next_header != IPV6_FRAGMENT {
+        Packet::Ipv6 { header, payload } => {
+            let destination = IpAddr::V6(header.destination_addr());
+            if header.next_header() != IpNumber::IPV6_FRAGMENTATION_HEADER {
                 return Some(Parsed {
                     destination,
-                    protocol: next_header,
-                    destination_port: destination_port(&packet[IPV6_HEADER..], next_header),
+                    protocol: header.next_header().0,
+                    destination_port: destination_port(payload, header.next_header().0),
                     fragment: false,
                 });
             }
             // one fragment header is parsed here because it decides whether the transport header is
             // present at all; the bounded walk over the rest of the chain belongs with reassembly
-            let fragment = packet.get(IPV6_HEADER..IPV6_HEADER + 8)?;
-            let protocol = fragment[0];
-            let offset = u16::from_be_bytes([fragment[2], fragment[3]]) & !7;
+            let fragment = Ipv6FragmentHeaderSlice::from_slice(payload).ok()?;
+            let protocol = fragment.next_header().0;
             Some(Parsed {
                 destination,
                 protocol,
-                destination_port: if offset == 0 {
-                    destination_port(&packet[IPV6_HEADER + 8..], protocol)
+                destination_port: if fragment.fragment_offset() == IpFragOffset::ZERO {
+                    destination_port(&payload[fragment.slice().len()..], protocol)
                 } else {
                     None
                 },
                 fragment: true,
             })
         }
-        _ => None,
     }
 }
 
@@ -227,7 +212,7 @@ mod tests {
         packet.extend_from_slice(&[0, 0]);
         packet.extend_from_slice(&port.to_be_bytes());
         packet.extend_from_slice(&[0, 0, 0, 0]);
-        let payload = (packet.len() - IPV6_HEADER) as u16;
+        let payload = (packet.len() - Ipv6Header::LEN) as u16;
         packet[4..6].copy_from_slice(&payload.to_be_bytes());
         packet
     }

@@ -5,11 +5,11 @@
 //! validate, and whether this is a SYN - because a SYN for an unknown destination is the one packet that has to
 //! create a listening socket *before* the stack sees it.
 
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 
-use etherparse::IpNumber;
+use etherparse::{IpFragOffset, IpNumber};
 
-use crate::shared::packet_writer::{IPV4_HEADER_LEN, IPV6_HEADER_LEN};
+use crate::shared::ip_wire::{ipv6_payload, Ipv6Payload, Packet};
 use crate::shared::udp_wire::Reject;
 
 /// The minimum TCP header, which is as far as the flags and ports reach.
@@ -27,55 +27,39 @@ pub struct Segment {
 }
 
 pub fn peek(packet: &[u8]) -> Result<Segment, Reject> {
-    let (header, hop_limit, source, destination) = match packet.first().map(|byte| byte >> 4) {
-        Some(4) => {
-            let header = ((packet[0] & 0xf) as usize) * 4;
-            if header < IPV4_HEADER_LEN || packet.len() < header {
-                return Err(Reject::Malformed("IPv4 header does not fit"));
+    let (transport, hop_limit, source, destination) =
+        match Packet::parse(packet).map_err(|error| Reject::Malformed(error.message()))? {
+            Packet::Ipv4 { header, payload } => {
+                if header.protocol() != IpNumber::TCP {
+                    return Err(Reject::NotUdp);
+                }
+                if header.more_fragments() || header.fragments_offset() != IpFragOffset::ZERO {
+                    return Err(Reject::Fragmented);
+                }
+                (
+                    payload,
+                    header.ttl(),
+                    std::net::IpAddr::V4(header.source_addr()),
+                    std::net::IpAddr::V4(header.destination_addr()),
+                )
             }
-            if packet[9] != IpNumber::TCP.0 {
-                return Err(Reject::NotUdp);
+            Packet::Ipv6 { header, payload } => {
+                match ipv6_payload(header.next_header(), IpNumber::TCP) {
+                    Ipv6Payload::Transport => {}
+                    Ipv6Payload::Fragment => return Err(Reject::Fragmented),
+                    Ipv6Payload::Extension => return Err(Reject::Extended),
+                    Ipv6Payload::Other => return Err(Reject::NotUdp),
+                }
+                (
+                    payload,
+                    header.hop_limit(),
+                    std::net::IpAddr::V6(header.source_addr()),
+                    std::net::IpAddr::V6(header.destination_addr()),
+                )
             }
-            let flags = u16::from_be_bytes([packet[6], packet[7]]);
-            if flags & 0x2000 != 0 || flags & 0x1fff != 0 {
-                return Err(Reject::Fragmented);
-            }
-            (
-                header,
-                packet[8],
-                std::net::IpAddr::V4(Ipv4Addr::from(
-                    <[u8; 4]>::try_from(&packet[12..16]).unwrap(),
-                )),
-                std::net::IpAddr::V4(Ipv4Addr::from(
-                    <[u8; 4]>::try_from(&packet[16..20]).unwrap(),
-                )),
-            )
-        }
-        Some(6) => {
-            if packet.len() < IPV6_HEADER_LEN {
-                return Err(Reject::Malformed("IPv6 header does not fit"));
-            }
-            match IpNumber(packet[6]) {
-                IpNumber::TCP => {}
-                IpNumber::IPV6_FRAGMENTATION_HEADER => return Err(Reject::Fragmented),
-                header if header.is_ipv6_ext_header_value() => return Err(Reject::Extended),
-                _ => return Err(Reject::NotUdp),
-            }
-            (
-                IPV6_HEADER_LEN,
-                packet[7],
-                std::net::IpAddr::V6(Ipv6Addr::from(
-                    <[u8; 16]>::try_from(&packet[8..24]).unwrap(),
-                )),
-                std::net::IpAddr::V6(Ipv6Addr::from(
-                    <[u8; 16]>::try_from(&packet[24..40]).unwrap(),
-                )),
-            )
-        }
-        _ => return Err(Reject::Malformed("not an IPv4 or IPv6 packet")),
-    };
-    let transport = packet
-        .get(header..header + TCP_HEADER_LEN)
+        };
+    let transport = transport
+        .get(..TCP_HEADER_LEN)
         .ok_or(Reject::Malformed("TCP header does not fit"))?;
     let source_port = u16::from_be_bytes([transport[0], transport[1]]);
     let destination_port = u16::from_be_bytes([transport[2], transport[3]]);

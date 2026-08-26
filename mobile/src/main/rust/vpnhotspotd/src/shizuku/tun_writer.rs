@@ -34,7 +34,7 @@
 //! what covers whatever those packets did or did not do on the wire.
 
 use std::io;
-use std::os::fd::{AsRawFd, OwnedFd};
+use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -477,21 +477,9 @@ async fn write_all(
             }),
             guard = fd.writable() => guard?,
         };
-        match guard.try_io(|inner| {
-            // SAFETY: packet outlives the call and its length is what the kernel is told to read.
-            let written = unsafe {
-                libc::write(
-                    inner.get_ref().as_raw_fd(),
-                    packet.as_ptr().cast(),
-                    packet.len(),
-                )
-            };
-            if written < 0 {
-                Err(io::Error::last_os_error())
-            } else {
-                Ok(written as usize)
-            }
-        }) {
+        match guard
+            .try_io(|inner| rustix::io::write(inner.get_ref(), packet).map_err(io::Error::from))
+        {
             // Read here and nowhere earlier: the write has returned, so this is when the Identification it
             // carries actually became visible to a receiver. Anything before the syscall - the top of this
             // loop, or before the writability wait - would date the value to a moment it was still queued.

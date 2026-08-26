@@ -9,11 +9,14 @@
 //! looking authoritative. Every field the daemon repeats is therefore one it verified, and everything
 //! else is a rejection with a reason the caller can count.
 
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+#[cfg(test)]
+use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 
-use etherparse::{IpNumber, Ipv4Header, Ipv6Header, UdpHeader};
+use etherparse::{IpFragOffset, IpNumber, Ipv4Header, Ipv6Header, UdpHeader};
 
-use crate::shared::packet_writer::{WriterError, IPV4_HEADER_LEN, IPV6_HEADER_LEN};
+use crate::shared::ip_wire::{ipv6_payload, Ipv6Payload, Packet};
+use crate::shared::packet_writer::WriterError;
 
 /// One client datagram, in the terms the relay keys and forwards on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,93 +52,74 @@ pub enum Reject {
 }
 
 pub fn parse(packet: &[u8]) -> Result<Relayed<'_>, Reject> {
-    match packet.first().map(|byte| byte >> 4) {
-        Some(4) => {
-            let header_length = ((packet[0] & 0xf) as usize) * 4;
-            if header_length < IPV4_HEADER_LEN || packet.len() < header_length {
-                return Err(Reject::Malformed("IPv4 header does not fit"));
-            }
-            if u16::from_be_bytes([packet[2], packet[3]]) as usize != packet.len() {
-                return Err(Reject::Malformed("IPv4 total length disagrees"));
-            }
-            if packet[9] != IpNumber::UDP.0 {
+    match Packet::parse(packet).map_err(|error| Reject::Malformed(error.message()))? {
+        Packet::Ipv4 { header, payload } => {
+            if header.protocol() != IpNumber::UDP {
                 return Err(Reject::NotUdp);
             }
-            let flags = u16::from_be_bytes([packet[6], packet[7]]);
             // more-fragments, or a non-zero offset
-            if flags & 0x2000 != 0 || flags & 0x1fff != 0 {
+            if header.more_fragments() || header.fragments_offset() != IpFragOffset::ZERO {
                 return Err(Reject::Fragmented);
             }
-            let source = Ipv4Addr::from(<[u8; 4]>::try_from(&packet[12..16]).unwrap());
-            let destination = Ipv4Addr::from(<[u8; 4]>::try_from(&packet[16..20]).unwrap());
-            let (header, payload) = transport(&packet[header_length..])?;
+            let source = header.source_addr();
+            let destination = header.destination_addr();
+            let (udp, payload) = transport(payload)?;
             // Zero means the sender declined to compute one, which IPv4 permits. Any other value is
             // verified, because the datagram leaves on a different source address and so acquires a
             // fresh valid checksum: this is the only place corruption can still be seen.
-            if header.checksum != 0
-                && header
+            if udp.checksum != 0
+                && udp
                     .calc_checksum_ipv4_raw(source.octets(), destination.octets(), payload)
                     .map_err(|_| Reject::Malformed("IPv4 UDP payload too long"))?
-                    != header.checksum
+                    != udp.checksum
             {
                 return Err(Reject::Malformed("IPv4 UDP checksum mismatch"));
             }
             Ok(Relayed {
-                source: SocketAddr::V4(SocketAddrV4::new(source, header.source_port)),
-                destination: SocketAddr::V4(SocketAddrV4::new(
-                    destination,
-                    header.destination_port,
-                )),
-                hop_limit: packet[8],
-                dont_fragment: flags & 0x4000 != 0,
+                source: SocketAddr::V4(SocketAddrV4::new(source, udp.source_port)),
+                destination: SocketAddr::V4(SocketAddrV4::new(destination, udp.destination_port)),
+                hop_limit: header.ttl(),
+                dont_fragment: header.dont_fragment(),
                 payload,
             })
         }
-        Some(6) => {
-            if packet.len() < IPV6_HEADER_LEN {
-                return Err(Reject::Malformed("IPv6 header does not fit"));
-            }
-            if u16::from_be_bytes([packet[4], packet[5]]) as usize != packet.len() - IPV6_HEADER_LEN
-            {
-                return Err(Reject::Malformed("IPv6 payload length disagrees"));
-            }
+        Packet::Ipv6 { header, payload } => {
             // the extension-header set comes from the library rather than a list repeated here, so a
             // chain this parse cannot walk is never mistaken for an unsupported transport
-            match IpNumber(packet[6]) {
-                IpNumber::UDP => {}
-                IpNumber::IPV6_FRAGMENTATION_HEADER => return Err(Reject::Fragmented),
-                header if header.is_ipv6_ext_header_value() => return Err(Reject::Extended),
-                _ => return Err(Reject::NotUdp),
+            match ipv6_payload(header.next_header(), IpNumber::UDP) {
+                Ipv6Payload::Transport => {}
+                Ipv6Payload::Fragment => return Err(Reject::Fragmented),
+                Ipv6Payload::Extension => return Err(Reject::Extended),
+                Ipv6Payload::Other => return Err(Reject::NotUdp),
             }
-            let source = Ipv6Addr::from(<[u8; 16]>::try_from(&packet[8..24]).unwrap());
-            let destination = Ipv6Addr::from(<[u8; 16]>::try_from(&packet[24..40]).unwrap());
-            let (header, payload) = transport(&packet[IPV6_HEADER_LEN..])?;
+            let source = header.source_addr();
+            let destination = header.destination_addr();
+            let (udp, payload) = transport(payload)?;
             // Mandatory over IPv6, so zero is not "omitted" but wrong, and 0xffff is what a true zero
             // is transmitted as.
-            if header.checksum == 0 {
+            if udp.checksum == 0 {
                 return Err(Reject::Malformed("IPv6 UDP checksum absent"));
             }
-            if header
+            if udp
                 .calc_checksum_ipv6_raw(source.octets(), destination.octets(), payload)
                 .map_err(|_| Reject::Malformed("IPv6 UDP payload too long"))?
-                != header.checksum
+                != udp.checksum
             {
                 return Err(Reject::Malformed("IPv6 UDP checksum mismatch"));
             }
             Ok(Relayed {
-                source: SocketAddr::V6(SocketAddrV6::new(source, header.source_port, 0, 0)),
+                source: SocketAddr::V6(SocketAddrV6::new(source, udp.source_port, 0, 0)),
                 destination: SocketAddr::V6(SocketAddrV6::new(
                     destination,
-                    header.destination_port,
+                    udp.destination_port,
                     0,
                     0,
                 )),
-                hop_limit: packet[7],
+                hop_limit: header.hop_limit(),
                 dont_fragment: true,
                 payload,
             })
         }
-        _ => Err(Reject::Malformed("not an IPv4 or IPv6 packet")),
     }
 }
 
@@ -220,7 +204,7 @@ fn assemble(ip: &[u8], udp: &UdpHeader, payload: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shared::packet_writer::validate;
+    use crate::shared::packet_writer::{validate, IPV4_HEADER_LEN, IPV6_HEADER_LEN};
 
     const CLIENT4: SocketAddr =
         SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::new(192, 0, 2, 2)), 4242);

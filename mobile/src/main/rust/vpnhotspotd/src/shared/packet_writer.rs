@@ -16,6 +16,7 @@ use std::net::IpAddr;
 use std::net::Ipv6Addr;
 use std::time::Instant;
 
+use crate::shared::ip_wire::{Error as IpError, Packet};
 use crate::shared::ipv4_identification::{
     Denial, Guarded, Ipv4Identifications, Prepared, Terminal, Tuple,
 };
@@ -47,31 +48,15 @@ pub enum WriterError {
 /// Rejects anything whose declared length disagrees with its actual length, which is the last chance to
 /// catch a packetization bug before it reaches a client, and anything larger than the link.
 pub fn validate(packet: &[u8], mtu: usize) -> Result<(), WriterError> {
-    match packet.first().map(|byte| byte >> 4) {
-        Some(4) => {
-            if packet.len() < IPV4_HEADER_LEN {
-                return Err(WriterError::Malformed(
-                    "IPv4 packet shorter than its header",
-                ));
-            }
-            let declared = u16::from_be_bytes([packet[2], packet[3]]) as usize;
-            if declared != packet.len() {
-                return Err(WriterError::Malformed("IPv4 total length disagrees"));
-            }
-        }
-        Some(6) => {
-            if packet.len() < IPV6_HEADER_LEN {
-                return Err(WriterError::Malformed(
-                    "IPv6 packet shorter than its header",
-                ));
-            }
-            let declared = u16::from_be_bytes([packet[4], packet[5]]) as usize;
-            if declared != packet.len() - IPV6_HEADER_LEN {
-                return Err(WriterError::Malformed("IPv6 payload length disagrees"));
-            }
-        }
-        _ => return Err(WriterError::Malformed("not an IPv4 or IPv6 packet")),
-    }
+    Packet::parse(packet).map_err(|error| {
+        WriterError::Malformed(match error {
+            IpError::Ipv4Header => "IPv4 packet shorter than its header",
+            IpError::Ipv4Length => "IPv4 total length disagrees",
+            IpError::Ipv6Header => "IPv6 packet shorter than its header",
+            IpError::Ipv6Length => "IPv6 payload length disagrees",
+            IpError::NotIp => "not an IPv4 or IPv6 packet",
+        })
+    })?;
     if packet.len() > mtu {
         return Err(WriterError::TooLarge {
             size: packet.len(),

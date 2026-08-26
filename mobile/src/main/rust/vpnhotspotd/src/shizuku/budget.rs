@@ -10,8 +10,8 @@
 //! they are declared, and both are checked against the measured share rather than added to it.
 
 use std::io;
-use std::mem::MaybeUninit;
 
+use nix::sys::resource::{getrlimit, Resource};
 use vpnhotspotd::shared::admission::{Admission, Totals};
 
 use crate::report;
@@ -155,13 +155,6 @@ impl Measured {
 /// own ledger is refused by [Admission::new] before a dataplane exists rather than showing up later as
 /// denials blamed on traffic.
 pub(crate) async fn measure() -> io::Result<Measured> {
-    let mut limit = MaybeUninit::<libc::rlimit>::uninit();
-    // SAFETY: getrlimit fills the rlimit it is given and reads nothing else.
-    if unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, limit.as_mut_ptr()) } < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    // SAFETY: the call above succeeded, so the value is initialized.
-    //
     // Widened rather than used as-is: `rlim_t` is 32 bits on the 32-bit Android ABIs this is built for and 64
     // on the others, and the totals below are `u64` everywhere. `From` is reflexive, so this is the identity
     // on the wider ABIs and the widening on the narrower ones, with no cast that could truncate on either.
@@ -170,7 +163,11 @@ pub(crate) async fn measure() -> io::Result<Measured> {
     // widths were ever the other way round, and a lint that is right for one of this crate's four targets is
     // not a reason to write something wrong on the other three.
     #[allow(clippy::useless_conversion)]
-    let soft_limit = u64::from(unsafe { limit.assume_init() }.rlim_cur);
+    let soft_limit = u64::from(
+        getrlimit(Resource::RLIMIT_NOFILE)
+            .map_err(io::Error::from)?
+            .0,
+    );
     // Counted rather than predicted: stdio, the control socket, the TUN, and whatever the runtime
     // opened for itself are all already here, and none of them is the daemon's to enumerate. The
     // directory handle doing the counting is itself open, so this over-counts by one.

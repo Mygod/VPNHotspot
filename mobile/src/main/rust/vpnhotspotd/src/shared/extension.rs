@@ -1,8 +1,8 @@
 //! The bounded walk over an IPv6 extension-header chain.
 //!
-//! The transport parses each expect their header at a fixed offset, so a client that sends any extension header
+//! The transport parsers each expect their header at a fixed offset, so a client that sends any extension header
 //! would otherwise have its traffic counted and dropped. This removes the chain and promotes the transport,
-//! which is the same trick reassembly uses: hand the strict parses a shape they already understand rather than
+//! which is the same trick reassembly uses: hand the strict parsers a shape they already understand rather than
 //! teach each of them a second one.
 //!
 //! Removing rather than preserving is forced, not chosen. Egress goes out through a datagram socket, so the
@@ -10,26 +10,26 @@
 //! source address changes. Hop-by-Hop and Routing options are for hops along the way and lose their meaning at
 //! a relay that re-originates; Destination Options are the real loss, and it is a documented one.
 //!
-//! Two chains are refused rather than walked. A Routing header with segments left is source routing, which
-//! RFC 5095 deprecates outright and which a relay must not carry out on a client's behalf. A Hop-by-Hop header
-//! anywhere but first violates RFC 8200's ordering, and accepting it would mean accepting a chain whose meaning
-//! two readers could disagree about.
+//! Source-routing and misplaced Hop-by-Hop chains are refused rather than walked. A Routing header with
+//! segments left is source routing, which RFC 5095 deprecates outright and which a relay must not carry out on
+//! a client's behalf. A Hop-by-Hop header anywhere but first violates RFC 8200's ordering, and accepting it
+//! would mean accepting a chain whose meaning two readers could disagree about. AH, ESP, and extension types
+//! outside Hop-by-Hop, Destination Options, Routing, and Fragment are unsupported.
 //!
 //! A Fragment header ends the walk instead of being removed, and the chain before it is still stripped. What
 //! comes back is a packet whose next header is the Fragment header, which is exactly what reassembly expects -
 //! so a fragmented packet wrapped in extension headers is handled by both in turn rather than by either alone.
 
-use etherparse::IpNumber;
+use etherparse::{IpNumber, Ipv6HeaderSlice, Ipv6RawExtHeaderSlice};
 
 use crate::shared::packet_writer::IPV6_HEADER_LEN;
 use crate::shared::udp_wire::Reject;
 
 /// How many extension headers one chain may contain.
 ///
-/// RFC 8200 defines six, requires Hop-by-Hop to appear first and at most once, and gives no reason for any
-/// other to repeat - so a chain longer than the number of defined types is repeating one, and repetition is
-/// what a chain built to be expensive to walk looks like. Refusing past this bounds the work per packet
-/// without refusing anything a conforming sender produces.
+/// RFC 8200 requires Hop-by-Hop to appear first and gives no reason for a removable header to repeat. Six
+/// removable headers is already more than a conforming chain needs, so refusing past this bounds the work per
+/// packet without refusing one this relay can usefully carry.
 ///
 /// https://www.rfc-editor.org/rfc/rfc8200#section-4.1
 const MAX_HEADERS: usize = 6;
@@ -39,7 +39,7 @@ const MAX_HEADERS: usize = 6;
 pub enum Walked {
     /// There was no chain, so the packet is already the shape a transport parse expects.
     None,
-    /// The chain removed and the header that followed it promoted.
+    /// The chain was removed and the header that followed it promoted.
     Stripped(Vec<u8>),
 }
 
@@ -48,25 +48,33 @@ pub enum Walked {
 /// Only ever called for a packet a transport parse has already refused as extended, so an IPv4 packet or one
 /// with no chain comes back [Walked::None] rather than being an error.
 pub fn walk(packet: &[u8]) -> Result<Walked, Reject> {
-    if packet.first().map(|byte| byte >> 4) != Some(6) || packet.len() < IPV6_HEADER_LEN {
+    let Ok(header) = Ipv6HeaderSlice::from_slice(packet) else {
         return Ok(Walked::None);
-    }
-    let mut next = IpNumber(packet[6]);
-    if !next.is_ipv6_ext_header_value() {
-        return Ok(Walked::None);
-    }
+    };
+    let mut next = header.next_header();
     let mut offset = IPV6_HEADER_LEN;
     let mut walked = 0;
     loop {
-        if !next.is_ipv6_ext_header_value() {
-            break;
-        }
-        // Kept rather than removed: reassembly owns everything from here, and it is what promotes whatever the
-        // Fragment header points at once the datagram is whole. Breaking here also means its length is never
-        // read, which matters - it is the one extension header with no length field, carrying a reserved byte
-        // where the others put theirs.
-        if next == IpNumber::IPV6_FRAGMENTATION_HEADER {
-            break;
+        match next {
+            // Kept rather than removed: reassembly owns everything from here, and it is what promotes whatever
+            // the Fragment header points at once the datagram is whole. Breaking here also means its reserved
+            // byte is never mistaken for a generic extension-header length.
+            IpNumber::IPV6_FRAGMENTATION_HEADER => break,
+            IpNumber::IPV6_HEADER_HOP_BY_HOP
+            | IpNumber::IPV6_DESTINATION_OPTIONS
+            | IpNumber::IPV6_ROUTE_HEADER => {}
+            IpNumber::AUTHENTICATION_HEADER => {
+                return Err(Reject::Malformed(
+                    "IPv6 authentication header is not carried",
+                ));
+            }
+            IpNumber::ENCAPSULATING_SECURITY_PAYLOAD => {
+                return Err(Reject::Malformed("IPv6 encrypted payload is not carried"));
+            }
+            _ if next.is_ipv6_ext_header_value() => {
+                return Err(Reject::Malformed("unsupported IPv6 extension header"));
+            }
+            _ => break,
         }
         if walked == MAX_HEADERS {
             return Err(Reject::Malformed("IPv6 extension chain is too long"));
@@ -76,28 +84,24 @@ pub fn walk(packet: &[u8]) -> Result<Walked, Reject> {
         if next == IpNumber::IPV6_HEADER_HOP_BY_HOP && offset != IPV6_HEADER_LEN {
             return Err(Reject::Malformed("IPv6 hop-by-hop header is not first"));
         }
-        // every extension header this walks begins with a next-header byte and a length in eight-octet units
-        if packet.len() < offset + 2 {
-            return Err(Reject::Malformed("IPv6 extension header does not fit"));
-        }
-        let length = (packet[offset + 1] as usize + 1) * 8;
-        if packet.len() < offset + length {
-            return Err(Reject::Malformed(
-                "IPv6 extension header runs past the packet",
-            ));
-        }
+        // This typed slice applies the eight-octet length format only to the three header types above. AH has
+        // a different formula and ESP has no leading next-header field, which is why both were rejected first.
+        let extension = Ipv6RawExtHeaderSlice::from_slice(&packet[offset..]).map_err(|_| {
+            if packet.len() < offset + 2 {
+                Reject::Malformed("IPv6 extension header does not fit")
+            } else {
+                Reject::Malformed("IPv6 extension header runs past the packet")
+            }
+        })?;
         if next == IpNumber::IPV6_ROUTE_HEADER {
             // Segments left is the third byte. Non-zero means the client is asking to be routed through
             // somewhere of its choosing, which RFC 5095 deprecates and which a relay must not perform for it.
-            if packet.len() < offset + 4 {
-                return Err(Reject::Malformed("IPv6 routing header does not fit"));
-            }
-            if packet[offset + 3] != 0 {
+            if extension.slice()[3] != 0 {
                 return Err(Reject::Malformed("IPv6 source routing is not carried"));
             }
         }
-        next = IpNumber(packet[offset]);
-        offset += length;
+        next = extension.next_header();
+        offset += extension.slice().len();
         walked += 1;
     }
     if walked == 0 {
@@ -153,6 +157,8 @@ mod tests {
     const ROUTING: u8 = 43;
     const FRAGMENT: u8 = 44;
     const DESTINATION: u8 = 60;
+    const AH: u8 = 51;
+    const ESP: u8 = 50;
 
     #[test]
     fn a_chain_is_removed_and_the_transport_promoted() {
@@ -203,6 +209,38 @@ mod tests {
         assert_eq!(udp_wire::parse(&stripped), Err(Reject::Fragmented));
         // and a bare fragment header is left untouched, so reassembly sees it as it arrived
         assert_eq!(walk(&wrapped(&[(FRAGMENT, 0, 0)])), Ok(Walked::None));
+    }
+
+    #[test]
+    fn ah_and_esp_are_rejected_without_applying_the_generic_length_format() {
+        for (kind, expected) in [
+            (
+                AH,
+                Reject::Malformed("IPv6 authentication header is not carried"),
+            ),
+            (
+                ESP,
+                Reject::Malformed("IPv6 encrypted payload is not carried"),
+            ),
+        ] {
+            let mut packet = wrapped(&[(DESTINATION, 0, 0)]);
+            packet[6] = kind;
+            // Deliberately not a valid header body: the unsupported kind is rejected before bytes with a
+            // different or absent length format can be interpreted.
+            packet.truncate(IPV6_HEADER_LEN + 1);
+            assert_eq!(walk(&packet), Err(expected), "kind {kind}");
+        }
+    }
+
+    #[test]
+    fn fragment_body_is_not_parsed_by_the_extension_walker() {
+        let mut packet = wrapped(&[(DESTINATION, 0, 0), (FRAGMENT, 0, 0)]);
+        packet.truncate(IPV6_HEADER_LEN + 8 + 1);
+        let Ok(Walked::Stripped(stripped)) = walk(&packet) else {
+            panic!("should stop at the fragment boundary");
+        };
+        assert_eq!(stripped[6], FRAGMENT);
+        assert_eq!(stripped.len(), IPV6_HEADER_LEN + 1);
     }
 
     #[test]

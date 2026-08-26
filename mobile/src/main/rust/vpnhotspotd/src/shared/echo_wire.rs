@@ -23,14 +23,17 @@
 //! reverses a reply by - and the sequence's absence from that tuple is exactly why substituting it is safe.
 //! The client's own sequence still has to come back, because a ping matches replies on the pair.
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
+#[cfg(test)]
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 use etherparse::{
-    icmpv4, icmpv6, IcmpEchoHeader, Icmpv4Header, Icmpv4Type, Icmpv6Header, Icmpv6Type, IpNumber,
-    Ipv4Header, Ipv6Header,
+    icmpv4, icmpv6, IcmpEchoHeader, Icmpv4Header, Icmpv4Type, Icmpv6Header, Icmpv6Type,
+    IpFragOffset, IpNumber, Ipv4Header, Ipv6Header,
 };
 
-use crate::shared::packet_writer::{WriterError, IPV4_HEADER_LEN, IPV6_HEADER_LEN};
+use crate::shared::ip_wire::{ipv6_payload, Ipv6Payload, Packet};
+use crate::shared::packet_writer::WriterError;
 use crate::shared::udp_wire::Reject;
 
 /// Type, code, checksum, identifier, sequence. The same eight bytes in both families, which is the only
@@ -71,24 +74,16 @@ pub struct Identity {
 }
 
 pub fn parse(packet: &[u8]) -> Result<Request<'_>, Reject> {
-    match packet.first().map(|byte| byte >> 4) {
-        Some(4) => {
-            let header_length = ((packet[0] & 0xf) as usize) * 4;
-            if header_length < IPV4_HEADER_LEN || packet.len() < header_length {
-                return Err(Reject::Malformed("IPv4 header does not fit"));
-            }
-            if u16::from_be_bytes([packet[2], packet[3]]) as usize != packet.len() {
-                return Err(Reject::Malformed("IPv4 total length disagrees"));
-            }
-            if packet[9] != IpNumber::ICMP.0 {
+    match Packet::parse(packet).map_err(|error| Reject::Malformed(error.message()))? {
+        Packet::Ipv4 { header, payload } => {
+            if header.protocol() != IpNumber::ICMP {
                 return Err(Reject::NotUdp);
             }
-            let flags = u16::from_be_bytes([packet[6], packet[7]]);
             // more-fragments, or a non-zero offset
-            if flags & 0x2000 != 0 || flags & 0x1fff != 0 {
+            if header.more_fragments() || header.fragments_offset() != IpFragOffset::ZERO {
                 return Err(Reject::Fragmented);
             }
-            let echo = message(&packet[header_length..], icmpv4::TYPE_ECHO_REQUEST)?;
+            let echo = message(payload, icmpv4::TYPE_ECHO_REQUEST)?;
             // Never optional, unlike UDP's over IPv4: RFC 792 requires it. Verified because the message
             // leaves under a substituted sequence and so acquires a fresh valid checksum, which makes this
             // the only place corruption in it can still be seen.
@@ -99,37 +94,26 @@ pub fn parse(packet: &[u8]) -> Result<Request<'_>, Reject> {
                 return Err(Reject::Malformed("ICMPv4 echo checksum mismatch"));
             }
             Ok(Request {
-                client: IpAddr::V4(Ipv4Addr::from(
-                    <[u8; 4]>::try_from(&packet[12..16]).unwrap(),
-                )),
-                remote: IpAddr::V4(Ipv4Addr::from(
-                    <[u8; 4]>::try_from(&packet[16..20]).unwrap(),
-                )),
-                hop_limit: packet[8],
-                dont_fragment: flags & 0x4000 != 0,
+                client: IpAddr::V4(header.source_addr()),
+                remote: IpAddr::V4(header.destination_addr()),
+                hop_limit: header.ttl(),
+                dont_fragment: header.dont_fragment(),
                 identity: echo.identity(),
                 payload: echo.payload,
             })
         }
-        Some(6) => {
-            if packet.len() < IPV6_HEADER_LEN {
-                return Err(Reject::Malformed("IPv6 header does not fit"));
-            }
-            if u16::from_be_bytes([packet[4], packet[5]]) as usize != packet.len() - IPV6_HEADER_LEN
-            {
-                return Err(Reject::Malformed("IPv6 payload length disagrees"));
-            }
+        Packet::Ipv6 { header, payload } => {
             // the extension-header set comes from the library rather than a list repeated here, so a chain
             // this parse cannot walk is never mistaken for an unsupported transport
-            match IpNumber(packet[6]) {
-                IpNumber::IPV6_ICMP => {}
-                IpNumber::IPV6_FRAGMENTATION_HEADER => return Err(Reject::Fragmented),
-                header if header.is_ipv6_ext_header_value() => return Err(Reject::Extended),
-                _ => return Err(Reject::NotUdp),
+            match ipv6_payload(header.next_header(), IpNumber::IPV6_ICMP) {
+                Ipv6Payload::Transport => {}
+                Ipv6Payload::Fragment => return Err(Reject::Fragmented),
+                Ipv6Payload::Extension => return Err(Reject::Extended),
+                Ipv6Payload::Other => return Err(Reject::NotUdp),
             }
-            let client = Ipv6Addr::from(<[u8; 16]>::try_from(&packet[8..24]).unwrap());
-            let remote = Ipv6Addr::from(<[u8; 16]>::try_from(&packet[24..40]).unwrap());
-            let echo = message(&packet[IPV6_HEADER_LEN..], icmpv6::TYPE_ECHO_REQUEST)?;
+            let client = header.source_addr();
+            let remote = header.destination_addr();
+            let echo = message(payload, icmpv6::TYPE_ECHO_REQUEST)?;
             if Icmpv6Header::with_checksum(
                 Icmpv6Type::EchoRequest(echo.header()),
                 client.octets(),
@@ -145,13 +129,12 @@ pub fn parse(packet: &[u8]) -> Result<Request<'_>, Reject> {
             Ok(Request {
                 client: IpAddr::V6(client),
                 remote: IpAddr::V6(remote),
-                hop_limit: packet[7],
+                hop_limit: header.hop_limit(),
                 dont_fragment: true,
                 identity: echo.identity(),
                 payload: echo.payload,
             })
         }
-        _ => Err(Reject::Malformed("not an IPv4 or IPv6 packet")),
     }
 }
 
@@ -405,7 +388,7 @@ fn assemble(ip: &[u8], icmp: &[u8], payload: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shared::packet_writer::validate;
+    use crate::shared::packet_writer::{validate, IPV4_HEADER_LEN, IPV6_HEADER_LEN};
 
     /// Whatever the identity is, when the test is about something else.
     const ONE: Identity = Identity {

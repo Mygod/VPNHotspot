@@ -15,6 +15,7 @@ pub mod icmp_nat;
 pub mod icmp_quote;
 pub mod icmp_translate;
 pub mod icmp_wire;
+pub mod ip_wire;
 pub mod ipsec;
 pub mod ipv4_forward_counter;
 pub mod ipv4_identification;
