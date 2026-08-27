@@ -61,8 +61,9 @@ use vpnhotspotd::shared::dns_debt::{self, DeliveryId, Parked};
 
 use crate::shizuku::budget::MAX_DATAGRAM;
 use crate::shizuku::owned::Owned;
-use crate::shizuku::tcp_flow::{hand_over_in_pieces, Chunk, Event, Handed, Mailbox, READ_CHUNK};
+use crate::shizuku::tcp_flow::{hand_over_in_pieces, Chunk, Event, Handed, Mailbox};
 use crate::shizuku::workers::Ended;
+use vpnhotspotd::shared::flow_budget::READ_CHUNK;
 
 mod transactions;
 

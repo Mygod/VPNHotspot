@@ -62,6 +62,32 @@ APK library lookup, the linker invocation and the ABI check are shared with the
 root path: there is no root command in between, and the app keeps the `Process`
 handle it needs to read the child's `pid`, signal it and observe its exit.
 
+The child normalizes one thing about how it was launched, before it builds its
+runtime. A process inherits its scheduling policy from the thread that forked it,
+and every thread it creates inherits that thread's, so the daemon inherits
+whatever the app's coroutine dispatcher thread was running under - observed on
+device as `SCHED_BATCH`, the fair class with wakeup preemption switched off. On
+the app-UID path only, and only from `SCHED_BATCH` or `SCHED_IDLE`, the child
+calls `sched_setscheduler(0, …)` for the ordinary fair policy on its main thread
+before Tokio creates its workers, so the threads that run the dataplane inherit
+it. Nothing else moves: nice value, scheduler cgroup and cpuset are Android's
+placement of the app and are left exactly as they arrived, and a real-time policy
+is never rewritten. Leaving `SCHED_IDLE` is a move up a scheduling class and the
+kernel may refuse it for an unprivileged caller; `SCHED_BATCH`, the case actually
+observed, has no such condition. The change is process-local, dies with the
+process, and needs no cleanup path.
+
+**Failures here are startup output, not structured reports.** This runs before
+the runtime, the control socket and the conversation's reporter exist, so there
+is no call to attach a report to; the refusal is written to the child's own
+output, which the app drains into its log, and the session starts anyway.
+
+**Root is deliberately untouched.** Its daemon is not forked from an app thread
+at all: `RunDaemon.execute` runs inside the root service process and forks it
+there, so whatever policy it inherits comes from that process rather than from
+this app's dispatchers. Nothing about root's launch is changed, measured or
+asserted here.
+
 There is no separate handshake protocol. The connection carries the same
 `ClientEnvelope`/`DaemonEnvelope` conversation root uses, with an app-UID command
 family of its own - `StartShizukuSessionCommand` and `ApplyShizukuConfigCommand`.

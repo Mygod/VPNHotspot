@@ -2,27 +2,34 @@
 //! client-side stack.
 //!
 //! Backpressure is the point of this shape, and it is bounded in both directions without a byte counter
-//! anywhere. Two things do that bounding, and they are not the same thing. A channel's depth bounds how many
-//! values may be *queued* in it; what bounds the payload actually alive at once is the serial shape of this
-//! task - it is one `select!`, so it is in exactly one branch at a time, and it awaits an acknowledgment
-//! before it builds the next piece. The distinction matters because a depth-one channel is not a one-buffer
-//! bound: the consumer can hold a chunk it dequeued while a successor is already queued behind it, which is
-//! exactly the peak the per-flow footprint in `shizuku/tcp.rs` charges two chunks for in this direction. With that said,
-//! each direction's channel is what applies the pressure:
+//! anywhere. What bounds each direction is a *permit* rather than a message: a producer waits for room in the
+//! queue it is producing into, and the consumer taking a value is what frees it. Neither direction needs a
+//! round trip to move a byte, and neither may drop one:
 //!
-//! - client to upstream: when this task cannot keep up, the engine's channel fills, the engine stops draining
+//! - client to upstream: when this task cannot keep up, the engine's queue fills, the engine stops draining
 //!   the stack's receive buffer, the buffer fills, and the advertised window closes. The client is throttled
-//!   by TCP itself.
-//! - upstream to client: when the engine cannot keep up, this task's channel fills, it stops reading the
-//!   upstream socket, and the *upstream's* window closes. The remote is throttled the same way.
+//!   by TCP itself. The engine learns that room is back from the queue itself - see
+//!   [vpnhotspotd::shared::room] - so a full queue does not leave the window closed until something unrelated
+//!   happens to wake the engine.
+//! - upstream to client: when the engine cannot keep up, this task's queue fills, it stops reading the
+//!   upstream socket, and the *upstream's* window closes. The remote is throttled the same way. Up to
+//!   [vpnhotspotd::shared::flow_budget::READ_AHEAD] chunks may be queued ahead of the engine, which is what
+//!   lets this half read while the engine is writing the chunk before it rather than waiting to be told each
+//!   one was consumed.
 //!
 //! Neither direction drops data to relieve pressure, which is what separates a terminated stream from the
 //! relayed datagrams next door: a datagram nobody promised to deliver may be dropped, a byte in an
-//! acknowledged stream may not.
+//! acknowledged stream may not. **An abortive ending is the exception, and read-ahead widens it.** A flow
+//! reset by a retirement, an idle expiry or an upstream that failed or vanished discards whatever the engine
+//! has not written into the client's send buffer yet - which is now up to one send buffer's worth of queued
+//! chunks rather than one. The client learns of it the one way a terminated flow can say it, a reset, and
+//! nothing about the clean path changes: an orderly end of stream is queued behind the payload it follows and
+//! delivered after it, and a clean completion detaches the flow so the engine goes on draining what this task
+//! left queued.
 //!
 //! Every one of those waits therefore also races the flow's token, and that is not defensive. Each of them can
 //! block for as long as a peer chooses: a write into a full send buffer waits on a remote that stopped
-//! reading, a read waits on one that says nothing, and an event send waits on an engine that has stopped
+//! reading, a read waits on one that says nothing, and a handover waits on an engine that has stopped
 //! draining in order to retire this very flow. A retirement has to be abortive, so none of them may be what a
 //! retirement waits for - and this task *finishing* is what the engine joins. Finishing is not the same as
 //! the flow being removed: a clean completion whose client is still closing detaches the flow, which keeps
@@ -42,23 +49,31 @@ use tokio_util::sync::CancellationToken;
 use vpnhotspotd::shared::fair::FlowId;
 use vpnhotspotd::shared::preempt::{shutdown, write_all, Written};
 
+use vpnhotspotd::shared::flow_budget::READ_CHUNK;
+use vpnhotspotd::shared::mailbox;
+
 use crate::report;
 use crate::shizuku::owned::Owned;
 
-/// One read from the upstream socket. Sized to what one segment toward the client can carry, so a full read
-/// turns into one segment rather than being re-split by the stack.
-pub(crate) const READ_CHUNK: usize = 1500;
+/// One piece of payload on its way to a client's stack, counted for exactly as long as it exists.
+pub(crate) type Payload = Owned;
 
-/// The per-flow mailbox this half produces into, and the identity every one of its signals carries.
+/// What this half produces into its flow's mailbox.
 ///
-/// Both live in `shizuku/mailbox.rs` rather than here because what they carry is the stack-neutral ownership
-/// rule that only one chunk may be alive at a time.
-pub(crate) use crate::shizuku::mailbox::{Chunk, Handed, Mailbox as Post, Payload};
+/// The mailbox itself lives in [vpnhotspotd::shared::mailbox] rather than here, because what it carries is
+/// the stack-neutral ownership rule about how many chunks may be alive at once - and which of its two
+/// handovers a producer uses is the difference between ordinary traffic and DNS-over-TCP.
+pub(crate) type Chunk = mailbox::Chunk<Payload>;
 
 /// This flow's mailbox, at the handle type the client-side stack names its slots by.
-pub(crate) type Mailbox = Post<SocketHandle>;
+pub(crate) type Mailbox = mailbox::Mailbox<SocketHandle, Payload>;
 
-/// A payload-free wake naming exactly which flow may have work.
+pub(crate) use vpnhotspotd::shared::mailbox::Handed;
+
+/// One flow, named on the requests its DNS-over-TCP transport makes of the ingress owner.
+///
+/// Not a wake: nothing travels between a flow's task and its owner to say payload is waiting, because each
+/// flow's own queue is what wakes the owner - see [vpnhotspotd::shared::transfer].
 pub(crate) type Event = FlowId<SocketHandle>;
 
 /// `sweep` is the engine's own token rather than this flow's: it is cancelled only when the whole table is
@@ -107,10 +122,13 @@ pub(crate) async fn splice(
             },
             read = reader.read(&mut buffer) => match read {
                 Ok(0) => {
-                    // Orderly close from the remote; the client is told the same way rather than reset. Waited
-                    // on like any payload, because a clean end may not overtake the bytes before it and this
-                    // task may not return while the client's stack has not taken them.
-                    if !mailbox.hand_over(Chunk::Finished, &cancel).await {
+                    // Orderly close from the remote; the client is told the same way rather than reset. Queued
+                    // like any payload, because a clean end may not overtake the bytes before it - the queue is
+                    // ordered and the engine takes one chunk at a time, so the end of stream reaches the client's
+                    // stack only once everything queued in front of it has. This task may return with those
+                    // chunks still queued: a clean terminal detaches the flow rather than removing it, and the
+                    // engine goes on delivering them.
+                    if !mailbox.hand_off(Chunk::Finished, &cancel).await {
                         break;
                     }
                     // Nothing left to read, but the client may still be sending, so this keeps servicing the
@@ -121,11 +139,12 @@ pub(crate) async fn splice(
                     break;
                 }
                 Ok(bytes) => {
-                    // Awaited rather than tried, and awaited until *consumed* rather than until delivered:
-                    // that is the upstream-to-client bound. This loop stops until the client's stack has
-                    // taken the whole chunk, so the upstream's own window closes instead of bytes being
-                    // dropped or a second chunk being read behind the first.
-                    if !mailbox.hand_over(Chunk::Payload(Payload::new(buffer[..bytes].to_vec())), &cancel).await {
+                    // Awaited rather than tried, and awaited for *room* rather than for consumption: that is
+                    // the upstream-to-client bound. Up to one send buffer's worth of chunks may be waiting,
+                    // and this loop stops only once they are, so the upstream's own window closes instead of
+                    // bytes being dropped - while the engine taking one chunk is what lets the next read
+                    // happen, with no signal of ours in between.
+                    if !mailbox.hand_off(Chunk::Payload(Payload::new(buffer[..bytes].to_vec())), &cancel).await {
                         break;
                     }
                 }
@@ -198,11 +217,11 @@ async fn drain(
             read = reader.read(buffer) => read?,
         };
         if read == 0 {
-            mailbox.hand_over(Chunk::Finished, cancel).await;
+            mailbox.hand_off(Chunk::Finished, cancel).await;
             return Ok(());
         }
         if !mailbox
-            .hand_over(
+            .hand_off(
                 Chunk::Payload(Payload::new(buffer[..read].to_vec())),
                 cancel,
             )
@@ -244,11 +263,12 @@ async fn forward_only(
 
 /// Hands one buffer over in `quantum`-sized pieces, one at a time.
 ///
-/// The loop is the bound. Each piece is copied out of `whole` immediately before it is handed over, and the
-/// next is not copied until the owner has acknowledged consuming it - so exactly one piece allocation exists
-/// at any moment, whatever the size of the buffer being sent. Building the pieces first and handing them over
-/// afterwards is the shape this replaces: it satisfies the mailbox's depth and holds a second copy of the
-/// whole response while it does, which is precisely the allocation the depth was supposed to bound.
+/// The acknowledgment is the bound, and it is why this path may not use the queued handover ordinary traffic
+/// does. Each piece is copied out of `whole` immediately before it is handed over, and the next is not copied
+/// until the owner has acknowledged consuming it - so exactly one piece allocation exists at any moment,
+/// whatever the size of the buffer being sent. Queueing them instead would satisfy the mailbox's depth and
+/// hold as many copies of the response as the read-ahead is deep, which is precisely the allocation the
+/// delivery grant exists to bound.
 ///
 /// `whole` itself stays alive throughout, because it is what the pieces are copied from - and that is what
 /// the delivery grant covers: the answer, this framed copy, and one piece.
@@ -261,7 +281,7 @@ pub(crate) async fn hand_over_in_pieces(
     for piece in whole.chunks(quantum) {
         // Allocated here, counted here, handed over, and gone before the next exists. The count is held
         // across the handover rather than released at the send, because the producer does not build the next
-        // piece until this one has been acknowledged - which is what depth one actually says.
+        // piece until this one has been acknowledged - which is what the acknowledged handover is for.
         // Counted by the payload itself, so it stays counted wherever it ends up: consumed by the engine,
         // or left in the mailbox by a cancellation.
         if !mailbox

@@ -18,9 +18,10 @@
 //! disagree about how much it was charged.
 
 use std::collections::HashMap;
-use std::future::{pending, Future};
+use std::future::{poll_fn, Future};
 use std::hash::Hash;
 use std::io;
+use std::task::{Context, Poll};
 
 use tokio::task::{Id, JoinSet};
 use tokio_util::sync::CancellationToken;
@@ -167,7 +168,7 @@ impl<K: Copy + Eq + Hash, R> Workers<K, R> {
     /// The identity a record and its worker will share. Taken before either exists, because the worker is
     /// built from it and the record is checked against it.
     ///
-    /// Checked, and a refusal rather than a wrap. Identities are what a terminal, a readiness marker and a
+    /// Checked, and a refusal rather than a wrap. Identities are what a terminal, a fair-queue row and a
     /// delivery acknowledgment are all matched against, so reusing one is not a counter rolling over - it is
     /// a signal for a record that has been gone for a long time landing on whatever holds that number now.
     /// Wrapping would also reuse zero, which is the very first identity this table ever issued. A `u64`
@@ -287,6 +288,12 @@ impl<K: Copy + Eq + Hash, R> Workers<K, R> {
         self.held.values_mut()
     }
 
+    /// Every record with the key it is held under, for an owner that has to reach state keyed the same way -
+    /// a flow's socket beside the flow itself.
+    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut Held<R>)> {
+        self.held.iter_mut()
+    }
+
     pub(crate) fn len(&self) -> usize {
         self.held.len()
     }
@@ -312,26 +319,30 @@ impl<K: Copy + Eq + Hash, R> Workers<K, R> {
 
     /// The next worker to have finished, or never when none is running.
     ///
-    /// `pending` rather than an immediate `None`, because owners select on this: a set that answered at once
-    /// while empty would spin the loop it is selected in. Cancel-safe, since `JoinSet::join_next_with_id`
-    /// is, so an owner may abandon it for another arm and come back.
+    /// `Pending` rather than an immediate answer while the set is empty, because owners select on this: a set
+    /// that answered at once would spin the loop it is selected in. Cancel-safe, since
+    /// `JoinSet::poll_join_next_with_id` is, so an owner may abandon it for another arm and come back.
     pub async fn finished(&mut self) -> Terminal<K> {
+        poll_fn(|cx| self.poll_finished(cx)).await
+    }
+
+    /// The same answer as a poll, for the owner that has to register several sources in one turn rather than
+    /// hold a future for each - see [crate::shizuku::tcp::Engine::attention].
+    pub fn poll_finished(&mut self, cx: &mut Context<'_>) -> Poll<Terminal<K>> {
         loop {
-            if self.tasks.is_empty() {
-                pending::<()>().await;
-            }
-            let (task, ended) = match self.tasks.join_next_with_id().await {
-                Some(Ok((task, ended))) => (task, ended),
-                Some(Err(e)) => (
+            let (task, ended) = match self.tasks.poll_join_next_with_id(cx) {
+                Poll::Ready(Some(Ok((task, ended)))) => (task, ended),
+                Poll::Ready(Some(Err(e))) => (
                     e.id(),
                     Ended::Failed {
                         context: self.context,
                         error: io::Error::other(format!("a worker task did not complete: {e}")),
                     },
                 ),
-                // the set was not empty a moment ago and this is its only consumer, so this is a race with
-                // nothing rather than a completion to report
-                None => continue,
+                // An empty set, which is nothing to wait *for* rather than nothing to wait *on*: no waker is
+                // registered because nothing here can complete until this owner admits a worker, which is
+                // work this same owner does between polls.
+                Poll::Ready(None) | Poll::Pending => return Poll::Pending,
             };
             // Registered when the task was admitted and removed only here, so this answers for every task
             // this set can report. A completion for an unregistered task is not a record to settle, and
@@ -341,7 +352,7 @@ impl<K: Copy + Eq + Hash, R> Workers<K, R> {
                     self.bounded(),
                     "a reported task only lowers the running count"
                 );
-                return Terminal { key, id, ended };
+                return Poll::Ready(Terminal { key, id, ended });
             }
         }
     }

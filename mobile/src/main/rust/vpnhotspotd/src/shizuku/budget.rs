@@ -42,14 +42,6 @@ const MAX_QUERIES_PER_UID: u32 = 256;
 /// subtracted from it.
 pub(crate) const CONCURRENT_QUERIES: u32 = MAX_QUERIES_PER_UID / 8;
 
-/// Buffer per direction for one terminated TCP flow.
-///
-/// 65535 is the largest window a receiver can advertise without RFC 1323 window scaling, so it is the largest
-/// buffer that is useful against *every* peer rather than only against those that negotiate scaling. Rounded
-/// to 64 KiB. Bigger would help some peers and cost every flow; smaller would cap throughput on any path whose
-/// bandwidth-delay product exceeds it.
-pub(crate) const FLOW_BUFFER: usize = 64 * 1024;
-
 /// The largest IP datagram there is, which is what a UDP or Echo reply may be.
 pub(crate) const MAX_DATAGRAM: usize = u16::MAX as usize;
 
@@ -91,18 +83,22 @@ const MEMORY_SHARE: u64 = 8;
 /// Owners that hold bytes and never a record, which is what the admission ledger has to be sized for beyond
 /// the record-backed ones.
 ///
-/// Counted rather than estimated: the TUN writer, the UDP reply queue, the Echo reply queue, the TCP
-/// readiness channel, the output packetization scratch, the reassembly table's retained capacity, its one
-/// transient completed packet, the IPv4 identification table, the ingress read buffer, the UDP mapping table,
-/// the Echo socket table, the Echo session table, the TCP flow table, the TCP transaction table, the virtual
-/// DNS transaction table, the smoltcp socket set, the engine's output slot, and the per-flow fair queue. Eight
-/// spare, so a later fixed owner does not silently push the ledger past what was charged for it.
+/// Counted rather than estimated: the TUN writer, the UDP reply queue, the Echo reply queue, the output
+/// packetization scratch, the reassembly table's retained capacity, its one transient completed packet, the
+/// IPv4 identification table, the ingress read buffer, the UDP mapping table, the Echo socket table, the Echo
+/// session table, the TCP flow table, the TCP transaction table, the virtual DNS transaction table, the
+/// smoltcp socket set, the engine's output slot, and the per-flow fair queue - seventeen. Eight spare, so a
+/// later fixed owner does not silently push the ledger past what was charged for it.
+///
+/// Seventeen and not eighteen since the TCP engine stopped owning a readiness channel every flow shared:
+/// payload and its wake both live in each flow's own queue now, which is charged per flow rather than here.
+/// See [vpnhotspotd::shared::transfer].
 ///
 /// The writer is one row and not four: its packet queue, the packet it has in hand, its retirement channel
 /// and its Identification settlement channel are built together, released together, and charged as one lease.
 /// What this count is for is the *simultaneous* ledger inventory, so what matters is how many rows exist at
 /// once rather than how many allocations each covers.
-const BYTE_ONLY_OWNERS: u32 = 18 + 8;
+const BYTE_ONLY_OWNERS: u32 = 17 + 8;
 
 /// What one maximum resolver exchange needs at once: the query as it arrived, the answer as the platform
 /// returns it, and the framing copy in between.

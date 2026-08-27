@@ -42,7 +42,8 @@ binds a socket to an Android `Network`.
 
 [`src/shared/`](../../mobile/src/main/rust/vpnhotspotd/src/shared/) is the
 platform-neutral library compiled by host tests. It contains protocol models,
-packet parsing and construction, accounting and task-ownership logic. See
+packet parsing and construction, accounting, task- and queue-ownership logic, and
+the launch-policy decision the app-UID entry point applies to itself. See
 [`errors.md`](errors.md) for the reporting split.
 
 The Kotlin side has two halves. Root control lives under

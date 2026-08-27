@@ -415,7 +415,7 @@ three principals - DNS, IPv4, IPv6 - are shared classes; nothing derives identit
 
 | Client traffic | How it is carried | Outer state the daemon owns |
 | --- | --- | --- |
-| TCP | terminated locally by `smoltcp` and reconnected upstream, so each side segments to its own MTU | flow record, socket, two 64 KiB buffers, one upstream descriptor |
+| TCP | terminated locally by `smoltcp` and reconnected upstream, so each side segments to its own MTU | flow record, socket, two 64 KiB buffers, one upstream descriptor, one read-ahead queue of at most one send buffer's worth of upstream payload |
 | UDP | one endpoint-independent, address-filtered mapping per TUN-visible source, on an unconnected socket reused across destinations | mapping, remote records, bounded send history |
 | DNS to a virtual resolver address | terminated and handed to the platform resolver, over UDP and TCP | transaction row, logical resolver token |
 | ICMP Echo | relayed on a ping socket | Echo session and socket |
@@ -473,6 +473,14 @@ Three rules hold the accounting together, and they are what other owners may rel
   acknowledged configuration therefore means the descriptors of everything it retired are closed.
 - **One reservation per row, taken before the payload**, which is what makes a bounded queue a real bound.
 
+A TCP flow's reservation covers its read-ahead queue in full - every chunk it may hold, whether or not that
+flow ever fills it - so the read-ahead is paid for in flows the device can admit rather than in memory it
+finds out about later. It adds one send buffer's worth of chunks, about 70 KB, to a charge whose two stack
+buffers were already 128 KB. What that costs in prepared flows depends on the device: the solver takes the
+largest count whose per-flow charge and tables still fit the *general byte headroom*, so where bytes are the
+binding constraint the count falls in proportion, and where the descriptor floor or a table bound is what
+binds first it does not move at all.
+
 Because there is no client identity, these budgets are self-protection rather than fairness.
 
 ### Idle Floors And Timers
@@ -514,16 +522,68 @@ originates rearms anything. **No post-RST retention is claimed**: RFC 7857 recom
 four minutes after a matching reset, and this daemon does not - `Closed` is terminal and a reset from either
 side ends the flow.
 
+#### TCP Transfer, Backpressure And Wakes
+
+One task owns the client-side stack, so both directions of every flow are moved by it, and each direction is
+bounded by that flow's *own* queue, whose readiness is also the wake. **No message travels between a flow's
+task and the engine to say work is waiting, in either direction, and no queue is shared between flows.**
+Nothing here is timer-driven, polled or periodic.
+
+**Upstream to client.** The flow's task hands each read into a per-flow queue and reads again as soon as that
+queue has room, up to one client-side send buffer's worth of read quanta - 43 chunks of 1,500 bytes at the
+64 KiB buffer this mode uses. The engine takes exactly one chunk at a time into the flow's row, writes it
+into the client's send buffer at an exact offset, and takes the next as soon as that one is fully written.
+Trigger: an enqueue into a queue whose row is empty, a client acknowledgement that opens the window, or the
+engine's own poll. The engine registers with a flow's queue only while that flow's row will accept a chunk: a
+busy row needs no wake, because consuming it refills the row from the same queue, so a burst is drained
+without a wake after the first. Bounded state: the queue's depth, the row's one chunk, and the chunk the task
+itself is holding - all charged before the flow exists. Backpressure: a full queue stops the task reading,
+which closes the *upstream's* window. Nothing is dropped to relieve pressure.
+
+Two arrangements preceded this one. The first queued one chunk and waited for the engine to acknowledge
+consuming it before reading again, which is a task/engine/task scheduling round trip per 1,500 bytes and no
+read-ahead at all. The second kept the read-ahead but announced each chunk on a readiness channel every flow
+shared, prepared for one marker per live flow: duplicates coalesce only after the engine has received them, so
+one busy flow could fill that channel and make another flow's producer wait on it - the cross-flow dependency
+the read-ahead exists to remove.
+
+**Client to upstream.** The engine holds one reserved slot in each flow's queue. Holding it is the permission
+to move a chunk out of the stack's receive buffer; using it starts the next reservation, and that reservation
+is what registers the engine to be woken when the task takes the chunk. Depth stays at one deliberately: what
+the client sends beyond that stays in the stack's own receive buffer, so the client's window closes instead of
+this daemon buffering a second copy. Trigger: the task taking a chunk, or any packet or poll that puts bytes
+in the receive buffer. Failure semantics: a queue whose task is gone answers immediately and permanently, and
+the flow's own ending settles it. The earlier arrangement read the queue's *capacity* instead, which
+registered nothing - so a full queue left the receive buffer undrained and the client's window closed until
+some unrelated event happened to wake the ingress task, which for an upload-only flow is the client's own
+zero-window probe.
+
+**DNS-over-TCP keeps the acknowledged handover.** Its delivery reservation pays for the answer, the framed
+copy and *one* piece, so its pieces are handed over one at a time and the next is not built until the engine
+says the previous one was consumed. Queueing them would hold as many copies as the read-ahead is deep. It is
+the only flow kind the engine acknowledges to.
+
+**An abortive ending discards more than it used to.** A flow reset by a retirement, an idle expiry or an
+upstream that failed or vanished drops whatever the engine has not yet written into the client's send buffer,
+which is now up to one send buffer's worth of queued chunks rather than one. The client is told the one way a
+terminated flow can say it: a reset. The clean path loses nothing - the ordered end of stream is queued
+behind the payload it follows, and a clean completion detaches the flow so the engine goes on delivering what
+the task left queued.
+
 #### A Flow Can Outlive Its Worker
 
-Both TCP workers return as soon as their own ordered work is done, while the client's socket is typically
-still in `LAST-ACK`, `CLOSING` or `TIME-WAIT`. A clean terminal from a flow nobody asked to stop therefore
-**detaches** the flow instead of ending it: the worker and its upstream descriptor are gone, while the flow
-keeps its socket, buffers and reservation until `smoltcp` reaches `Closed`, its outer floor passes, a
-configuration retires it, or the session ends. Its record is removed and its reservation released exactly
-once, by whichever happens first, and no retirement waits for a second terminal from it. A cancelled worker, a
-socket that never completed its handshake, and a failed worker are not this case: each has no client teardown
-left to protect.
+Both TCP workers return as soon as their own ordered work is done - for an ordinary flow, as soon as its last
+payload and its ordered end of stream are *queued*, since only DNS-over-TCP waits to be told a piece was
+consumed. The client's socket at that moment is typically still `ESTABLISHED` with bytes to deliver, or in
+`LAST-ACK`, `CLOSING` or `TIME-WAIT`. A clean terminal from a flow nobody asked to stop therefore **detaches**
+the flow instead of ending it: the worker and its upstream descriptor are gone, while the flow keeps its
+socket, its buffers, its reservation and whatever its own queue still holds until `smoltcp` reaches `Closed`,
+its outer floor passes, a configuration retires it, or the session ends. The engine goes on taking from that
+queue exactly as it did while the worker existed. Because a terminal now arrives with bytes still owed, the
+detach-or-end decision is made *before* anything of the flow's is discarded; ending is what discards the row.
+Its record is removed and its reservation released exactly once, by whichever ending happens first, and no
+retirement waits for a second terminal from it. A cancelled worker, a socket that never completed its
+handshake, and a failed worker are not this case: each has no client teardown left to protect.
 
 ## External State And Cleanup
 

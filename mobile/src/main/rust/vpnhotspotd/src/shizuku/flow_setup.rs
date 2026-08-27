@@ -19,14 +19,17 @@ use smoltcp::wire::IpListenEndpoint;
 use tokio::sync::mpsc;
 
 use crate::report;
-use crate::shizuku::mailbox::{Chunk, Mailbox};
 use crate::shizuku::owned::Owned;
 use crate::shizuku::tcp_dns::{Control, Serving};
 use crate::shizuku::workers::{Identity, Workers};
 use vpnhotspotd::shared::admission::Admission;
 use vpnhotspotd::shared::dns_debt::{self, Connection};
 use vpnhotspotd::shared::fair::FlowId;
+use vpnhotspotd::shared::flow_budget;
+use vpnhotspotd::shared::mailbox::Mailbox;
 use vpnhotspotd::shared::reply_bound::built_depth;
+use vpnhotspotd::shared::room::Room;
+use vpnhotspotd::shared::transfer::Transfer;
 
 /// The client-side stack's socket storage, and how much of it has ever really been allocated.
 ///
@@ -71,17 +74,16 @@ impl std::ops::DerefMut for Sockets {
     }
 }
 
-/// How large the pieces of one flow are, shared by the engine's bound and its allocation path.
+/// How large the pieces of one flow are, and what its composite grant covers.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Sizing {
-    /// What the composite grant covers: both stack buffers, the read scratch that is really live at once,
-    /// and every one of the per-flow channels built below. Derived by the engine, which owns the one figure
-    /// the solver and this reservation both read - see [crate::shizuku::tcp]'s per-flow footprint.
+    /// What the composite grant covers: both stack buffers, every payload chunk that can exist at once, and
+    /// every one of the per-flow channels built below. Computed from `flow` by
+    /// [vpnhotspotd::shared::flow_budget::footprint], which is also what the engine's own solver reads - so
+    /// the charge and the construction below cannot disagree about a depth.
     pub(crate) bytes: u64,
-    /// One client-side stack buffer, each way.
-    pub(crate) buffer: usize,
-    /// Depth of each of the five per-flow channels.
-    pub(crate) depth: usize,
+    /// The one value both the charge above and the channels below are sized from.
+    pub(crate) flow: flow_budget::Sizing,
     /// The hop limit replies inherit, decided by the NAT66 rules rather than here.
     pub(crate) hop_limit: u8,
     /// Whether this flow's transport holds one logical resolver token for its whole life.
@@ -111,15 +113,16 @@ pub(crate) struct Prepared {
     /// The worker identity this flow's task will run under. Issued here because a flow that cannot have one
     /// must not have a socket either.
     pub(crate) identity: Identity,
-    /// The producer's end: where upstream payload goes, and how the engine is told which flow has some.
-    pub(crate) mailbox: Mailbox<SocketHandle>,
-    /// The engine's end of the same mailbox.
-    pub(crate) incoming: mpsc::Receiver<Chunk>,
+    /// The producer's end: where upstream payload is queued, and the acknowledgment a DNS-over-TCP transport
+    /// waits on.
+    pub(crate) mailbox: Mailbox<SocketHandle, Owned>,
+    /// The engine's end of both directions: the queue it takes payload out of, and its reserved slot in the
+    /// queue the task reads from. Each of them is its own wake - see [vpnhotspotd::shared::transfer].
+    pub(crate) transfer: Transfer<Owned>,
     pub(crate) consumed: mpsc::Sender<()>,
-    /// Client-to-upstream payload, and the end the flow's task reads it from. Counted from the moment the
+    /// Client-to-upstream payload, at the end the flow's task reads it from. Counted from the moment the
     /// engine copies it out of the stack's receive buffer to the moment its consumer drops it, because that
     /// whole span is one chunk of this flow's grant.
-    pub(crate) downstream: mpsc::Sender<Owned>,
     pub(crate) receiver: mpsc::Receiver<Owned>,
     /// The owner's half of this flow's DNS control pair: where it answers the transport, and where it takes
     /// a filled query back. Built here, after the grant, so the reusable control channels a query needs are
@@ -136,11 +139,10 @@ pub(crate) struct Prepared {
 /// an unwind after that point drops what is left rather than pretending to hold what the future already owns.
 pub(crate) struct Leftovers {
     pub(crate) connection: Connection,
-    pub(crate) mailbox: Option<Mailbox<SocketHandle>>,
+    pub(crate) mailbox: Option<Mailbox<SocketHandle, Owned>>,
     pub(crate) receiver: Option<mpsc::Receiver<Owned>>,
-    pub(crate) incoming: mpsc::Receiver<Chunk>,
+    pub(crate) transfer: Transfer<Owned>,
     pub(crate) consumed: mpsc::Sender<()>,
-    pub(crate) downstream: Option<mpsc::Sender<Owned>>,
     /// The transport's halves of the control pair, absent once a worker future has taken them.
     pub(crate) control: Option<mpsc::Receiver<Control>>,
     pub(crate) filled: Option<mpsc::Sender<Owned>>,
@@ -156,7 +158,6 @@ pub(crate) fn prepare<R>(
     admission: &mut Admission,
     sockets: &mut Sockets,
     workers: &mut Workers<SocketHandle, R>,
-    ready: &mpsc::Sender<FlowId<SocketHandle>>,
     sizing: Sizing,
     endpoint: IpListenEndpoint,
 ) -> Result<Prepared, Denied> {
@@ -174,8 +175,8 @@ pub(crate) fn prepare<R>(
         return Err(Denied::Grant);
     };
     let mut socket = Socket::new(
-        SocketBuffer::new(vec![0u8; sizing.buffer]),
-        SocketBuffer::new(vec![0u8; sizing.buffer]),
+        SocketBuffer::new(vec![0u8; sizing.flow.buffer]),
+        SocketBuffer::new(vec![0u8; sizing.flow.buffer]),
     );
     socket.set_hop_limit(Some(sizing.hop_limit));
     if let Err(e) = socket.listen(endpoint) {
@@ -192,17 +193,23 @@ pub(crate) fn prepare<R>(
         close_idle(admission, connection);
         return Err(Denied::Identity);
     };
-    let (downstream, receiver) = mpsc::channel(sizing.depth);
-    let (chunks, incoming) = mpsc::channel(sizing.depth);
-    let (consumed, acknowledged) = mpsc::channel(sizing.depth);
+    // The depths that were *charged*, not the ones requested. A derived bound of zero is still a channel that
+    // gets built - a zero-capacity one is not constructible - and [built_depth] is what
+    // [vpnhotspotd::shared::flow_budget::channels_footprint] read when this flow's grant was taken, so
+    // reading it again here is what keeps the construction inside the charge rather than beside it.
+    let control = built_depth(sizing.flow.control);
+    // The one queue built deeper than the rest: what the upstream half may read ahead of the client's stack.
+    let read_ahead = built_depth(sizing.flow.read_ahead);
+    let (downstream, receiver) = mpsc::channel(control);
+    let (chunks, incoming) = mpsc::channel(read_ahead);
+    let (consumed, acknowledged) = mpsc::channel(control);
     // The reusable control pair every question on this flow travels over, built once with the flow. A
     // oneshot per query would be heap that appeared before the query's own grant did, which is the shape the
     // aggregate exists to prevent.
-    let (answers, control) = mpsc::channel(sizing.depth);
-    let (filled, accepted) = mpsc::channel(sizing.depth);
+    let (answers, control_end) = mpsc::channel(control);
+    let (filled, accepted) = mpsc::channel(control);
     let mailbox = Mailbox {
         chunks,
-        ready: ready.clone(),
         consumed: acknowledged,
         identity: FlowId::new(handle, identity.id),
     };
@@ -211,12 +218,14 @@ pub(crate) fn prepare<R>(
         handle,
         identity,
         mailbox,
-        incoming,
+        // Both of the engine's ends together, because they are one ownership: the queue it takes payload out
+        // of, and the slot it hands chunks over through. The slot is wrapped here rather than by the caller,
+        // so the only sending half this flow ever has is the one that registers the engine for a wake.
+        transfer: Transfer::new(incoming, Room::new(downstream)),
         consumed,
-        downstream,
         receiver,
         serving: Serving::new(answers, accepted),
-        control,
+        control: control_end,
         filled,
     })
 }
@@ -251,26 +260,18 @@ pub(crate) fn release(
         connection,
         mailbox,
         receiver,
-        incoming,
+        transfer,
         consumed,
-        downstream,
         control,
         filled,
     } = leftovers;
     drop(mailbox);
     drop(receiver);
-    drop(incoming);
+    // Both of the engine's ends, and with them whatever the queue toward the client still held and the
+    // reservation the engine was keeping in the queue toward the task.
+    drop(transfer);
     drop(consumed);
-    drop(downstream);
     drop(control);
     drop(filled);
     close_idle(admission, connection);
-}
-
-/// One readiness slot per flow the engine is prepared for, which is exactly how many identities can be ready
-/// at once: the fair queue keeps at most one marker per identity, so nothing beyond that can reach the
-/// channel. At least one, because a zero-capacity channel is not constructible - and that minimum is charged
-/// rather than assumed free.
-pub(crate) fn ready_depth(flows: usize) -> usize {
-    built_depth(flows)
 }

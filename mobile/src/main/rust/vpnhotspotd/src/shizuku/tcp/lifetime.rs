@@ -137,8 +137,15 @@ impl Engine {
     /// previous one had not been consumed, one naming no live flow, output the stack generated,
     /// acknowledgements and resets this daemon originated, a config being applied, and anything naming a
     /// stale, cancelled or absent flow.
+    ///
+    /// Two things reach here, and the second is narrower than it looks: a client packet offered to the stack,
+    /// and one *delivery* - a chunk this owner's own scan moved out of a flow's queue and into its row. A
+    /// chunk the consumption path takes instead, because the row was busy when it arrived, rearms nothing;
+    /// under a download that is the common case, and what refreshes such a flow is the client's own
+    /// acknowledgements, which arrive as packets. A client that has stopped acknowledging is a flow this
+    /// owner is entitled to expire.
     pub(super) fn rearm(&mut self, handle: SocketHandle, worker: u64, now: Instant) {
-        // Both halves, because smoltcp reuses handles: a packet or a marker naming a replaced flow's handle
+        // Both halves, because smoltcp reuses handles: a packet or a delivery naming a replaced flow's handle
         // would otherwise hand the successor its predecessor's lease of life.
         if !self.flows.current(&handle, worker) {
             return;
@@ -237,12 +244,13 @@ impl Engine {
                 {
                     continue;
                 }
-                // Discard before cancel, and per exact identity: a worker parked on an acknowledgment may
-                // only be released once the owner has committed to dropping what that acknowledgment was for.
+                // Discard before cancel, and per exact identity: a worker parked on a handover may only be
+                // released once the owner has committed to dropping what that wait was for.
                 drop(fair.begin_retire(FlowId::new(*handle, held.record.worker)));
                 held.cancel.cancel();
-                // dropped so a task blocked on the client's half of the splice wakes and exits
-                held.record.downstream = None;
+                // The slot goes, which closes the queue toward the task: one blocked on the client's half of
+                // the splice wakes and exits, and the reservation this owner held is released with it.
+                held.record.transfer.stop_sending();
                 // At most one reset per expired flow, built while the socket that carries it still exists,
                 // so a client fails fast instead of waiting out its own retransmissions. Counted only where the
                 // stack really has somewhere to send one: a socket with no remote endpoint - one still

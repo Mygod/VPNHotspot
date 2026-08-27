@@ -31,6 +31,23 @@ compatibility or cleanup impact.
   session as soon as either completes.
 - A terminated TCP flow is identified by its socket handle and worker together,
   never by the handle alone, because smoltcp reuses handles.
+- Both directions of a terminated TCP flow are bounded by that flow's own queue,
+  and the queue itself is what wakes whoever is waiting on it: the flow's task
+  waits for room in the payload queue toward the client, and the ingress owner
+  polls that queue and holds a reserved slot in the queue toward the upstream, so
+  that the task taking a chunk is what makes the owner runnable. Neither direction
+  may be governed by reading a capacity, a timer, a periodic poll or an unrelated
+  event, and neither may be announced on a queue other flows share: a readiness
+  message per chunk makes one flow's producer wait on another flow's traffic.
+- The ingress owner registers with a flow's payload queue only while that flow's
+  row will accept a chunk. A busy row is not polled, because consuming it refills
+  the row from the same queue without a wake.
+- The ingress owner delivers at most one queued chunk at a time into a flow's
+  row, so payload reaches a client in the order it was produced and an ordered
+  end of stream is never signalled while payload is still queued behind it.
+- A clean terminal may arrive with payload still queued, so a flow is detached
+  before anything it owes is discarded; only a flow that is ending discards what
+  it still owed.
 - A flow begins retiring once, and its record is removed and its budget
   reservation released once, whichever of an idle timeout, a configuration change
   or the session ending reaches it first. A flow whose worker has already

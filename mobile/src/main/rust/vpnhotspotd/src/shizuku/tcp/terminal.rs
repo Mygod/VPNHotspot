@@ -6,20 +6,24 @@
 //!
 //! # A worker finishing is not the same as a flow ending
 //!
-//! Both workers return as soon as *their* ordered work is done - the upstream half-close is written, the
-//! remote's end of stream has been handed over, and the client's stack has taken it. The client's own
-//! teardown is not finished at that moment: the socket is typically in `LAST-ACK`, `CLOSING` or `TIME-WAIT`,
-//! with a FIN to retransmit and a final acknowledgment still to come. Removing the flow there took the
-//! client's half of the connection away mid-teardown, so a lost FIN could never be retransmitted and the
-//! client's acknowledgment arrived at nothing.
+//! Both workers return as soon as *their* ordered work is done, and for an ordinary flow that means as soon
+//! as its last payload and its ordered end of stream are **queued** - the upstream half-close is written and
+//! everything for the client is in that flow's own queue, which the owner is still draining. A DNS-over-TCP
+//! transport is the one that waits to be told its last piece was consumed, because its delivery grant says
+//! so. Either way the client's own teardown is not finished at that moment: the socket is typically still
+//! `ESTABLISHED` with bytes to deliver, or in `LAST-ACK`, `CLOSING` or `TIME-WAIT` with a FIN to retransmit
+//! and a final acknowledgment still to come. Removing the flow there took the client's half of the connection
+//! away mid-teardown - and now takes undelivered bytes with it, which is why the detach decision is made
+//! before anything of the flow's is discarded.
 //!
 //! So there are four endings rather than one:
 //!
 //! - a **clean terminal** from a flow nobody cancelled, whose client is past its handshake and not yet
 //!   `Closed`, *detaches* the flow: the worker's descriptor went with its task, and what stays is
-//!   client-side state with no task of its own and no per-flow timer task behind it - its teardown is still
-//!   *scheduled*, by smoltcp's own timers through the engine's combined deadline, which is what lets the FIN
-//!   be retransmitted;
+//!   client-side state - its socket, its charge, and whatever payload and ordered end of stream its queue
+//!   still holds - with no task of its own and no per-flow timer task behind it. Its teardown is still
+//!   *scheduled*, by smoltcp's own timers through the engine's combined deadline, which is what lets the
+//!   remaining bytes be written and the FIN be retransmitted;
 //! - a **detached flow's client finishing**, which this owner finds by scanning its own rows - the same
 //!   shape [crate::shizuku::tcp_dns::Transactions] uses, and for the same reason;
 //! - a **failed or reported terminal**, which is not a clean completion: it resets its client and ends the
@@ -36,59 +40,23 @@ use smoltcp::socket::tcp::{Socket, State};
 use vpnhotspotd::shared::admission::Admission;
 use vpnhotspotd::shared::dns_debt;
 use vpnhotspotd::shared::fair::FlowId;
+use vpnhotspotd::shared::transfer;
 
+use super::transfer::Attention;
 use super::{lifetime, Engine, Flow};
 use crate::report;
 use crate::shizuku::output::Output;
-use crate::shizuku::tcp_dns;
 use crate::shizuku::workers::{Ended, Terminal};
 
-/// Which of the engine's owners a completion belongs to.
-pub(crate) enum Finished {
-    Flow(Terminal<SocketHandle>),
-    /// A flow whose worker finished cleanly earlier and whose client side has now finished too. Its exact
-    /// identity rather than a terminal, because there is no task left to produce one - see [Engine::settled].
-    Detached {
-        handle: SocketHandle,
-        worker: u64,
-    },
-    /// A resolver transaction that outlived the flow which asked for it. A value rather than a terminal
-    /// message, because this owner polls its rows itself - see [crate::shizuku::tcp_dns].
-    Transaction(tcp_dns::Settlement),
-}
 impl Engine {
-    /// The next of this engine's owners to have something finished. Selected on by the owning task, so it
-    /// waits forever while nothing is running rather than answering at once.
-    ///
-    /// Three kinds, because they are settled differently. A flow's terminal *may* retire the flow, and on the
-    /// clean path does not: it detaches it instead and the client's teardown carries on. A detached flow's
-    /// client finishing is the second, and is the one that actually retires such a flow. A transaction's only
-    /// refunds a resolver slot - it settles when the platform is actually done, which can be well after the
-    /// config that swept its flow was acknowledged. Both awaited arms are cancellation-safe, which is what
-    /// lets the ingress task abandon this for another and come back: `JoinSet::join_next_with_id` is, and so
-    /// is the transaction table's own scan - see [tcp_dns::Transactions::finished].
-    pub(crate) async fn finished(&mut self) -> Finished {
-        // Answered before the select rather than as a third arm of it, for two reasons. It is not a wait:
-        // what it looks at is state this owner already holds, and the only thing that can change it is work
-        // this owner just did - every transition to `Closed` comes from a packet or a poll this loop
-        // performed, and the loop re-enters here immediately afterwards, so there is no waker to register.
-        // And both arms below borrow the tables it reads. Same shape as
-        // [tcp_dns::Transactions::finished]: an owner polling its own rows rather than a task per row.
-        if let Some(detached) = self.detached() {
-            return detached;
-        }
-        tokio::select! {
-            biased;
-            terminal = self.flows.finished() => Finished::Flow(terminal),
-            settlement = self.queries.finished() => Finished::Transaction(settlement),
-        }
-    }
-
     /// The next detached flow whose client side has finished, if any has.
-    fn detached(&self) -> Option<Finished> {
+    ///
+    /// One of the answers [Engine::attention] can give, and the only one that is not a wait: what it looks at
+    /// is state this owner already holds - see the ordering there.
+    pub(super) fn detached(&self) -> Option<Attention> {
         self.flows.iter().find_map(|(handle, held)| {
             (held.record.detached && self.sockets.get::<Socket>(*handle).state() == State::Closed)
-                .then_some(Finished::Detached {
+                .then_some(Attention::Detached {
                     handle: *handle,
                     worker: held.record.worker,
                 })
@@ -135,37 +103,48 @@ impl Engine {
             self.counters.stale += 1;
             return;
         }
-        // Discarded before the worker is released and before anything else, per exact identity: a clean
-        // terminal may not take a flow's unacknowledged bytes with it, and a cancelled one may only bypass
-        // that wait once the owner has committed to dropping what the wait was for. Idempotent, because the
-        // poll above may already have begun this exact retirement when it saw the socket close.
-        let flow_id = FlowId::new(key, id);
-        drop(self.fair.begin_retire(flow_id));
         // A clean terminal from a flow nobody asked to stop, whose client side is still finishing, hands the
-        // flow on rather than ending it. The worker's own state is already gone - its task ran to completion,
-        // so the upstream descriptor and everything the future owned went with it - and what stays is the
-        // client's half of a teardown that has a FIN to retransmit and an acknowledgment to wait for.
+        // flow on rather than ending it. The worker's own descriptor is already gone with its task, and what
+        // stays is the client's half of a teardown that still has bytes to deliver, a FIN to retransmit and
+        // an acknowledgment to wait for.
         //
-        // Two exclusions, and both are "there is no teardown here to protect". A cancelled worker also
-        // reports `Expected`, and there the socket has already been aborted by whoever cancelled it. And a
-        // socket that never got past its handshake - or is already `Closed` - has no connection whose closing
-        // could be cut short, which is what [lifetime::opened] answers.
-        if matches!(ended, Ended::Expected)
-            && !self
-                .flows
-                .get(&key)
-                .is_some_and(|held| held.cancel.is_cancelled())
-            && lifetime::opened(self.sockets.get::<Socket>(key).state())
-        {
-            if let Some(held) = self.flows.get_mut(&key) {
-                held.record.detached = true;
-                // Nothing reads it any more - the receiver went with the task - and leaving it would make
-                // every later pump try to send into a closed channel and count a stale event for it.
-                held.record.downstream = None;
+        // Both the classification and the discard are [transfer::dispose]'s, in that order and in one call,
+        // because the order is the correctness property: a worker returns as soon as its own work is
+        // *queued*, so discarding first would drop payload and the ordered end of stream that this flow is
+        // being detached in order to finish delivering. Two exclusions live inside it, and both are "there is
+        // no teardown here to protect": a cancelled worker, whose socket whoever cancelled it has already
+        // aborted, and a client half that never opened or is already `Closed` - which is what
+        // [lifetime::opened] answers.
+        //
+        // Idempotent on the retiring arm, because the poll that saw the socket close may already have begun
+        // this exact retirement.
+        let cancelled = self
+            .flows
+            .get(&key)
+            .is_some_and(|held| held.cancel.is_cancelled());
+        let discarded = match transfer::dispose(
+            &ended,
+            cancelled,
+            lifetime::opened(self.sockets.get::<Socket>(key).state()),
+            FlowId::new(key, id),
+            &mut self.fair,
+        ) {
+            transfer::Disposition::Detach => {
+                if let Some(held) = self.flows.get_mut(&key) {
+                    held.record.detached = true;
+                    // Nothing reads that queue any more - the producer went with the task - and leaving the
+                    // slot would make every later pump try to send into a closed channel and count a stale
+                    // event for it. Giving it up releases the reservation this owner was holding with it.
+                    held.record.transfer.stop_sending();
+                }
+                self.counters.detached += 1;
+                return;
             }
-            self.counters.detached += 1;
-            return;
-        }
+            // What this flow still owed the wire, handed back so this owner drops it rather than the module
+            // that decided it was over. The queue behind it dies with the record in [Engine::reclaim].
+            transfer::Disposition::Retire(discarded) => discarded,
+        };
+        drop(discarded);
         let reset = match ended {
             Ended::Expected => false,
             Ended::Reported(reason) => {
@@ -214,24 +193,23 @@ impl Engine {
         self.sockets.remove(key);
         let Flow {
             connection,
-            chunks,
+            transfer,
             consumed,
             serving,
-            downstream,
             ..
         } = flow;
         // Physical before accounting, and this flow's own endpoints go first because one of them can still be
-        // holding a buffer the DNS state is about to give the capacity back for. The mailbox is the one that
-        // matters: [crate::shizuku::mailbox::Mailbox::hand_over] puts a piece of an answer into it and *then* waits to
-        // be acknowledged, so a transport cancelled inside that wait leaves a `Chunk::Payload` sitting here -
-        // and that piece is one of the three buffers the parked delivery's grant covers. Releasing the
+        // holding a buffer the DNS state is about to give the capacity back for. The payload queue is the one
+        // that matters: [vpnhotspotd::shared::mailbox::Mailbox::hand_over] puts a piece of an answer into it
+        // and *then* waits to be acknowledged, so a transport cancelled inside that wait leaves a
+        // `Chunk::Payload` sitting here - and that piece is one of the three buffers the parked delivery's
+        // grant covers. An ordinary flow leaves its whole read-ahead here for the same reason. Releasing the
         // delivery first would give those bytes back while this receiver still owned them.
         //
         // The task is already complete, so dropping these is the close: the upstream descriptor goes with the
         // task, and both stack buffers go with the socket removed above.
-        drop(chunks);
+        drop(transfer);
         drop(consumed);
-        drop(downstream);
         // Then everything this transport's DNS state still owned, in the same order within itself: the parked
         // delivery nobody will acknowledge, the query still travelling back on the owner's own channel, both
         // control endpoints, and only then the reservation's grant. See [tcp_dns::Serving::close].

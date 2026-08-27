@@ -8,26 +8,29 @@
 //! flow waits behind a chunk that belongs to none of them. A per-flow *map* beside a global queue is the same
 //! thing with extra bookkeeping - the global queue is still the thing that blocks.
 //!
-//! So the payload lives with the flow: one depth-one mailbox each, sized to the same read quantum the
-//! producer uses, and what circulates between them is a *payload-free* readiness marker. A marker says "this
-//! identity may have work"; it carries nothing, so a wake is cheap, duplicate wakes coalesce, and the owner
-//! decides what to do by inspecting its own state rather than by trusting the wake.
+//! So the payload lives with the flow: one queue each, sized to the same read quantum the producer uses, and
+//! what this owns is the *order* those flows are served in. The markers in that order are the owner's own
+//! notes to self - nothing travels between a flow's producer and its owner to say work is waiting, because
+//! each flow's queue is what wakes the owner (see [crate::shared::transfer]) - so duplicates coalesce here,
+//! and what to do about a marker is decided by inspecting owner state rather than by trusting it.
 //!
-//! # Depth one means fully accepted, not merely handed over
+//! # The row is one chunk, whatever the producer is allowed to queue
 //!
-//! The producer may not read a second chunk until the first has been *consumed* - not delivered, not
-//! partially sent, consumed. A mailbox freed on delivery would let a second chunk exist while the first was
-//! still being written, which is two chunks of buffer per flow under exactly the conditions that made the
-//! bound necessary. Partial writes keep the exact offset and rotate the flow to the back of the order; only
-//! full consumption acknowledges.
+//! What a flow owes here is exactly one chunk, at an exact offset: the one being written. Partial writes keep
+//! that offset and rotate the flow to the back of the order, and only a chunk that is entirely gone frees the
+//! row. What happens when it does is the producer's business rather than this module's - an ordinary producer
+//! has more queued and the owner refills the row from that queue, while an acknowledged one is told the piece
+//! was consumed and only then builds its next. Both are in [crate::shared::mailbox]; neither may put a second
+//! chunk in the row, because a row freed on delivery would let one be written while another was still being
+//! sent.
 //!
 //! # Identity, because handles are reused
 //!
-//! smoltcp hands back socket handles, so a handle alone names a slot rather than a flow: a terminal signal
-//! from a closed flow and a readiness signal from the flow that reused its handle are indistinguishable by
-//! handle. Every signal here therefore carries the retained worker identity beside the handle, and every
-//! operation validates the pair. A stale marker is discarded on sight and - the part that matters - cannot
-//! suppress the successor's readiness, because dedup is keyed on the pair rather than on the handle.
+//! smoltcp hands back socket handles, so a handle alone names a slot rather than a flow: a terminal from a
+//! closed flow and a row belonging to the flow that reused its handle are indistinguishable by handle. Every
+//! operation here therefore takes the retained worker identity beside the handle and validates the pair. A
+//! stale identity is discarded on sight and - the part that matters - cannot suppress the successor's
+//! readiness, because dedup is keyed on the pair rather than on the handle.
 //!
 //! Nothing here is async. What it owns is the decision; the waiting, the sending and the task lifecycle
 //! belong to the ingress owner that drives it.
@@ -71,7 +74,7 @@ struct Pending<P> {
     /// A field on the row rather than a second hash container keyed by the same identity, and that is a
     /// correctness property rather than a saving. A wake arrives *after* the owner has taken ownership of a
     /// payload, so there is no honest way to refuse one: a separate index that had run out of room would
-    /// leave bytes in a mailbox nobody would ever be told to send. Living in the row the flow already has,
+    /// leave bytes in a queue nobody would ever be told to send. Living in the row the flow already has,
     /// this cannot run out - the row's own admission is the only capacity decision.
     queued: bool,
 }
@@ -93,10 +96,14 @@ struct Chunk<P> {
     offset: usize,
 }
 
-/// What a service attempt did, which is what the caller needs to know to decide whether to wake the producer.
+/// What a service attempt did, which is what the caller needs to know to decide what the row does next: take
+/// the flow's next queued chunk, tell an acknowledged producer, or leave the offset where it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Progress {
-    /// The whole chunk went. The mailbox is free and the producer may read another.
+    /// The whole chunk went, so the row is free for whatever this flow has queued behind it. Not the
+    /// producer's permission to read on - that is its own queue's room, and the owner took a chunk out of it
+    /// to fill this row - except for the acknowledged handover DNS-over-TCP uses, which waits for exactly
+    /// this.
     Consumed,
     /// Some of it went, or none of it did. The exact offset is kept and this flow rotates to the back.
     Blocked,
@@ -109,8 +116,8 @@ pub enum Progress {
 /// Why a delivery was refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rejected {
-    /// The mailbox still holds a chunk the wire has not fully consumed. The producer must wait for the
-    /// acknowledgment rather than read ahead.
+    /// The row still holds a chunk the wire has not fully consumed. Nothing more may be delivered into it;
+    /// whatever the producer has queued behind it waits in its own queue.
     Occupied,
     /// This identity is retiring or was never registered. Stale, and dropped rather than queued.
     Unknown,
@@ -218,17 +225,22 @@ impl<H: Copy + Eq + std::hash::Hash, P: std::ops::Deref<Target = [u8]>> FairQueu
         self.order.len()
     }
 
-    /// Whether this flow's mailbox is free, which is the producer's permission to read another chunk.
+    /// Whether this flow's row will take a chunk: it holds none and the flow is not retiring.
+    ///
+    /// A question about the row rather than about the producer. What lets the producer read on is room in its
+    /// own queue, which the owner makes by taking a chunk out of it - and taking one is exactly what the
+    /// owner does while this answers `true`.
     pub fn accepts(&self, id: FlowId<H>) -> bool {
         self.flows
             .get(&id)
             .is_some_and(|flow| !flow.retiring && flow.payload.is_none())
     }
 
-    /// Hands one chunk to one flow, depth one.
+    /// Hands one chunk to one flow's row, which holds one.
     ///
-    /// Refused rather than queued when the mailbox is occupied: the producer's own read is what backpressure
-    /// has to reach, and accepting here would just move the unbounded queue somewhere else.
+    /// Refused rather than queued when the row is occupied: what may be waiting for this flow is bounded by
+    /// the producer's own queue, and a second chunk accepted here would be one this owner holds outside any
+    /// bound.
     pub fn deliver(&mut self, id: FlowId<H>, bytes: P) -> Result<(), (P, Rejected)> {
         let Some(flow) = self.flows.get_mut(&id) else {
             return Err((bytes, Rejected::Unknown));
@@ -244,7 +256,7 @@ impl<H: Copy + Eq + std::hash::Hash, P: std::ops::Deref<Target = [u8]>> FairQueu
         Ok(())
     }
 
-    /// Records that the producer has finished. Delivered only after the payload already in the mailbox.
+    /// Records that the producer has finished. Delivered only after the payload already in the row.
     pub fn signal_eof(&mut self, id: FlowId<H>) {
         let Some(flow) = self.flows.get_mut(&id) else {
             return;
@@ -310,7 +322,7 @@ impl<H: Copy + Eq + std::hash::Hash, P: std::ops::Deref<Target = [u8]>> FairQueu
     ///
     /// A short write is not a failure and not a loss: the offset advances by exactly what went, the rest stays
     /// where it is, and the flow rotates to the back so the flows behind it get their turn first. Only a chunk
-    /// that is entirely gone frees the mailbox.
+    /// that is entirely gone frees the row.
     pub fn serviced(&mut self, id: FlowId<H>, sent: usize) -> Progress {
         let Some(flow) = self.flows.get_mut(&id) else {
             return Progress::Idle;
@@ -342,11 +354,12 @@ impl<H: Copy + Eq + std::hash::Hash, P: std::ops::Deref<Target = [u8]>> FairQueu
         }
     }
 
-    /// Whether this flow still owes anything, which is what a clean terminal has to wait for.
+    /// Whether this flow's row still holds anything for the wire: payload not yet taken, or an ordered end
+    /// of stream not yet delivered, on an admitted row that is not retiring.
     ///
-    /// A worker that has finished may not be retired while its last payload or its ordered end of stream is
-    /// unacknowledged: the bytes it produced would be dropped by a lifecycle event that has nothing to do with
-    /// them.
+    /// A report rather than a gate. Nothing waits on it - a clean terminal detaches the flow and its queued
+    /// delivery carries on (see [crate::shared::transfer::dispose]), and an ending discards the row rather
+    /// than waiting for it. What this answers is what such a decision would be discarding.
     pub fn owes(&self, id: FlowId<H>) -> bool {
         self.flows
             .get(&id)
@@ -356,9 +369,10 @@ impl<H: Copy + Eq + std::hash::Hash, P: std::ops::Deref<Target = [u8]>> FairQueu
     /// Discards this exact identity's payload, ordered EOF and queued marker, and answers with the payload so
     /// the caller drops it rather than this module.
     ///
-    /// First, and before the worker is cancelled: cancellation may bypass an acknowledgment wait only once the
-    /// owner has committed to discarding what that wait was for. The reverse order is a worker released while
-    /// the owner still believes it owes bytes.
+    /// First, and before the worker is cancelled: cancellation may bypass a handover wait - for room in the
+    /// producer's queue, or for the acknowledgment an acknowledged handover waits on - only once the owner has
+    /// committed to discarding what that wait was for. The reverse order is a worker released while the owner
+    /// still believes it owes bytes.
     pub fn begin_retire(&mut self, id: FlowId<H>) -> Option<P> {
         let flow = self.flows.get_mut(&id)?;
         flow.retiring = true;
@@ -390,8 +404,8 @@ impl<H: Copy + Eq + std::hash::Hash, P: std::ops::Deref<Target = [u8]>> FairQueu
 /// Everything one flow admission needs to build, and everything it needs to undo.
 ///
 /// A trait rather than a closure so the *sequence* below is production's rather than each caller's: the
-/// engine's implementation opens a smoltcp socket, takes a charged grant, builds the mailbox and the
-/// downstream channel, and hands the record to the worker table. Which of those exists at each step is the
+/// engine's implementation opens a smoltcp socket, takes a charged grant, builds the flow's two queues, and
+/// hands the record to the worker table. Which of those exists at each step is the
 /// property under test, and a caller that inlined the sequence would be a second copy of it.
 pub trait FlowOps {
     /// Names one flow's transport slot. smoltcp's `SocketHandle` in production.
@@ -445,7 +459,7 @@ pub enum Refused<E> {
 /// 4. **admit** to the worker table, which starts the task.
 ///
 /// Any failure after step 2 unwinds everything built, in the reverse order, so there is no socket, no task,
-/// no mailbox and no grant left over.
+/// no queue and no grant left over.
 pub fn admit_flow<O: FlowOps>(
     ops: &mut O,
     fair: &mut FairQueue<O::Handle, O::Payload>,
@@ -475,7 +489,7 @@ pub fn admit_flow<O: FlowOps>(
 /// Registers one flow with both of the collections that index it, or with neither.
 ///
 /// Transactional, and that is the whole reason it is a function rather than two calls at the call site: the
-/// caller has a socket, a mailbox and a charged grant in hand by the time it gets here, and a half-registered
+/// caller has a socket, a queue and a charged grant in hand by the time it gets here, and a half-registered
 /// flow is one whose payload nothing would ever service. Either both take it, or the one that took it gives
 /// it back and the caller unwinds.
 ///
@@ -542,8 +556,8 @@ mod tests {
         let mut queue = FairQueue::with_capacity(8);
         queue.admit(a()).expect("prepared");
         queue.admit(b()).expect("prepared");
-        queue.deliver(a(), vec![0; 8]).expect("A's mailbox is free");
-        queue.deliver(b(), vec![1; 4]).expect("B's mailbox is free");
+        queue.deliver(a(), vec![0; 8]).expect("A's row is free");
+        queue.deliver(b(), vec![1; 4]).expect("B's row is free");
 
         // A takes nothing, ever. B takes everything.
         for _ in 0..10 {
@@ -555,7 +569,7 @@ mod tests {
                     assert_eq!(progress, Progress::Consumed);
                 }
             }
-            // B's mailbox is free again every round, so its producer may read on.
+            // B's row is free again every round, so the owner can take its next chunk straight away.
             assert!(queue.accepts(b()));
             let _ = queue.deliver(b(), vec![1; 4]);
         }
@@ -603,17 +617,17 @@ mod tests {
         assert!(queue.accepts(a()));
     }
 
-    /// Depth one is depth one: the producer cannot publish a second chunk until the first is *consumed*, not
-    /// merely delivered or partially sent.
+    /// A row is one chunk: nothing may be delivered into it until what it holds is *consumed*, not merely
+    /// delivered or partially sent.
     #[test]
-    fn no_second_chunk_before_the_first_is_acknowledged() {
+    fn no_second_chunk_in_the_row_before_the_first_is_consumed() {
         let mut queue = FairQueue::with_capacity(8);
         queue.admit(a()).expect("prepared");
         queue.deliver(a(), vec![1, 2, 3, 4]).expect("free");
         assert!(!queue.accepts(a()));
         let (returned, why) = queue
             .deliver(a(), vec![9, 9])
-            .expect_err("the mailbox is occupied");
+            .expect_err("the row is occupied");
         assert_eq!(why, Rejected::Occupied);
         assert_eq!(returned, vec![9, 9]);
 
@@ -676,14 +690,16 @@ mod tests {
             serviced,
             vec![(a(), Progress::Blocked), (b(), Progress::Eof)]
         );
-        // B owes nothing, so its worker may be retired while A is still stuck.
+        // B owes nothing, so ending B's flow would discard nothing, while A is still owed exactly what it
+        // was owed.
         assert!(!queue.owes(b()));
         assert!(queue.owes(a()));
     }
 
-    /// A clean terminal may not retire a flow whose bytes are still unacknowledged.
+    /// A row owes until the wire has taken all of it, and the ordered end of stream after it is what
+    /// finally clears it. Partially consumed is still owed.
     #[test]
-    fn a_clean_terminal_cannot_precede_payload_acknowledgment() {
+    fn a_row_owes_until_the_wire_takes_it_and_the_end_of_stream_follows() {
         let mut queue = FairQueue::with_capacity(8);
         queue.admit(a()).expect("prepared");
         queue.deliver(a(), vec![1, 2, 3]).expect("free");
@@ -743,7 +759,7 @@ mod tests {
         queue.finish_retire(stale);
 
         queue.admit(successor).expect("prepared");
-        // A late payload, EOF and readiness marker from the old identity all land on nothing.
+        // A late payload, EOF and readiness from the old identity all land on nothing.
         assert_eq!(
             queue.deliver(stale, vec![9]).expect_err("stale").1,
             Rejected::Unknown
@@ -864,8 +880,8 @@ mod tests {
             0,
             "no marker for a flow nothing was delivered to"
         );
-        // And each one is a working flow rather than a row that merely exists: its mailbox is free, so its
-        // producer may read, and one chunk each is announced exactly once.
+        // And each one is a working flow rather than a row that merely exists: its row is free, so a chunk
+        // may be delivered into it, and each is announced exactly once.
         for handle in 0..16u32 {
             let id = FlowId::new(handle, u64::from(handle) + 500);
             assert!(queue.accepts(id), "flow {handle} takes a chunk");
@@ -1053,8 +1069,8 @@ mod tests {
         queue.signal_eof(stale);
         queue.mark_ready(stale);
         assert_eq!(queue.serviced(stale, 2), Progress::Idle);
-        // And none of it touched the successor: its payload is intact, its readiness is its own, and its
-        // clean terminal is still gated on its own acknowledgment.
+        // And none of it touched the successor: its payload is intact, its readiness is its own, and it
+        // still owes exactly what it owed.
         assert!(queue.owes(successor));
         assert_eq!(queue.peek(successor), Some(&[9, 9][..]));
         let mut round = queue.begin_round();
@@ -1064,8 +1080,8 @@ mod tests {
         assert!(!queue.owes(successor));
     }
 
-    /// Cancellation may bypass an acknowledgment wait only after the owner has discarded exactly what that
-    /// wait was for - and only that flow's.
+    /// Cancellation may bypass a handover wait only after the owner has discarded exactly what that wait was
+    /// for - and only that flow's.
     #[test]
     fn retirement_discards_this_identity_and_leaves_every_other_alone() {
         let mut queue = FairQueue::with_capacity(4);
@@ -1100,7 +1116,7 @@ mod tests {
         queue.deliver(a(), vec![0; 16]).expect("free");
 
         for round in 0..8 {
-            queue.deliver(b(), vec![1; 4]).expect("B's mailbox is free");
+            queue.deliver(b(), vec![1; 4]).expect("B's row is free");
             if round == 7 {
                 queue.signal_eof(b());
             }
@@ -1123,24 +1139,24 @@ mod tests {
     }
 
     /// The owner's discard is committed before anything cancels: after `begin_retire` the flow owes nothing,
-    /// so a worker parked on an acknowledgment may be released - and not one instant before.
+    /// so a worker parked on a handover may be released - and not one instant before.
     ///
     /// The ordering this pins is the one a terminal gets wrong by default. Cancelling first releases a task
     /// while the owner still believes it owes that task's bytes; the owner then services a flow whose
-    /// producer is gone, or worse, retires a flow whose payload was never acknowledged. Discarding first
-    /// makes "nothing is owed" true before the wait is bypassed.
+    /// producer is gone, or worse, retires a flow whose payload the wire never took. Discarding first makes
+    /// "nothing is owed" true before the wait is bypassed.
     #[test]
     fn nothing_is_owed_the_moment_the_owner_discards_and_not_before() {
         let mut queue = FairQueue::with_capacity(4);
         queue.admit(a()).expect("prepared");
         queue.admit(b()).expect("prepared");
-        // A is parked on a payload acknowledgment and B on an end-of-stream one.
+        // A's row holds payload the wire has not taken and B's an ordered end of stream not yet delivered.
         queue.deliver(a(), vec![1; 4]).expect("free");
         queue.signal_eof(b());
 
-        assert!(queue.owes(a()), "A's payload is unacknowledged");
-        assert!(queue.owes(b()), "B's end of stream is unacknowledged");
-        // Neither may be finished by a clean terminal while that is true.
+        assert!(queue.owes(a()), "A's payload has not been taken");
+        assert!(queue.owes(b()), "B's end of stream has not been delivered");
+        // And A's row will take nothing else while that is true.
         assert!(!queue.accepts(a()));
 
         // A's owner commits the discard. From that instant A owes nothing and its worker may be released -
@@ -1260,7 +1276,7 @@ mod tests {
 
     /// The same transaction, with every owner a production type: a real `Admission` lease, a real `Workers`
     /// table running a real gated task, a real smoltcp `SocketSet` holding a real TCP socket with real
-    /// buffers, real Tokio channels for the mailbox and the readiness marker, and this module's own
+    /// buffers, real Tokio channels for the flow's own queues, and this module's own
     /// `FairQueue`. Only the upstream open is injected, because that one needs an Android network.
     ///
     /// What this proves that a recorder cannot: the unwind really drops a smoltcp socket out of a real set,
@@ -1445,8 +1461,8 @@ mod tests {
         assert_eq!(fair.next(&mut round), Some(id));
     }
 
-    /// An engine that can carry no flows builds nothing at all - and the ready channel's charged minimum is
-    /// the only thing it allocates.
+    /// An engine that can carry no flows builds nothing at all: no socket, no lease, no task, and neither
+    /// collection allocating.
     #[test]
     fn a_zero_bound_admission_builds_nothing() {
         let mut fair: FairQueue<u32> = FairQueue::with_capacity(0);
@@ -1466,45 +1482,6 @@ mod tests {
         assert_eq!(ledger.leases, 0);
         assert_eq!(ledger.tasks, 0);
         assert_eq!(order.capacity(), 0, "the order allocated nothing");
-    }
-
-    /// A zero-flow engine still builds a real ready channel, and the charge it takes covers that real
-    /// allocation.
-    ///
-    /// Constructed rather than computed: the minimum is an allocation that exists, and one quietly assumed
-    /// free at construction is the fail-open shape the aggregate exists to prevent. So the channel is built,
-    /// used, and its capacity compared against what was charged for it.
-    #[tokio::test]
-    async fn a_zero_flow_engine_still_builds_and_charges_its_ready_channel() {
-        use crate::shared::reply_bound::{built_depth, channel_footprint};
-
-        let prepared = 0usize;
-        let depth = built_depth(prepared);
-        assert_eq!(depth, 1, "a zero-capacity channel is not constructible");
-
-        // The real channel an engine with no flows still builds.
-        let (sender, mut receiver) = tokio::sync::mpsc::channel::<FlowId<u32>>(depth);
-        assert_eq!(sender.capacity(), depth, "it really is that deep");
-        let marker = FlowId::new(7u32, 11);
-        sender.try_send(marker).expect("the minimum holds one");
-        assert!(
-            sender.try_send(marker).is_err(),
-            "and exactly one, which is what was charged for"
-        );
-        assert_eq!(receiver.recv().await, Some(marker));
-
-        // And the fixed footprint an engine reserves covers that channel, at the depth it was really built
-        // at - not at the zero its bound came out to.
-        let charged = channel_footprint::<FlowId<u32>>(depth, 1).expect("chargeable");
-        assert!(charged > 0);
-        let fixed = FairQueue::<u32>::footprint(prepared)
-            .expect("chargeable")
-            .checked_add(charged)
-            .expect("chargeable");
-        assert!(
-            fixed > FairQueue::<u32>::footprint(prepared).expect("chargeable"),
-            "the ready channel is inside the fixed reservation, not beside it"
-        );
     }
 
     /// The bound the tables were prepared for is the bound registration honours: exactly that many take

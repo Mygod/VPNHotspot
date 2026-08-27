@@ -14,7 +14,7 @@
 //! Joined is not always the same as retired. A terminating TCP flow whose worker finished *cleanly* while its
 //! client was still closing keeps its client socket and its charge - the descriptor is gone with the task, and
 //! what is left is a teardown this loop lets finish. Such a flow is settled by the owner's own scan rather
-//! than by a terminal; see [crate::shizuku::tcp::Engine::finished].
+//! than by a terminal; see [crate::shizuku::tcp::Engine::attention].
 //!
 //! Admission is checked per packet against the session's last applied config rather than by starting and
 //! stopping this task, because a packet Android already queued in the kernel carries no epoch and arrives
@@ -115,7 +115,6 @@ pub(crate) struct Dataplane {
     echoes: mpsc::Receiver<crate::shizuku::reply::Event<crate::shizuku::echo_socket::Family>>,
     dns: virtual_dns::Handoff,
     tcp: tcp::Engine,
-    flows: mpsc::Receiver<crate::shizuku::tcp_flow::Event>,
     asking: mpsc::Receiver<crate::shizuku::tcp_dns::Ask>,
 }
 
@@ -229,10 +228,10 @@ pub(crate) async fn prepare(
         let (relay, events) = udp::Relay::new(&mut admission)?;
         let (echo, echoes) = echo::Relay::new(&mut admission)?;
         let dns = virtual_dns::Handoff::new(&mut admission)?;
-        let (tcp, flows, asking) = tcp::Engine::new(mtu, seed, &mut admission)?;
-        Ok::<_, Denied>((relay, events, echo, echoes, dns, tcp, flows, asking))
+        let (tcp, asking) = tcp::Engine::new(mtu, seed, &mut admission)?;
+        Ok::<_, Denied>((relay, events, echo, echoes, dns, tcp, asking))
     })();
-    let (relay, events, echo, echoes, dns, tcp, flows, asking) = match owners {
+    let (relay, events, echo, echoes, dns, tcp, asking) = match owners {
         Ok(owners) => owners,
         Err(why) => {
             // Through the same fence as a running session's exit rather than a bare return. No traffic owner
@@ -288,7 +287,6 @@ pub(crate) async fn prepare(
             echoes,
             dns,
             tcp,
-            flows,
             asking,
         },
         queue,
@@ -316,7 +314,6 @@ pub(crate) async fn run(
         mut echoes,
         mut dns,
         mut tcp,
-        mut flows,
         mut asking,
     } = dataplane;
     let mut counters = Counters::default();
@@ -429,19 +426,30 @@ pub(crate) async fn run(
                 echo.closed(terminal, &mut admission);
                 continue;
             }
-            // Three kinds, because two things outlive the flow that started them. A DNS-over-TCP transaction
-            // settles when the platform is actually done, which can be after the config that swept its flow
-            // was acknowledged. And a flow can outlive its own *worker*: both workers finish as soon as their
-            // ordered work is done, while the client's teardown still has a FIN to retransmit and an
-            // acknowledgment to wait for, so a clean terminal detaches the flow and the third kind is the
-            // client side of it finally finishing.
-            finished = tcp.finished() => {
-                match finished {
-                    tcp::Finished::Flow(terminal) => tcp.close(terminal, &mut admission, &mut output),
-                    tcp::Finished::Transaction(terminal) => tcp.settle(terminal, &mut admission),
-                    tcp::Finished::Detached { handle, worker } => {
+            // Four kinds, and three of them are endings because two things outlive the flow that started
+            // them. A DNS-over-TCP transaction settles when the platform is actually done, which can be after
+            // the config that swept its flow was acknowledged. And a flow can outlive its own *worker*: both
+            // workers finish as soon as their ordered work is done, while the client's teardown still has a
+            // FIN to retransmit and an acknowledgment to wait for, so a clean terminal detaches the flow and
+            // the third kind is the client side of it finally finishing.
+            //
+            // The fourth is not an ending but traffic readiness, in either direction: a flow queued payload
+            // for its client, or its upstream half took what this owner handed it so the slot is back and the
+            // stack's receive buffer can be drained again. It travels with the endings because all four
+            // borrow the engine's tables, and one future is what lets them be registered in sequence - see
+            // [crate::shizuku::tcp::transfer]. There is no readiness channel and no marker: each flow's own
+            // queue is what wakes this task.
+            attention = tcp.attention() => {
+                match attention {
+                    tcp::Attention::Flow(terminal) => tcp.close(terminal, &mut admission, &mut output),
+                    tcp::Attention::Transaction(terminal) => tcp.settle(terminal, &mut admission),
+                    tcp::Attention::Detached { handle, worker } => {
                         tcp.settled(handle, worker, &mut admission)
                     }
+                    tcp::Attention::Delivered(id) => {
+                        tcp.delivered(id, admitting, now(), &mut output)
+                    }
+                    tcp::Attention::Upstream => tcp.poll(&mut output),
                 }
                 continue;
             }
@@ -468,10 +476,6 @@ pub(crate) async fn run(
                 }
                 continue;
             }
-            // Unguarded, because what travels here now carries no payload: it is a wake naming one exact
-            // identity, and the payload waits in that flow's own mailbox until its turn comes round. The
-            // guard this replaces was the head-of-line blocking - one flow's undelivered chunk stopped every
-            // other flow's events from being read at all.
             // A DNS-over-TCP transport asking for a query to be admitted, or saying that an answer has been
             // fully delivered. Before the traffic arms, because a transport waiting on an answer is a client
             // already waiting, and both answers are cheap.
@@ -480,14 +484,6 @@ pub(crate) async fn run(
                     // Answered against the session's current admission state, not the one the transport was
                     // opened under: a stopping session drains the exchanges it already owns and starts none.
                     Some(ask) => tcp.ask(ask, admitting, &mut admission),
-                    // impossible while the engine holds a sender
-                    None => break Ok(()),
-                }
-                continue;
-            }
-            flow = flows.recv() => {
-                match flow {
-                    Some(flow) => tcp.handle(flow, admitting, now(), &mut output),
                     // impossible while the engine holds a sender
                     None => break Ok(()),
                 }
@@ -600,7 +596,7 @@ pub(crate) async fn run(
     dns.release(&mut admission);
     // The engine's fixed lease pays for the readiness and ask channels, so the ingress task's halves of both
     // go with it - see [crate::shizuku::tcp::Engine::release].
-    tcp.release(flows, asking, &mut admission);
+    tcp.release(asking, &mut admission);
     release_fixed(
         output,
         buffer,

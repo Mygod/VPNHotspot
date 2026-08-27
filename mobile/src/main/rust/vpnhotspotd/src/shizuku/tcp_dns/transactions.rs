@@ -23,7 +23,6 @@
 //! message is stored.
 
 use std::collections::HashMap;
-use std::future::poll_fn;
 use std::io;
 use std::task::{Context, Poll};
 
@@ -489,16 +488,13 @@ impl Transactions {
 
     /// The next transaction to have reached its terminal.
     ///
-    /// Selected on by the ingress task, so it waits forever while nothing is outstanding rather than
-    /// answering at once - and cancellation-safe, which is what lets it sit in a `select!` beside the flow
-    /// table. A poll either takes exactly one ready row out and yields it in the same poll, or it changes
-    /// nothing at all: there is no state in which a row has been removed and its result has not been handed
-    /// to the caller, so abandoning this future loses neither.
-    pub(crate) async fn finished(&mut self) -> Settlement {
-        poll_fn(|cx| self.poll_finished(cx)).await
-    }
-
-    fn poll_finished(&mut self, cx: &mut Context<'_>) -> Poll<Settlement> {
+    /// Polled rather than awaited, because the ingress task registers this beside the flow table and the
+    /// rooms in one turn and cannot hold a future for each - see [crate::shizuku::tcp::Engine::attention]. It
+    /// waits forever while nothing is outstanding rather than answering at once, and is cancellation-safe: a
+    /// poll either takes exactly one ready row out and yields it in the same poll, or it changes nothing at
+    /// all: there is no state in which a row has been removed and its result has not been handed to the
+    /// caller, so abandoning this loses neither.
+    pub(crate) fn poll_finished(&mut self, cx: &mut Context<'_>) -> Poll<Settlement> {
         // Every row is polled, so every one of them registers this task's waker; the first that is ready is
         // the one taken. A row passed over is a row another was ready before, and the ready one leaves the
         // table - so nothing here can be starved by a peer that is always ready first.
