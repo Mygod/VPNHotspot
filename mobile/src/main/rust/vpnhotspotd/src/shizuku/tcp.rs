@@ -17,53 +17,53 @@
 //!
 //! Concurrent means either order really happens. The connect starts from the SYN path, so a nearby remote that
 //! greets first - SSH and SMTP both do - can have bytes waiting while the client half is still `SYN-RECEIVED`.
-//! Those bytes are held rather than sent or dropped: [Engine::pump_to_client] consumes nothing from a half
-//! that cannot yet send and puts its place in the round back, and the client's own final ACK is what runs the
-//! pump again. See [lifetime::handshaking] and the regressions beside it.
+//! Those bytes are held rather than sent or dropped, and nothing of this owner's holds them: a half that
+//! cannot yet send is one the crossing does not read the bridge for, so they stay in the bridge exactly where
+//! the upstream half left them, and the client's own final ACK is what runs the crossing again. See
+//! [vpnhotspotd::shared::bridge].
 
 use std::net::SocketAddr;
 use std::time::Instant;
 
-use crate::shizuku::workers::{Ended, Identity, Workers};
 use smoltcp::iface::{Config, Interface, PollResult, SocketHandle, SocketStorage};
-use smoltcp::socket::tcp::{Socket, State};
+use smoltcp::socket::tcp::Socket;
 use smoltcp::time::Instant as SmolInstant;
 use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr, IpEndpoint, IpListenEndpoint};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use vpnhotspotd::shared::icmp_nat::{nat66_hop_limit, Nat66HopLimit};
 use vpnhotspotd::shared::model::Network;
-use vpnhotspotd::shared::tcp_wire::Segment;
-
-use std::collections::VecDeque;
+use vpnhotspotd::shared::workers::{Ended, Identity, Workers};
 
 use crate::shizuku::flow_setup;
 use vpnhotspotd::shared::admission::{
     largest_fitting, linear_footprint, Admission, Class, Denied, Lease, Request,
 };
+use vpnhotspotd::shared::bridge::{Bridge, Worker};
 use vpnhotspotd::shared::dns_debt::Connection;
-use vpnhotspotd::shared::fair::{self, FairQueue, FlowId};
+use vpnhotspotd::shared::flow::{self, FlowId, Turns};
 use vpnhotspotd::shared::flow_budget;
+use vpnhotspotd::shared::ingress as boundary;
 use vpnhotspotd::shared::reply_bound::{built_depth, channel_footprint};
-use vpnhotspotd::shared::transfer::Transfer;
 
 use crate::report;
 use crate::shizuku::output::Output;
 use crate::shizuku::owned::Owned;
 use crate::shizuku::tcp_device::Shim;
 use crate::shizuku::tcp_dns::{self, Serving, Transactions};
-use crate::shizuku::tcp_flow::{self, Mailbox};
+use crate::shizuku::tcp_flow;
 use crate::shizuku::tun_writer::Stamp;
 
+mod bridge;
 mod dns;
+mod ingress;
 mod lifetime;
 mod terminal;
-mod transfer;
 
-// The four endings and the one place a flow is given back, which is a decision of its own - see
-// [crate::shizuku::tcp::terminal] - and the one readiness answer that carries them to the owning task
-// alongside the room a flow's upstream half has made, which is [crate::shizuku::tcp::transfer]'s.
-pub(crate) use transfer::Attention;
+// The three endings and the one place a flow is given back, which is a decision of its own - see
+// [crate::shizuku::tcp::terminal] - and the one traffic answer that carries them to the owning task, which is
+// [crate::shizuku::tcp::bridge]'s.
+pub(crate) use bridge::Attention;
 
 /// What one entry in smoltcp's socket set really costs the engine: the storage slot the set holds inline,
 /// beyond the two buffers the flow itself is charged for.
@@ -74,12 +74,13 @@ pub(crate) use transfer::Attention;
 /// actually allocates.
 const SOCKET_SLOT_BYTES: u64 = std::mem::size_of::<SocketStorage<'static>>() as u64;
 
-/// What one flow costs the aggregate, at the types this engine really queues.
+/// What one flow costs the aggregate, at the types this engine really holds.
 ///
 /// The equation is [vpnhotspotd::shared::flow_budget]'s rather than this module's, and so is the sizing it
-/// reads: one value is what the solver below charges against and what [flow_setup::prepare] builds the
-/// channels at, so a queue cannot be one depth in the reservation and another in the channel. `None` is a
-/// figure that would wrap, which is a flow that cannot be accounted for and therefore must not be built.
+/// reads: one value is what the solver below charges against and what [flow_setup::prepare] builds the bridge
+/// and the channels at, so neither can be one size in the reservation and another in the construction.
+/// `None` is a figure that would wrap, which is a flow that cannot be accounted for and therefore must not be
+/// built.
 fn flow_footprint() -> Option<u64> {
     flow_budget::footprint::<Owned, tcp_dns::Control>(&flow_budget::SIZING)
 }
@@ -158,27 +159,28 @@ struct Flow {
     client: SocketAddr,
     destination: SocketAddr,
     /// Which worker this flow's signals must name. Kept beside the handle because smoltcp reuses handles: a
-    /// terminal, a fair-queue row or a DNS-over-TCP request naming only a handle cannot be told apart from
-    /// one belonging to the flow that reused it, and acting on the difference is a reset sent to the wrong
-    /// client.
+    /// terminal or a DNS-over-TCP request naming only a handle cannot be told apart from one belonging to
+    /// the flow that reused it, and acting on the difference is a reset sent to the wrong client.
     worker: u64,
     /// What this flow carries, which is what a config change consults - never the transaction below.
     kind: Kind,
-    /// Everything this flow owns: its record and upstream descriptor, its two stack buffers, its mailbox and
-    /// its share of the fair queue - and, for a DNS-over-TCP flow, the one logical resolver token its
+    /// Everything this flow owns: its record and upstream descriptor, its two stack buffers and both
+    /// directions of its byte bridge - and, for a DNS-over-TCP flow, the one logical resolver token its
     /// transport holds for its whole life.
     ///
     /// Not an exchange's worth of bytes: those belong to the debt each submitted query takes, which is what
     /// lets them stay charged when this transport closes over a question still in flight. See
     /// [vpnhotspotd::shared::dns_debt].
     connection: Connection,
-    /// Both of this owner's ends of the flow's byte movement: the read-ahead queue it takes payload out of,
-    /// and its reserved slot in the queue the flow's task reads from. Each of them is its own wake, so
-    /// nothing travels between the two to say work is waiting - see [vpnhotspotd::shared::transfer].
-    transfer: Transfer<Owned>,
-    /// The acknowledgment that frees a DNS-over-TCP transport's next piece. Only that kind waits for one; an
-    /// ordinary flow's producer is freed by this owner taking a chunk out of its queue.
-    consumed: mpsc::Sender<()>,
+    /// This owner's half of the flow's byte bridge: an ordinary bounded Tokio stream, read straight into the
+    /// client's send buffer and written straight out of its receive buffer. Both directions' backpressure is
+    /// the buffer filling and both directions' wake is the library's, so nothing travels between this owner
+    /// and the flow's task to say work is waiting - see [vpnhotspotd::shared::bridge].
+    bridge: Bridge,
+    /// Set by a crossing toward the client, and cleared by the lifetime refresh that reads it. Kept per flow
+    /// rather than answered per pass, because one pass can deliver to every flow and each of them owns its
+    /// own idle floor - see [Engine::traffic].
+    refresh: bool,
     /// This owner's half of the DNS control pair, the reservation this transport currently holds, the
     /// transaction it opened and the delivery parked for its answer - all of it built with the flow and
     /// charged with it. Present on every flow, because both kinds are built by one [flow_setup::prepare];
@@ -191,30 +193,24 @@ struct Flow {
     /// Set once this flow's worker has run to completion cleanly and the client side has not finished yet.
     ///
     /// The state that keeps a terminating close honest. A worker returns as soon as *its* ordered work is
-    /// done, and for an ordinary flow that means as soon as its last payload and its ordered end of stream
-    /// are **queued** - a DNS-over-TCP transport is the one that waits to be told its last piece was
-    /// consumed. At that moment the client socket is typically still `ESTABLISHED` with bytes to deliver, or
-    /// in `LAST-ACK`, `CLOSING` or `TIME-WAIT` with a FIN to retransmit and a final acknowledgment to wait
-    /// for. Removing the flow there took the client's half of the connection away mid-teardown, and now
-    /// takes undelivered bytes with it.
+    /// done, and for either kind that means as soon as its last bytes and its ordered end of stream are **in
+    /// the bridge**, not delivered. At that moment the client socket is typically still `ESTABLISHED` with
+    /// bytes to deliver, or in `LAST-ACK`, `CLOSING` or `TIME-WAIT` with a FIN to retransmit and a final
+    /// acknowledgment to wait for. Removing the flow there took the client's half of the connection away
+    /// mid-teardown, and now takes undelivered bytes with it.
     ///
     /// So a clean terminal *detaches* instead: the worker's descriptor is gone with its task, and what is
     /// left is a client-side-only flow that still owns its socket, its conservative grant, its DNS state and
-    /// whatever its own queue still holds - until smoltcp reaches `Closed`, its outer floor runs out, a
-    /// config retires it, or the session ends. The engine goes on taking from that queue exactly as it did
-    /// while the worker existed; what the queue cannot get any more is anything new. No task of its own and
+    /// whatever its half of the bridge still holds - until smoltcp reaches `Closed`, its outer floor runs
+    /// out, a config retires it, or the session ends. What the worker left in the bridge stays readable, and
+    /// the end of the stream it shut its write half down for before returning follows it - a `simplex` half
+    /// signals nothing on drop - so the engine goes on crossing exactly as it did while the worker existed;
+    /// what the bridge cannot get any more is anything new. No task of its own and
     /// no *per-flow* timer task stands behind it - its teardown is still scheduled, by the engine's combined
     /// stack-and-floor deadline, which is what lets the remaining bytes be written and the FIN
     /// retransmitted. The ingress owner polls for it, exactly as it polls for a settled resolver
     /// transaction. See [Engine::detached] and [Engine::settled].
     detached: bool,
-    /// Set once the client's handshake has completed.
-    ///
-    /// Load-bearing, not bookkeeping. Every "is this side done" question below is asked with `may_recv` and
-    /// `may_send`, and both are false for a socket that is merely *listening* - so without this the first poll
-    /// after opening a flow reads a brand-new connection as a half-closed one, drops the upstream write half,
-    /// and the flow can never carry a byte.
-    established: bool,
 }
 
 #[derive(Default)]
@@ -229,47 +225,45 @@ struct Counters {
     preserved: u64,
     /// Refused because a prepared collection was full rather than because the aggregate was.
     unprepared: u64,
-    /// An acknowledgment a DNS-over-TCP transport could not be told about, which means the flow is already
-    /// on its way out. Only that kind is acknowledged: an ordinary flow's producer is freed by the engine
-    /// taking a chunk out of its queue - see [crate::shizuku::tcp::transfer].
-    unacknowledged: u64,
     /// A token that could not be handed to the question it belonged to.
     unsettled: u64,
     /// Workers that finished cleanly while their client's teardown was still running, so the flow outlived
     /// its worker instead of being removed under a half-finished close.
     detached: u64,
     no_upstream: u64,
-    reset: u64,
+    /// Everything the packet boundary counts, in the shape that boundary defines - see
+    /// [boundary::Counters]. One home per figure, and the selection of which figure a
+    /// given outcome moves is that module's rather than this one's.
+    ingress: boundary::Counters,
     /// Flows this owner took back because they had been idle past their phase's floor. Counted apart from
     /// [Counters::closed] because an expiry is a client-visible reset the client did not ask for, and apart
     /// from [Counters::reset] because a listening flow expires without one.
     expired: u64,
     closed: u64,
-    to_upstream: u64,
     to_client: u64,
-    stale: u64,
-    unconsumed: u64,
 }
 
 impl Counters {
     fn describe(&self) -> String {
         format!(
             "opened {} resolved {} answered-here {} denied {} preserved {} no-upstream {} reset {} \
-             expired {} detached {} closed {} to-upstream {} to-client {} stale {} unconsumed {}",
+             tail-failed {} expired {} detached {} closed {} to-upstream {} to-client {} stale {} \
+             unconsumed {}",
             self.opened,
             self.resolved,
             self.answered_here,
             self.denied,
             self.preserved,
             self.no_upstream,
-            self.reset,
+            self.ingress.reset,
+            self.ingress.tail_failed,
             self.expired,
             self.detached,
             self.closed,
-            self.to_upstream,
+            self.ingress.to_upstream,
             self.to_client,
-            self.stale,
-            self.unconsumed
+            self.ingress.stale,
+            self.ingress.unconsumed
         )
     }
 }
@@ -296,15 +290,13 @@ pub(crate) struct Engine {
     /// Where a DNS-over-TCP transport asks for a query to be admitted. Through the owner rather than to a
     /// worker of its own, because admitting a resolver transaction is an accounting decision.
     asks: mpsc::Sender<tcp_dns::Ask>,
-    /// Whose turn it is and what each flow still owes the wire, per flow rather than globally.
-    fair: FairQueue<SocketHandle, tcp_flow::Payload>,
-    /// Explicit round-robin order for the *client to upstream* direction, for the same reason the fair queue
-    /// is explicit for the other one: iterating a `HashMap` is an arbitrary order that changes when the map is
-    /// resized, which is not fairness but a different unfairness each time.
-    outgoing: VecDeque<SocketHandle>,
-    /// The flow table, the fair queue, the round-robin order, the socket set, the ask channel and the
-    /// device's output slot: byte-only owners prepared at session start and charged once. A flow's own two
-    /// queues are not here - they are charged per flow, with the flow that owns them.
+    /// Whose turn it is, in both directions. Explicit because iterating a `HashMap` is an arbitrary order
+    /// that changes when the map is resized, which is not fairness but a different unfairness each time - and
+    /// because it is what indexes the live flows for every walk this engine makes over them.
+    outgoing: Turns<SocketHandle>,
+    /// The flow table, the round-robin order, the socket set, the ask channel and the device's output slot:
+    /// byte-only owners prepared at session start and charged once. A flow's own bridge is not here - it is
+    /// charged per flow, with the flow that owns it.
     tables: Lease,
     /// How many live flows every table above was prepared for. One number, so no two of them can disagree
     /// about what the engine may hold.
@@ -388,8 +380,8 @@ impl Engine {
         // admit, the query that length was admitted for, or the delivery that answered it.
         //
         // The engine's one channel, and there is no second: payload does not travel to this owner and
-        // neither does a wake for it, because every flow's own queue is what wakes this owner. What used to
-        // be here was a readiness channel every flow shared - see [vpnhotspotd::shared::transfer].
+        // neither does a wake for it, because every flow's own bridge is what wakes this owner - see
+        // [crate::shizuku::tcp::bridge].
         let (asks, asking) = mpsc::channel(submission_depth(admission.dns_token_cap()));
         let queries = match Transactions::new(admission) {
             Ok(queries) => queries,
@@ -414,8 +406,7 @@ impl Engine {
                 upstream: None,
                 sweep: CancellationToken::new(),
                 asks,
-                fair: FairQueue::with_capacity(prepared),
-                outgoing: VecDeque::with_capacity(prepared),
+                outgoing: Turns::with_capacity(prepared),
                 tables,
                 prepared,
                 counters: Counters::default(),
@@ -439,11 +430,10 @@ impl Engine {
         self.queries.release(admission);
         // Then everything `tables` pays for, before the grant goes - and it is worth reading this against
         // [tables_footprint] item by item, because that is the list this has to match: the worker table, the
-        // fair queue, the round-robin order, both halves of the ask channel, the socket set, and the device's
-        // one MTU-sized output slot. The device was the one that used to fall out of scope *after* the
-        // release, which is the same fail-open moment as a receiver outliving the grant that covers it.
+        // round-robin order, both halves of the ask channel, the socket set, and the device's one MTU-sized
+        // output slot. The device was the one that used to fall out of scope *after* the release, which is
+        // the same fail-open moment as a receiver outliving the grant that covers it.
         drop(self.flows);
-        drop(self.fair);
         drop(self.outgoing);
         drop(self.sockets);
         drop(self.asks);
@@ -466,7 +456,7 @@ impl Engine {
     /// - the **generation** retires exactly the flows that hold a socket bound to the network that changed.
     ///   A virtual-DNS transport holds none. It terminates locally, its answers come from the platform
     ///   resolver, and which network each of its queries went out on is fixed one query at a time when this
-    ///   owner accepts it - so the transport itself is untouched, keeps its socket, its mailbox and its one
+    ///   owner accepts it - so the transport itself is untouched, keeps its socket, its bridge and its one
     ///   logical token, and the client goes on using the connection it opened.
     ///
     /// Neither axis cancels or awaits a resolver transaction: cancelling would return this process's
@@ -533,13 +523,12 @@ impl Engine {
         {
             // Walked over the round-robin order rather than into a list of what is being retired. That order
             // is registered with every admitted flow and deregistered with every closed one, so it already
-            // holds each live handle exactly once - see [vpnhotspotd::shared::fair::register] - and a list
+            // holds each live handle exactly once - see [vpnhotspotd::shared::flow::admit_flow] - and a list
             // built here would be scratch sized by traffic that no lease covers. Destructured because the
-            // walk reads one field while the steps below write four others.
+            // walk reads one field while the steps below write three others.
             let Engine {
                 flows,
                 sockets,
-                fair,
                 outgoing,
                 counters,
                 ..
@@ -567,15 +556,12 @@ impl Engine {
                 if held.cancel.is_cancelled() {
                     continue;
                 }
-                // Discard before cancel, and per exact identity: a worker parked on a handover - waiting
-                // for room in its queue, or for the acknowledgment a DNS-over-TCP transport waits on - may
-                // only be released once the owner has committed to dropping what that wait was for. The
-                // reverse order is a task freed while the owner still believes it owes the bytes.
-                drop(fair.begin_retire(FlowId::new(*handle, held.record.worker)));
+                // Cancelling is the whole of it, and the whole of it is abortive: whatever either direction
+                // of the bridge still holds is discarded with the bridge when the flow is reclaimed, and
+                // every wait a worker can be in - a read, a write, a bridge with no room - races this token.
+                // There is nothing to hand back first, because nothing of this flow's is anywhere but in the
+                // bridge this owner still holds.
                 held.cancel.cancel();
-                // The slot goes, which closes the queue toward the task: one blocked on the client's half of
-                // the splice wakes and exits, and the reservation this owner was holding is released with it.
-                held.record.transfer.stop_sending();
                 // At most one terminal packet per retired flow, written before anything is freed, so a client
                 // fails fast instead of waiting out its own retransmissions against a connection nothing will
                 // answer again. Built here rather than at close, because close removes the socket that
@@ -585,7 +571,7 @@ impl Engine {
                 // counts one reset, while one still listening or already closed is aborted in silence -
                 // there is nowhere for the stack to send it, and counting it would overstate what was sent.
                 if socket.remote_endpoint().is_some() {
-                    counters.reset += 1;
+                    counters.ingress.reset += 1;
                 }
                 socket.abort();
             }
@@ -613,9 +599,9 @@ impl Engine {
         // table while this awaits: the one owner that admits a flow is the task inside this call. Detached
         // rows are excluded because they were settled above; waiting for one is waiting for nothing.
         //
-        // Nothing of a retired flow's is drained here, because there is nowhere left to drain from: its
-        // payload lives in its own queue, which dies with the record in [Engine::reclaim], and a task parked
-        // on that queue wakes on its own token rather than on anything this loop does.
+        // Nothing of a retired flow's is drained here, because there is nowhere left to drain to: its bytes
+        // live in the bridge it owns, which dies with the record in [Engine::reclaim], and a task parked on
+        // that bridge wakes on its own token rather than on anything this loop does.
         while self
             .flows
             .values()
@@ -644,58 +630,6 @@ impl Engine {
     ///
     /// `now` is the ingress task's own reading of the clock for this packet, and it is what the flow's outer
     /// idle lifetime is measured from - see [crate::shizuku::tcp::lifetime].
-    pub(crate) fn accept(
-        &mut self,
-        packet: &[u8],
-        segment: Segment,
-        resolver: bool,
-        now: Instant,
-        output: &mut Output,
-        admission: &mut Admission,
-    ) {
-        if segment.syn
-            && !self.flows.values().any(|flow| {
-                flow.record.client == segment.source
-                    && flow.record.destination == segment.destination
-            })
-        {
-            // A duplicate SYN for an existing flow falls through to the stack instead, which reuses the
-            // half-open state it already has rather than allocating a second flow.
-            if !self.open(
-                segment.source,
-                segment.destination,
-                segment.hop_limit,
-                resolver,
-                now,
-                admission,
-            ) {
-                return;
-            }
-        }
-        if !self.device.push(packet) {
-            // The stack still holds an untaken packet, which means the poll that should have consumed it did
-            // not run. Counted rather than queued, because a queue here would hide the bug.
-            self.counters.unconsumed += 1;
-            return;
-        }
-        self.poll(output);
-        // Resolved after the poll rather than before it, and by the tuple this packet actually named: the
-        // flow may have been opened above, and the phase the packet puts it into is the state its socket ends
-        // up in. A packet naming no flow at all - the stack answered it with a reset, or dropped it - rearms
-        // nothing, which is the whole reason this is a lookup rather than a field carried down from above.
-        let handled = self
-            .flows
-            .iter()
-            .find(|(_, held)| {
-                held.record.client == segment.source
-                    && held.record.destination == segment.destination
-            })
-            .map(|(handle, held)| (*handle, held.record.worker));
-        if let Some((handle, worker)) = handled {
-            self.rearm(handle, worker, now);
-        }
-    }
-
     /// Opens one flow, if what it is can exist right now.
     ///
     /// The selected network is required by *what the flow is*, not by the fact that it is TCP. An ordinary
@@ -711,27 +645,26 @@ impl Engine {
         resolver: bool,
         now: Instant,
         admission: &mut Admission,
-    ) -> bool {
+    ) -> Option<SocketHandle> {
         let source = if resolver {
             Source::Resolver
         } else {
             let Some(upstream) = self.upstream else {
                 self.counters.no_upstream += 1;
-                return false;
+                return None;
             };
             Source::Upstream(upstream)
         };
         // The remaining hop limit is validated before the connect, and an expired one is not connected at all:
         // a terminated flow cannot preserve it, but it can refuse to launder a packet that should have died.
         let Nat66HopLimit::Forward(hop_limit) = nat66_hop_limit(Some(hop_limit)) else {
-            return false;
+            return None;
         };
-        // Destructured so the transaction below can borrow the pieces it needs disjointly: the fair queue and
-        // the round-robin order are what it registers into, and everything else is what its operations build.
+        // Destructured so the transaction below can borrow the pieces it needs disjointly: the round-robin
+        // order is what it registers into, and everything else is what its operations build.
         let Engine {
             sockets,
             flows,
-            fair,
             outgoing,
             prepared,
             asks,
@@ -753,34 +686,59 @@ impl Engine {
             now,
         };
         // One transaction, and production's own: capacity in both tables before a descriptor is opened or a
-        // byte charged, then build, then register both collections together, then admit - with every failure
-        // after the build unwinding the socket, the channels and the grant. See
-        // [vpnhotspotd::shared::fair::admit_flow].
-        match fair::admit_flow(&mut ops, fair, outgoing, *prepared) {
-            Ok(_) => {
+        // byte charged, then build, then register the round-robin order, then admit - with every failure
+        // after the build unwinding the socket, the bridge and the grant. See
+        // [vpnhotspotd::shared::flow::admit_flow].
+        match flow::admit_flow(&mut ops, outgoing, *prepared) {
+            Ok(handle) => {
                 self.counters.opened += 1;
                 if resolver {
                     self.counters.resolved += 1;
                 }
-                true
+                // The handle, because the caller has to be able to take this flow back: a segment the stack
+                // then refuses leaves a socket, a grant and a worker that nothing will ever use.
+                Some(handle)
             }
-            Err(fair::Refused::AtCapacity(_)) => {
+            Err(flow::Refused::AtCapacity(_)) => {
                 self.counters.unprepared += 1;
-                false
+                None
             }
             // Already counted and, where it deserved one, reported by the operation that failed.
-            Err(fair::Refused::Unbuildable(())) => false,
+            Err(flow::Refused::Unbuildable(())) => None,
         }
     }
 
-    /// Runs the stack until it has nothing more to do, then moves bytes in both directions. Called after
-    /// anything that could have changed a socket, because smoltcp is a state machine that only advances when
-    /// polled.
+    /// Runs the stack until it has nothing more to do. Called after anything that could have changed a
+    /// socket, because smoltcp is a state machine that only advances when polled.
+    ///
+    /// It moves no bytes, deliberately. Every crossing between a flow's bridge and its socket happens inside
+    /// the poll the ingress task makes, so that the wake a blocked direction registers is that task's own -
+    /// see [crate::shizuku::tcp::bridge]. The owner re-enters that crossing immediately after this returns,
+    /// which is what makes an acknowledgement or an arriving segment the wake for the two directions no
+    /// bridge can register for.
+    /// There is deliberately no variant of this that takes an instant. The packet boundary needs one - it
+    /// polls twice and has to attribute a socket's transition to the packet in between, which two polls at
+    /// the *same* instant make exact - but it also needs the scan below to run once, at the end, rather than
+    /// inside each poll. Handing it a "poll at this instant" that did both is what put the scan first; the
+    /// two primitives it composes are [Engine::quiesce] and [Engine::reclaim_closed], and this is the
+    /// non-packet callers' composition of them.
     pub(crate) fn poll(&mut self, output: &mut Output) {
+        self.quiesce(self.now(), output);
+        self.reclaim_closed();
+    }
+
+    /// **Only** the stack, the device and the output, at the instant given. No flow of this engine's is
+    /// examined and no worker is told anything.
+    ///
+    /// That restriction is the whole reason this is its own operation. It is the primitive
+    /// [vpnhotspotd::shared::ingress] settles with, and that sequence must be the only thing deciding what
+    /// happens to a flow while it runs: an accepted reset has to fence its socket *before* its worker is
+    /// cancelled, and a client's FIN has to arm its idle floor before its ending is extracted. A poll that
+    /// cancelled workers on its way past would do both of those first and out of order - which is exactly
+    /// what it did while [Engine::reclaim_closed] lived here.
+    fn quiesce(&mut self, at: SmolInstant, output: &mut Output) {
         loop {
-            let progressed = self
-                .interface
-                .poll(self.now(), &mut self.device, &mut self.sockets);
+            let progressed = self.interface.poll(at, &mut self.device, &mut self.sockets);
             // One segment per poll, because the device holds one: draining it and polling again is what lets
             // the stack produce the next, and having emitted one is itself progress - the stack refused to
             // transmit while the slot was full, so this loop must come round again even if nothing else
@@ -792,23 +750,33 @@ impl Engine {
                 }
                 None => false,
             };
-            let moved = self.pump();
-            if matches!(progressed, PollResult::None) && !moved && !emitted {
+            if matches!(progressed, PollResult::None) && !emitted {
                 break;
             }
         }
-        // A socket the stack has finished with outlives its flow only until here, and *every* closed socket
-        // counts - what a `Closed` socket means is that the stack will never touch it again, which is as true
-        // of one that never opened as of one that did.
-        //
-        // Walked over the round-robin order rather than into a list of handles: that order already holds each
-        // live handle exactly once, so a list would be scratch proportional to live flows that no lease
-        // covers, allocated on the busiest path in the engine. The three borrows below are of separate
-        // fields, which is what lets the walk read one while the steps write the others.
+    }
+
+    /// The Closed-socket scan: what a socket the stack has finished with does to the worker still attached
+    /// to it.
+    ///
+    /// Run *after* whatever changed those sockets, never inside it. Every non-packet caller reaches it
+    /// through [Engine::poll]; the packet boundary reaches it as a primitive of its own, which
+    /// [vpnhotspotd::shared::ingress::accept] runs last, when it has finished deciding - once for every
+    /// packet the stack saw, and not at all for a `SYN` whose admission was refused before anything was
+    /// built, because that returns having changed nothing to scan.
+    ///
+    /// What a `Closed` socket means for its worker is [Bridge::teardown]'s decision and not this walk's -
+    /// including the one exception, a client that half-closed cleanly and left its worker still flushing
+    /// bytes this daemon acknowledged.
+    ///
+    /// Walked over the round-robin order rather than into a list of handles: that order already holds each
+    /// live handle exactly once, so a list would be scratch proportional to live flows that no lease covers,
+    /// allocated on the busiest path in the engine. The borrows below are of separate fields, which is what
+    /// lets the walk read one while the step reads the other.
+    pub(super) fn reclaim_closed(&mut self) {
         let Engine {
             flows,
             sockets,
-            fair,
             outgoing,
             ..
         } = self;
@@ -818,22 +786,15 @@ impl Engine {
             "the round-robin order indexes exactly the live flows"
         );
         for handle in outgoing.iter() {
-            let Some(held) = flows.get_mut(handle) else {
+            let Some(held) = flows.get(handle) else {
                 continue;
             };
-            if sockets.get::<Socket>(*handle).state() != State::Closed {
-                continue;
-            }
-            // Discarded before anything is cancelled or dropped, and per exact identity. A worker parked on a
-            // handover may only be released once the owner has committed to dropping what that wait was for;
-            // cancelling first frees the task while the owner still believes it owes those bytes, and
-            // dropping the downstream endpoint first does the same to the other direction.
-            drop(fair.begin_retire(FlowId::new(*handle, held.record.worker)));
-            // The client half is done. An attached flow's worker is told to stop and the release follows
-            // joining it, so the descriptor is gone before the accounting says so; a detached flow has no
-            // worker left, and the ingress owner's own scan is what settles it - see [Engine::detached].
-            held.cancel.cancel();
-            held.record.transfer.stop_sending();
+            // An attached flow's worker is told to stop and the release follows joining it, so the descriptor
+            // is gone before the accounting says so; a detached flow has no worker left, and the ingress
+            // owner's own scan is what settles it - see [Engine::detached].
+            held.record
+                .bridge
+                .teardown(sockets.get::<Socket>(*handle).state(), &held.cancel);
         }
     }
 
@@ -858,10 +819,10 @@ impl Engine {
 /// One function rather than a sum written out at the construction site, because the derived bound is solved
 /// against exactly this and the reservation is taken from exactly this: two spellings of it could disagree,
 /// and the disagreement would be a table prepared for more than was charged.
-/// The engine's own flow-admission operations, as [fair::admit_flow] drives them.
+/// The engine's own flow-admission operations, as [flow::admit_flow] drives them.
 ///
-/// A borrowed view rather than the whole engine, so the transaction can hold the fair queue and the
-/// round-robin order at the same time as the tables these touch.
+/// A borrowed view rather than the whole engine, so the transaction can hold the round-robin order at the
+/// same time as the tables these touch.
 struct Admit<'a> {
     sockets: &'a mut flow_setup::Sockets,
     flows: &'a mut Workers<SocketHandle, Flow>,
@@ -886,8 +847,7 @@ struct Built {
     identity: Identity,
     /// Taken by the worker future when one is started. Absent afterwards, so an unwind on the admission path
     /// drops what is left rather than pretending to hold what the future already owns.
-    mailbox: Option<Mailbox>,
-    receiver: Option<mpsc::Receiver<Owned>>,
+    stream: Option<Worker>,
     /// The transport's halves of the DNS control pair, on the same terms.
     control: Option<mpsc::Receiver<tcp_dns::Control>>,
     filled: Option<mpsc::Sender<Owned>>,
@@ -900,8 +860,7 @@ impl Built {
         Self {
             flow,
             identity,
-            mailbox: None,
-            receiver: None,
+            stream: None,
             control: None,
             filled: None,
         }
@@ -937,10 +896,8 @@ impl Admit<'_> {
             connection,
             handle,
             identity,
-            mailbox,
-            transfer,
-            consumed,
-            receiver,
+            bridge,
+            stream,
             serving,
             control,
             filled,
@@ -958,8 +915,8 @@ impl Admit<'_> {
                     // rediscovered: what this flow *is* cannot be read off what it happens to be doing.
                     kind: self.source.kind(),
                     connection,
-                    transfer,
-                    consumed,
+                    bridge,
+                    refresh: false,
                     serving,
                     detached: false,
                     // Set before the flow is admitted, so a SYN whose stack path never runs - the device
@@ -971,11 +928,9 @@ impl Admit<'_> {
                         self.now,
                         self.sockets.get::<Socket>(handle).state(),
                     ),
-                    established: false,
                 },
                 identity,
-                mailbox: Some(mailbox),
-                receiver: Some(receiver),
+                stream: Some(stream),
                 control: Some(control),
                 filled: Some(filled),
             },
@@ -983,12 +938,11 @@ impl Admit<'_> {
     }
 }
 
-impl fair::FlowOps for Admit<'_> {
+impl flow::FlowOps for Admit<'_> {
     type Handle = SocketHandle;
     type Record = Built;
     /// Already counted and reported where it deserved one, so there is nothing left to say about it.
     type Error = ();
-    type Payload = tcp_flow::Payload;
 
     fn has_room(&self) -> bool {
         self.flows.has_room()
@@ -1019,16 +973,14 @@ impl fair::FlowOps for Admit<'_> {
     fn unwind(&mut self, handle: SocketHandle, _worker: u64, record: Built) {
         let Built {
             flow,
-            mailbox,
-            receiver,
+            stream,
             control,
             filled,
             ..
         } = record;
         let Flow {
             connection,
-            transfer,
-            consumed,
+            bridge,
             serving,
             ..
         } = flow;
@@ -1044,10 +996,8 @@ impl fair::FlowOps for Admit<'_> {
             handle,
             flow_setup::Leftovers {
                 connection,
-                mailbox,
-                receiver,
-                transfer,
-                consumed,
+                bridge,
+                stream,
                 control,
                 filled,
             },
@@ -1062,21 +1012,18 @@ impl fair::FlowOps for Admit<'_> {
 impl Admit<'_> {
     /// Records the flow and starts its worker, which is the last step and the only one that can still refuse.
     // The record comes back by value on refusal because the caller is what unwinds it, and what it is
-    // holding by then is a socket, a lease and five channels. Boxing it would put an allocation on the one
-    // path that runs because the daemon is already out of room.
+    // holding by then is a socket, a lease, both halves of a byte bridge and two control channels. Boxing it
+    // would put an allocation on the one path that runs because the daemon is already out of room.
     #[allow(clippy::result_large_err)]
     fn start(&mut self, handle: SocketHandle, record: Built) -> Result<(), Built> {
         let Built {
             flow,
             identity,
-            mailbox,
-            receiver,
+            stream,
             control,
             filled,
         } = record;
-        let (Some(mailbox), Some(receiver), Some(control), Some(filled)) =
-            (mailbox, receiver, control, filled)
-        else {
+        let (Some(stream), Some(control), Some(filled)) = (stream, control, filled) else {
             // Unreachable: only this function takes them, and it takes them once.
             return Err(Built::without_worker(flow, identity));
         };
@@ -1092,9 +1039,16 @@ impl Admit<'_> {
                     handle,
                     &identity,
                     flow,
-                    tcp_dns::serve(mailbox, receiver, asks, control, filled, token),
+                    tcp_dns::serve(
+                        FlowId::new(handle, identity.id),
+                        stream,
+                        asks,
+                        control,
+                        filled,
+                        token,
+                    ),
                 )
-                // The worker future took the mailbox, the receiver and both control halves, so what comes
+                // The worker future took the bridge's worker half and both control halves, so what comes
                 // back cannot carry them - and does not need to: they are dropped with the future that was
                 // never spawned.
                 .map_err(|(flow, _)| Built::without_worker(flow, identity));
@@ -1118,9 +1072,7 @@ impl Admit<'_> {
                 };
                 match connected {
                     Ok(socket) => match tokio::net::TcpStream::from_std(socket.into()) {
-                        Ok(stream) => {
-                            tcp_flow::splice(stream, mailbox, receiver, token, sweep).await
-                        }
+                        Ok(upstream) => tcp_flow::splice(upstream, stream, token, sweep).await,
                         // The socket is dropped here, which closes it: there is no stream to adopt it, so
                         // nothing else could.
                         Err(e) => Ended::Failed {
@@ -1142,9 +1094,6 @@ impl Admit<'_> {
 
 fn tables_footprint(flows: usize, mtu: usize, tokens: u32) -> Option<u64> {
     Workers::<SocketHandle, Flow>::footprint(flows)?
-        .checked_add(FairQueue::<SocketHandle, tcp_flow::Payload>::footprint(
-            flows,
-        )?)?
         .checked_add(linear_footprint(
             flows,
             std::mem::size_of::<SocketHandle>() as u64,
@@ -1152,8 +1101,8 @@ fn tables_footprint(flows: usize, mtu: usize, tokens: u32) -> Option<u64> {
         // The channel a transport asks its owner on, at the type it really carries: every variant of
         // [tcp_dns::Ask], not the one shape a query used to travel in. Fan-in: every DNS transport clones
         // the ask sender, so it carries one producer per prepared flow. It is the engine's only channel -
-        // the readiness channel every flow used to share is gone, and with it the cross-flow contention a
-        // hot flow's markers put on it.
+        // there is no readiness channel and no payload channel, because a flow's bytes and their wakes both
+        // live in the bridge that flow owns.
         .checked_add(channel_footprint::<tcp_dns::Ask>(
             submission_depth(tokens),
             flows,

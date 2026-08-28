@@ -324,8 +324,8 @@ pub fn close(
     Err(Stranded { lease })
 }
 
-/// What is still owed after the resolver worker has been joined: the answer, the framed copy being built from
-/// it, and the chunk on its way into the fair mailbox.
+/// What is still owed after the resolver worker has been joined: the answer, and the framed copy being built
+/// from it.
 ///
 /// A separate owner because those buffers outlive the transaction that produced them. The worker's terminal
 /// says the descriptor is closed - and, for every outcome this process could watch, that the platform's slot
@@ -333,8 +333,8 @@ pub fn close(
 /// that an *unobservable* transaction's slot has ended, which is exactly the outcome whose token is
 /// quarantined instead of released. Releasing the whole grant here gave back capacity for memory that was
 /// about to be *created*:
-/// the transport had yet to receive the answer, frame it, and hand each chunk over. Not `Clone`, like every
-/// other grant here, so there is exactly one thing that can end it.
+/// the transport had yet to receive the answer, frame it, and write the framing into its flow's bridge. Not
+/// `Clone`, like every other grant here, so there is exactly one thing that can end it.
 #[derive(Debug)]
 pub struct Delivery {
     id: DeliveryId,
@@ -556,11 +556,13 @@ impl Parked {
 /// descriptor is closed. A logical token a closed transport handed over ends too - that is what "released
 /// only at the real terminal" means, and it is why the transfer above is a move rather than a refund and a
 /// reserve. What does *not* end is the answer: the transport has still to receive it, classify it, frame it
-/// and hand each chunk to the client's stack, and every one of those exists after this returns.
+/// and write the framing into its flow's bridge, and every one of those exists after this returns.
 ///
 /// So `delivery_bytes` is split out first and released only when that is finished. It is the conservative
-/// peak of what remains - the result, the framed copy built beside it, and one chunk - reserved as part of
-/// the original submission, so nothing here is a new charge and nothing is charged after an allocation.
+/// peak of what remains - the result and the framed copy built beside it - reserved as part of the original
+/// submission, so nothing here is a new charge and nothing is charged after an allocation. There is no third
+/// term, because the framing is written into a bridge whose capacity the flow was charged for before it
+/// existed.
 pub fn settle(admission: &mut Admission, debt: QueryDebt, delivery_bytes: u64) -> Delivery {
     let QueryDebt { id, lease } = debt;
     // The query's own identity, which its table never reuses. Naming the delivery by it is what lets an
@@ -597,7 +599,7 @@ mod tests {
 
     const FLOW_BYTES: u64 = 4_096;
     const QUERY_BYTES: u64 = 65_535;
-    const DELIVERY_BYTES: u64 = 65_535 + (65_535 + 2) + 1_500;
+    const DELIVERY_BYTES: u64 = 65_535 + (65_535 + 2);
     const EXCHANGE_BYTES: u64 = QUERY_BYTES + DELIVERY_BYTES;
 
     fn admission() -> Admission {
@@ -833,18 +835,18 @@ mod tests {
         // never reaches here at all.
     }
 
-    /// A conservative delivery reservation covers the largest answer there is, framed, with a chunk being
-    /// handed over - and covers it from the submission rather than from an allocation.
+    /// A conservative delivery reservation covers the largest answer there is and the framed copy built
+    /// beside it - and covers them from the submission rather than from an allocation.
     #[test]
     fn a_full_capacity_result_and_framing_stay_inside_the_reservation() {
-        // The real peak the transport can reach after the join: the result the platform returned, the
-        // length-prefixed copy built beside it, and one chunk on its way into the mailbox.
+        // The real peak the transport can reach after the join: the result the platform returned and the
+        // length-prefixed copy built beside it. There is no third term, because the framed copy is written
+        // straight into the flow's bridge, whose capacity the flow was charged for before it existed.
         const PREFIX: u64 = 2;
-        const CHUNK: u64 = 1_500;
-        let peak = 65_535 + (65_535 + PREFIX) + CHUNK;
+        let peak = 65_535 + (65_535 + PREFIX);
         assert!(
             peak <= DELIVERY_BYTES,
-            "a maximum answer, framed, with a chunk out: {peak} > {DELIVERY_BYTES}"
+            "a maximum answer and its framing: {peak} > {DELIVERY_BYTES}"
         );
         // And the submission covers that peak plus the query it was made from, so nothing on this path is
         // ever charged after it has been allocated.

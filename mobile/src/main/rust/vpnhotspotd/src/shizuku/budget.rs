@@ -87,18 +87,18 @@ const MEMORY_SHARE: u64 = 8;
 /// packetization scratch, the reassembly table's retained capacity, its one transient completed packet, the
 /// IPv4 identification table, the ingress read buffer, the UDP mapping table, the Echo socket table, the Echo
 /// session table, the TCP flow table, the TCP transaction table, the virtual DNS transaction table, the
-/// smoltcp socket set, the engine's output slot, and the per-flow fair queue - seventeen. Eight spare, so a
-/// later fixed owner does not silently push the ledger past what was charged for it.
+/// smoltcp socket set, and the engine's output slot - sixteen. Nine spare, so a later fixed owner does not
+/// silently push the ledger past what was charged for it.
 ///
-/// Seventeen and not eighteen since the TCP engine stopped owning a readiness channel every flow shared:
-/// payload and its wake both live in each flow's own queue now, which is charged per flow rather than here.
-/// See [vpnhotspotd::shared::transfer].
+/// Sixteen and not eighteen since the TCP engine stopped owning both a readiness channel every flow shared
+/// and a per-flow row beside it: a flow's bytes and their wakes both live in the bounded byte bridge that
+/// flow owns, which is charged per flow rather than here. See [crate::shizuku::tcp::bridge].
 ///
 /// The writer is one row and not four: its packet queue, the packet it has in hand, its retirement channel
 /// and its Identification settlement channel are built together, released together, and charged as one lease.
 /// What this count is for is the *simultaneous* ledger inventory, so what matters is how many rows exist at
 /// once rather than how many allocations each covers.
-const BYTE_ONLY_OWNERS: u32 = 17 + 8;
+const BYTE_ONLY_OWNERS: u32 = 16 + 9;
 
 /// What one maximum resolver exchange needs at once: the query as it arrived, the answer as the platform
 /// returns it, and the framing copy in between.

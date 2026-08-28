@@ -25,6 +25,5 @@ mod tun_reader;
 mod tun_writer;
 mod udp;
 mod virtual_dns;
-mod workers;
 
 pub(super) use app_session::run;

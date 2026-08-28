@@ -1,17 +1,19 @@
 //! Every resource one intercepted TCP flow needs before it may exist, and the exact reverse of acquiring
 //! them.
 //!
-//! A lease, a socket with two buffers in a real set, five bounded channels and a worker identity are taken in
-//! an order where each step can undo the ones before it. The engine keeps the record it stores, the future it
-//! spawns and the reports it writes, and calls these two functions for the rest.
+//! A lease, a socket with two buffers in a real set, one bounded byte bridge with its reserved terminal
+//! tail, two control channels and a
+//! worker identity are taken in an order where each step can undo the ones before it. The engine keeps the
+//! record it stores, the future it spawns and the reports it writes, and calls these two functions for the
+//! rest.
 //!
 //! # Why preparation and release are one pair
 //!
 //! A registration that fails half-way is the only interesting case, and it is interesting because the failure
 //! can arrive from three directions: the grant, the client-side stack, or the identity table. Each unwinds
 //! what the ones before it took, and [release] is the same reversal written once for the failures that arrive
-//! *after* preparation has finished - a worker table that refuses, a fair queue that will not register. Two
-//! copies of that reversal is how a socket outlives its lease.
+//! *after* preparation has finished - a worker table that refuses, a round-robin order that will not take it.
+//! Two copies of that reversal is how a socket outlives its lease.
 
 use smoltcp::iface::{SocketHandle, SocketSet};
 use smoltcp::socket::tcp::{ListenError, Socket, SocketBuffer};
@@ -21,15 +23,12 @@ use tokio::sync::mpsc;
 use crate::report;
 use crate::shizuku::owned::Owned;
 use crate::shizuku::tcp_dns::{Control, Serving};
-use crate::shizuku::workers::{Identity, Workers};
 use vpnhotspotd::shared::admission::Admission;
+use vpnhotspotd::shared::bridge::{self, Bridge, Worker};
 use vpnhotspotd::shared::dns_debt::{self, Connection};
-use vpnhotspotd::shared::fair::FlowId;
 use vpnhotspotd::shared::flow_budget;
-use vpnhotspotd::shared::mailbox::Mailbox;
 use vpnhotspotd::shared::reply_bound::built_depth;
-use vpnhotspotd::shared::room::Room;
-use vpnhotspotd::shared::transfer::Transfer;
+use vpnhotspotd::shared::workers::{Identity, Workers};
 
 /// The client-side stack's socket storage, and how much of it has ever really been allocated.
 ///
@@ -77,10 +76,10 @@ impl std::ops::DerefMut for Sockets {
 /// How large the pieces of one flow are, and what its composite grant covers.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Sizing {
-    /// What the composite grant covers: both stack buffers, every payload chunk that can exist at once, and
-    /// every one of the per-flow channels built below. Computed from `flow` by
+    /// What the composite grant covers: both stack buffers, both directions of the byte bridge, the scratch
+    /// its worker reads into, and every one of the per-flow channels built below. Computed from `flow` by
     /// [vpnhotspotd::shared::flow_budget::footprint], which is also what the engine's own solver reads - so
-    /// the charge and the construction below cannot disagree about a depth.
+    /// the charge and the construction below cannot disagree about a capacity.
     pub(crate) bytes: u64,
     /// The one value both the charge above and the channels below are sized from.
     pub(crate) flow: flow_budget::Sizing,
@@ -113,17 +112,14 @@ pub(crate) struct Prepared {
     /// The worker identity this flow's task will run under. Issued here because a flow that cannot have one
     /// must not have a socket either.
     pub(crate) identity: Identity,
-    /// The producer's end: where upstream payload is queued, and the acknowledgment a DNS-over-TCP transport
-    /// waits on.
-    pub(crate) mailbox: Mailbox<SocketHandle, Owned>,
-    /// The engine's end of both directions: the queue it takes payload out of, and its reserved slot in the
-    /// queue the task reads from. Each of them is its own wake - see [vpnhotspotd::shared::transfer].
-    pub(crate) transfer: Transfer<Owned>,
-    pub(crate) consumed: mpsc::Sender<()>,
-    /// Client-to-upstream payload, at the end the flow's task reads it from. Counted from the moment the
-    /// engine copies it out of the stack's receive buffer to the moment its consumer drops it, because that
-    /// whole span is one chunk of this flow's grant.
-    pub(crate) receiver: mpsc::Receiver<Owned>,
+    /// The engine's half of this flow's byte bridge: an ordinary bounded Tokio stream it reads the upstream's
+    /// payload out of and writes the client's into, beside what it has learned about the flow's two
+    /// directions. Both directions' readiness and backpressure are the library's - see
+    /// [vpnhotspotd::shared::bridge].
+    pub(crate) bridge: Bridge,
+    /// The worker's whole side of the same bridge, which is what its bidirectional copy - or its DNS-over-TCP
+    /// framing - runs against.
+    pub(crate) stream: Worker,
     /// The owner's half of this flow's DNS control pair: where it answers the transport, and where it takes
     /// a filled query back. Built here, after the grant, so the reusable control channels a query needs are
     /// covered by the flow's own fixed lease rather than allocated per question.
@@ -135,14 +131,14 @@ pub(crate) struct Prepared {
 
 /// What is left of a flow that will not exist, in whatever state its registration reached.
 ///
-/// The mailbox and the upstream receiver are optional because a worker future takes both when one is started;
-/// an unwind after that point drops what is left rather than pretending to hold what the future already owns.
+/// The worker's half of the bridge and both of its control endpoints are optional because a worker future
+/// takes them when one is started; an unwind after that point drops what is left rather than pretending to
+/// hold what the future already owns.
 pub(crate) struct Leftovers {
     pub(crate) connection: Connection,
-    pub(crate) mailbox: Option<Mailbox<SocketHandle, Owned>>,
-    pub(crate) receiver: Option<mpsc::Receiver<Owned>>,
-    pub(crate) transfer: Transfer<Owned>,
-    pub(crate) consumed: mpsc::Sender<()>,
+    pub(crate) bridge: Bridge,
+    /// The worker's side of the bridge, absent once a worker future has taken it.
+    pub(crate) stream: Option<Worker>,
     /// The transport's halves of the control pair, absent once a worker future has taken them.
     pub(crate) control: Option<mpsc::Receiver<Control>>,
     pub(crate) filled: Option<mpsc::Sender<Owned>>,
@@ -162,9 +158,10 @@ pub(crate) fn prepare<R>(
     endpoint: IpListenEndpoint,
 ) -> Result<Prepared, Denied> {
     // One composite grant, and it is taken before a socket buffer, a channel, an identity or a worker exists.
-    // It covers the flow's record and upstream descriptor, its two stack buffers, the read scratch that is
-    // really live at once, every one of the five per-flow channels built below - and, for a DNS-over-TCP
-    // flow, the one logical resolver token its transport holds for its whole life. One token per *transport*,
+    // It covers the flow's record and upstream descriptor, its two stack buffers, both directions of the byte
+    // bridge, the scratch its worker reads into, both per-flow control channels built below - and, for a
+    // DNS-over-TCP flow, the one logical resolver token its transport holds for its whole life. One token per
+    // *transport*,
     // not one per query: this flow's tasks cannot reach the accounting to ask per message, so the token is
     // taken here or the flow is refused.
     //
@@ -178,6 +175,12 @@ pub(crate) fn prepare<R>(
         SocketBuffer::new(vec![0u8; sizing.flow.buffer]),
         SocketBuffer::new(vec![0u8; sizing.flow.buffer]),
     );
+    // The reserved tail is that receive buffer, asked of the socket rather than read off a field beside it -
+    // see [bridge::TailCapacity]. Taken here because the socket is about to be handed to the set.
+    // The reserved tail is that receive buffer, asked of the socket - see [bridge::TailCapacity]. There is
+    // no second figure to keep it in step with: `flow_budget::tail_bytes` derives the *charge* from the same
+    // buffer this socket was built at, so the two cannot drift.
+    let tail = bridge::TailCapacity::of(&socket);
     socket.set_hop_limit(Some(sizing.hop_limit));
     if let Err(e) = socket.listen(endpoint) {
         // Never added to the set, so dropping it here is the whole of its cleanup.
@@ -198,32 +201,22 @@ pub(crate) fn prepare<R>(
     // [vpnhotspotd::shared::flow_budget::channels_footprint] read when this flow's grant was taken, so
     // reading it again here is what keeps the construction inside the charge rather than beside it.
     let control = built_depth(sizing.flow.control);
-    // The one queue built deeper than the rest: what the upstream half may read ahead of the client's stack.
-    let read_ahead = built_depth(sizing.flow.read_ahead);
-    let (downstream, receiver) = mpsc::channel(control);
-    let (chunks, incoming) = mpsc::channel(read_ahead);
-    let (consumed, acknowledged) = mpsc::channel(control);
+    // The whole of this flow's byte movement, at the capacities the charge above was computed from: a
+    // bounded stream pair for steady-state traffic and the reserved tail the client's ending is extracted
+    // into. Nothing of ours travels on either: the backpressure is the buffers filling and every wake is the
+    // library's own, which is why there is no readiness channel and no acknowledgment here to build.
+    let (bridge, stream) = bridge::bridge(sizing.flow.bridge, tail);
     // The reusable control pair every question on this flow travels over, built once with the flow. A
     // oneshot per query would be heap that appeared before the query's own grant did, which is the shape the
     // aggregate exists to prevent.
     let (answers, control_end) = mpsc::channel(control);
     let (filled, accepted) = mpsc::channel(control);
-    let mailbox = Mailbox {
-        chunks,
-        consumed: acknowledged,
-        identity: FlowId::new(handle, identity.id),
-    };
     Ok(Prepared {
         connection,
         handle,
         identity,
-        mailbox,
-        // Both of the engine's ends together, because they are one ownership: the queue it takes payload out
-        // of, and the slot it hands chunks over through. The slot is wrapped here rather than by the caller,
-        // so the only sending half this flow ever has is the one that registers the engine for a wake.
-        transfer: Transfer::new(incoming, Room::new(downstream)),
-        consumed,
-        receiver,
+        bridge,
+        stream,
         serving: Serving::new(answers, accepted),
         control: control_end,
         filled,
@@ -247,8 +240,9 @@ fn close_idle(admission: &mut Admission, connection: Connection) {
 
 /// The reverse of [prepare], explicitly and in reverse order.
 ///
-/// The socket leaves the set with its two buffers, then the mailbox and every channel end, and only then is
-/// the grant released - so the aggregate never reads as free while a buffer this daemon still owns is alive.
+/// The socket leaves the set with its two buffers, then both halves of the bridge and every channel end, and
+/// only then is the grant released - so the aggregate never reads as free while a buffer this daemon still
+/// owns is alive.
 pub(crate) fn release(
     admission: &mut Admission,
     sockets: &mut Sockets,
@@ -258,19 +252,15 @@ pub(crate) fn release(
     sockets.remove(handle);
     let Leftovers {
         connection,
-        mailbox,
-        receiver,
-        transfer,
-        consumed,
+        bridge,
+        stream,
         control,
         filled,
     } = leftovers;
-    drop(mailbox);
-    drop(receiver);
-    // Both of the engine's ends, and with them whatever the queue toward the client still held and the
-    // reservation the engine was keeping in the queue toward the task.
-    drop(transfer);
-    drop(consumed);
+    // Both halves of the bridge, and with them whatever either direction still held: an abortive ending
+    // discards it, which is what a reset means.
+    drop(bridge);
+    drop(stream);
     drop(control);
     drop(filled);
     close_idle(admission, connection);

@@ -18,7 +18,7 @@ use crate::report;
 use crate::shizuku::owned::Owned;
 use crate::shizuku::tcp_dns::{self, Submitted};
 use crate::shizuku::tcp_flow::Event;
-use crate::shizuku::workers::Held;
+use vpnhotspotd::shared::workers::Held;
 
 impl Engine {
     /// Answers one thing a DNS-over-TCP transport asked its owner for.
@@ -37,9 +37,10 @@ impl Engine {
                 self.reserve_query(flow, length, admitting, admission)
             }
             tcp_dns::Ask::Query(flow) => self.commit_query(flow, admitting, admission),
-            // The transport has acknowledged the last chunk and dropped its result and framing buffers, so
-            // the delivery grant may end. Validated on both halves first: a report naming a handle whose flow
-            // has been replaced would end the successor's delivery instead of its predecessor's.
+            // The transport has written the whole answer into its bridge and dropped both of its own
+            // buffers, so the delivery grant may end. Validated on both halves first: a report naming a
+            // handle whose flow has been replaced would end the successor's delivery instead of its
+            // predecessor's.
             tcp_dns::Ask::Delivered { flow, delivery } => {
                 // Both identities, and both before anything is released. The flow says the transport is one
                 // this owner still holds - handles are reused, so a report from a replaced flow would
@@ -47,7 +48,7 @@ impl Engine {
                 // transport asks one question after another and a late acknowledgment for a finished one
                 // would release its successor's grant while those bytes are still being framed.
                 let Some(held) = self.serving(flow) else {
-                    self.counters.stale += 1;
+                    self.counters.ingress.stale += 1;
                     return;
                 };
                 match held.record.serving.acknowledge(admission, delivery) {
@@ -55,7 +56,7 @@ impl Engine {
                     // A duplicate, or one whose answer the flow's close already ended, or one naming a
                     // delivery that is not the parked one. None of them releases anything.
                     dns_debt::Acked::Mismatched | dns_debt::Acked::Absent => {
-                        self.counters.stale += 1
+                        self.counters.ingress.stale += 1
                     }
                 }
             }
@@ -88,7 +89,7 @@ impl Engine {
         admission: &mut Admission,
     ) {
         if self.serving(flow).is_none() {
-            self.counters.stale += 1;
+            self.counters.ingress.stale += 1;
             return;
         }
         // A session that has stopped serving admits no new exchange. Refused rather than ignored, which is
@@ -119,7 +120,7 @@ impl Engine {
         // exactly once - see [crate::shizuku::tcp_dns::Serving].
         let Some(held) = self.flows.get_mut(&flow.handle) else {
             // Unreachable: the pair was validated above and nothing since has awaited.
-            self.counters.stale += 1;
+            self.counters.ingress.stale += 1;
             drop(query);
             reserved.end(admission);
             return;
@@ -150,18 +151,18 @@ impl Engine {
     /// before it refunds - rather than one sitting in a shared queue while its grant is given back.
     fn commit_query(&mut self, flow: Event, admitting: bool, admission: &mut Admission) {
         let Some(held) = self.serving(flow) else {
-            self.counters.stale += 1;
+            self.counters.ingress.stale += 1;
             return;
         };
         let Some((reserved, query)) = held.record.serving.accept() else {
             // Nothing was admitted for this transport, so there is no query to publish and no grant to end.
-            self.counters.stale += 1;
+            self.counters.ingress.stale += 1;
             return;
         };
         let Some(query) = query else {
             // Unreachable: the transport hands the buffer over before it says so. Ended rather than assumed
             // away, because a reservation nobody consumes is capacity nothing gives back.
-            self.counters.stale += 1;
+            self.counters.ingress.stale += 1;
             return reserved.end(admission);
         };
         // Sampled together and now: which selection this query goes out on, and which config it belongs to.
@@ -259,7 +260,7 @@ impl Engine {
             ..
         } = self;
         let Some(held) = flows.get(&flow.handle) else {
-            counters.stale += 1;
+            counters.ingress.stale += 1;
             return false;
         };
         if queries.quarantine(admission, held.record.connection.lease()) {
@@ -285,7 +286,7 @@ impl Engine {
         let Some(held) = self.flows.get_mut(&flow.handle) else {
             // Unreachable: validated by the caller with nothing awaited since. The query goes before the
             // grant that covered it, like every other buffer on this path.
-            self.counters.stale += 1;
+            self.counters.ingress.stale += 1;
             drop(query);
             return reserved.end(admission);
         };
@@ -351,7 +352,7 @@ impl Engine {
         // answer *or* a refusal about it can honestly be sent to. Absent, closed or reused flows are the
         // same silence for the same reason.
         if !live || stamp.epoch != self.stamp.epoch {
-            self.counters.stale += 1;
+            self.counters.ingress.stale += 1;
             // Silent on the wire, not in the log. There is no transport left to carry this failure to a
             // terminal, so for the one outcome that is this daemon's own - the platform holding a slot
             // nothing here can watch - this is the last owner that can say it, and it says it before the

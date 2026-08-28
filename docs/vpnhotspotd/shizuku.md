@@ -415,7 +415,7 @@ three principals - DNS, IPv4, IPv6 - are shared classes; nothing derives identit
 
 | Client traffic | How it is carried | Outer state the daemon owns |
 | --- | --- | --- |
-| TCP | terminated locally by `smoltcp` and reconnected upstream, so each side segments to its own MTU | flow record, socket, two 64 KiB buffers, one upstream descriptor, one read-ahead queue of at most one send buffer's worth of upstream payload |
+| TCP | terminated locally by `smoltcp` and reconnected upstream, so each side segments to its own MTU | flow record, socket, two 64 KiB buffers, one upstream descriptor, a bounded byte bridge of one send buffer's worth each way, and a reserved terminal tail of one more |
 | UDP | one endpoint-independent, address-filtered mapping per TUN-visible source, on an unconnected socket reused across destinations | mapping, remote records, bounded send history |
 | DNS to a virtual resolver address | terminated and handed to the platform resolver, over UDP and TCP | transaction row, logical resolver token |
 | ICMP Echo | relayed on a ping socket | Echo session and socket |
@@ -473,13 +473,22 @@ Three rules hold the accounting together, and they are what other owners may rel
   acknowledged configuration therefore means the descriptors of everything it retired are closed.
 - **One reservation per row, taken before the payload**, which is what makes a bounded queue a real bound.
 
-A TCP flow's reservation covers its read-ahead queue in full - every chunk it may hold, whether or not that
-flow ever fills it - so the read-ahead is paid for in flows the device can admit rather than in memory it
-finds out about later. It adds one send buffer's worth of chunks, about 70 KB, to a charge whose two stack
-buffers were already 128 KB. What that costs in prepared flows depends on the device: the solver takes the
-largest count whose per-flow charge and tables still fit the *general byte headroom*, so where bytes are the
-binding constraint the count falls in proportion, and where the descriptor floor or a table bound is what
-binds first it does not move at all.
+A TCP flow's reservation covers every byte its pipes may hold, whether or not that flow ever fills them, so
+the read-ahead is paid for in flows the device can admit rather than in memory it finds out about later. There
+are three such pipes and each is a `tokio::io::simplex`: the two directions of the byte bridge, and the
+reserved terminal tail the client's ending is extracted into. Their buffers are `BytesMut`, and tokio bounds
+their *length* at the capacity asked for while `Vec`'s amortized doubling bounds their *allocation* at four
+times it, so each is charged at four times what it will admit. At 64 KiB apiece that is 768 KiB of pipe on top
+of a charge whose two stack buffers were already 128 KiB - about 900 KiB per flow, against roughly 70 KiB of
+chunk buffers before.
+
+The tail is charged at the same multiple as the other two rather than at half of it. An earlier derivation
+halved it because the tail is written once from empty and never read while it fills; because the extraction
+closes the main stream *first*, a worker that is keeping up starts draining the tail while the writes into it
+are still happening. That is an ordinary producer and consumer, so it takes the ordinary bound. What it costs in prepared flows depends on the device: the solver takes the largest count whose
+per-flow charge and tables still fit the *general byte headroom*, so where bytes are the binding constraint
+the count falls in proportion, and where the descriptor floor or a table bound is what binds first it does
+not move at all.
 
 Because there is no client identity, these budgets are self-protection rather than fairness.
 
@@ -524,66 +533,272 @@ side ends the flow.
 
 #### TCP Transfer, Backpressure And Wakes
 
-One task owns the client-side stack, so both directions of every flow are moved by it, and each direction is
-bounded by that flow's *own* queue, whose readiness is also the wake. **No message travels between a flow's
-task and the engine to say work is waiting, in either direction, and no queue is shared between flows.**
-Nothing here is timer-driven, polled or periodic.
+One task owns the client-side stack, so both directions of every flow are moved by it. What a flow's worker
+sees of that owner is one bounded Tokio stream and nothing else. It is built from library combinators only:
+three one-way `tokio::io::simplex` pipes - downward and upward for steady-state traffic, and one **reserved**
+for the client's ending - presented as a single `AsyncRead + AsyncWrite` by `chain` and `join`. The worker
+reads `down.chain(tail)` and writes the upward pipe; it never learns there are three. Naming the directions
+outright rather than `split`ting a `duplex` is what makes the tail orderable against the main stream at all.
+Each `simplex` is itself a `split` and still owns one `Arc<Mutex<SimplexStream>>`; what it removes is the
+*extra outer* split a `duplex` half needed to reach `chain` - one more allocation, and a second mutex every
+worker read and write took before reaching the pipe's own. Ordinary TCP and
+DNS-over-TCP are handed the same object by the same factory.
+**No message travels between a flow's task and the engine to say work is waiting, in either direction, no
+capacity is read, and nothing is shared between flows.** Every wake is the library's own: there is no
+periodic poll, no timer-driven readiness check and no readiness protocol of this daemon's. (The owner does of
+course *poll* in the `Future` sense - `poll_fn`, `poll_read`, `poll_write` - which is how a Tokio waker gets
+registered in the first place; what it never does is ask again on a schedule.) An ordinary flow's worker runs
+`tokio::io::copy_bidirectional_with_sizes`
+between its upstream socket and that stream, at one 1,500-byte scratch per direction, so its half of the
+transfer is Tokio's rather than this daemon's.
 
-**Upstream to client.** The flow's task hands each read into a per-flow queue and reads again as soon as that
-queue has room, up to one client-side send buffer's worth of read quanta - 43 chunks of 1,500 bytes at the
-64 KiB buffer this mode uses. The engine takes exactly one chunk at a time into the flow's row, writes it
-into the client's send buffer at an exact offset, and takes the next as soon as that one is fully written.
-Trigger: an enqueue into a queue whose row is empty, a client acknowledgement that opens the window, or the
-engine's own poll. The engine registers with a flow's queue only while that flow's row will accept a chunk: a
-busy row needs no wake, because consuming it refills the row from the same queue, so a burst is drained
-without a wake after the first. Bounded state: the queue's depth, the row's one chunk, and the chunk the task
-itself is holding - all charged before the flow exists. Backpressure: a full queue stops the task reading,
-which closes the *upstream's* window. Nothing is dropped to relieve pressure.
+The engine reads the stream straight into `smoltcp`'s send buffer and writes `smoltcp`'s receive buffer
+straight into the stream, at the contiguous slices each of them offers, so nothing is ever held between the
+two. A short move is fewer bytes, never a remainder somebody has to remember.
 
-Two arrangements preceded this one. The first queued one chunk and waited for the engine to acknowledge
+Every stall a flow can be in is one of four, and each has exactly one wake:
+
+| Stall | What frees it | What registers the wake |
+| --- | --- | --- |
+| the stream is empty and the client can take bytes | the worker writing one byte | the engine's `poll_read` on the stream |
+| the stream is full and the client's receive buffer has bytes | the worker reading one byte | the engine's `poll_write` on the stream |
+| the client's send buffer is full | the client's acknowledgement | the TUN read the ingress task already waits on |
+| the client's receive buffer is empty | a packet from the client | the same |
+
+The last two are deliberately not registered with `smoltcp`: those buffers change only when a packet or a
+stack timer is processed, and the ingress task is that processing's only owner and re-enters the crossing
+immediately after it. That is why `smoltcp`'s `async` feature stays off - `register_send_waker` and
+`register_recv_waker` would fire into a task already scheduled to look.
+
+Backpressure is the buffer filling, in both directions and losslessly. A full stream stops the worker reading
+its upstream, which closes the *remote's* window; a full stream in the other direction stops the engine
+draining the receive buffer, which closes the *client's* window. Up to one client-side send buffer of
+read-ahead may sit in each direction, which is what lets the worker read while the engine is writing what it
+read before. Nothing is dropped to relieve pressure.
+
+Fairness is the pass rather than a scheduler: one pass over the round-robin order gives every live flow
+exactly one turn, bounded by that flow's own charged buffers. **Ending the pass is what rotates it**, so the
+flow that went first goes last in the next one and every flow reaches the client's send buffer first in turn.
+The order is a single type that also admits, undoes and forgets a flow's place; there is no second path into
+it, because both bugs that shape prevents were invisible at the call site - a pass that "rotated" by popping
+and pushing every entry restored the order it began with, and a rollback that scanned for the candidate's
+handle also deregistered a live predecessor holding the same one.
+
+Three arrangements preceded this one. The first queued one chunk and waited for the engine to acknowledge
 consuming it before reading again, which is a task/engine/task scheduling round trip per 1,500 bytes and no
 read-ahead at all. The second kept the read-ahead but announced each chunk on a readiness channel every flow
-shared, prepared for one marker per live flow: duplicates coalesce only after the engine has received them, so
-one busy flow could fill that channel and make another flow's producer wait on it - the cross-flow dependency
-the read-ahead exists to remove.
+shared, so one busy flow could make another flow's producer wait on it. The third replaced that channel with
+a per-flow chunk queue, a one-chunk row, a deficit round-robin over the rows and a reserved channel slot in
+the other direction - four pieces of custom protocol expressing what one bounded stream's own readiness
+already says.
 
-**Client to upstream.** The engine holds one reserved slot in each flow's queue. Holding it is the permission
-to move a chunk out of the stack's receive buffer; using it starts the next reservation, and that reservation
-is what registers the engine to be woken when the task takes the chunk. Depth stays at one deliberately: what
-the client sends beyond that stays in the stack's own receive buffer, so the client's window closes instead of
-this daemon buffering a second copy. Trigger: the task taking a chunk, or any packet or poll that puts bytes
-in the receive buffer. Failure semantics: a queue whose task is gone answers immediately and permanently, and
-the flow's own ending settles it. The earlier arrangement read the queue's *capacity* instead, which
-registered nothing - so a full queue left the receive buffer undrained and the client's window closed until
-some unrelated event happened to wake the ingress task, which for an upload-only flow is the client's own
-zero-window probe.
+**DNS-over-TCP crosses the same stream.** It frames its answer once and writes the framed copy into the
+stream; what bounds that write is the stream filling, which is the engine's own draining. Its delivery
+reservation therefore pays for the answer and the framed copy, and no longer for a piece in flight - there is
+no piece, and no acknowledgment for one.
 
-**DNS-over-TCP keeps the acknowledged handover.** Its delivery reservation pays for the answer, the framed
-copy and *one* piece, so its pieces are handed over one at a time and the next is not built until the engine
-says the previous one was consumed. Queueing them would hold as many copies as the read-ahead is deep. It is
-the only flow kind the engine acknowledges to.
+**An abortive ending discards more than a one-chunk handover would.** A flow reset by a retirement, an idle
+expiry or an upstream that failed or vanished drops whatever the engine has not yet written into the client's
+send buffer, which is up to one stream's worth. The client is told the one way a terminated flow can say it:
+a reset. The clean path loses nothing - the end of the stream is reported only after every byte written
+before it, and a clean completion detaches the flow so the engine goes on delivering what the task left in
+the stream. That works because a worker shuts its write half down before returning, not because it drops it -
+a `simplex` half signals nothing on drop - and because every path that reclaims a flow cancels and joins its
+worker before this owner's own halves go.
 
-**An abortive ending discards more than it used to.** A flow reset by a retirement, an idle expiry or an
-upstream that failed or vanished drops whatever the engine has not yet written into the client's send buffer,
-which is now up to one send buffer's worth of queued chunks rather than one. The client is told the one way a
-terminated flow can say it: a reset. The clean path loses nothing - the ordered end of stream is queued
-behind the payload it follows, and a clean completion detaches the flow so the engine goes on delivering what
-the task left queued.
+#### The Client's Half-Close, And What A Closed Socket May Cancel
+
+The client's FIN is propagated to the worker as the end of its own read stream, and **only once the receive
+buffer is empty** - and because the main stream can be full for as long as the worker is slow, that emptying
+may not be a *wait*. The client's ending is **extracted** instead, on the ingress that carried its FIN and
+before that call returns: the main stream is closed, every remaining receive byte is moved into the reserved
+tail, and the tail is closed once that buffer is empty. Because the worker is reading `down.chain(tail)`, what
+it observes is always main bytes, then tail bytes, then exactly one end of stream - whichever order this owner
+wrote them in.
+
+**The idle floor is armed first, in the same call.** The rearm runs after the poll that produced the phase and
+*before* the seal, with nothing awaited in between. That order is load-bearing rather than tidy: a successful
+seal leaves the flow flushing, and a flushing flow in a terminal phase deliberately preserves the deadline it
+already has, because `TIME-WAIT` has no floor of its own and `Closed` has a zero one. Seal first and what is
+preserved is the *previous* deadline - so a FIN that lands a moment before one expires is cancelled while its
+worker is still flushing bytes this daemon acknowledged. Rearm first and the preserved deadline is the fresh
+one that FIN earned. An accepted reset is not rearmed at all: a flow whose client is gone has no idle floor
+worth arming.
+
+The extraction is **one uninterruptible step**, and that is the correctness property rather than an
+optimisation. A resumable one was tried and was lossy for a reason that has nothing to do with the bridge:
+this owner runs `Interface::poll` between owner turns - from the traffic path immediately after any pass that
+moved something, and from the packet, timer, terminal and retirement paths besides - and a `TIME-WAIT` socket
+ten seconds old clears its whole receive buffer inside that poll. A half-extracted ending is therefore not a
+state to come back to; it is acknowledged client bytes waiting to be discarded by the next thing this owner
+does, and this owner has five ways to do it. That is also why the extraction is not deferred to the next
+traffic pass: the configuration arm is offered first and can await a whole retirement before that pass ever
+runs.
+
+What used to interrupt it was Tokio's own cooperative scheduling, not the pipe: `poll_proceed` answers
+`Pending` once the *task* has spent its 128 operations, whatever the tail's state, and the engine scans every
+live flow in one task poll - so a flow reached late in a busy pass hit that routinely.
+`tokio::task::unconstrained` removes exactly that and nothing else: it sets the budget to unconstrained for
+one poll of the future it wraps, and the future wrapped here is one shutdown, at most two writes and one
+shutdown. What is exempted from cooperative yielding is a fixed, self-terminating step, not a loop that could
+starve the runtime.
+
+Everything else about it is bounded before it starts, and none of the bounds is this daemon's guess. The tail
+is empty, because nothing else ever writes to it, and its capacity is the receive buffer's own, so the room is
+there. `WriteHalf<SimplexStream>::poll_write` takes a *blocking* `std::sync::Mutex` rather than a poll-based
+lock, so a worker reading the tail on another thread cannot make it answer `Pending`. Underneath it,
+`SimplexStream` answers `Pending` in exactly one case - no room - and `poll_shutdown` is `close_write` and
+`Ready(Ok(()))` unconditionally. A `smoltcp` receive ring is two contiguous runs at most, and the loop covers
+both rather than writing once.
+
+So with the budget out of the way, a `Pending` from the tail can only mean it was built smaller than the
+receive buffer. That is a construction error, not a state: the flow is ended abortively and the crossing says
+so. The alternative would be a clean close over a truncated stream, which is the one outcome that must never
+be reachable.
+
+Because the main stream is closed on entry, no later byte can overtake one already in the tail, and the
+worker's `chain` puts the two back in one order.
+
+**This owner's own FIN is withheld while the receive buffer still holds the client's bytes.** The question is
+asked of the stack - `can_recv` - not of any state of the daemon's, so the invariant is structural: a
+`CLOSE-WAIT` socket cannot reach `LAST-ACK` with unread client payload inside it. That was the first of two
+real losses: the local FIN went out while a full main stream held those bytes in `smoltcp`, the socket reached
+`Closed`, and the Closed-socket check cancelled the worker. The two half-closes stay independent otherwise -
+from `ESTABLISHED` the client has not finished, so an upstream EOF is propagated at once, which the protocols
+that need it depend on.
+
+**The second loss was the other ordering.** Once the local FIN is out, the client's remaining payload and FIN
+can put the socket straight into `TIME-WAIT` - smoltcp goes `FIN-WAIT-1` + FIN + ack-of-FIN there in one step
+- and smoltcp's close timer is a fixed ten seconds that `set_timeout` does not govern, after which `reset()`
+clears the receive buffer outright. Remembering that the ending was pending cannot preserve those bytes; only
+getting them out of the stack can, which is what the reserved tail is for. Nothing about *scheduling* beats
+that timer, and an earlier version of this document claimed otherwise: biasing the ingress `select!` toward
+`tcp.attention()` only decides which arm is offered first, and every path that arm reaches - traffic, packets,
+terminals, retirement - polls the stack itself. What beats the timer is that the extraction leaves no half-done
+state for a poll to catch, so where the poll falls stops mattering.
+
+That propagation is recorded as a state and not as a flag, because one thing reads it and the answer decides
+whether bytes survive. The engine makes a **Closed-socket check** over its flows - distinct from the
+configuration *sweep* that retires them, and never a substitute for it. Every non-packet caller makes it with
+the poll it asks for; the packet path deliberately does not, and defers its single scan to the end of the
+sequence, because the scan cancels workers and the decisions above it are entitled to run first. When the
+client-side socket has reached `Closed`, that check cancels the flow's worker, which is right for a reset,
+for a flow that never opened, and for a worker already gone. It is **wrong for a connection that ended the
+way its protocol says it ends**: the worker may still be writing bytes this daemon acknowledged to the
+client, held in the bridge or in the copy's own scratch, and cancellation is abortive and would drop them.
+
+**A reset is therefore what the stack accepted, never what a bit said.** `smoltcp` accepts a reset in the
+connected and closing phases alike and leaves exactly the `Closed` a completed shutdown leaves, so by the time
+the check runs there is nothing left to tell them apart - and a client that resets *after* half-closing
+cleanly is the ordinary case, not a corner one. But the `RST` bit in a header is only a **candidate**: the
+checksum, the tuple, the sequence number and the window are all still the stack's to judge, and it refuses a
+reset outright in `LISTEN`. Acting on the raw bit poisoned flows named by bad-checksum and out-of-window
+segments, and the poison outlived the packet - each flow's own later, legitimate `Closed` then cancelled a
+worker mid-flush.
+
+So this owner carries no reset cause at all. It records which flow the segment names and what phase that
+socket is in, lets the packet be pushed and processed, and reads the transition: `Closed`, or `SYN-RECEIVED`
+back to `LISTEN`. Both polls run at **one pinned instant**, so a close timer that was already due cannot be
+mistaken for a reset; a socket already `Closed` is never a candidate; and a packet the device refuses changes
+nothing, because there is no cause to change. `smoltcp` never applies a reset segment's acknowledgement, so a
+segment carrying `RST` can move a socket only through the reset arms themselves.
+
+An accepted reset is **fenced synchronously**. `SYN-RECEIVED` -> `LISTEN` is a reset the stack accepted that
+leaves a *reusable listener*, and cancelling the worker is not enough: cancellation is asynchronous, so a
+same-tuple `SYN` arriving before that worker's terminal would attach to the predecessor - which reclamation
+then tears down, destroying a connection the client had just made. The socket is aborted first, which leaves
+`Closed` and accepts nothing, and only then is the worker cancelled. An established accepted reset is abortive
+in the same way. Without any of this, a flow whose client is gone would hold its descriptor and its admission
+slot for the whole of a clean flow's idle floor.
+
+**No reset goes back.** The stack cleared the socket's tuple when it accepted the client's, so there is
+nothing left to address one to, and this owner deliberately does not poll again on that path - a client that
+has reset is answered with silence. The poll that *is* skipped there is the same one an ordinary segment
+skips: after the push, a second same-instant `Interface::poll` runs only when this owner has left the stack
+something to do, which means an extraction that emptied a receive buffer and reopened a window, or a fence on
+a socket that still has an endpoint to send a reset to. An established flow's ordinary segment gets one poll,
+which is what keeps the throughput path from paying twice.
+
+**An opening is refused or unwound.** A `SYN` that also carries `RST` opens nothing: the stack refuses a
+reset in `LISTEN` and would refuse the opening too, so admitting one would buy a socket, a grant, a bridge and
+a spawned worker per packet for a segment that was never going to connect. And a `SYN` this owner *did* open a
+flow for, which then never reaches the stack at all - the device still held an untaken packet - or which the
+stack throws away when it does, on a bad checksum or a malformed header, leaves that socket only listening;
+either way it is fenced and cancelled on the same call rather than held until the four-minute transitory
+floor. Only the flow that packet created, so a duplicate `SYN` for a listener that already existed is left
+alone.
+
+**And the Closed-socket scan runs last.** It is what cancels a worker whose socket the stack has finished
+with, so it may not run *inside* the poll the sequence above settles with: an accepted reset has to fence its
+socket before its worker is cancelled, and a client's FIN has to arm its idle floor before its ending is
+extracted, and a scan reaching a `Closed` socket first would do neither in that order. The settle primitive is
+therefore the stack, the device and the output and nothing of any flow's; the scan happens once, after the
+whole sequence has decided. Every other caller still reaches both together.
+
+So a cleanly half-closed flow is not cancelled by `Closed` alone. It ends on its worker's own completion,
+which is ordinary work rather than a teardown to cut short. What still bounds it is unchanged and still
+abortive: its outer idle floor, any configuration retirement, and the session's own shutdown.
+
+**And the flush needs a bound that survives the teardown, in both close orderings.** A flow is somewhere in
+three states, read from the bridge and the client-side phase *together* rather than from a flag beside them -
+they move at different moments, and the gap between them is where this went wrong twice.
+
+| State | What it is | What activity rearms it to |
+| --- | --- | --- |
+| ordinary | the client has not finished sending, or this is not a clean ending at all | the phase's own floor |
+| **pending** | the stack has seen the client's FIN (`CLOSE-WAIT`, `CLOSING`, `LAST-ACK`, `TIME-WAIT`) and the extraction a few steps later in the same `accept` has not run yet | the established floor |
+| **flushing** | propagated; the worker is writing what the client sent | the established floor while the phase can still reach the client, otherwise the existing deadline, preserved exactly |
+
+*Pending* is a transient inside one `accept` and nothing longer-lived: it is what the rearm sees, because the
+rearm runs before the seal in that same call. No flow can sit in it between packets - the device holds one
+packet, that packet names exactly one flow, and the sequence seals that flow before returning; a timer or a
+retirement moves this daemon's own side of a connection, never the client's, so neither can produce a peer FIN
+for a later pass to discover. **When the upstream ends first**, this window is where a flow used to become
+unbounded: this daemon has already closed its own side, so the client's
+last payload and its FIN arrive together acknowledging ours, and smoltcp goes `FIN-WAIT-1` + FIN + ack-of-FIN
+straight to `TIME-WAIT` in one step - whose floor is none at all. Ten seconds later `Closed` takes the stack's
+own timer away too, and a worker blocked writing acknowledged bytes into an upstream zero window held its
+flow, its descriptor and its admission for ever. Enough of those exhaust the fixed budget. A pending flow
+therefore takes the **established** floor: the client's bytes are still on their way through this daemon,
+whatever the client-facing half of the connection has torn down. That is an existing RFC 5382 figure, not a
+new one.
+
+*Flushing* splits, and that split is the other correction. `CLOSE-WAIT` and `ESTABLISHED` can still put
+application data in front of the client - they are exactly what `smoltcp`'s `may_send` answers `true` for - so
+a halted flow in one of them is an ordinary download whose client merely stopped sending, and every packet and
+every delivery is real activity that rearms it. Freezing it there expired a long response that had never once
+been idle, purely because it outlasted the floor its client's FIN happened to arm. Only the terminal phases -
+`CLOSING`, `LAST-ACK`, `TIME-WAIT`, `Closed` - preserve the deadline the flush already has, because there no
+byte can reach the client any more and the phase's own floor is none or zero: either would take the bound away
+or make the flow immediately due and let the next expiry cancel the worker mid-flush.
+
+The result is that a clean ending is bounded from the moment the stack sees the FIN, through every teardown
+phase after it, in both orderings - and never by a figure invented for the purpose.
+
+| How the client's side ended | Recorded as | What `Closed` does |
+| --- | --- | --- |
+| FIN, after every byte it sent was across | a clean half-close | nothing; the worker's completion ends the flow |
+| reset, whether or not a clean FIN came first | not a half-close; the cause outranks the phase | cancels the worker |
+| never opened, or worker already gone | not a half-close | cancels the worker |
 
 #### A Flow Can Outlive Its Worker
 
-Both TCP workers return as soon as their own ordered work is done - for an ordinary flow, as soon as its last
-payload and its ordered end of stream are *queued*, since only DNS-over-TCP waits to be told a piece was
-consumed. The client's socket at that moment is typically still `ESTABLISHED` with bytes to deliver, or in
-`LAST-ACK`, `CLOSING` or `TIME-WAIT`. A clean terminal from a flow nobody asked to stop therefore **detaches**
-the flow instead of ending it: the worker and its upstream descriptor are gone, while the flow keeps its
-socket, its buffers, its reservation and whatever its own queue still holds until `smoltcp` reaches `Closed`,
-its outer floor passes, a configuration retires it, or the session ends. The engine goes on taking from that
-queue exactly as it did while the worker existed. Because a terminal now arrives with bytes still owed, the
-detach-or-end decision is made *before* anything of the flow's is discarded; ending is what discards the row.
-Its record is removed and its reservation released exactly once, by whichever ending happens first, and no
-retirement waits for a second terminal from it. A cancelled worker, a socket that never completed its
-handshake, and a failed worker are not this case: each has no client teardown left to protect.
+Both TCP workers return as soon as their own ordered work is done - as soon as their last bytes and their
+ordered end of stream are *in the stream*, not delivered. The client's socket at that moment is typically
+still `ESTABLISHED` with bytes to deliver, or in `LAST-ACK`, `CLOSING` or `TIME-WAIT`. A clean terminal from a
+flow nobody asked to stop therefore **detaches** the flow instead of ending it: the worker and its upstream
+descriptor are gone, while the flow keeps its socket, its buffers, its reservation and whatever its half of
+the stream still holds until `smoltcp` reaches `Closed`, its outer floor passes, a configuration retires it,
+or the session ends. What the worker wrote stays readable, and the end of the stream follows it - **because
+the worker shut its write half down before returning, not because it dropped it**. Dropping a `simplex` half
+signals nothing at all; only `tokio::io::duplex` did that. `copy_bidirectional` shuts a direction down when
+its reader reaches the end of the stream, a DNS-over-TCP transport does the same explicitly, this owner's own
+`Bridge` closes both of its write halves whenever its side goes, and every reclamation cancels and joins the
+worker first. So the engine goes on delivering exactly as it did while the worker existed - which is also why
+the detach arm has nothing to discard. Its record is removed and its reservation released exactly once, by
+whichever ending happens first, and no retirement waits for a second terminal from it. A cancelled worker, a
+socket that never completed its handshake, and a failed worker are not this case: each has no client teardown
+left to protect.
 
 ## External State And Cleanup
 

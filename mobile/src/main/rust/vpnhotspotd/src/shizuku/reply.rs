@@ -19,7 +19,7 @@
 //! happened to arrive, which is indistinguishable from the remote never having sent it.
 //!
 //! Nothing terminal travels on the channel below. The close is this task *finishing*, which is what
-//! [crate::shizuku::workers] joins, because a message saying "closed" would still be sent while this
+//! [vpnhotspotd::shared::workers] joins, because a message saying "closed" would still be sent while this
 //! task held its `Arc` of the descriptor. Every send here therefore races the token as well: a payload
 //! handed to a saturated owner must not be what keeps a retirement waiting.
 
@@ -27,7 +27,6 @@ use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use crate::shizuku::workers::Ended;
 use socket2::Socket;
 use tokio::io::unix::AsyncFd;
 use tokio::io::Interest;
@@ -37,6 +36,7 @@ use vpnhotspotd::shared::icmp_translate::Reported;
 use vpnhotspotd::shared::reply_bound::{
     reply_channel_footprint, Drained, ErrorSource, Turn, Turned,
 };
+use vpnhotspotd::shared::workers::Ended;
 
 use crate::shizuku::budget::REPLY_QUEUE_DEPTH;
 use crate::shizuku::egress;

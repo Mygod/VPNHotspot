@@ -1,10 +1,10 @@
 //! One DNS-over-TCP flow, answered by the platform resolver instead of by an upstream connection.
 //!
 //! The transport is the same shape as [crate::shizuku::tcp_flow]'s splice and deliberately interchangeable with it: the
-//! engine opens a flow the same way, hands over the same receiver, and gets back the same events and the same
-//! terminal. What differs is only where the answers come from - which is the whole point of the virtual-DNS
-//! design, since a query answered here keeps private DNS, caching and per-network resolver configuration
-//! instead of reimplementing them.
+//! engine opens a flow the same way, hands over the same half of the same bounded byte bridge, and gets back
+//! the same terminal. What differs is only where the answers come from - which is the whole point of the
+//! virtual-DNS design, since a query answered here keeps private DNS, caching and per-network resolver
+//! configuration instead of reimplementing them.
 //!
 //! Framing is RFC 1035 section 4.2.2's two-byte length prefix, and it is why this cannot simply be spliced: a
 //! stream carries a sequence of messages rather than bytes to forward, and each has to be whole before the
@@ -43,27 +43,30 @@
 //! is a lifetime, not a task: the table is a prepared map the owner polls, which is what keeps a transaction
 //! from costing a spawn, a token and three oneshots nothing charged for.
 //!
-//! Queries are answered one at a time. A resolver that pipelines would be faster, but the reserved capacity is
-//! one slot per flow - see the engine - so a second concurrent query would be one this flow never paid for.
+//! Queries are answered one at a time. A resolver that pipelines would be faster, but a transport holds one
+//! logical resolver token for its whole life - see the engine - so a second concurrent query would be one
+//! this flow never paid for.
 //!
 //! https://www.rfc-editor.org/rfc/rfc1035#section-4.2.2
 
 use std::io;
 
+use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use vpnhotspotd::shared::dns_wire::{self, frame, Body, DnsStream, Framed};
 use vpnhotspotd::shared::failure::Failure;
-use vpnhotspotd::shared::preempt::hand_over;
+use vpnhotspotd::shared::preempt::{hand_over, shutdown, write_all, Written};
 
 use vpnhotspotd::shared::admission::Admission;
+use vpnhotspotd::shared::bridge::Worker;
 use vpnhotspotd::shared::dns_debt::{self, DeliveryId, Parked};
 
 use crate::shizuku::budget::MAX_DATAGRAM;
 use crate::shizuku::owned::Owned;
-use crate::shizuku::tcp_flow::{hand_over_in_pieces, Chunk, Event, Handed, Mailbox};
-use crate::shizuku::workers::Ended;
+use crate::shizuku::tcp_flow::Event;
 use vpnhotspotd::shared::flow_budget::READ_CHUNK;
+use vpnhotspotd::shared::workers::Ended;
 
 mod transactions;
 
@@ -304,14 +307,18 @@ impl Delivered {
     }
 }
 
-/// What one answer still owns after it has been built: the answer itself, the length-prefixed copy the
-/// transport frames beside it, and the one piece on its way into the mailbox.
+/// What one answer still owns after it has been built: the answer itself and the length-prefixed copy the
+/// transport writes into the bridge.
 ///
-/// Every term is real and none of them may be dropped. The prefix in particular: `frame` allocates
+/// Both terms are real and neither may be dropped. The prefix in particular: `frame` allocates
 /// `answer.len() + PREFIX`, so a bound of two maximum messages is two bytes short of a maximum answer -
 /// small, and exactly the kind of shortfall that turns a bound into an approximation.
+///
+/// There is no third term, because there is no third buffer: the framed copy is written straight into the
+/// flow's bridge, whose capacity the flow was charged for before it existed. What used to be here was one
+/// piece of it copied out for an acknowledged handover.
 pub(crate) const fn delivery_bytes(answer: usize) -> u64 {
-    2 * answer as u64 + dns_wire::PREFIX as u64 + READ_CHUNK as u64
+    2 * answer as u64 + dns_wire::PREFIX as u64
 }
 
 /// What is still owed once the resolver transaction has reached its terminal, which is the peak the
@@ -337,8 +344,7 @@ pub(crate) fn exchange_bytes(length: usize) -> Option<u64> {
     (length as u64).checked_add(DELIVERY_BYTES)
 }
 
-/// What answering one query here owes: the query, the SERVFAIL built from it, that answer's framed copy, and
-/// the one piece on its way into the mailbox.
+/// What answering one query here owes: the query, the SERVFAIL built from it, and that answer's framed copy.
 ///
 /// A SERVFAIL echoes its query's header and question and nothing else, so it cannot exceed the query it was
 /// built from - which is what makes this tier genuinely cheaper than [exchange_bytes] rather than merely
@@ -362,11 +368,10 @@ pub(crate) struct Serving {
     filled: mpsc::Receiver<Owned>,
     /// Capacity admitted for a query whose length the client announced and whose bytes have not all arrived.
     reserved: Option<Reserved>,
-    /// What the answer still owns after its terminal: the result, the framed copy and the chunk on its way
-    /// into the mailbox. Held here rather than released at the terminal, because every one of those buffers
-    /// exists *after* the transaction has finished - the transport has yet to receive, classify, frame and
-    /// hand them over. Ended when the transport says the last chunk was acknowledged, or when this flow
-    /// closes without it.
+    /// What the answer still owns after its terminal: the result and the framed copy built beside it. Held
+    /// here rather than released at the terminal, because both of those buffers exist *after* the transaction
+    /// has finished - the transport has yet to receive, classify and frame them. Ended when the transport
+    /// says the whole answer is in the bridge and both buffers are gone, or when this flow closes without it.
     delivery: Parked,
     /// The resolver transaction this flow opened, if its question is still outstanding. Named so that a
     /// transport closing over one can hand that question its token rather than charging a second. Cleared
@@ -549,9 +554,9 @@ pub(crate) fn answered_here(
         reserved.end(admission);
         return None;
     };
-    // Reconciled to exactly what physically survives this call: the answer, the framed copy the transport
-    // builds beside it, and the one piece on its way into the mailbox. Nothing here is a new charge - the
-    // reservation covered all of it - and what is left of that reservation ends inside the split.
+    // Reconciled to exactly what physically survives this call: the answer and the framed copy the transport
+    // builds beside it. Nothing here is a new charge - the reservation covered both - and what is left of
+    // that reservation ends inside the split.
     let delivery = reserved.settle(admission, delivery_bytes(servfail.capacity()));
     Some(Answering {
         settled: dns_debt::Settled::delivering(
@@ -585,8 +590,8 @@ pub(crate) enum Ask {
     /// the capacity. A query carried here instead would be a buffer in a shared queue when its flow's close
     /// ran, and the close would refund the grant covering bytes that were still in flight.
     Query(Event),
-    /// An answer whose last chunk the client's stack has acknowledged, and whose result and framing buffers
-    /// are dropped. The delivery grant may end - and only the owner may end it.
+    /// An answer the transport has written whole into its bridge, and whose result and framing buffers are
+    /// dropped. The delivery grant may end - and only the owner may end it.
     ///
     /// Both identities, because either alone is wrong. The flow says which transport is speaking; the
     /// delivery says *which answer* it is about. A transport asks one question after another on one flow, so
@@ -616,29 +621,37 @@ pub(crate) enum Granted {
 /// transaction either way, which the ingress owner holds in a table of its own when this is swept. Nothing
 /// terminal travels on the events channel, exactly as for an ordinary flow.
 pub(crate) async fn serve(
-    mut mailbox: Mailbox,
-    mut downstream: mpsc::Receiver<Owned>,
+    flow: Event,
+    mut bridge: Worker,
     asks: mpsc::Sender<Ask>,
     mut control: mpsc::Receiver<Control>,
     filled: mpsc::Sender<Owned>,
     cancel: CancellationToken,
 ) -> Ended {
-    let flow = mailbox.identity;
     // Two bytes and a count between reads: the length prefix is framed before anything is stored, so a client
     // that dribbles a query cannot grow anything here at all.
     let mut stream = DnsStream::default();
     // The message being filled, once its length has been admitted. Absent while nothing is being framed, and
     // absent for an announced message nothing could be granted for - whose bytes are skipped.
     let mut filling: Option<Owned> = None;
+    // One fixed read buffer for the whole transport, at the size the flow was charged for. It is reused
+    // rather than reallocated, so nothing here grows with what a client sends and nothing is held across a
+    // wait that was not charged before the flow existed.
+    let mut scratch = vec![0u8; READ_CHUNK];
     loop {
-        let chunk = tokio::select! {
+        let read = tokio::select! {
             biased;
             () = cancel.cancelled() => return Ended::Expected,
-            chunk = downstream.recv() => chunk,
+            read = bridge.read(&mut scratch) => read,
         };
-        // The engine dropping the sender is how a client's half-close reaches here: no more queries are
-        // coming.
-        let Some(chunk) = chunk else {
+        // The bridge does not fail while this task holds its half - the engine drops the other only after
+        // joining this task - so an error here is the engine already gone, which the terminal settles.
+        let Ok(read) = read else {
+            return Ended::Expected;
+        };
+        // The engine shutting its write half down is how a client's half-close reaches here: no more queries
+        // are coming.
+        if read == 0 {
             // Bytes arrived that never completed a message, so the client truncated its own request. There is
             // nothing to answer and no boundary to end cleanly on; the reset the engine writes for a reported
             // ending is what tells the client, where a clean FIN would suggest its query had been served.
@@ -646,35 +659,26 @@ pub(crate) async fn serve(
                 return Ended::Reported("DNS-over-TCP request ended mid-message".to_owned());
             }
             // Everything asked for has been answered and the client is done asking, so the stream ends
-            // cleanly - and *ordered* after the answers already in the mailbox. Awaited, not fired and
-            // forgotten: returning before the client's stack has taken the end of stream would let the
-            // lifecycle terminal overtake the bytes it is supposed to follow.
-            if !mailbox.hand_over(Chunk::Finished, &cancel).await {
-                return Ended::Expected;
+            // cleanly - and *ordered* after the answers already in the bridge, because shutting a write half
+            // down leaves everything written before it readable first.
+            match shutdown(&mut bridge, &cancel).await {
+                Written::Done | Written::Cancelled => return Ended::Expected,
+                Written::Failed(error) => {
+                    return Ended::Failed {
+                        context: "shizuku.tcp_dns_shutdown",
+                        error,
+                    }
+                }
             }
-            return Ended::Expected;
-        };
-        // One chunk may carry several messages, a fraction of one, or the tail of the last. All are ordinary.
-        let mut chunk = Some(chunk);
-        let mut offset = 0usize;
-        while let Some(held) = chunk.take() {
-            let mut rest = &held[offset..];
-            let framed = stream.advance(
+        }
+        // One read may carry several messages, a fraction of one, or the tail of the last. All are ordinary.
+        let mut rest = &scratch[..read];
+        loop {
+            match stream.advance(
                 &mut rest,
                 filling.as_mut().map(|query| query as &mut dyn Body),
-            );
-            offset = held.len() - rest.len();
-            // Kept only while it still has bytes in it. A spent chunk is dropped *here*, before any of the
-            // waits below: a transport parked on an answer while still holding bytes it has already framed
-            // is a chunk of this flow's grant held for as long as the platform takes to answer.
-            if offset < held.len() {
-                chunk = Some(held);
-            } else {
-                offset = 0;
-                drop(held);
-            }
-            match framed {
-                // More bytes are needed, and this chunk has none left.
+            ) {
+                // More bytes are needed, and this read has none left.
                 Framed::Hungry => break,
                 // Reset rather than ignored: nothing after a length that can never complete is at an offset
                 // this could resynchronize on. Two causes and one outcome - a zero-length message, which a
@@ -729,7 +733,7 @@ pub(crate) async fn serve(
                         delivered = control.recv() => delivered,
                     };
                     // The identity of the delivery the owner parked for this answer, carried through framing
-                    // and every chunk so the acknowledgment at the end names the answer it is actually about.
+                    // and the write so the report at the end names the answer it is actually about.
                     let (delivery, answer) = match delivered {
                         Some(Control::Answered(Answered::Delivered { delivery, result })) => {
                             (delivery, result)
@@ -747,31 +751,34 @@ pub(crate) async fn serve(
                         // which happens only once the session itself is ending.
                         Some(Control::Granted(_)) | None => return Ended::Expected,
                     };
-                    // Framed once, then handed over one piece at a time - and the two halves of that are what
-                    // the delivery grant covers. `frame` allocates the length-prefixed copy, which stays alive
-                    // because every piece is copied out of it; each piece is built immediately before its
-                    // handover and gone before the next exists, which is what [hand_over_in_pieces] is for.
-                    // Building every piece first would satisfy the mailbox's depth and hold a second whole
-                    // copy of the response while doing it. The framed copy is owned the same way the answer
-                    // is: the count is inside the buffer, so it ends when the buffer does and cannot be ended
-                    // early by mistake.
+                    // Framed once, then written into the bridge - and those two are what the delivery grant
+                    // covers. `frame` allocates the length-prefixed copy and the write copies out of it into
+                    // a buffer the flow was already charged for, so no third allocation exists at any moment
+                    // however large the answer is. What bounds the write is that buffer filling, which is the
+                    // engine's own draining rather than an acknowledgment of ours. The framed copy is owned
+                    // the same way the answer is: the count is inside the buffer, so it ends when the buffer
+                    // does and cannot be ended early by mistake.
                     let Some(framed) = frame(&answer).map(Owned::new) else {
                         return Ended::Reported("resolver answer exceeds a DNS message".to_owned());
                     };
-                    let consumed = matches!(
-                        hand_over_in_pieces(&mut mailbox, &framed, READ_CHUNK, &cancel).await,
-                        Handed::Complete
-                    );
+                    let written = write_all(&mut bridge, &framed, &cancel).await;
                     // Dropped explicitly, and before the owner is told the delivery is over: what the delivery
-                    // grant covers is the answer, the framed copy built beside it and the piece in flight, so
-                    // the owner may only end it once all three are really gone.
+                    // grant covers is the answer and the framed copy built beside it, so the owner may only
+                    // end it once both are really gone.
                     drop(framed);
                     drop(answer);
-                    if !consumed {
+                    match written {
+                        Written::Done => {}
                         // Cancelled part-way. The buffers are gone, and the owner ends the delivery on the
                         // close path rather than here - a report from a task that is going away could arrive
                         // after the flow it names has been retired.
-                        return Ended::Expected;
+                        Written::Cancelled => return Ended::Expected,
+                        Written::Failed(error) => {
+                            return Ended::Failed {
+                                context: "shizuku.tcp_dns_deliver",
+                                error,
+                            }
+                        }
                     }
                     if !hand_over(&asks, Ask::Delivered { flow, delivery }, &cancel).await {
                         return Ended::Expected;

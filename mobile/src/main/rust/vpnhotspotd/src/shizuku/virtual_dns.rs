@@ -31,12 +31,12 @@
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 
-use crate::shizuku::workers::{Ended, Terminal, Workers};
 use tokio::sync::mpsc;
 use vpnhotspotd::shared::dns_wire::servfail_response;
 use vpnhotspotd::shared::failure::Failure;
 use vpnhotspotd::shared::model::Network;
 use vpnhotspotd::shared::udp_wire::Relayed;
+use vpnhotspotd::shared::workers::{Ended, Terminal, Workers};
 
 use crate::report;
 use crate::shizuku::budget::MAX_DATAGRAM;

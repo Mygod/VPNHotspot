@@ -27,10 +27,10 @@ impl Ended {
     ///
     /// The one decision a terminating flow's owner makes when a worker finishes, taken here because it is a
     /// classification rather than I/O - and because getting it wrong is silent. A worker returns as soon as
-    /// *its* ordered work is done: with a read-ahead queue that means as soon as its last chunk and its
-    /// ordered end of stream are **queued**, not consumed, so a flow whose worker ended cleanly routinely
-    /// still owes its client a row's worth of bytes and everything queued behind it. Detaching keeps all of
-    /// it - the socket, the queue, the grant - and the owner goes on delivering; ending discards it.
+    /// *its* ordered work is done: with a bounded byte bridge between the two halves that means as soon as
+    /// its last bytes and its ordered end of stream are **in the bridge**, not delivered, so a flow whose
+    /// worker ended cleanly routinely still owes its client everything the bridge is holding. Detaching keeps
+    /// all of it - the socket, the bridge, the grant - and the owner goes on delivering; ending discards it.
     ///
     /// `cancelled` is whether somebody asked this worker to stop, and `opened` whether the client's own half
     /// ever got past its handshake and is not already closed. Both are exclusions of the same kind: there is
@@ -60,7 +60,7 @@ mod tests {
         // And an ending that is not a clean completion at all, which resets its client either way.
         assert!(!Ended::Reported("a peer that reset".to_owned()).detaches(false, true));
         assert!(!Ended::Failed {
-            context: "shizuku.tcp_upstream_read",
+            context: "shizuku.tcp_upstream_relay",
             error: io::Error::other("the daemon's own I/O"),
         }
         .detaches(false, true));

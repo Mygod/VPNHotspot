@@ -6,11 +6,10 @@
 //!
 //! # A worker finishing is not the same as a flow ending
 //!
-//! Both workers return as soon as *their* ordered work is done, and for an ordinary flow that means as soon
-//! as its last payload and its ordered end of stream are **queued** - the upstream half-close is written and
-//! everything for the client is in that flow's own queue, which the owner is still draining. A DNS-over-TCP
-//! transport is the one that waits to be told its last piece was consumed, because its delivery grant says
-//! so. Either way the client's own teardown is not finished at that moment: the socket is typically still
+//! Both workers return as soon as *their* ordered work is done, and for either kind that means as soon as
+//! its last payload and its ordered end of stream are **in the bridge** - the upstream half-close is written
+//! and everything for the client is in the buffer the owner is still draining. Either way the client's own
+//! teardown is not finished at that moment: the socket is typically still
 //! `ESTABLISHED` with bytes to deliver, or in `LAST-ACK`, `CLOSING` or `TIME-WAIT` with a FIN to retransmit
 //! and a final acknowledgment still to come. Removing the flow there took the client's half of the connection
 //! away mid-teardown - and now takes undelivered bytes with it, which is why the detach decision is made
@@ -20,7 +19,7 @@
 //!
 //! - a **clean terminal** from a flow nobody cancelled, whose client is past its handshake and not yet
 //!   `Closed`, *detaches* the flow: the worker's descriptor went with its task, and what stays is
-//!   client-side state - its socket, its charge, and whatever payload and ordered end of stream its queue
+//!   client-side state - its socket, its charge, and whatever payload and ordered end of stream its bridge
 //!   still holds - with no task of its own and no per-flow timer task behind it. Its teardown is still
 //!   *scheduled*, by smoltcp's own timers through the engine's combined deadline, which is what lets the
 //!   remaining bytes be written and the FIN be retransmitted;
@@ -39,14 +38,12 @@ use smoltcp::iface::SocketHandle;
 use smoltcp::socket::tcp::{Socket, State};
 use vpnhotspotd::shared::admission::Admission;
 use vpnhotspotd::shared::dns_debt;
-use vpnhotspotd::shared::fair::FlowId;
-use vpnhotspotd::shared::transfer;
 
-use super::transfer::Attention;
+use super::bridge::Attention;
 use super::{lifetime, Engine, Flow};
 use crate::report;
 use crate::shizuku::output::Output;
-use crate::shizuku::workers::{Ended, Terminal};
+use vpnhotspotd::shared::workers::{Ended, Terminal};
 
 impl Engine {
     /// The next detached flow whose client side has finished, if any has.
@@ -71,10 +68,9 @@ impl Engine {
     /// smoltcp reuses handles and this identity was read a moment before the caller acted on it.
     pub(crate) fn settled(&mut self, handle: SocketHandle, worker: u64, admission: &mut Admission) {
         if !self.flows.current(&handle, worker) {
-            self.counters.stale += 1;
+            self.counters.ingress.stale += 1;
             return;
         }
-        drop(self.fair.begin_retire(FlowId::new(handle, worker)));
         self.reclaim(handle, worker, admission);
     }
 
@@ -100,7 +96,7 @@ impl Engine {
         // down by its predecessor's ending. Nothing below touches a socket, writes a packet or prints a line
         // until this has passed.
         if !self.flows.current(&key, id) {
-            self.counters.stale += 1;
+            self.counters.ingress.stale += 1;
             return;
         }
         // A clean terminal from a flow nobody asked to stop, whose client side is still finishing, hands the
@@ -108,43 +104,33 @@ impl Engine {
         // stays is the client's half of a teardown that still has bytes to deliver, a FIN to retransmit and
         // an acknowledgment to wait for.
         //
-        // Both the classification and the discard are [transfer::dispose]'s, in that order and in one call,
-        // because the order is the correctness property: a worker returns as soon as its own work is
-        // *queued*, so discarding first would drop payload and the ordered end of stream that this flow is
-        // being detached in order to finish delivering. Two exclusions live inside it, and both are "there is
-        // no teardown here to protect": a cancelled worker, whose socket whoever cancelled it has already
+        // Nothing of the flow's is touched on that arm, and nothing has to be: a worker returns as soon as
+        // its own work is *in the bridge*, having shut its write half down first - `copy_bidirectional`
+        // shuts a direction down when its reader reaches the end of the stream, and a DNS-over-TCP transport
+        // does the same explicitly. Dropping its half afterwards signals nothing, because a `simplex` half
+        // does not; what leaves the engine delivering exactly as it did is that shutdown, which reports the
+        // end of the stream strictly after the last byte the worker wrote. Two exclusions live inside [Ended::detaches], and both are "there is no
+        // teardown here to protect": a cancelled worker, whose socket whoever cancelled it has already
         // aborted, and a client half that never opened or is already `Closed` - which is what
         // [lifetime::opened] answers.
-        //
-        // Idempotent on the retiring arm, because the poll that saw the socket close may already have begun
-        // this exact retirement.
         let cancelled = self
             .flows
             .get(&key)
             .is_some_and(|held| held.cancel.is_cancelled());
-        let discarded = match transfer::dispose(
-            &ended,
+        if ended.detaches(
             cancelled,
             lifetime::opened(self.sockets.get::<Socket>(key).state()),
-            FlowId::new(key, id),
-            &mut self.fair,
         ) {
-            transfer::Disposition::Detach => {
-                if let Some(held) = self.flows.get_mut(&key) {
-                    held.record.detached = true;
-                    // Nothing reads that queue any more - the producer went with the task - and leaving the
-                    // slot would make every later pump try to send into a closed channel and count a stale
-                    // event for it. Giving it up releases the reservation this owner was holding with it.
-                    held.record.transfer.stop_sending();
-                }
-                self.counters.detached += 1;
-                return;
+            if let Some(held) = self.flows.get_mut(&key) {
+                held.record.detached = true;
+                // Nothing reads this owner's write half any more - the worker went with its task - so the
+                // bridge reports a broken pipe for it, and the crossing that sees one stops draining the
+                // receive buffer for a flow with nowhere to put it.
+                held.record.bridge.stop_sending();
             }
-            // What this flow still owed the wire, handed back so this owner drops it rather than the module
-            // that decided it was over. The queue behind it dies with the record in [Engine::reclaim].
-            transfer::Disposition::Retire(discarded) => discarded,
-        };
-        drop(discarded);
+            self.counters.detached += 1;
+            return;
+        }
         let reset = match ended {
             Ended::Expected => false,
             Ended::Reported(reason) => {
@@ -183,33 +169,28 @@ impl Engine {
     /// inside it is the accounting invariant - the socket and this flow's own endpoints die before the DNS
     /// state releases the grant covering them, and the connection's grant goes last of all.
     fn reclaim(&mut self, key: SocketHandle, id: u64, admission: &mut Admission) {
-        self.fair.finish_retire(FlowId::new(key, id));
-        self.outgoing.retain(|handle| *handle != key);
+        self.outgoing.forget(key);
         let Some(flow) = self.flows.retire(&key, id) else {
             // Unreachable: every caller has validated this exact pair and nothing since has awaited.
-            self.counters.stale += 1;
+            self.counters.ingress.stale += 1;
             return;
         };
         self.sockets.remove(key);
         let Flow {
             connection,
-            transfer,
-            consumed,
+            bridge,
             serving,
             ..
         } = flow;
-        // Physical before accounting, and this flow's own endpoints go first because one of them can still be
-        // holding a buffer the DNS state is about to give the capacity back for. The payload queue is the one
-        // that matters: [vpnhotspotd::shared::mailbox::Mailbox::hand_over] puts a piece of an answer into it
-        // and *then* waits to be acknowledged, so a transport cancelled inside that wait leaves a
-        // `Chunk::Payload` sitting here - and that piece is one of the three buffers the parked delivery's
-        // grant covers. An ordinary flow leaves its whole read-ahead here for the same reason. Releasing the
-        // delivery first would give those bytes back while this receiver still owned them.
+        // Physical before accounting, and this flow's own bridge goes first because it can still be holding
+        // bytes the DNS state is about to give the capacity back for: a transport cancelled part-way through
+        // writing an answer leaves that answer's remaining bytes in the buffer here, and an ordinary flow
+        // leaves whatever it had read ahead. Releasing the delivery first would give those bytes back while
+        // this half still owned them.
         //
-        // The task is already complete, so dropping these is the close: the upstream descriptor goes with the
+        // The task is already complete, so dropping this is the close: the upstream descriptor goes with the
         // task, and both stack buffers go with the socket removed above.
-        drop(transfer);
-        drop(consumed);
+        drop(bridge);
         // Then everything this transport's DNS state still owned, in the same order within itself: the parked
         // delivery nobody will acknowledge, the query still travelling back on the owner's own channel, both
         // control endpoints, and only then the reservation's grant. See [tcp_dns::Serving::close].
@@ -242,7 +223,7 @@ impl Engine {
         match self.socket(handle) {
             Some(socket) => {
                 socket.abort();
-                self.counters.reset += 1;
+                self.counters.ingress.reset += 1;
                 true
             }
             None => false,

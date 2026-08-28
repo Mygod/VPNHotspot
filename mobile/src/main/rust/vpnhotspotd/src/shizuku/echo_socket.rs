@@ -19,11 +19,11 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 
-use crate::shizuku::workers::{Terminal, Workers};
 use socket2::{SockAddr, Socket};
 use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc;
 use vpnhotspotd::shared::model::Network;
+use vpnhotspotd::shared::workers::{Terminal, Workers};
 
 use vpnhotspotd::shared::admission::{Admission, Class, Denied, Lease, Request};
 

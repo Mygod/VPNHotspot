@@ -12,7 +12,7 @@
 //! mappings from the same client can share a reassembly tuple, so a per-mapping allocator would hand the
 //! same value to both.
 //!
-//! A mapping is reachable only through [crate::shizuku::workers], which is what makes the refund honest:
+//! A mapping is reachable only through [vpnhotspotd::shared::workers], which is what makes the refund honest:
 //! the socket comes back out of it only once the receive task has run to completion, so the descriptor is
 //! closed before the budget is told it is - not when retirement asked for it.
 
@@ -22,7 +22,6 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use crate::shizuku::workers::{Ended, Terminal, Workers};
 use socket2::{SockAddr, Socket};
 use tokio::io::unix::AsyncFd;
 use tokio::sync::{mpsc, oneshot};
@@ -31,6 +30,7 @@ use vpnhotspotd::shared::icmp_translate::{self, Correlation, Reported, Untransla
 use vpnhotspotd::shared::model::Network;
 use vpnhotspotd::shared::send_history::{History, Resolution};
 use vpnhotspotd::shared::udp_wire::Relayed;
+use vpnhotspotd::shared::workers::{Ended, Terminal, Workers};
 
 use vpnhotspotd::shared::admission::{logical_footprint, Admission, Class, Denied, Lease, Request};
 use vpnhotspotd::shared::egress::RelayUpstream as Upstream;
@@ -171,7 +171,7 @@ impl Mapping {
     /// backing, and the receive worker's ancillary buffer.
     ///
     /// The `Mapping` value itself is not here, and that is the point. A mapping lives inside a
-    /// [crate::shizuku::workers::Held] row in [Relay::mappings], whose own charge already counts
+    /// [vpnhotspotd::shared::workers::Held] row in [Relay::mappings], whose own charge already counts
     /// `(SocketAddr, Held<Mapping>)` for every row the table is prepared for - so adding `size_of::<Mapping>()`
     /// here charged the same bytes twice, once inside the row and once beside it. The same went for the
     /// `History` header, which is a field of this struct; [History::footprint] now charges only the deque's

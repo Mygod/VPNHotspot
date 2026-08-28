@@ -86,7 +86,7 @@ impl Awaiting {
 /// transfer is these bytes, because they never belonged to it. See [vpnhotspotd::shared::dns_debt].
 struct Pending {
     /// One DNS-class descriptor record and every byte this submission owns: the query, the answer the
-    /// platform returns, and the framed copy on its way into the fair mailbox.
+    /// platform returns, and the framed copy on its way into the flow's bridge.
     debt: QueryDebt,
     /// The message as it was framed off the client's stream, at exactly the capacity that was admitted for
     /// it. Retained because settlement may have to build this query's own SERVFAIL from it.
@@ -529,8 +529,8 @@ impl Transactions {
     /// Settles one finished transaction, and hands back what the *delivery* after it still owns.
     ///
     /// The descriptor record and any logical token end here, because the platform's transaction is over. The
-    /// answer does not: the transport has yet to receive it, classify it, frame it and hand each chunk to the
-    /// client's stack, and every one of those buffers exists after this returns.
+    /// answer does not: the transport has yet to receive it, classify it, frame it and write the framing into
+    /// its flow's bridge, and every one of those buffers exists after this returns.
     ///
     /// Unless the transaction was one this process stopped being able to watch, in which case the token is not
     /// over at all. It sits in exactly one of two places by then - on the debt, if a closing transport already

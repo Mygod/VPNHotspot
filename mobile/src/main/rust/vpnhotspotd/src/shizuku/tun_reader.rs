@@ -5,7 +5,7 @@
 //! the only reader of that descriptor: the state a packet touches is reached without a lock, and there is no
 //! per-packet copy or channel hop on the way in.
 //!
-//! It also owns every task those transports started, through [crate::shizuku::workers]. A worker that
+//! It also owns every task those transports started, through [vpnhotspotd::shared::workers]. A worker that
 //! finishes - because it failed, because its peer went, or because a retirement asked it to - is joined here,
 //! and only then may its record be removed and its budget refunded. That is what makes an acknowledged epoch
 //! mean the descriptors are actually back rather than merely spoken for, and it is why this loop selects on
@@ -433,12 +433,11 @@ pub(crate) async fn run(
             // FIN to retransmit and an acknowledgment to wait for, so a clean terminal detaches the flow and
             // the third kind is the client side of it finally finishing.
             //
-            // The fourth is not an ending but traffic readiness, in either direction: a flow queued payload
-            // for its client, or its upstream half took what this owner handed it so the slot is back and the
-            // stack's receive buffer can be drained again. It travels with the endings because all four
-            // borrow the engine's tables, and one future is what lets them be registered in sequence - see
-            // [crate::shizuku::tcp::transfer]. There is no readiness channel and no marker: each flow's own
-            // queue is what wakes this task.
+            // The fourth is not an ending but traffic: one pass over every flow has already moved everything
+            // both directions could move, so what is left is to run the stack for it. It travels with the
+            // endings because all four borrow the engine's tables, and one future is what lets them be
+            // registered in sequence - see [crate::shizuku::tcp::bridge]. There is no readiness channel and no
+            // marker: each flow's own bridge is what wakes this task.
             attention = tcp.attention() => {
                 match attention {
                     tcp::Attention::Flow(terminal) => tcp.close(terminal, &mut admission, &mut output),
@@ -446,10 +445,7 @@ pub(crate) async fn run(
                     tcp::Attention::Detached { handle, worker } => {
                         tcp.settled(handle, worker, &mut admission)
                     }
-                    tcp::Attention::Delivered(id) => {
-                        tcp.delivered(id, admitting, now(), &mut output)
-                    }
-                    tcp::Attention::Upstream => tcp.poll(&mut output),
+                    tcp::Attention::Traffic => tcp.traffic(admitting, now(), &mut output),
                 }
                 continue;
             }
