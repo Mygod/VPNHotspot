@@ -2,13 +2,13 @@
 //! answering one means.
 //!
 //! The contract is level-triggered: the newest [ShizukuSessionConfig] is the truth, and each config call is
-//! answered with the sequence and generation the daemon has actually applied. Nothing here replays history,
-//! because the app coalesces and a superseded config is never sent at all.
+//! answered on its own call ID. Nothing here replays history, because the app coalesces and a superseded
+//! config is never sent at all.
 //!
-//! Retirement happens strictly before the reply. Seeing a [ShizukuApplied] carrying a generation means
-//! everything bound to the previous one is already gone rather than merely asked to go, which is what the
-//! app's ordered stop is built on. The ingress task owns that state, so it is the ingress task that reports
-//! the retirement finished - this loop only refuses to reply until it has.
+//! Retirement happens strictly before the ACK. Receiving it means everything bound to the previous
+//! generation is already gone rather than merely asked to go, which is what the app's ordered stop is built
+//! on. The ingress task owns that state, so it is the ingress task that reports the retirement finished -
+//! this loop only refuses to reply until it has.
 
 use std::io;
 use std::net::{IpAddr, Ipv4Addr};
@@ -19,12 +19,8 @@ use tokio::net::unix::OwnedReadHalf;
 use tokio::sync::{mpsc, oneshot};
 use vpnhotspotd::shared::app_control::{self, Rejected, Request};
 use vpnhotspotd::shared::egress;
-use vpnhotspotd::shared::proto::daemon::{
-    self, DaemonErrorReport, ShizukuApplied, ShizukuSessionConfig,
-};
-use vpnhotspotd::shared::protocol::{
-    describe_io_error, shizuku_applied_reply_frame, IoErrorReportExt,
-};
+use vpnhotspotd::shared::proto::daemon::{self, DaemonErrorReport, ShizukuSessionConfig};
+use vpnhotspotd::shared::protocol::{ack_reply_frame, describe_io_error, IoErrorReportExt};
 use vpnhotspotd::shared::session_config;
 
 use crate::control_wire::recv_packet;
@@ -97,15 +93,7 @@ pub(super) async fn serve(
                 error,
             }) => return Err(error),
         };
-        // Read off the config before it is moved into the dataplane, because this is what the reply says and
-        // the reply is written after the dataplane has taken it.
-        let applied = ShizukuApplied {
-            sequence: config.sequence,
-            upstream_generation: config.upstream_generation,
-            // Set only from the config and never inferred, because only the app knows the session is ACTIVE.
-            admitting: config.admit,
-        };
-        let retired = match owner.publish(config, configs).await {
+        let retired = match owner.publish(call_id, config, configs).await {
             Ok(retired) => retired,
             // Answered on the config call whether the config was malformed or the dataplane behind it is
             // gone: either way it is the call the app is waiting on, so that is where the failure belongs.
@@ -117,7 +105,7 @@ pub(super) async fn serve(
             return Err(io::Error::other("tun ingress dropped a config it accepted")
                 .with_report_context("shizuku.control.config"));
         }
-        if !control.send_frame(shizuku_applied_reply_frame(call_id, applied)) {
+        if !control.send_frame(ack_reply_frame(call_id)) {
             return Err(io::Error::new(
                 io::ErrorKind::BrokenPipe,
                 "the control writer stopped before the session",
@@ -171,13 +159,14 @@ impl Configs {
     /// or the resolver on its way to being refused.
     async fn publish(
         &mut self,
+        call_id: u64,
         config: ShizukuSessionConfig,
         configs: &mpsc::Sender<Applied>,
     ) -> io::Result<oneshot::Receiver<()>> {
         if let Err(e) = session_config::check(self.previous.as_ref(), &config) {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("config {} is not a valid successor: {e:?}", config.sequence),
+                format!("config call {call_id} is not a valid successor: {e:?}"),
             )
             .with_report_context("shizuku.control.config"));
         }
@@ -208,14 +197,13 @@ impl Configs {
         let egress = egress::decode(&config).map_err(|why| {
             io::Error::new(
                 io::ErrorKind::InvalidData,
-                format!("config {} has no usable egress: {why:?}", config.sequence),
+                format!("config call {call_id} has no usable egress: {why:?}"),
             )
             .with_report_context("shizuku.control.config")
         })?;
         let virtual_addresses = Arc::new(addresses(&config.virtual_addresses)?);
         report::stdout!(
-            "applying config {} on {}: generation {}, admitting {}, egress {egress:?}",
-            config.sequence,
+            "applying config call {call_id} on {}: generation {}, admitting {}, egress {egress:?}",
             self.interface_name,
             config.upstream_generation,
             config.admit,

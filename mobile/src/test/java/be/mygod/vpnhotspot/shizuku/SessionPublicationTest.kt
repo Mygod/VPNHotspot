@@ -18,8 +18,8 @@ import java.net.InetAddress
  * that is right in a field but wrong in the message is a session that ends.
  *
  * The two calls each publication makes are the two production makes, in the same order and for the same
- * reason: the session builds a config on the observation's own lane, and the daemon's writer stamps the
- * sequence when one really goes out.
+ * reason: the session builds a config on the observation's own lane, and the daemon's writer records it when
+ * one really goes out.
  */
 class SessionPublicationTest {
     private companion object {
@@ -39,16 +39,14 @@ class SessionPublicationTest {
     private val publication = SessionPublication(VIRTUAL, GATEWAY)
 
     private fun publish(admit: Boolean = true, network: Long? = WIFI, index: Int? = 7) =
-        publication.stamping(publication.build(admit, network, index))
+        publication.publish(publication.build(admit, network, index))
 
-    /** The first config is already valid on both counters, whatever the upstream observation said. */
+    /** The first config has a valid retirement stamp, whatever the upstream observation said. */
     @Test
-    fun theFirstPublicationIsNonzeroOnEveryCounter() {
-        assertEquals(0L, publication.sequence)
+    fun theFirstPublicationHasANonzeroGeneration() {
         assertEquals(1L, publication.upstreamGeneration)
 
         val first = publish(admit = false, network = null, index = null)
-        assertEquals(1L, first.sequence)
         assertEquals(1L, first.upstream_generation)
         assertFalse(first.admit)
         assertNull("no selectable network is not a failure", first.upstream_network)
@@ -56,21 +54,17 @@ class SessionPublicationTest {
         assertEquals(VIRTUAL, first.virtual_addresses)
         assertEquals(GATEWAY, first.gateway_addresses)
 
-        // And publishing the same observation again moves nothing but the sequence: it is not a change.
+        // And publishing the same observation again moves nothing: it is not a change.
         val second = publish(admit = false, network = null, index = null)
-        assertEquals(2L, second.sequence)
         assertEquals(1L, second.upstream_generation)
     }
 
-    /** What a level-triggered resend of an unchanged observation costs: a sequence, and nothing else. */
+    /** A level-triggered resend of an unchanged observation changes no state. */
     @Test
-    fun anUnchangedUpstreamAdvancesOnlyTheSequence() {
+    fun anUnchangedUpstreamChangesNothing() {
         val first = publish()
-        assertEquals(1L, first.sequence)
-        repeat(8) { round ->
+        repeat(8) {
             val next = publish()
-            assertEquals("the sequence is the only counter a resend moves", first.sequence + 1 + round,
-                next.sequence)
             assertEquals(first.upstream_generation, next.upstream_generation)
             assertEquals(first.upstream_network, next.upstream_network)
             assertEquals(first.upstream_interface_index, next.upstream_interface_index)
@@ -99,7 +93,7 @@ class SessionPublicationTest {
 
         // Three rounds of the transition, each with a level-triggered resend inside the closed interval: the
         // ordered stop's first step closes admission, and any observation after it republishes the same state.
-        for (round in 0 until 3) {
+        repeat(3) {
             val closing = publish(admit = false)
             assertFalse(closing.admit)
             assertEquals("closing admission is not a retirement", serving.upstream_generation,
@@ -116,28 +110,24 @@ class SessionPublicationTest {
             assertTrue(reopened.admit)
             assertEquals("reopening admission is not a retirement either", serving.upstream_generation,
                 reopened.upstream_generation)
-            assertEquals(serving.sequence + 1 + 3 * round, closing.sequence)
-            assertEquals(closing.sequence + 1, stillClosed.sequence)
-            assertEquals(stillClosed.sequence + 1, reopened.sequence)
         }
         assertEquals(1L, publication.upstreamGeneration)
     }
 
     /**
-     * An upstream change advances the generation and the sequence, and admission travels beside it untouched.
+     * An upstream change advances the generation, and admission travels beside it untouched.
      *
      * A handover retires the sockets bound to the network that changed, and nothing else - so a config that
      * carries both a new handle and a closed admission still says exactly one thing about retirement.
      */
     @Test
-    fun anUpstreamChangeAdvancesTheGenerationAndTheSequenceAlone() {
+    fun anUpstreamChangeAdvancesTheGenerationAlone() {
         val first = publish()
 
         // A handover: this app's default became a VPN, and the collector advances the generation before the
         // config carrying the new handle is built.
         assertEquals(2L, publication.advanceUpstream())
         val handover = publish(network = VPN)
-        assertEquals(2L, handover.sequence)
         assertEquals(2L, handover.upstream_generation)
         assertEquals(VPN, handover.upstream_network)
         assertTrue(handover.admit)
@@ -147,7 +137,6 @@ class SessionPublicationTest {
         // stale. Nothing advances the generation for it - the selection did not change, so no observation
         // fired - which is exactly why the owner has to notice the raw field itself.
         val reindexed = publish(admit = false, network = VPN, index = 9)
-        assertEquals(3L, reindexed.sequence)
         assertEquals(3L, reindexed.upstream_generation)
         assertEquals(VPN, reindexed.upstream_network)
         assertEquals(9, reindexed.upstream_interface_index)
@@ -180,7 +169,6 @@ class SessionPublicationTest {
         // And a resend of that same pair moves nothing.
         val resend = publish(network = WIFI, index = 7)
         assertEquals(2L, resend.upstream_generation)
-        assertEquals(3L, resend.sequence)
     }
 
     /** The handle moving without an observation is the same fact, and needs the same axis. */
@@ -234,7 +222,7 @@ class SessionPublicationTest {
     }
 
     /**
-     * A raw-field candidate that is never stamped burns no generation, so its successor is one step away
+     * A raw-field candidate that is never published burns no generation, so its successor is one step away
      * rather than two.
      *
      * This is the coalescing the app really does: a config built while an earlier one is still awaiting its
@@ -250,12 +238,10 @@ class SessionPublicationTest {
         val candidate = publication.build(true, WIFI, 7)
         assertEquals(2L, candidate.upstream_generation)
         assertEquals("a candidate is not a publication", 1L, publication.upstreamGeneration)
-        assertEquals("nothing was written, so nothing was sequenced", 1L, publication.sequence)
 
         // Superseded by a config carrying that same raw change, which is still one step from what was sent.
         val successor = publish(network = WIFI, index = 7)
         assertEquals("one step, not two", 2L, successor.upstream_generation)
-        assertEquals(2L, successor.sequence)
         assertEquals(7, successor.upstream_interface_index)
         assertEquals(2L, publication.upstreamGeneration)
     }
@@ -271,8 +257,8 @@ class SessionPublicationTest {
 
     /**
      * A session's whole run of observations, checked against the rules the daemon applies to a successor:
-     * the sequence strictly increases, the generation never moves backwards, a raw upstream field never moves
-     * without the generation that retires what is bound behind it, and neither address list moves either.
+     * the generation never moves backwards, a raw upstream field never moves without the generation that
+     * retires what is bound behind it, and neither address list moves either.
      */
     @Test
     fun successivePublicationsStayMonotonicAcrossAWholeSession() {
@@ -291,14 +277,12 @@ class SessionPublicationTest {
                 index = null),
         )) {
             if (observation.upstream) publication.advanceUpstream()
-            val config = publication.stamping(
+            val config = publication.publish(
                 publication.build(observation.admit, observation.network, observation.index))
             assertEquals("${observation.what}: admission is published as observed", observation.admit,
                 config.admit)
             val last = previous
             if (last != null) {
-                assertTrue("${observation.what}: the sequence must strictly increase",
-                    config.sequence > last.sequence)
                 assertTrue("${observation.what}: the generation went backwards",
                     config.upstream_generation >= last.upstream_generation)
                 if (config.upstream_network != last.upstream_network ||
@@ -315,9 +299,8 @@ class SessionPublicationTest {
             previous = config
         }
         val last = checkNotNull(previous)
-        // One sequence per publication and one generation per upstream observation, never more - and the four
-        // admission changes in between bought nothing at all.
-        assertEquals(9L, last.sequence)
+        // One generation per upstream observation, never more - and the four admission changes in between
+        // bought nothing at all.
         assertEquals(4L, last.upstream_generation)
     }
 }

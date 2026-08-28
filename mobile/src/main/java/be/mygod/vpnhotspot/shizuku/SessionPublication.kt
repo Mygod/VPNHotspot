@@ -18,21 +18,21 @@ internal fun retiring(counter: Long, published: Long, moved: Boolean) =
     if (moved && counter == published) counter + 1 else counter
 
 /**
- * The two counters every [ShizukuSessionConfig] carries, and the one place a config is built from them.
+ * The retirement counter every [ShizukuSessionConfig] carries, and the one place a config is built from it.
  *
- * The daemon acknowledges both together, and each answers a different question: the sequence says *which*
- * config was applied, and [upstreamGeneration] says which `Network` the upstream sockets behind it were bound
- * to. The generation is the only retirement stamp there is - nothing the app can observe tells it that a
- * TUN-visible tuple changed hands, because Android's own conntrack owns that mapping - so admission opens and
- * closes without retiring anything. A config whose generation disagrees with the upstream fields it carries
- * is refused outright, which is why the counter and the fields it retires are one owner rather than a counter
- * kept beside the thing that advances it.
+ * The config call's ID already says which config the daemon acknowledged. [upstreamGeneration] answers the
+ * different question: which `Network` the upstream sockets behind it were bound to. The generation is the
+ * only retirement stamp there is - nothing the app can observe tells it that a TUN-visible tuple changed
+ * hands, because Android's own conntrack owns that mapping - so admission opens and closes without retiring
+ * anything. A config whose generation disagrees with the upstream fields it carries is refused outright,
+ * which is why the counter and the fields it retires are one owner rather than a counter kept beside the
+ * thing that advances it.
  *
  * # Building is not publishing
  *
  * [build] answers a *candidate*, and mutates nothing. The app coalesces to a single pending slot, so a config
  * that was built can be replaced before it is ever written, and every rule here is measured against the last
- * config that really went out - which [stamping] is what records. Committing at build time would let a
+ * config that really went out - which [publish] is what records. Committing at build time would let a
  * superseded candidate move the state its successor is compared against, and one logical change would then
  * advance the generation twice.
  *
@@ -48,15 +48,6 @@ class SessionPublication(
     private val virtualAddresses: List<ByteString>,
     private val gatewayAddresses: List<ByteString>,
 ) {
-    /**
-     * Advanced when a config is actually written rather than when one is built, because the app coalesces to
-     * a single pending slot and a superseded config is never sent at all. Assigning it at build time would
-     * work too - the contract only asks for strictly increasing - but it would burn a number on a config
-     * nothing ever acknowledged, and the acknowledgement is what this exists to match.
-     */
-    var sequence = 0L
-        private set
-
     /**
      * Which `Network` upstream sockets are bound to. Starts at one so the daemon's zero-initialised view
      * always sees the first config as a change, and advances on every change to the selection - including a
@@ -93,8 +84,8 @@ class SessionPublication(
      * Builds the candidate for the observation that just happened, advancing the generation if the fields it
      * carries would otherwise move unretired. Commits nothing: see the class note.
      *
-     * The sequence is left unset here for the same reason - this is a config that may yet be superseded
-     * before it reaches the socket, and [stamping] is what runs when one really goes out.
+     * This candidate may yet be superseded before it reaches the socket, so [publish] is what records it as
+     * the state later candidates are measured against.
      */
     fun build(admit: Boolean, network: Long?, interfaceIndex: Int?) = ShizukuSessionConfig(
         upstream_generation = retiring(upstreamGeneration, publishedGeneration,
@@ -107,14 +98,13 @@ class SessionPublication(
     )
 
     /**
-     * Stamps the config that is about to be written with the sequence its acknowledgement will name, and
-     * records it as the publication every later candidate is measured against. Nonzero from the first one,
-     * because zero is what an unset proto field decodes to and the daemon refuses it.
+     * Records the config that is about to be written as the publication every later candidate is measured
+     * against.
      *
      * [upstreamGeneration] is raised rather than assigned, because an observation may have advanced it
      * between this config being built and being written, and the counter may never walk backwards.
      */
-    fun stamping(config: ShizukuSessionConfig) = config.copy(sequence = ++sequence).also { published ->
+    fun publish(config: ShizukuSessionConfig) = config.also { published ->
         if (published.upstream_generation > upstreamGeneration) {
             upstreamGeneration = published.upstream_generation
         }

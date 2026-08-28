@@ -94,7 +94,6 @@ mod tests {
 
     fn config(network: Option<u64>, interface: Option<u32>) -> ShizukuSessionConfig {
         ShizukuSessionConfig {
-            sequence: 1,
             upstream_generation: 1,
             admit: true,
             upstream_network: network,

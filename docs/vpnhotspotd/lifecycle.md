@@ -147,9 +147,10 @@ before it believes the socket's EOF, and falls back to the process's exit status
 only when the stream ended with no frame to attribute.
 
 Each configuration is an ordinary one-shot call keyed to the start call's ID. The
-newest configuration is the whole truth, and each is answered with a
-`ShizukuApplied` reply only once whatever the change retires is really gone rather
-than asked to go. Retiring a UDP mapping, for instance, cancels its receive task,
+newest configuration is the whole truth, and each is answered with an ACK only
+once whatever the change retires is really gone rather than asked to go. The
+reply's call ID already identifies the configuration; it does not echo config
+fields. Retiring a UDP mapping, for instance, cancels its receive task,
 waits for that task to run to completion, drops the mapping's share of the socket,
 and releases the descriptor's budget reservation only then. Platform resolver work
 is the one exception, because it cannot be cancelled or joined; [`dns.md`](dns.md)

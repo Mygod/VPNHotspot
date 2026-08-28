@@ -6,69 +6,36 @@ option java_package = "be.mygod.vpnhotspot.root.daemon";
 option java_outer_classname = "DaemonProto";
 option optimize_for = LITE_RUNTIME;
 
-// Shizuku-mode session control, which is the same conversation shape as root - ClientEnvelope in,
-// DaemonEnvelope out, every failure attributable to the call that caused it - and none of root's
-// vocabulary. Downstream, masquerade, ipv6_nat and the per-MAC client list all describe mutations that need
-// root, so a shared config message would mean one type whose meaning depends on which UID reads it.
-//
-// A process answers one of the two command families and refuses the other outright: the root daemon rejects
-// an app-UID command and the app-UID daemon rejects a root command, both as an error on the offending call.
-//
-// The config is level-triggered and the newest one is the whole truth: bind to this network, and serve or do
-// not. That is what lets the app coalesce - one pending slot holding the latest update - without the daemon
-// having to replay a history it was never sent.
-//
-// Nothing here names a tethered client, and nothing here reports one. Android's own conntrack owns the
-// mapping between a tethered client and the TUN-visible endpoint the daemon keys its state by, so that
-// endpoint changing hands is not observable on either side. Two consequences, and they are different:
-// downstream membership is not observed at all - the app watches tethering's upstream and never its interface
-// lists, so a downstream joining or leaving the same upstream moves no field here - while losing or regaining
-// ACTIVE moves admit and never a retirement stamp. upstream_generation is the only retirement stamp the
-// config carries.
 message ShizukuSessionConfig {
-  // Nonzero and strictly increasing, so an acknowledgement can be matched to the config that produced it
-  // and a zero-initialised view of it can never look current. A superseded config is never sent at all: the
-  // controller coalesces to one pending slot, so its caller returns normally once the newest config in that
-  // slot has been acknowledged, rather than carrying a sequence of its own.
-  uint64 sequence = 1;
   // Which Network upstream sockets are bound to. Incremented by the app on upstream property changes,
   // and never the Network handle itself: a handle is derived from a netId, so it survives a
   // LinkProperties change that invalidates pinned state and is eventually reused by an unrelated network.
-  uint64 upstream_generation = 2;
+  uint64 upstream_generation = 1;
   // Only the app knows the session is ACTIVE, and only the daemon owns the TUN, so admission travels in
   // the config rather than being inferred. Level-triggered like everything else here, and it retires nothing
   // in either direction: closing it makes the daemon drop what it reads from the TUN and create or refresh
   // nothing, and reopening it takes up again with whatever is still there. Closed is not paused, though -
   // deadlines keep running and protocols keep finishing throughout - so what a reopened session resumes with
   // is what independently survived the interval rather than a guarantee about any particular connection.
-  bool admit = 4;
+  bool admit = 2;
   // Absent means no selectable Network right now, which is not a failure: upstream work fails per
   // operation and the session resumes on the next config. There is no fallback network in this mode.
-  optional uint64 upstream_network = 5;
+  optional uint64 upstream_network = 3;
   // The exact set every destination is compared against before attribution, reassembly, or transport
   // dispatch, as packed 4- or 16-byte addresses. Traffic to one of these is platform_dns only on an exact
   // TCP/UDP port-53 endpoint; anything else to a reserved address is dropped without a response.
-  repeated bytes virtual_addresses = 6;
+  repeated bytes virtual_addresses = 4;
   // The interface's own addresses, one per family, as packed 4- or 16-byte values. An ICMP error the daemon
   // originates comes from one of these, because that is the address a router in its position would speak from;
   // without the matching family the error is not sent at all rather than sent from something else.
-  repeated bytes gateway_addresses = 9;
+  repeated bytes gateway_addresses = 5;
   // Interface index of upstream_network, which every relayed reply must have arrived on. Absent together
   // with upstream_network, and absent on its own when the app cannot resolve the name to an index.
   //
   // Not diagnostic. Inbound UDP and ICMP demultiplex on local address and port alone, and the mark that
   // steers egress takes no part in it, so a late reply to a retired mapping can be delivered to whatever
   // socket now holds that identity; requiring the arrival interface to match this is what rejects it.
-  optional uint32 upstream_interface_index = 8;
-}
-
-// Sent once per applied config, and only once whatever that config retires is really gone rather than merely
-// asked to go. Carries the generation as well as the sequence because that is what says the state bound to
-// the selection the session has left is actually back.
-message ShizukuApplied {
-  uint64 sequence = 1;
-  uint64 upstream_generation = 2;
-  bool admitting = 4;
+  optional uint32 upstream_interface_index = 6;
 }
 
 message ClientEnvelope {
@@ -104,8 +71,8 @@ message StartShizukuSessionCommand {
   uint32 mtu = 2;
 }
 
-// One level-triggered config, keyed to the start call that owns the session. A one-shot call: its reply is
-// the ShizukuApplied acknowledgement, and its error is the refusal that ends the session.
+// One level-triggered config, keyed to the start call that owns the session. A one-shot call: its ACK is sent
+// only once whatever the config retires is really gone, and its error is the refusal that ends the session.
 message ApplyShizukuConfigCommand {
   uint64 session_id = 1;
   ShizukuSessionConfig config = 2;
@@ -188,7 +155,6 @@ message ReplyFrame {
   oneof payload {
     Ack ack = 2;
     TrafficCounters traffic_counters = 3;
-    ShizukuApplied shizuku_applied = 4;
   }
 }
 

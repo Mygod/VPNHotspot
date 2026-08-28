@@ -272,8 +272,8 @@ compatibility or cleanup impact.
   replacements may start NAT66 when clients appear.
 - `ShizukuSessionConfig` is level-triggered: the newest configuration is the
   whole truth, `upstream_generation` may not move backwards, and no history is
-  replayed. Admission is a configuration field, never inferred from an
-  acknowledgement.
+  replayed. Admission is a configuration field; the acknowledgement echoes no
+  configuration state.
 - The app-UID session MTU is immutable. It is sent once in
   `StartShizukuSessionCommand`, checked there against the descriptor's own
   interface MTU, and no configuration carries it.

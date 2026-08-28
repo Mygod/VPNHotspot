@@ -3,7 +3,7 @@
 //! The control contract is level-triggered, so the daemon acts on whatever the newest config claims. That
 //! makes the *shape* of a config an invariant rather than a formality: a field the dataplane has pinned state
 //! behind can only change together with the generation that retires that state, and a generation that went
-//! backwards or a sequence that repeated means the two sides no longer agree about which session this is.
+//! backwards means the two sides no longer agree about which state is live.
 //!
 //! Enforced here rather than at each use, and in the library rather than beside the session loop, because this
 //! is the part with no I/O in it: every rule below is a comparison of two decoded messages, which is what
@@ -15,8 +15,8 @@ use crate::shared::proto::daemon::ShizukuSessionConfig;
 /// message can be trusted either, and there is nothing to resynchronize on.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Invalid {
-    /// Zero on either counter. Zero is what an unset proto field decodes to, so admitting it would let a
-    /// truncated or default-constructed message look like a valid first config - and the daemon's own
+    /// Zero on the retirement counter. Zero is what an unset proto field decodes to, so admitting it would
+    /// let a truncated or default-constructed message look like a valid first config - and the daemon's own
     /// zero-initialised view would then compare equal to it and skip the retirement it owes.
     Unset(&'static str),
     /// A counter that did not advance where it had to, or moved backwards.
@@ -39,27 +39,12 @@ pub fn check(
     previous: Option<&ShizukuSessionConfig>,
     next: &ShizukuSessionConfig,
 ) -> Result<(), Invalid> {
-    for (field, value) in [
-        ("sequence", next.sequence),
-        ("upstream_generation", next.upstream_generation),
-    ] {
-        if value == 0 {
-            return Err(Invalid::Unset(field));
-        }
+    if next.upstream_generation == 0 {
+        return Err(Invalid::Unset("upstream_generation"));
     }
     let Some(previous) = previous else {
         return Ok(());
     };
-    // Strictly increasing, because it is what matches an acknowledgement to the config that caused it: a
-    // repeat would let the wrong config be acknowledged, and the app treats an acknowledgement naming the
-    // wrong sequence as a failure it cannot tell apart from a lost one.
-    if next.sequence <= previous.sequence {
-        return Err(Invalid::NotAdvanced {
-            field: "sequence",
-            previous: previous.sequence,
-            next: next.sequence,
-        });
-    }
     if next.upstream_generation < previous.upstream_generation {
         return Err(Invalid::NotAdvanced {
             field: "upstream_generation",
@@ -97,7 +82,6 @@ mod tests {
     /// The shape every case below varies one field of, so what a case is *about* is the difference.
     fn base() -> ShizukuSessionConfig {
         ShizukuSessionConfig {
-            sequence: 1,
             upstream_generation: 1,
             admit: false,
             upstream_network: Some(0x1234),
@@ -108,31 +92,25 @@ mod tests {
     }
 
     #[test]
-    fn the_first_config_needs_only_nonzero_counters() {
+    fn the_first_config_needs_a_nonzero_generation() {
         assert_eq!(Ok(()), check(None, &base()));
     }
 
     #[test]
-    fn a_zero_counter_is_an_unset_field_rather_than_a_value() {
-        for (field, mutate) in [
-            (
-                "sequence",
-                (|c: &mut ShizukuSessionConfig| c.sequence = 0) as fn(&mut _),
-            ),
-            ("upstream_generation", |c: &mut ShizukuSessionConfig| {
-                c.upstream_generation = 0
-            }),
-        ] {
-            let mut config = base();
-            mutate(&mut config);
-            assert_eq!(Err(Invalid::Unset(field)), check(None, &config), "{field}");
-            // and a zero is refused just as firmly on a later config as on the first
-            assert_eq!(
-                Err(Invalid::Unset(field)),
-                check(Some(&base()), &config),
-                "{field}"
-            );
-        }
+    fn a_zero_generation_is_an_unset_field_rather_than_a_value() {
+        let config = ShizukuSessionConfig {
+            upstream_generation: 0,
+            ..base()
+        };
+        assert_eq!(
+            Err(Invalid::Unset("upstream_generation")),
+            check(None, &config)
+        );
+        // and a zero is refused just as firmly on a later config as on the first
+        assert_eq!(
+            Err(Invalid::Unset("upstream_generation")),
+            check(Some(&base()), &config)
+        );
     }
 
     /// The case the contract exists to permit: closing or opening admission retires nothing, so a session
@@ -141,20 +119,17 @@ mod tests {
     fn an_admit_only_update_is_accepted_with_an_unchanged_generation() {
         let previous = base();
         let next = ShizukuSessionConfig {
-            sequence: 2,
             admit: true,
             ..base()
         };
         assert_eq!(Ok(()), check(Some(&previous), &next));
         let closing = ShizukuSessionConfig {
-            sequence: 3,
             admit: false,
             ..base()
         };
         assert_eq!(Ok(()), check(Some(&next), &closing));
         // and back again, which is the transition the removed downstream counter used to make expensive
         let reopened = ShizukuSessionConfig {
-            sequence: 4,
             admit: true,
             ..base()
         };
@@ -162,29 +137,8 @@ mod tests {
     }
 
     #[test]
-    fn the_sequence_must_strictly_increase() {
-        let previous = ShizukuSessionConfig {
-            sequence: 5,
-            ..base()
-        };
-        for sequence in [1u64, 5] {
-            let next = ShizukuSessionConfig { sequence, ..base() };
-            assert_eq!(
-                Err(Invalid::NotAdvanced {
-                    field: "sequence",
-                    previous: 5,
-                    next: sequence,
-                }),
-                check(Some(&previous), &next),
-                "{sequence}"
-            );
-        }
-    }
-
-    #[test]
     fn the_generation_may_not_move_backwards() {
         let previous = ShizukuSessionConfig {
-            sequence: 1,
             upstream_generation: 4,
             ..base()
         };
@@ -197,7 +151,6 @@ mod tests {
             check(
                 Some(&previous),
                 &ShizukuSessionConfig {
-                    sequence: 2,
                     upstream_generation: 3,
                     ..base()
                 }
@@ -214,10 +167,7 @@ mod tests {
             |c: &mut ShizukuSessionConfig| c.upstream_interface_index = Some(9),
             |c: &mut ShizukuSessionConfig| c.upstream_interface_index = None,
         ] {
-            let mut next = ShizukuSessionConfig {
-                sequence: 2,
-                ..base()
-            };
+            let mut next = base();
             mutate(&mut next);
             assert_eq!(
                 Err(Invalid::Unretired("upstream_network")),
@@ -244,7 +194,6 @@ mod tests {
             }),
         ] {
             let mut next = ShizukuSessionConfig {
-                sequence: 2,
                 upstream_generation: 9,
                 ..base()
             };

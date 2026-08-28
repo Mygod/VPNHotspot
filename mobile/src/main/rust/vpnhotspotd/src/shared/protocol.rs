@@ -235,12 +235,6 @@ pub fn traffic_counters_frame(id: u64, counters: Vec<daemon::TrafficCounter>) ->
     )
 }
 
-/// One config call's answer: the sequence and generation the daemon really applied, which is what lets the
-/// app tell that the previous generation's state is gone rather than merely asked to go.
-pub fn shizuku_applied_reply_frame(id: u64, applied: daemon::ShizukuApplied) -> Vec<u8> {
-    reply_frame(id, daemon::reply_frame::Payload::ShizukuApplied(applied))
-}
-
 pub fn ack_event_frame(id: u64) -> Vec<u8> {
     event_frame(id, daemon::event_frame::Payload::Ack(daemon::Ack {}))
 }
@@ -520,16 +514,8 @@ mod tests {
     }
 
     #[test]
-    fn applied_reply_frame_names_its_call() {
-        let applied = daemon::ShizukuApplied {
-            sequence: 4,
-            upstream_generation: 2,
-            admitting: true,
-        };
-
-        let envelope =
-            daemon::DaemonEnvelope::decode(shizuku_applied_reply_frame(9, applied).as_slice())
-                .unwrap();
+    fn acknowledgement_reply_frame_names_its_call() {
+        let envelope = daemon::DaemonEnvelope::decode(ack_reply_frame(9).as_slice()).unwrap();
 
         let Some(daemon::daemon_envelope::Frame::Reply(reply)) = envelope.frame else {
             panic!("expected a reply frame, got {envelope:?}");
@@ -537,7 +523,7 @@ mod tests {
         assert_eq!(reply.call_id, 9);
         assert_eq!(
             reply.payload,
-            Some(daemon::reply_frame::Payload::ShizukuApplied(applied))
+            Some(daemon::reply_frame::Payload::Ack(daemon::Ack {}))
         );
     }
 

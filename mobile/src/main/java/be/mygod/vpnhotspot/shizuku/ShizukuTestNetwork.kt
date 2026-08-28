@@ -334,9 +334,9 @@ object ShizukuTestNetwork {
          */
         var cleanup: ShizukuEpoch? = null
         /**
-         * The sequence and upstream generation of every config this session publishes, and the addresses it
-         * may never change. The MTU is not among them: the daemon is told it once, on the start call that
-         * hands over the TUN, and no config can move it.
+         * The upstream generation of every config this session publishes, and the addresses it may never
+         * change. The MTU is not among them: the daemon is told it once, on the start call that hands over the
+         * TUN, and no config can move it.
          */
         val publication = SessionPublication(
             listOf(VIRTUAL_DNS_IPV4, VIRTUAL_DNS_IPV6).map {

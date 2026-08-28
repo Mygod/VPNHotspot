@@ -167,14 +167,11 @@ mod tests {
         ))
     }
 
-    fn config(session_id: u64, sequence: u64) -> Option<Command> {
+    fn config(session_id: u64) -> Option<Command> {
         Some(Command::ApplyShizukuConfig(
             daemon::ApplyShizukuConfigCommand {
                 session_id,
-                config: Some(daemon::ShizukuSessionConfig {
-                    sequence,
-                    ..Default::default()
-                }),
+                config: Some(daemon::ShizukuSessionConfig::default()),
             },
         ))
     }
@@ -198,7 +195,7 @@ mod tests {
         assert_eq!(rejected.call_id, None);
         assert_eq!(rejected.error.kind(), io::ErrorKind::InvalidData);
         assert_eq!(
-            read_request(envelope(0, config(SESSION, 1)), SESSION)
+            read_request(envelope(0, config(SESSION)), SESSION)
                 .unwrap_err()
                 .call_id,
             None
@@ -244,20 +241,17 @@ mod tests {
     #[test]
     fn a_config_is_read_under_the_call_that_must_answer_it() {
         assert_eq!(
-            read_request(envelope(9, config(SESSION, 4)), SESSION).unwrap(),
+            read_request(envelope(9, config(SESSION)), SESSION).unwrap(),
             Request::Config {
                 call_id: 9,
-                config: daemon::ShizukuSessionConfig {
-                    sequence: 4,
-                    ..Default::default()
-                },
+                config: daemon::ShizukuSessionConfig::default(),
             }
         );
     }
 
     #[test]
     fn a_config_for_another_session_is_refused() {
-        let rejected = read_request(envelope(9, config(SESSION + 1, 4)), SESSION).unwrap_err();
+        let rejected = read_request(envelope(9, config(SESSION + 1)), SESSION).unwrap_err();
 
         assert_eq!(rejected.call_id, Some(9));
         assert!(
@@ -269,7 +263,7 @@ mod tests {
 
     #[test]
     fn a_config_may_not_reuse_the_session_call() {
-        let rejected = read_request(envelope(SESSION, config(SESSION, 4)), SESSION).unwrap_err();
+        let rejected = read_request(envelope(SESSION, config(SESSION)), SESSION).unwrap_err();
 
         assert_eq!(rejected.call_id, Some(SESSION));
         assert!(

@@ -19,7 +19,6 @@ import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.root.daemon.DaemonEnvelope
 import be.mygod.vpnhotspot.root.daemon.DaemonException
 import be.mygod.vpnhotspot.root.daemon.DaemonIpc
-import be.mygod.vpnhotspot.root.daemon.ShizukuApplied
 import be.mygod.vpnhotspot.root.daemon.ShizukuSessionConfig
 import be.mygod.vpnhotspot.root.daemon.StartShizukuSessionCommand
 import be.mygod.vpnhotspot.util.Services
@@ -74,9 +73,8 @@ class AppUidDaemon private constructor(
     private val input: ByteReadChannel,
     private val output: ByteWriteChannel,
     /**
-     * The session's own counters owner, which stamps the sequence as a config is written. Shared rather than
-     * counted here, because the sequence is acknowledged together with the upstream generation and splitting
-     * it off would leave no single place that decides what a published config says.
+     * The session's own retirement counter owner, which records a config as it is written. Shared rather than
+     * counted here so there is one place that decides what a published config says.
      */
     private val publication: SessionPublication,
 ) {
@@ -389,8 +387,8 @@ class AppUidDaemon private constructor(
         applying = true
         try {
             while (true) {
-                // Two different facts, checked before anything is stamped, allocated a call ID or written,
-                // because either of them makes all three wrong: [SessionPublication] would burn a sequence
+                // Two different facts, checked before anything is published, allocated a call ID or written,
+                // because either of them makes all three wrong: [SessionPublication] would commit a config
                 // nobody can answer, and the frame would go onto a stream that must not carry one.
                 //
                 // [poisoned] first, because it is the one that makes writing itself impossible: a frame that
@@ -405,13 +403,13 @@ class AppUidDaemon private constructor(
                 if (ended.isCompleted) {
                     throw ended.await() ?: IOException("$BINARY_NAME is no longer answering")
                 }
-                // Stamped here rather than where the config was built, because this is the moment one really
-                // goes out: a config superseded in the pending slot never gets a sequence, so the one that
-                // does is the one a reply can name.
-                val next = publication.stamping(pending ?: return)
+                // Published here rather than where the config was built, because this is the moment one
+                // really goes out: a config superseded in the pending slot must not become the predecessor
+                // its successor is measured against. The call ID below is what names its reply.
+                val next = publication.publish(pending ?: return)
                 pending = null
                 val id = nextCallId++
-                val reply = CompletableDeferred<ShizukuApplied>()
+                val reply = CompletableDeferred<Unit>()
                 // The write and the wait are separate, because only one of them may be answered with a
                 // cancel. [DaemonIpc.writeFrame] writes the length, the payload and the flush at separate
                 // suspension points, so a failure or a cancellation inside it leaves a stream with no
@@ -445,7 +443,7 @@ class AppUidDaemon private constructor(
                     // child rather than rethrowing a cancellation that was never its own - and a
                     // cancelled write leaves exactly the same broken stream a failed one does.
                     if (poisoned == null) poisoned = if (e is CancellationException) {
-                        IOException("$BINARY_NAME config ${next.sequence} was interrupted mid-frame", e)
+                        IOException("$BINARY_NAME config call $id was interrupted mid-frame", e)
                     } else e
                     // A cancellation is the caller's own and goes back promptly and unchanged. Anything
                     // else is the transport failing, and for *that* the reader is the authority rather
@@ -470,7 +468,7 @@ class AppUidDaemon private constructor(
                 // shares this lane: the write returns and this runs before either can suspend again, and
                 // no answer to this call can exist before the frame carrying it did.
                 acknowledgement = Acknowledgement(id, reply)
-                val applied = try {
+                try {
                     // Raced against [ended], because [receive] can only fail the round trips it finds in
                     // flight: a slot installed after the reader is gone has nobody left to complete it,
                     // and awaiting it alone would park on a reply nobody is left to send while [ended]
@@ -478,8 +476,8 @@ class AppUidDaemon private constructor(
                     // is the other case, and the only thing that ends this wait then is the user's stop.
                     // `select` is biased to its first clause, so a reply the reader delivered on its way
                     // out still wins the turn it shares with the stream ending.
-                    select<ShizukuApplied> {
-                        reply.onAwait { it }
+                    select<Unit> {
+                        reply.onAwait { }
                         // The cause is thrown as itself when there is one, and that is the whole point of
                         // carrying it: a session the daemon ended with a structured error is one whose
                         // report names the context, the errno and the Rust line, and `readableMessage`
@@ -490,8 +488,8 @@ class AppUidDaemon private constructor(
                         // no attributable frame - where naming the config that will never be answered is
                         // the most that can be said.
                         ended.onAwait { cause ->
-                            throw cause ?: IOException("$BINARY_NAME stopped answering, so config " +
-                                    "${next.sequence} will never be acknowledged")
+                            throw cause ?: IOException(
+                                "$BINARY_NAME stopped answering config call $id")
                         }
                     }
                 } catch (e: CancellationException) {
@@ -504,23 +502,6 @@ class AppUidDaemon private constructor(
                     // the reply that arrives.
                     withContext(NonCancellable) { abandon(id) }
                     throw e
-                }
-                check(applied.sequence == next.sequence) {
-                    "$BINARY_NAME acknowledged config ${applied.sequence}, expected ${next.sequence}"
-                }
-                check(applied.upstream_generation == next.upstream_generation) {
-                    "$BINARY_NAME applied generation ${applied.upstream_generation}, sent " +
-                            next.upstream_generation
-                }
-                // Admission is part of the reply's contract, not a value read off it. The ordered stop's
-                // first step is "stop admitting", and its whole point is that the app may then spend as long
-                // as the tethering service takes clearing the global preference before the child is fenced;
-                // a daemon that acknowledged the right sequence and generation while still admitting would make
-                // that window a lie. So a disagreement is a control failure like any other rather than a
-                // state update.
-                check(applied.admitting == next.admit) {
-                    "$BINARY_NAME is admitting ${applied.admitting} for config ${next.sequence}, " +
-                            "which asked for ${next.admit}"
                 }
             }
         } finally {
@@ -566,7 +547,7 @@ class AppUidDaemon private constructor(
     private var nextCallId = SESSION_CALL_ID + 1
 
     /** One config call in flight, which is all this ever has: [apply] coalesces the rest away. */
-    private class Acknowledgement(val id: Long, val reply: CompletableDeferred<ShizukuApplied>)
+    private class Acknowledgement(val id: Long, val reply: CompletableDeferred<Unit>)
 
     /**
      * The config call [apply] is currently waiting on. Null while none is in flight, which is most of the
@@ -665,9 +646,9 @@ class AppUidDaemon private constructor(
                         val id = frame.call_id.readCallId()
                         // Read before the slot is taken, so a reply this side cannot use still leaves the
                         // call in flight for the cleanup below to fail rather than stranding it.
-                        val applied = frame.shizuku_applied
+                        frame.ack
                             ?: throw IOException("$BINARY_NAME answered a config call with $frame")
-                        takeAcknowledgement(id)?.complete(applied)
+                        takeAcknowledgement(id)?.complete(Unit)
                     }
                     envelope.event != null -> {
                         val frame = envelope.event
@@ -737,7 +718,7 @@ class AppUidDaemon private constructor(
      * The config call [id] answers, or null when it names one nobody is waiting on: a call this side
      * abandoned is answered all the same, because the daemon reads the cancel only after it has replied.
      */
-    private fun takeAcknowledgement(id: Long): CompletableDeferred<ShizukuApplied>? {
+    private fun takeAcknowledgement(id: Long): CompletableDeferred<Unit>? {
         val acknowledgement = acknowledgement
         if (acknowledgement?.id != id) {
             Timber.tag(BINARY_NAME).w("Dropping an answer for $BINARY_NAME call $id")

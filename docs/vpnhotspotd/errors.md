@@ -66,7 +66,7 @@ Representative examples:
 - a background task or best-effort cleanup step fails without invalidating the
   command's main result.
 
-Tie the report to a call ID when the failure belongs to a specific active call.
+Tie the report to a call ID when the failure belongs to a specific call.
 Use process-level nonfatal reports only for daemon-global background failures or
 when no meaningful call owns the failure.
 
@@ -112,7 +112,7 @@ The two paths share the report builders and differ in delivery and keying:
 | --- | --- | --- |
 | Owner | one process-global channel and coalescer | one reporter per session, flushed as part of its result |
 | Coalescing key | `(context, kind, errno, file, line)` | Rust source file, line and column only, because context, kind and errno are traffic-controlled there and would otherwise let one forged packet per variation open another window |
-| Call ID | present | carried when a call owns the failure, absent for the dataplane's own background reports |
+| Call ID | carried when the failure belongs to a specific call; otherwise absent | absent; call-owned failures use terminal `ErrorFrame`s |
 
 Dispatch is registry-first with no fall-through, so neither path's reports can
 reach the other's. App-UID contexts are prefixed `shizuku.` and name the owner and
