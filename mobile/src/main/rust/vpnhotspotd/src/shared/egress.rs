@@ -96,13 +96,11 @@ mod tests {
         ShizukuSessionConfig {
             sequence: 1,
             upstream_generation: 1,
-            downstream_epoch: 1,
             admit: true,
             upstream_network: network,
             upstream_interface_index: interface,
             virtual_addresses: Vec::new(),
             gateway_addresses: Vec::new(),
-            downstream_mtu_floor: 0,
         }
     }
 

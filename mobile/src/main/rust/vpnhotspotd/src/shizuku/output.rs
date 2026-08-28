@@ -8,8 +8,8 @@
 //! both. A per-producer allocator would look right and mis-splice datagrams.
 //!
 //! It also puts the whole size policy in one function, which is otherwise the easiest thing in the design
-//! to get subtly different in two places: the DF decision against the downstream floor, and source
-//! fragmentation against the interface.
+//! to get subtly different in two places: the DF decision and the source fragmentation that follows it, both
+//! against the session's one immutable MTU.
 //!
 //! The one thing it does *not* decide is when an Identification may be used again, because that is a fact
 //! about the wire rather than about this owner: the TUN writer says whether and when each guarded packet
@@ -32,13 +32,13 @@ use crate::shizuku::tun_writer::{Stamp, Writer};
 
 pub(crate) struct Output {
     /// The size policy, the identification table and every counter that says what happened to a datagram.
-    /// One owner, because the floor comparison, the identification decision and which counter moves are one
+    /// One owner, because the size comparison, the identification decision and which counter moves are one
     /// decision - see [vpnhotspotd::shared::packet_writer::Emitter].
     ///
-    /// Built once per session and kept across every generation and epoch. A handover replaces sockets and
-    /// retires flows; it does not replace the tuples a receiver is still holding fragments for, so an
-    /// allocator rebuilt with the config would restart every sequence exactly when a client is most likely to
-    /// still have the previous values in hand.
+    /// Built once per session and kept across every generation. A handover replaces sockets and retires
+    /// flows; it does not replace the tuples a receiver is still holding fragments for, so an allocator
+    /// rebuilt with the config would restart every sequence exactly when a client is most likely to still
+    /// have the previous values in hand.
     emitter: Emitter,
     writer: Writer,
 }
@@ -67,11 +67,6 @@ impl Output {
         self.emitter.terminal(terminal);
     }
 
-    /// A floor of zero means the app measured nothing, so the interface is the only limit there is.
-    pub(crate) fn set_floor(&mut self, floor: usize) {
-        self.emitter.set_floor(floor);
-    }
-
     /// Emits one UDP datagram toward a client, splitting it only if the interface cannot carry it whole.
     ///
     /// `stamp` is the retirement it was produced under, not the current one. The writer gates on that again
@@ -98,8 +93,8 @@ impl Output {
     /// Emits one Echo Reply toward a client, under the identifier and sequence it originally chose.
     ///
     /// Subject to the same size policy as a datagram rather than written straight through, because a ping is
-    /// as free to be large as anything else and the downstream floor can shrink between a request and its
-    /// reply - so a reply that fitted when it was asked for may not by the time it arrives.
+    /// as free to be large as anything else: a remote chooses how much payload it echoes back, and the reply
+    /// carries this daemon's own headers rather than the request's.
     pub(crate) fn echo(
         &mut self,
         stamp: Stamp,
@@ -116,7 +111,7 @@ impl Output {
     }
 
     /// The size policy, which is otherwise the easiest thing in the design to get subtly different in two
-    /// places: the DF decision against the downstream floor, then source fragmentation against the interface.
+    /// places: the DF decision, then the source fragmentation it authorizes.
     ///
     /// `build` receives the Identification that decision produced rather than deciding for itself, because
     /// who may clear DF and what value it then carries is one question, and answering it per producer is how
@@ -134,7 +129,7 @@ impl Output {
         size: usize,
         build: impl FnOnce(Option<u16>) -> Result<Vec<u8>, WriterError>,
     ) {
-        // One call, and the owner decides everything: the floor comparison, whether an Identification can be
+        // One call, and the owner decides everything: the size comparison, whether an Identification can be
         // issued, which counter moves, and whether anything is reported. A caller that passed its own idea of
         // "oversized" or incremented its own counter would be deciding what this exists to decide.
         //
@@ -163,11 +158,11 @@ impl Output {
     /// Not one producer but several. The terminating TCP stack is the busiest, because it segments to the
     /// advertised MTU itself, but the locally originated ICMP errors are here too - the Fragmentation Needed
     /// and the unreachables the dispatcher, the UDP relay and Echo raise - and those are built at or under
-    /// the floor by construction and truncate their quote rather than growing.
+    /// the MTU by construction and truncate their quote rather than growing.
     ///
     /// The invariant is the same for all of them and it is what makes the `None` below correct: **a packet
     /// that arrives here is atomic and carries no Identification this daemon issued.** Anything that might
-    /// need one goes through [Output::datagram] or [Output::echo], where the floor comparison happens.
+    /// need one goes through [Output::datagram] or [Output::echo], where the size comparison happens.
     pub(crate) fn packet(&mut self, stamp: Stamp, packet: Vec<u8>) {
         self.enqueue(stamp, packet);
     }
@@ -182,16 +177,10 @@ impl Output {
         self.emitter.wrote(accepted);
     }
 
-    /// The size the TCP stack segments to, so it never emits something a downstream cannot carry and never
-    /// needs the DF machinery above.
-    pub(crate) fn floor(&self) -> usize {
-        self.emitter.floor()
-    }
-
     pub(crate) fn describe(&self) -> String {
         format!(
-            "floor {} written {} blocked {} unwritable {} identification-denied {}; {}",
-            self.emitter.floor(),
+            "mtu {} written {} blocked {} unwritable {} identification-denied {}; {}",
+            self.emitter.mtu(),
             self.emitter.written(),
             self.emitter.blocked(),
             self.emitter.unwritable(),

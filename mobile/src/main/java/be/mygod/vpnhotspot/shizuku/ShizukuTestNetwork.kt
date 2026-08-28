@@ -334,10 +334,9 @@ object ShizukuTestNetwork {
          */
         var cleanup: ShizukuEpoch? = null
         /**
-         * The three axes of every config this session publishes, the addresses it may never change, and the
-         * fixed MTU its TUN and agent carry. The downstream epoch is advanced on any observation that can
-         * break the correspondence between a TUN-visible tuple and a client, which for a global upstream is
-         * every loss of positive confirmation that tethering is still carrying this exact network.
+         * The sequence and upstream generation of every config this session publishes, and the addresses it
+         * may never change. The MTU is not among them: the daemon is told it once, on the start call that
+         * hands over the TUN, and no config can move it.
          */
         val publication = SessionPublication(
             listOf(VIRTUAL_DNS_IPV4, VIRTUAL_DNS_IPV6).map {
@@ -349,7 +348,6 @@ object ShizukuTestNetwork {
             listOf(TUN_IPV4_ADDRESS, TUN_IPV6_ADDRESS).map {
                 InetAddress.getByName(it).address.toByteString()
             },
-            TEST_NETWORK_MTU,
         )
         var network: Network? = null
         /** Latest global upstream observation. Confined to [privilegedDispatcher]. */
@@ -657,7 +655,7 @@ object ShizukuTestNetwork {
             try {
                 TetheringManagerCompat.eventFlow.collect { event ->
                     // Level-triggered and repeating its current value, so an observation that changed
-                    // nothing is dropped here rather than costing an epoch and a config round trip.
+                    // nothing is dropped here rather than costing a config round trip.
                     if (event !is TetheringManagerCompat.Event.UpstreamChanged) return@collect
                     snapshot.complete(Unit)
                     if (event.network == current.upstream) return@collect
@@ -673,13 +671,15 @@ object ShizukuTestNetwork {
                         current.failed.complete(e)
                         return@collect
                     }
-                    // Anything other than arriving at ACTIVE breaks the correspondence between a
-                    // TUN-visible tuple and a client: tethering may have rebuilt its NAT behind an
-                    // unchanged Network handle, so continuity has to be established rather than assumed
-                    // from a short absence.
-                    if (next != State.ACTIVE) {
-                        current.publication.advanceDownstream()
-                    } else if (current.state == next) return@collect
+                    // Moves admission, and never a generation, whichever way it went. Only ACTIVE admits
+                    // traffic, but closing admission tears nothing down: the daemon drops what it reads from
+                    // the TUN, creates nothing and refreshes no lifetime, leaving what exists to end on its
+                    // own deadlines and its own protocols. So this is not a pause, and the interval is not
+                    // free - a flow whose lifetime stops being refreshed can expire inside it - only that
+                    // nothing is retired *for* the transition. Retiring for it would need evidence that a
+                    // TUN-visible endpoint changed hands, and there is none to have: Android's conntrack owns
+                    // the mapping between one and a physical client.
+                    if (current.state == next) return@collect
                     current.state = next
                     // Stamped with the lifespan that produced it rather than filtered by when it lands. This
                     // write is not cancellable, so an observer can reach it after its own lifespan was
@@ -687,8 +687,7 @@ object ShizukuTestNetwork {
                     // the owner it names - so a late write is harmless and the daemon's config above still
                     // gets the truth on the way out.
                     stateFlow.value = OwnedState(current.lifespan, next)
-                    Timber.i("Shizuku session ${current.generation} is $next, upstream " +
-                            "${current.upstream}, epoch ${current.publication.downstreamEpoch}")
+                    Timber.i("Shizuku session ${current.generation} is $next, upstream ${current.upstream}")
                     current.push()
                 }
             } catch (e: Throwable) {
@@ -1069,7 +1068,8 @@ object ShizukuTestNetwork {
         stateFlow.value = null
         try {
             // Joined, not merely cancelled: cancellation is a request and this needs a completion. Until it
-            // returns, an observer could still be inside a config round trip or an epoch advance.
+            // returns, an observer could still be inside a config round trip, or advancing the upstream
+            // generation the next one will carry.
             session.scope.coroutineContext.job.cancelAndJoin()
             // Step 1 of the ordered stop, and the daemon's half of it: closing admission in the app alone
             // would leave Rust admitting new flows, mappings, queries and fragments for the whole of the
@@ -1345,11 +1345,12 @@ object ShizukuTestNetwork {
      * Sends the current session config. Level-triggered, so this is safe to call on any observation: the
      * daemon only needs the newest one, and [AppUidDaemon.apply] coalesces the rest away.
      *
-     * The MTU the daemon sizes relayed IPv4 output against is [TEST_NETWORK_MTU], which is the TestNetwork's
-     * own contract rather than a measurement: it is what the TUN was created with, what the agent publishes,
-     * and what tethering clamps the downstream MTU it derives from this upstream to. This mode owns no
-     * downstream and never asks which interfaces Android is serving behind it, so there is nothing narrower
-     * to measure and nothing that could move it within a session.
+     * No config carries an MTU. The one the daemon sizes every packet against is [TEST_NETWORK_MTU], sent once
+     * on the start call and checked there against the TUN itself: it is the TestNetwork's own contract rather
+     * than a measurement - what the TUN was created with, what the agent publishes, and what tethering clamps
+     * the downstream MTU it derives from this upstream to. This mode owns no downstream and never asks which
+     * interfaces Android is serving behind it, so there is nothing narrower to measure and nothing that could
+     * move it within a session.
      */
     private fun Session.config(): ShizukuSessionConfig {
         // Zero means the name is unknown, which the daemon treats as having no *relay* upstream at all rather
@@ -1435,8 +1436,8 @@ object ShizukuTestNetwork {
                 // The network went away between tethering naming it and this read, so there is nothing to
                 // classify. Staying unconfirmed is the conservative answer: telling the user to cycle their
                 // hotspot over a network that no longer exists would be advice about nothing, and the next
-                // upstream callback decides for real. It also advances the epoch, exactly as any other loss
-                // of positive confirmation does.
+                // upstream callback decides for real. It closes admission, exactly as any other loss of
+                // positive confirmation does, and retires nothing.
                 null -> State.VERIFYING
             }
         }

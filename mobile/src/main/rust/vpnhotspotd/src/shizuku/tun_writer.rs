@@ -3,7 +3,7 @@
 //! It exists so that the retirement gate, final size validation and the descriptor's own writability wait
 //! happen in exactly one place rather than at each producer.
 //!
-//! **It decides nothing about what a packet contains.** The size policy against the downstream floor, the
+//! **It decides nothing about what a packet contains.** The size policy against the session MTU, the
 //! Identification an oversized IPv4 datagram carries, and source fragmentation for both families all belong
 //! to the ingress task's output owner and have already happened by the time a packet arrives here - see
 //! [crate::shizuku::output] and [vpnhotspotd::shared::packet_writer]. What arrives is finished bytes; what this does
@@ -98,17 +98,22 @@ pub(crate) fn footprint(mtu: usize) -> Option<u64> {
 #[derive(Debug)]
 pub(crate) struct Rejected;
 
-/// Which retirement a packet belongs to: both axes, because either one advancing retires the state that
-/// produced it. The generation says which `Network` its upstream socket was bound to, the epoch whether its
-/// TUN-visible tuple still names the same client, and a handover moves only the first.
+/// Which retirement a packet belongs to: the generation, which says which `Network` its upstream socket was
+/// bound to and is the only field of a config that retires anything. Admission is not one of them - it opens
+/// and closes without retiring, because Android's own conntrack owns the mapping between a physical client
+/// and the TUN-visible endpoint this daemon keys by, so no config can say that one changed hands. Plenty of
+/// state still ends with no config involved at all, on an idle deadline or when its own protocol finishes;
+/// none of that moves this.
 ///
-/// This is what makes the purge free. A packet already queued when a sweep runs carries the retired pair, so
+/// A type rather than the bare number, because it travels through every producer and every table here and a
+/// generation confused with a sequence, a handle or a worker id is a packet delivered to the wrong client.
+///
+/// This is what makes the purge free. A packet already queued when a sweep runs carries the retired value, so
 /// dropping it at dequeue needs no second pass over the queue - and the terminal packets a sweep writes are
-/// stamped with the new pair, which is why they leave while the non-terminal ones behind them do not.
+/// stamped with the new one, which is why they leave while the non-terminal ones behind them do not.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Stamp {
     pub(crate) generation: u64,
-    pub(crate) epoch: u64,
 }
 
 pub(crate) struct Queued {
@@ -355,8 +360,8 @@ async fn writing(
     cancel: &CancellationToken,
     counts: &mut Counts,
 ) -> io::Result<()> {
-    // Zero on both axes, which no config carries, so the first config's retirement runs against an empty
-    // queue rather than being skipped.
+    // Zero, which no config carries, so the first config's retirement runs against an empty queue rather
+    // than being skipped.
     let mut current = Stamp::default();
     loop {
         let queued = tokio::select! {
@@ -383,9 +388,9 @@ async fn writing(
         // nothing about it for the allocator to hear and nothing to count.
         let settlement = u64::from(queued.guarded.is_some());
         if queued.stamp != current {
-            // Produced under a generation or epoch that has since been retired. This is the purge and the
-            // catch at once: what a sweep left queued, and what an old-generation task enqueued after the
-            // sweep had already drained it.
+            // Produced under a generation that has since been retired. This is the purge and the catch at
+            // once: what a sweep left queued, and what an old-generation task enqueued after the sweep had
+            // already drained it.
             counts.stale += 1;
             // Terminal without a write: the packet never reached the TUN, so whatever Identification it
             // carried is free to be issued again as soon as the rest of its datagram has ended too.

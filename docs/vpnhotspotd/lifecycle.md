@@ -238,10 +238,9 @@ work bound to a `Network` is affected: TCP flows, UDP mappings and Echo sessions
 are retired, while reassembly, the TUN writer, the virtual-DNS transports and the
 resource accounting carry on. The order is:
 
-1. publish the configuration's generation and epoch to the TUN writer - a change
-   advances whichever of the two it concerns - and wait for the writer to confirm,
-   so nothing produced under the superseded values can still reach a client and
-   the notifications below are not discarded with them;
+1. publish the configuration's generation to the TUN writer and wait for the
+   writer to confirm, so nothing produced under the superseded generation can
+   still reach a client and the notifications below are not discarded with them;
 2. cancel every affected flow, mapping and socket, then join their tasks and
    return what they held, so an acknowledged configuration means those descriptors
    are closed. An upstream connect still in flight is cancelled rather than waited
@@ -252,9 +251,8 @@ resource accounting carry on. The order is:
    directly;
 4. notify each affected flow or query once: a reset per TCP flow that has a
    remote endpoint, and SERVFAIL for a resolver answer belonging to the
-   superseded generation. UDP mappings and Echo sessions produce nothing, and an
-   answer dropped because the epoch advanced is silent, since the TUN-visible
-   address it would go to may name a different device.
+   superseded generation. UDP mappings and Echo sessions produce nothing,
+   because a connectionless mapping has no ending to signal.
 
 A submitted resolver transaction is never cancelled by a handover, because
 cancelling would return this process's descriptor and nothing of the platform's
@@ -262,16 +260,26 @@ work. A DNS-over-TCP transport is unaffected because it terminates locally and
 owns no socket bound to the upstream at all, and each of its
 queries is fixed to the `Network` current when it was accepted, so an answer from a
 selection the session has left becomes that query's own SERVFAIL while the
-connection carries on. An epoch change does retire the transport, because the
-client address may no longer name the same device, while its transaction runs on
-([`dns.md`](dns.md)).
+connection carries on ([`dns.md`](dns.md)).
 
-Losing `ACTIVE` advances `downstream_epoch` instead of the generation and retires
-everything keyed to a TUN-visible address and port. Neither value may move
-backwards; a configuration that does is a protocol error and ends the session.
-Having no selectable `Network` is not a failure: the configuration carries no
-handle, upstream work fails per operation, and the session resumes on the next
-selection.
+Losing `ACTIVE` retires nothing. It clears `admit`, and closed admission means the
+daemon drops every packet it reads from the TUN, creates nothing and refreshes no
+lifetime; what already exists is left to end on its own deadlines and its own
+protocols, both of which keep running throughout. Closed is therefore not paused,
+and regaining `ACTIVE` resumes with whatever independently survived the interval
+rather than with a guaranteed set of connections - a short interval normally
+leaves the flows, mappings, Echo sessions, reassembly contexts and DNS transports
+that were open, a long one leaves fewer. What it never does is retire anything
+*for* the transition. There is no downstream retirement stamp to move: Android's
+conntrack owns the mapping between a tethered client and the TUN-visible endpoint
+the daemon keys by, so neither side can observe that such an endpoint changed
+hands, and manufacturing a retirement for an `ACTIVE` transition would drop live
+connections for a change nothing observed. Downstream membership does not reach
+this decision at all, since the app watches tethering's upstream and never its
+interface lists. `upstream_generation` may not move backwards; a configuration
+that does is a protocol error and ends the session. Having no selectable `Network`
+is not a failure: the configuration carries no handle, upstream work fails per
+operation, and the session resumes on the next selection.
 
 An update that cannot be carried or confirmed - a mid-frame write failure, a
 refusal, or a missing or mismatched reply - ends the session, because the app can

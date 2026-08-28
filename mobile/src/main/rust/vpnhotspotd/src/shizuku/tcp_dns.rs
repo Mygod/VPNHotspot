@@ -246,8 +246,8 @@ impl Delivered {
     ///
     /// A borrow, so the answer still leaves only through [Answering::hand_over] and nothing here can deliver
     /// anything. What it is for is the discard paths in [crate::shizuku::tcp::Engine::settle]: a transport that is
-    /// gone, reused or epoch-stale never reaches its own terminal with this failure, so the owner about to
-    /// drop the settlement is the last one that can say what happened.
+    /// gone or reused never reaches its own terminal with this failure, so the owner about to drop the
+    /// settlement is the last one that can say what happened.
     pub(crate) fn refusal(&self) -> Option<&Failure> {
         self.answering.settled.answer()?.result.as_ref().err()
     }

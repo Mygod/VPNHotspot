@@ -30,7 +30,9 @@ use vpnhotspotd::shared::admission::{Admission, Lease};
 const PASSES: usize = 3;
 
 /// Counters rather than per-packet logs: the input is attacker-influenced, so a report per packet would be a
-/// flood by construction. They are reported when the epoch changes and once at exit.
+/// flood by construction. They run for the whole session and are reported once at its exit: what they count
+/// is client traffic, which no config change divides - a handover retires the state bound to the selection
+/// being left, not the clients that were sending.
 #[derive(Default)]
 pub(crate) struct Counters {
     dns: u64,
@@ -54,9 +56,9 @@ pub(crate) struct Counters {
 }
 
 impl Counters {
-    pub(crate) fn describe(&self, epoch: u64) -> String {
+    pub(crate) fn describe(&self) -> String {
         format!(
-            "epoch {epoch}: dns {} undeliverable-dns {} relayed {} tcp {} echo {} unsupported {} \
+            "dns {} undeliverable-dns {} relayed {} tcp {} echo {} unsupported {} \
              fragmented {} fragments-denied {} fragments-overlapping {} fragments-expired {} \
              fragments-unreported {} extended {} chain-refused {} unparseable {} reserved {} \
              unroutable {} malformed {} unadmitted {}",

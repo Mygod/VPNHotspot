@@ -74,9 +74,9 @@ class AppUidDaemon private constructor(
     private val input: ByteReadChannel,
     private val output: ByteWriteChannel,
     /**
-     * The session's own axes owner, which stamps the sequence as a config is written. Shared rather than
-     * counted here, because the sequence is one of the three axes the daemon acknowledges together and
-     * splitting it from the other two would leave no single place that decides what a published config says.
+     * The session's own counters owner, which stamps the sequence as a config is written. Shared rather than
+     * counted here, because the sequence is acknowledged together with the upstream generation and splitting
+     * it off would leave no single place that decides what a published config says.
      */
     private val publication: SessionPublication,
 ) {
@@ -500,7 +500,7 @@ class AppUidDaemon private constructor(
                     // so this is exactly the case root's controller cancels a call in: nobody is waiting on
                     // it any more, and the daemon is told to stop counting on it. The config itself still
                     // applied - this conversation is serial, so the daemon reads that cancel strictly after
-                    // it answered - which is why nothing rewinds the axes here, and why the reader drops
+                    // it answered - which is why nothing rewinds the counters here, and why the reader drops
                     // the reply that arrives.
                     withContext(NonCancellable) { abandon(id) }
                     throw e
@@ -508,16 +508,14 @@ class AppUidDaemon private constructor(
                 check(applied.sequence == next.sequence) {
                     "$BINARY_NAME acknowledged config ${applied.sequence}, expected ${next.sequence}"
                 }
-                check(applied.downstream_epoch == next.downstream_epoch &&
-                        applied.upstream_generation == next.upstream_generation) {
-                    "$BINARY_NAME applied epoch ${applied.downstream_epoch}/generation " +
-                            "${applied.upstream_generation}, sent ${next.downstream_epoch}/" +
+                check(applied.upstream_generation == next.upstream_generation) {
+                    "$BINARY_NAME applied generation ${applied.upstream_generation}, sent " +
                             next.upstream_generation
                 }
                 // Admission is part of the reply's contract, not a value read off it. The ordered stop's
                 // first step is "stop admitting", and its whole point is that the app may then spend as long
                 // as the tethering service takes clearing the global preference before the child is fenced;
-                // a daemon that acknowledged the right sequence and axes while still admitting would make
+                // a daemon that acknowledged the right sequence and generation while still admitting would make
                 // that window a lie. So a disagreement is a control failure like any other rather than a
                 // state update.
                 check(applied.admitting == next.admit) {

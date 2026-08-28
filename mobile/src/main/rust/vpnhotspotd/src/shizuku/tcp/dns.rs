@@ -348,10 +348,9 @@ impl Engine {
             }
         }
         let stamp = delivered.stamp();
-        // An epoch change may have put a different device behind this client tuple, so there is nobody an
-        // answer *or* a refusal about it can honestly be sent to. Absent, closed or reused flows are the
-        // same silence for the same reason.
-        if !live || stamp.epoch != self.stamp.epoch {
+        // A flow that is absent, closed or reused is one there is nobody left to answer: the transport that
+        // asked is gone, and a handle that has been handed to a successor belongs to a different client.
+        if !live {
             self.counters.ingress.stale += 1;
             // Silent on the wire, not in the log. There is no transport left to carry this failure to a
             // terminal, so for the one outcome that is this daemon's own - the platform holding a slot

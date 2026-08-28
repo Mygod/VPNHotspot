@@ -179,8 +179,8 @@ impl Relay {
         admission.release(self.tables);
     }
 
-    /// Adopts a config. Either axis advancing retires everything: the epoch because a session's client address
-    /// is a TUN-visible tuple, and the generation because each socket is bound to the network that changed.
+    /// Adopts a config. The generation advancing retires everything, because each socket is bound to the
+    /// network that changed and a session is nothing without the socket that carries it.
     ///
     /// Returns only once every retired socket's receive task has been joined and its descriptor closed, which
     /// is what makes the caller's acknowledgement mean what the design says it means.
@@ -204,8 +204,9 @@ impl Relay {
     ///
     /// Sessions go first and without awaiting anything: they hold no descriptor, so there is nothing to join,
     /// and clearing them before the sockets is what makes a reply that arrives mid-retirement fail to match
-    /// rather than be delivered to a client of the previous epoch. Replies still in the channel are left there
-    /// for the ordinary staleness check; a task parked on it wakes on its own token instead.
+    /// rather than be delivered under a sequence the retirement has already given up. Replies still in the
+    /// channel are left there for the ordinary staleness check; a task parked on it wakes on its own token
+    /// instead.
     ///
     /// Also the whole-session path, because the session ends with every descriptor closed and every task
     /// joined, which is exactly this.

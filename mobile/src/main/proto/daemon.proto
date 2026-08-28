@@ -20,9 +20,17 @@ option optimize_for = LITE_RUNTIME;
 // A process answers one of the two command families and refuses the other outright: the root daemon rejects
 // an app-UID command and the app-UID daemon rejects a root command, both as an error on the offending call.
 //
-// Both config axes are level-triggered and the newest config is the whole truth: retire this epoch, bind to
-// this network, and serve or do not. That is what lets the app coalesce - one pending slot holding the
-// latest update - without the daemon having to replay a history it was never sent.
+// The config is level-triggered and the newest one is the whole truth: bind to this network, and serve or do
+// not. That is what lets the app coalesce - one pending slot holding the latest update - without the daemon
+// having to replay a history it was never sent.
+//
+// Nothing here names a tethered client, and nothing here reports one. Android's own conntrack owns the
+// mapping between a tethered client and the TUN-visible endpoint the daemon keys its state by, so that
+// endpoint changing hands is not observable on either side. Two consequences, and they are different:
+// downstream membership is not observed at all - the app watches tethering's upstream and never its interface
+// lists, so a downstream joining or leaving the same upstream moves no field here - while losing or regaining
+// ACTIVE moves admit and never a retirement stamp. upstream_generation is the only retirement stamp the
+// config carries.
 message ShizukuSessionConfig {
   // Nonzero and strictly increasing, so an acknowledgement can be matched to the config that produced it
   // and a zero-initialised view of it can never look current. A superseded config is never sent at all: the
@@ -33,13 +41,12 @@ message ShizukuSessionConfig {
   // and never the Network handle itself: a handle is derived from a netId, so it survives a
   // LinkProperties change that invalidates pinned state and is eventually reused by an unrelated network.
   uint64 upstream_generation = 2;
-  // Whether TUN-visible tuples still identify the same clients. Advancing it retires everything keyed by
-  // such a tuple. Independent of upstream_generation: a VPN handover advances only the generation, and
-  // losing ACTIVE advances only the epoch.
-  uint64 downstream_epoch = 3;
   // Only the app knows the session is ACTIVE, and only the daemon owns the TUN, so admission travels in
-  // the config rather than being inferred. Reopens when a config says so and the daemon has acknowledged
-  // it, never on the app's observation alone.
+  // the config rather than being inferred. Level-triggered like everything else here, and it retires nothing
+  // in either direction: closing it makes the daemon drop what it reads from the TUN and create or refresh
+  // nothing, and reopening it takes up again with whatever is still there. Closed is not paused, though -
+  // deadlines keep running and protocols keep finishing throughout - so what a reopened session resumes with
+  // is what independently survived the interval rather than a guarantee about any particular connection.
   bool admit = 4;
   // Absent means no selectable Network right now, which is not a failure: upstream work fails per
   // operation and the session resumes on the next config. There is no fallback network in this mode.
@@ -48,12 +55,6 @@ message ShizukuSessionConfig {
   // dispatch, as packed 4- or 16-byte addresses. Traffic to one of these is platform_dns only on an exact
   // TCP/UDP port-53 endpoint; anything else to a reserved address is dropped without a response.
   repeated bytes virtual_addresses = 6;
-  // The threshold below which relayed IPv4 output is emitted atomically with DF set. The app sends the
-  // session's own fixed TestNetwork MTU - the value its TUN was created with and its agent published, and
-  // the value tethering clamps the downstream MTU it derives from this upstream to - so within a session
-  // this never moves. It is still an axis-guarded field rather than a constant: it may only change together
-  // with downstream_epoch, because it is what every already-queued packet was sized against.
-  uint32 downstream_mtu_floor = 7;
   // The interface's own addresses, one per family, as packed 4- or 16-byte values. An ICMP error the daemon
   // originates comes from one of these, because that is the address a router in its position would speak from;
   // without the matching family the error is not sent at all rather than sent from something else.
@@ -67,13 +68,12 @@ message ShizukuSessionConfig {
   optional uint32 upstream_interface_index = 8;
 }
 
-// Sent once per applied config. Carries both axes because acknowledging only the upstream generation
-// would leave the app unable to tell whether the epoch's state has actually been retired, which is the
-// precondition for reopening admission.
+// Sent once per applied config, and only once whatever that config retires is really gone rather than merely
+// asked to go. Carries the generation as well as the sequence because that is what says the state bound to
+// the selection the session has left is actually back.
 message ShizukuApplied {
   uint64 sequence = 1;
   uint64 upstream_generation = 2;
-  uint64 downstream_epoch = 3;
   bool admitting = 4;
 }
 
@@ -103,6 +103,10 @@ message CancelCommand {}
 // whole frame with recvmsg.
 message StartShizukuSessionCommand {
   string interface_name = 1;
+  // The session's whole packet-sizing contract, checked against the descriptor's own interface MTU before the
+  // dataplane is built. Sent once and never again: this is the TestNetwork's fixed MTU - the value its TUN was
+  // created with, the value its agent published, and the value tethering clamps the downstream MTU it derives
+  // from this upstream to - so no config can move it and none carries it.
   uint32 mtu = 2;
 }
 

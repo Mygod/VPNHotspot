@@ -15,13 +15,9 @@
 //!   actually completed - never on a deadline, and never because a config changed. The one thing that does
 //!   cancel a query is the session itself ending, where there is no capacity left to free and the process is
 //!   recovering what it can before it exits.
-//! - **An answer is discarded by both axes, not by neither.** The generation because the answer may have
-//!   been resolved on a network that is no longer selected, and the epoch because the client address it
-//!   would go to may no longer mean the same device. Discarding still refunds.
-//! - **The two discards are not equally silent.** A swept generation leaves the client's transport intact and
-//!   the client still waiting, so it is owed the one terminal packet a sweep writes - a SERVFAIL, which fits
-//!   capacity this module already owns. A retired epoch is owed nothing, because the address that answer
-//!   would go to may now be a different device.
+//! - **An answer resolved on a network that is no longer selected is discarded.** Discarding still refunds,
+//!   and it is not silent: the client's transport is intact and the client is still waiting, so it is owed
+//!   the one terminal packet a sweep writes - a SERVFAIL, which fits capacity this module already owns.
 //! - **A query the platform took and this process cannot watch keeps its logical token.** `android_res_nsend`
 //!   is irreversible: once it has answered with a descriptor, one of this UID's resolver slots is taken
 //!   whatever happens in this process. If the two local steps after it fail, there is nothing left to observe
@@ -66,9 +62,9 @@ pub(crate) struct Answer {
     /// Which transaction this belongs to, so the ingress owner can park it on that record rather than acting
     /// on it the moment it arrives.
     transaction: u64,
-    /// The retirement the query was submitted under. Both axes are read separately here, because they differ
-    /// in what a mismatch costs: a swept generation still owes the client a SERVFAIL, a retired epoch owes it
-    /// nothing.
+    /// The retirement the query was submitted under, so an answer that came back over a selection this
+    /// session has since left can be told apart from one it can still send. The mismatch is not silence: the
+    /// client is still waiting, and it is owed a SERVFAIL.
     stamp: Stamp,
     /// The exact virtual endpoint the client addressed, which the answer is sourced from so that it looks
     /// like a reply from the resolver the client thinks it is talking to.
@@ -265,9 +261,9 @@ impl Handoff {
         admission.release(self.tables);
     }
 
-    /// Adopts a config. Nothing is retired and nothing is drained: this module holds no TUN-visible state
-    /// and no selected-network socket, so there is nothing an epoch or a generation invalidates that is not
-    /// already handled by discarding the answer when it arrives.
+    /// Adopts a config. Nothing is retired and nothing is drained: this module holds no selected-network
+    /// socket, so there is nothing a generation invalidates that is not already handled by discarding the
+    /// answer when it arrives.
     pub(crate) fn apply(&mut self, stamp: Stamp, upstream: Option<Network>) {
         self.stamp = stamp;
         self.upstream = upstream;
@@ -545,17 +541,6 @@ impl Handoff {
             drop(query);
             return;
         }
-        // Epoch first: an epoch change may have put a different device behind the tuple this would be
-        // addressed to, so there is nobody an answer *or* a failure about it can honestly be sent to. Both
-        // buffers die here, under the grant that covered them, and nothing is split for a delivery that will
-        // never happen.
-        if stamp.epoch != self.stamp.epoch {
-            self.counters.discarded += 1;
-            drop(result);
-            drop(query);
-            admission.release(lease);
-            return;
-        }
         // Whether the platform's own answer is still what goes out. A generation change leaves the client's
         // transport untouched, so it is owed the courtesy of being told to stop rather than left to time out.
         let answered = match result {
@@ -606,8 +591,8 @@ impl Handoff {
             }
         };
         let Some(response) = response else {
-            // A query too malformed for a SERVFAIL, or an epoch-silent discard's sibling: nothing physically
-            // survives this call, so the whole grant ends here rather than being split for a delivery.
+            // A query too malformed for a SERVFAIL to be formed from: nothing physically survives this call,
+            // so the whole grant ends here rather than being split for a delivery.
             drop(query);
             admission.release(lease);
             return;

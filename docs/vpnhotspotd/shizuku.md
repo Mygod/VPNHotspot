@@ -374,10 +374,10 @@ app refused are both shown as themselves, while a control stream that simply end
 to say and shows the generic message. The withdrawal above then runs in the same finalizer a stop would have
 used.
 
-## Upstream Generation And Downstream Epoch
+## Upstream Generation
 
-Two independent version numbers travel in every configuration, and the daemon refuses one whose values
-disagree with the fields they retire.
+One version number travels in every configuration, and the daemon refuses one whose value disagrees with the
+fields it retires.
 
 **`upstream_generation`** says which `Network` the egress sockets are bound to. It advances on every change
 to the selected upstream, including a `LinkProperties` change that leaves the handle equal, because the
@@ -385,9 +385,27 @@ state pinned behind that handle is stale just the same, and including an interfa
 observation behind it. It is deliberately not the handle, since netIds are reused. The handover it drives is
 in [`lifecycle.md`](lifecycle.md#selected-network-handover).
 
-**`downstream_epoch`** says whether a TUN-visible tuple still names the same client, and everything keyed by
-such a tuple carries it. It advances on any loss of positive confirmation that tethering is still carrying
-this exact network, because tethering can rebuild its inner NAT behind an unchanged handle.
+It is the only retirement stamp there is, and there is deliberately no downstream counterpart. Android's own
+conntrack owns the mapping between a tethered client and the TUN-visible endpoint the daemon keys its state
+by, so neither side can observe that such an endpoint changed hands, and neither a downstream transition nor
+an `ACTIVE` one is evidence that one did. The two are not the same input, though, and only one of them
+reaches a configuration at all.
+
+**Downstream membership is not observed.** The app watches tethering's upstream and never its interface
+lists, so a downstream joining or leaving the same upstream moves no configuration field - not even
+**`admit`** - and produces no round trip.
+
+**Losing or regaining `ACTIVE` moves `admit`, and never a retirement stamp.** `admit` is level-triggered
+truth rather than an event, and closing it retires nothing: the daemon drops what it reads from the TUN,
+creates nothing and refreshes no lifetime. That is not a pause. Deadlines keep running and protocols keep
+finishing throughout, so what a reopened session resumes with is whatever independently survived the
+interval, not a guarantee about any particular connection.
+
+What a generation change *does* retire is narrower than "everything a client touches": the UDP mappings, Echo
+sessions and ordinary TCP flows that hold a socket bound to the selection being left, plus the TUN output
+already queued under it, which the writer drops at dequeue. Reassembly contexts and DNS-over-TCP transports
+hold no such socket and are deliberately kept - the contexts expire on their own timer, and a transport's
+answer from the retired selection becomes that query's own SERVFAIL while the connection carries on.
 
 Egress is the app UID's own default `Network` and nothing else. Root mode's upstream preferences take no
 part in it, the session's own TUN is rejected by interface name so the daemon cannot relay to itself, and
@@ -431,18 +449,23 @@ owns report semantics and [`dns.md`](dns.md) the resolver handoff.
 
 ### Packetization Bounds
 
-MTU 1500 is immutable in the agent's `LinkProperties` and in the daemon, and is also the floor relayed IPv4
-output is sized against, sent as `downstream_mtu_floor`. This mode owns no downstream, so nothing narrower
-can be measured and nothing can move the floor within a session; the field may still only change together
-with `downstream_epoch`, because every queued packet was sized against it. A narrower downstream link is
-therefore a signalled path-MTU event - Android's forwarding path answers ICMP Fragmentation Needed at the
-TUN - rather than a black hole. Path-MTU signalling toward clients comes from `EMSGSIZE` and the socket
-error queues, never from a configured upstream MTU, because a handover can change that.
+MTU 1500 is immutable in the agent's `LinkProperties` and in the daemon, and is the one size everything is
+built against: the TCP stack's advertised MTU, the DF decision for relayed IPv4 output, and the split point
+for source fragmentation. It travels once, in `StartShizukuSessionCommand.mtu`, and is checked there against
+the descriptor's own interface MTU before the dataplane is built; no configuration carries it, so nothing
+within a session can move it. This mode owns no downstream, so there is nothing narrower to measure either. A
+narrower downstream link is therefore a signalled path-MTU event - Android's forwarding path answers ICMP
+Fragmentation Needed at the TUN - rather than a black hole. Path-MTU signalling toward clients comes from
+`EMSGSIZE` and the socket error queues, never from a configured upstream MTU, because a handover can change
+that.
 
-A datagram within the floor goes out whole and is issued no fragment identifier. A larger one, such as a
-multi-kilobyte DNS reply, is source-fragmented in both families. Newly originated TUN-side packets use hop
-limit 64; relayed traffic and translated errors preserve validated received hop metadata. All TUN writes
-pass through one packet writer with bounded queueing, atomic packet writes and final size validation.
+A datagram within that MTU goes out whole and is issued no fragment identifier; relayed IPv4 output also
+carries DF set, IPv6 having no such bit. A larger one,
+such as a multi-kilobyte DNS reply, is source-fragmented in both families, under the guarded IPv4
+Identification below or a 32-bit IPv6 sequence; if no IPv4 Identification can be issued the datagram is
+dropped and counted rather than sent atomically. Newly originated TUN-side packets use hop limit 64; relayed
+traffic and translated errors preserve validated received hop metadata. All TUN writes pass through one
+packet writer with bounded queueing, atomic packet writes and final size validation.
 
 **IPv4 Identification nonreuse.** Every fragment of one fragmented IPv4 datagram carries the same
 `(source, destination, protocol, Identification)`, and a different guarded datagram may not reuse that

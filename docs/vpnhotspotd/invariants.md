@@ -175,9 +175,18 @@ compatibility or cleanup impact.
   session ends; see [`dns.md`](dns.md).
 - The nonfatal reporter belongs to exactly one conversation, and a successor
   cannot install one while its predecessor is still finishing.
-- A packet leaving on the app-UID path carries the `upstream_generation` and
-  `downstream_epoch` it was produced under, and is dropped if either has since
-  advanced.
+- A packet leaving on the app-UID path carries the `upstream_generation` it was
+  produced under, and is dropped if that has since advanced.
+- A downstream transition changes nothing on the app-UID path: tethering's
+  interface lists are not observed, only its upstream. An `ACTIVE` transition may
+  change `admit`, and nothing else.
+- Closing `admit` retires no writer queue, fragment context, UDP or Echo mapping,
+  TCP flow or DNS transport, and reopening it retires none either. Configuration-
+  driven retirement happens only when `upstream_generation` advances or the
+  session ends. Closed admission is not a pause: the daemon drops client ingress
+  and refreshes no lifetime while it lasts, and idle deadlines and protocol
+  endings go on retiring state throughout, so what survives an interval is not
+  guaranteed.
 
 ## Interception
 
@@ -232,9 +241,12 @@ compatibility or cleanup impact.
 - An empty client set is a deferred NAT66 state, not a failure. Later
   replacements may start NAT66 when clients appear.
 - `ShizukuSessionConfig` is level-triggered: the newest configuration is the
-  whole truth, neither `upstream_generation` nor `downstream_epoch` may move
-  backwards, and no history is replayed. Admission is a configuration field,
-  never inferred from an acknowledgement.
+  whole truth, `upstream_generation` may not move backwards, and no history is
+  replayed. Admission is a configuration field, never inferred from an
+  acknowledgement.
+- The app-UID session MTU is immutable. It is sent once in
+  `StartShizukuSessionCommand`, checked there against the descriptor's own
+  interface MTU, and no configuration carries it.
 
 ## Errors
 

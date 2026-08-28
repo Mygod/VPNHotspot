@@ -2,14 +2,13 @@
 //! answering one means.
 //!
 //! The contract is level-triggered: the newest [ShizukuSessionConfig] is the truth, and each config call is
-//! answered with the axes the daemon has actually applied. Nothing here replays history, because the app
-//! coalesces and a superseded config is never sent at all.
+//! answered with the sequence and generation the daemon has actually applied. Nothing here replays history,
+//! because the app coalesces and a superseded config is never sent at all.
 //!
-//! Retirement happens strictly before the reply. That ordering is the reason the app can reopen admission
-//! safely: seeing a [ShizukuApplied] carrying an epoch means everything keyed to the previous one is already
-//! gone, so a later `ACTIVE` cannot reuse state the daemon has not retired. The ingress task owns that state,
-//! so it is the ingress task that reports the retirement finished - this loop only refuses to reply until it
-//! has.
+//! Retirement happens strictly before the reply. Seeing a [ShizukuApplied] carrying a generation means
+//! everything bound to the previous one is already gone rather than merely asked to go, which is what the
+//! app's ordered stop is built on. The ingress task owns that state, so it is the ingress task that reports
+//! the retirement finished - this loop only refuses to reply until it has.
 
 use std::io;
 use std::net::{IpAddr, Ipv4Addr};
@@ -103,7 +102,6 @@ pub(super) async fn serve(
         let applied = ShizukuApplied {
             sequence: config.sequence,
             upstream_generation: config.upstream_generation,
-            downstream_epoch: config.downstream_epoch,
             // Set only from the config and never inferred, because only the app knows the session is ACTIVE.
             admitting: config.admit,
         };
@@ -114,7 +112,7 @@ pub(super) async fn serve(
             Err(e) => return Ok(refuse(call_id, e)),
         };
         // The reply waits on this, which is the whole ordering guarantee: the app may only believe the
-        // previous epoch is gone once the task that owns its state says so.
+        // previous generation is gone once the task that owns its state says so.
         if retired.await.is_err() {
             return Err(io::Error::other("tun ingress dropped a config it accepted")
                 .with_report_context("shizuku.control.config"));
@@ -157,8 +155,8 @@ fn refuse(call_id: u64, error: io::Error) -> Ended {
 struct Configs {
     /// Zero is not a valid configured value, so the first config always looks like a change and its
     /// retirement runs once against empty state rather than being skipped. [session_config::check] is what
-    /// holds the peer to that, along with every other shape rule the contract has - including that neither
-    /// axis moves backwards, which is why nothing here has to remember them separately.
+    /// holds the peer to that, along with every other shape rule the contract has - including that the
+    /// generation never moves backwards, which is why nothing here has to remember it separately.
     previous: Option<ShizukuSessionConfig>,
     interface_name: String,
     /// The IPv4 address the TUN really has, which a declared gateway is checked against.
@@ -216,24 +214,20 @@ impl Configs {
         })?;
         let virtual_addresses = Arc::new(addresses(&config.virtual_addresses)?);
         report::stdout!(
-            "applying config {} on {}: generation {}, epoch {}, admitting {}, egress {egress:?}, floor {}",
+            "applying config {} on {}: generation {}, admitting {}, egress {egress:?}",
             config.sequence,
             self.interface_name,
             config.upstream_generation,
-            config.downstream_epoch,
             config.admit,
-            config.downstream_mtu_floor,
         );
         let (retired, applied) = oneshot::channel();
         let published = Applied {
             // Set only from the config and never inferred, because only the app knows the session is ACTIVE.
             admitting: config.admit,
             upstream_generation: config.upstream_generation,
-            downstream_epoch: config.downstream_epoch,
             egress,
             virtual_addresses,
             gateway_addresses,
-            downstream_mtu_floor: config.downstream_mtu_floor as usize,
             retired,
         };
         // Last, and only now: everything that could refuse this config has already run, so what the dataplane

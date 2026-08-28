@@ -129,7 +129,10 @@ socket it could not close abortively, or a receive task that could not report it
 close. Everything a client can drive - malformed packets, refused admission,
 expired hop limits, unreachable remotes, and a terminated TCP flow reaching its
 idle floor - never becomes a structured report: it is counted and summarized in
-the stdout diagnostics the daemon writes for each `downstream_epoch` and at exit.
+the stdout diagnostics the daemon writes once at session exit, where the ingress
+counters run for the session's whole life because no configuration change divides
+the client traffic they count. A generation change writes its own per-owner
+diagnostics after the retirement it caused has completed.
 Expiry counters stay separate from reset counters, since a flow with no remote
 endpoint is retired silently.
 

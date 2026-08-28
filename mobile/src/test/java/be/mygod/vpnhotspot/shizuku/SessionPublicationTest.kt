@@ -14,8 +14,8 @@ import java.net.InetAddress
  * The whole published config, driven through the exact owner the session and its daemon connection call.
  *
  * Every case below asserts the built [ShizukuSessionConfig], not the counters behind it, because the config
- * is what the daemon refuses: it checks the three axes against each other and against the fields they retire,
- * so an axis that is right in a field but wrong in the message is a session that ends.
+ * is what the daemon refuses: it checks the generation against the upstream fields it retires, so a counter
+ * that is right in a field but wrong in the message is a session that ends.
  *
  * The two calls each publication makes are the two production makes, in the same order and for the same
  * reason: the session builds a config on the observation's own lane, and the daemon's writer stamps the
@@ -31,57 +31,35 @@ class SessionPublicationTest {
         val VIRTUAL = packed("192.0.2.2", "fd00::53")
         val GATEWAY = packed("192.0.2.1", "2001:db8:1::1")
 
-        /** The TestNetwork's own contract, which is what a session is constructed with. */
-        const val MTU = 1500
-
         /** Two `Network` handles, which are opaque to everything here: only equality matters. */
         const val WIFI = 0x1234L
         const val VPN = 0x5678L
     }
 
-    private val publication = SessionPublication(VIRTUAL, GATEWAY, MTU)
+    private val publication = SessionPublication(VIRTUAL, GATEWAY)
 
     private fun publish(admit: Boolean = true, network: Long? = WIFI, index: Int? = 7) =
         publication.stamping(publication.build(admit, network, index))
 
-    /** The first config is already valid on all three axes, whatever the upstream observation said. */
+    /** The first config is already valid on both counters, whatever the upstream observation said. */
     @Test
-    fun theFirstPublicationIsNonzeroOnEveryAxis() {
+    fun theFirstPublicationIsNonzeroOnEveryCounter() {
         assertEquals(0L, publication.sequence)
         assertEquals(1L, publication.upstreamGeneration)
-        assertEquals(1L, publication.downstreamEpoch)
 
         val first = publish(admit = false, network = null, index = null)
         assertEquals(1L, first.sequence)
         assertEquals(1L, first.upstream_generation)
-        assertEquals(1L, first.downstream_epoch)
-        assertEquals(MTU, first.downstream_mtu_floor)
         assertFalse(first.admit)
         assertNull("no selectable network is not a failure", first.upstream_network)
         assertNull(first.upstream_interface_index)
         assertEquals(VIRTUAL, first.virtual_addresses)
         assertEquals(GATEWAY, first.gateway_addresses)
 
-        // And publishing the same observation again moves neither axis: it is not a change.
+        // And publishing the same observation again moves nothing but the sequence: it is not a change.
         val second = publish(admit = false, network = null, index = null)
         assertEquals(2L, second.sequence)
         assertEquals(1L, second.upstream_generation)
-        assertEquals(1L, second.downstream_epoch)
-        assertEquals(MTU, second.downstream_mtu_floor)
-    }
-
-    /**
-     * The MTU is the session's own fixed contract, so no publication can ever move it.
-     *
-     * This is the rule that makes the global path safe to leave the epoch alone for: the daemon refuses a
-     * floor that moved without the epoch that retires the output already sized against it, and the only way
-     * to guarantee that is for the floor never to be a measurement in the first place.
-     */
-    @Test
-    fun everyConfigCarriesTheSameFixedMtu() {
-        val configs = listOf(publish(), publish(network = VPN), publish(admit = false, network = null))
-        publication.advanceDownstream()
-        for (config in configs + publish()) assertEquals(MTU, config.downstream_mtu_floor)
     }
 
     /** What a level-triggered resend of an unchanged observation costs: a sequence, and nothing else. */
@@ -91,26 +69,65 @@ class SessionPublicationTest {
         assertEquals(1L, first.sequence)
         repeat(8) { round ->
             val next = publish()
-            assertEquals("the sequence is the only axis a resend moves", first.sequence + 1 + round,
+            assertEquals("the sequence is the only counter a resend moves", first.sequence + 1 + round,
                 next.sequence)
             assertEquals(first.upstream_generation, next.upstream_generation)
-            assertEquals(first.downstream_epoch, next.downstream_epoch)
             assertEquals(first.upstream_network, next.upstream_network)
             assertEquals(first.upstream_interface_index, next.upstream_interface_index)
         }
-        // Closing admission is the ordered stop's first step, and it retires nothing at all.
-        val closing = publish(admit = false)
-        assertFalse(closing.admit)
-        assertEquals(first.upstream_generation, closing.upstream_generation)
-        assertEquals(first.downstream_epoch, closing.downstream_epoch)
     }
 
     /**
-     * An upstream-only change advances the generation and the sequence and leaves the epoch alone.
+     * Admission is the one field with no retirement behind it, in both directions and however often it moves.
      *
-     * The two axes are independent by design: a handover retires the sockets bound to the network that
-     * changed, and nothing else. Advancing the epoch with it would retire every TUN-visible tuple - every
-     * client's live flows - for a change no client saw.
+     * What that buys is narrow, and worth stating exactly: nothing is retired *for* the transition. It is not
+     * a pause, and the daemon does not go on serving through one - it drops what it reads from the TUN while
+     * admission is closed and refreshes no lifetime, so a flow can still expire inside the interval and what a
+     * reopened session resumes with is whatever independently survived it.
+     *
+     * A generation moving here would instead retire, at once and for a transition nothing observed, every UDP
+     * mapping, Echo session and ordinary TCP flow, and drop the output already queued under it. Reassembly
+     * contexts and DNS-over-TCP transports would survive even that, holding no selected-network socket. The
+     * daemon has no evidence that would justify any of it: Android's conntrack owns the mapping between a
+     * TUN-visible tuple and a physical client, so neither side can tell that one changed hands.
+     */
+    @Test
+    fun openingAndClosingAdmissionRetiresNothing() {
+        val serving = publish()
+        assertTrue(serving.admit)
+        assertEquals(1L, serving.upstream_generation)
+
+        // Three rounds of the transition, each with a level-triggered resend inside the closed interval: the
+        // ordered stop's first step closes admission, and any observation after it republishes the same state.
+        for (round in 0 until 3) {
+            val closing = publish(admit = false)
+            assertFalse(closing.admit)
+            assertEquals("closing admission is not a retirement", serving.upstream_generation,
+                closing.upstream_generation)
+            assertEquals(serving.upstream_network, closing.upstream_network)
+            assertEquals(serving.upstream_interface_index, closing.upstream_interface_index)
+            // Losing it again while already closed, which is a resend rather than a change.
+            val stillClosed = publish(admit = false)
+            assertFalse(stillClosed.admit)
+            assertEquals("a resend while closed is not a retirement either", serving.upstream_generation,
+                stillClosed.upstream_generation)
+            // And getting it back, which is just as free.
+            val reopened = publish()
+            assertTrue(reopened.admit)
+            assertEquals("reopening admission is not a retirement either", serving.upstream_generation,
+                reopened.upstream_generation)
+            assertEquals(serving.sequence + 1 + 3 * round, closing.sequence)
+            assertEquals(closing.sequence + 1, stillClosed.sequence)
+            assertEquals(stillClosed.sequence + 1, reopened.sequence)
+        }
+        assertEquals(1L, publication.upstreamGeneration)
+    }
+
+    /**
+     * An upstream change advances the generation and the sequence, and admission travels beside it untouched.
+     *
+     * A handover retires the sockets bound to the network that changed, and nothing else - so a config that
+     * carries both a new handle and a closed admission still says exactly one thing about retirement.
      */
     @Test
     fun anUpstreamChangeAdvancesTheGenerationAndTheSequenceAlone() {
@@ -123,42 +140,20 @@ class SessionPublicationTest {
         assertEquals(2L, handover.sequence)
         assertEquals(2L, handover.upstream_generation)
         assertEquals(VPN, handover.upstream_network)
-        assertEquals(first.downstream_epoch, handover.downstream_epoch)
+        assertTrue(handover.admit)
 
-        // The index moving on its own is the same fact, and needs the same axis: it is resolved per config,
-        // so it can move while the handle does not, and the sockets pinned behind it are just as stale.
-        // Nothing advances the generation for it - the selection did not change, so no observation fired -
-        // which is exactly why the owner has to notice the raw field itself.
-        val reindexed = publish(network = VPN, index = 9)
+        // The index moving on its own is the same fact, and needs the same retirement: it is resolved per
+        // config, so it can move while the handle does not, and the sockets pinned behind it are just as
+        // stale. Nothing advances the generation for it - the selection did not change, so no observation
+        // fired - which is exactly why the owner has to notice the raw field itself.
+        val reindexed = publish(admit = false, network = VPN, index = 9)
         assertEquals(3L, reindexed.sequence)
         assertEquals(3L, reindexed.upstream_generation)
         assertEquals(VPN, reindexed.upstream_network)
         assertEquals(9, reindexed.upstream_interface_index)
-        assertEquals(first.downstream_epoch, reindexed.downstream_epoch)
-    }
-
-    /**
-     * Losing positive confirmation retires the downstream state, and does so once per loss.
-     *
-     * This is the only thing that moves the epoch now that the path is global: the session never asks which
-     * interfaces Android is serving, so what breaks the correspondence between a TUN-visible tuple and a
-     * client is tethering no longer naming the exact network this session owns - it may have rebuilt its NAT
-     * behind an unchanged `Network` handle.
-     */
-    @Test
-    fun aLossOfConfirmationAdvancesTheEpochAndNothingElse() {
-        val first = publish()
-        assertEquals(1L, first.downstream_epoch)
-
-        publication.advanceDownstream()
-        val retired = publish()
-        assertEquals(2L, retired.downstream_epoch)
-        assertEquals(2L, retired.sequence)
-        assertEquals("a downstream transition is not an upstream one", 1L, retired.upstream_generation)
-        assertEquals(MTU, retired.downstream_mtu_floor)
-
-        // Every later level-triggered resend carries that same epoch, and retires nothing.
-        repeat(3) { assertEquals(2L, publish().downstream_epoch) }
+        assertFalse(reindexed.admit)
+        assertEquals(first.virtual_addresses, reindexed.virtual_addresses)
+        assertEquals(first.gateway_addresses, reindexed.gateway_addresses)
     }
 
     /**
@@ -181,7 +176,6 @@ class SessionPublicationTest {
         assertEquals(7, resolved.upstream_interface_index)
         assertEquals(WIFI, resolved.upstream_network)
         assertEquals(2L, publication.upstreamGeneration)
-        assertEquals("the epoch retires downstreams, not upstreams", 1L, resolved.downstream_epoch)
 
         // And a resend of that same pair moves nothing.
         val resend = publish(network = WIFI, index = 7)
@@ -246,7 +240,7 @@ class SessionPublicationTest {
      * This is the coalescing the app really does: a config built while an earlier one is still awaiting its
      * acknowledgement sits in a single pending slot, and a later observation replaces it there. Committing at
      * build time would make the superseded candidate the state its successor is compared against, and one
-     * logical change would advance the axis twice.
+     * logical change would advance the generation twice.
      */
     @Test
     fun aSupersededRawFieldCandidateCommitsNothing() {
@@ -270,59 +264,60 @@ class SessionPublicationTest {
     private data class Observation(
         val what: String,
         val upstream: Boolean = false,
-        val downstream: Boolean = false,
+        val admit: Boolean = true,
         val network: Long? = WIFI,
         val index: Int? = 7,
     )
 
     /**
      * A session's whole run of observations, checked against the rules the daemon applies to a successor:
-     * the sequence strictly increases, neither axis moves backwards, a raw upstream field never moves without
-     * the generation that retires what is bound behind it, the floor never moves at all, and neither address
-     * list moves either.
+     * the sequence strictly increases, the generation never moves backwards, a raw upstream field never moves
+     * without the generation that retires what is bound behind it, and neither address list moves either.
      */
     @Test
-    fun successivePublicationsAreMonotonicOnAllThreeAxes() {
+    fun successivePublicationsStayMonotonicAcrossAWholeSession() {
         var previous: ShizukuSessionConfig? = null
         for (observation in listOf(
-            Observation("the first config"),
+            Observation("the first config", admit = false),
+            Observation("tethering named this network, so it is serving"),
             Observation("a resend of the same everything"),
-            Observation("tethering stopped naming this network", downstream = true),
-            Observation("a resend while unconfirmed"),
-            Observation("a VPN came up", upstream = true, network = VPN),
-            Observation("its index resolved", upstream = true, network = VPN, index = 9),
-            Observation("tethering named it again, then lost it", downstream = true, network = VPN, index = 9),
-            Observation("nothing is selectable", upstream = true, network = null, index = null),
+            Observation("tethering stopped naming this network", admit = false),
+            Observation("a resend while unconfirmed", admit = false),
+            Observation("a VPN came up while still unconfirmed", upstream = true, admit = false,
+                network = VPN),
+            Observation("its index resolved", upstream = true, admit = false, network = VPN, index = 9),
+            Observation("tethering named it again", network = VPN, index = 9),
+            Observation("nothing is selectable", upstream = true, admit = false, network = null,
+                index = null),
         )) {
             if (observation.upstream) publication.advanceUpstream()
-            if (observation.downstream) publication.advanceDownstream()
             val config = publication.stamping(
-                publication.build(true, observation.network, observation.index))
+                publication.build(observation.admit, observation.network, observation.index))
+            assertEquals("${observation.what}: admission is published as observed", observation.admit,
+                config.admit)
             val last = previous
             if (last != null) {
                 assertTrue("${observation.what}: the sequence must strictly increase",
                     config.sequence > last.sequence)
                 assertTrue("${observation.what}: the generation went backwards",
                     config.upstream_generation >= last.upstream_generation)
-                assertTrue("${observation.what}: the epoch went backwards",
-                    config.downstream_epoch >= last.downstream_epoch)
                 if (config.upstream_network != last.upstream_network ||
                     config.upstream_interface_index != last.upstream_interface_index) {
                     assertNotEquals("${observation.what}: the upstream moved with nothing retiring it",
                         last.upstream_generation, config.upstream_generation)
+                } else if (config.admit != last.admit) {
+                    assertEquals("${observation.what}: admission alone retired something",
+                        last.upstream_generation, config.upstream_generation)
                 }
-                assertEquals("${observation.what}: the fixed MTU moved",
-                    last.downstream_mtu_floor, config.downstream_mtu_floor)
                 assertEquals(last.virtual_addresses, config.virtual_addresses)
                 assertEquals(last.gateway_addresses, config.gateway_addresses)
             }
             previous = config
         }
         val last = checkNotNull(previous)
-        // One sequence per publication, one generation per upstream observation, and one epoch per lost
-        // confirmation - never more.
-        assertEquals(8L, last.sequence)
+        // One sequence per publication and one generation per upstream observation, never more - and the four
+        // admission changes in between bought nothing at all.
+        assertEquals(9L, last.sequence)
         assertEquals(4L, last.upstream_generation)
-        assertEquals(3L, last.downstream_epoch)
     }
 }

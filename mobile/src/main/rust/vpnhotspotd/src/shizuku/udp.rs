@@ -353,9 +353,8 @@ impl Relay {
         admission.release(self.tables);
     }
 
-    /// Adopts a config. Either axis advancing retires the whole table: the epoch because every mapping is
-    /// keyed by a TUN-visible tuple, and the generation because every mapping holds a socket bound to the
-    /// network that changed. So there is one retirement here rather than two.
+    /// Adopts a config. The generation advancing retires the whole table, because every mapping holds a
+    /// socket bound to the network that changed and none of them can survive it.
     ///
     /// Returns only once every retired mapping's receive task has been joined and its descriptor closed,
     /// which is what makes the caller's acknowledgement mean what the design says it means.

@@ -235,8 +235,8 @@ pub fn traffic_counters_frame(id: u64, counters: Vec<daemon::TrafficCounter>) ->
     )
 }
 
-/// One config call's answer: the axes the daemon really applied, which is what lets the app tell that the
-/// previous epoch's state is gone rather than merely asked to go.
+/// One config call's answer: the sequence and generation the daemon really applied, which is what lets the
+/// app tell that the previous generation's state is gone rather than merely asked to go.
 pub fn shizuku_applied_reply_frame(id: u64, applied: daemon::ShizukuApplied) -> Vec<u8> {
     reply_frame(id, daemon::reply_frame::Payload::ShizukuApplied(applied))
 }
@@ -524,7 +524,6 @@ mod tests {
         let applied = daemon::ShizukuApplied {
             sequence: 4,
             upstream_generation: 2,
-            downstream_epoch: 3,
             admitting: true,
         };
 

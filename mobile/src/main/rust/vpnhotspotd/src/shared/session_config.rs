@@ -2,8 +2,8 @@
 //!
 //! The control contract is level-triggered, so the daemon acts on whatever the newest config claims. That
 //! makes the *shape* of a config an invariant rather than a formality: a field the dataplane has pinned state
-//! behind can only change together with the axis that retires that state, and an axis that went backwards or
-//! a sequence that repeated means the two sides no longer agree about which session this is.
+//! behind can only change together with the generation that retires that state, and a generation that went
+//! backwards or a sequence that repeated means the two sides no longer agree about which session this is.
 //!
 //! Enforced here rather than at each use, and in the library rather than beside the session loop, because this
 //! is the part with no I/O in it: every rule below is a comparison of two decoded messages, which is what
@@ -15,8 +15,8 @@ use crate::shared::proto::daemon::ShizukuSessionConfig;
 /// message can be trusted either, and there is nothing to resynchronize on.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Invalid {
-    /// Zero on any of the three counters. Zero is what an unset proto field decodes to, so admitting it would
-    /// let a truncated or default-constructed message look like a valid first config - and the daemon's own
+    /// Zero on either counter. Zero is what an unset proto field decodes to, so admitting it would let a
+    /// truncated or default-constructed message look like a valid first config - and the daemon's own
     /// zero-initialised view would then compare equal to it and skip the retirement it owes.
     Unset(&'static str),
     /// A counter that did not advance where it had to, or moved backwards.
@@ -25,14 +25,15 @@ pub enum Invalid {
         previous: u64,
         next: u64,
     },
-    /// A field the dataplane pins state behind changed without the axis that retires that state advancing.
+    /// A field the dataplane pins state behind changed without the generation that retires that state
+    /// advancing.
     Unretired(&'static str),
 }
 
 /// Checks one config against its predecessor, or against nothing for the first.
 ///
 /// The admit flag is deliberately absent from every rule: an update that only opens or closes admission, with
-/// both axes unchanged, is the ordinary way a session moves between `ACTIVE` and everything else, and it
+/// the generation unchanged, is the ordinary way a session moves between `ACTIVE` and everything else, and it
 /// retires nothing.
 pub fn check(
     previous: Option<&ShizukuSessionConfig>,
@@ -41,7 +42,6 @@ pub fn check(
     for (field, value) in [
         ("sequence", next.sequence),
         ("upstream_generation", next.upstream_generation),
-        ("downstream_epoch", next.downstream_epoch),
     ] {
         if value == 0 {
             return Err(Invalid::Unset(field));
@@ -60,31 +60,17 @@ pub fn check(
             next: next.sequence,
         });
     }
-    for (field, before, after) in [
-        (
-            "upstream_generation",
-            previous.upstream_generation,
-            next.upstream_generation,
-        ),
-        (
-            "downstream_epoch",
-            previous.downstream_epoch,
-            next.downstream_epoch,
-        ),
-    ] {
-        if after < before {
-            return Err(Invalid::NotAdvanced {
-                field,
-                previous: before,
-                next: after,
-            });
-        }
+    if next.upstream_generation < previous.upstream_generation {
+        return Err(Invalid::NotAdvanced {
+            field: "upstream_generation",
+            previous: previous.upstream_generation,
+            next: next.upstream_generation,
+        });
     }
     // The egress handle and the interface its replies must arrive on are one fact, and every upstream socket
     // and resolver submission is bound to it. Changing either without advancing the generation would leave
     // sockets bound to a network the config no longer names, with nothing having retired them.
-    let generation_advanced = next.upstream_generation > previous.upstream_generation;
-    if !generation_advanced
+    if next.upstream_generation == previous.upstream_generation
         && (previous.upstream_network != next.upstream_network
             || previous.upstream_interface_index != next.upstream_interface_index)
     {
@@ -92,22 +78,13 @@ pub fn check(
     }
     // These come from the agent's `LinkProperties`, which the design builds once and never mutates: the
     // virtual addresses are matched exactly on ingress and the gateway addresses are what an originated ICMP
-    // error is sourced from. There is no axis that retires them, so they may not change at all within a
-    // session - a change means this is a different session's config on the same connection.
+    // error is sourced from. Nothing retires them, so they may not change at all within a session - a change
+    // means this is a different session's config on the same connection.
     if previous.virtual_addresses != next.virtual_addresses {
         return Err(Invalid::Unretired("virtual_addresses"));
     }
     if previous.gateway_addresses != next.gateway_addresses {
         return Err(Invalid::Unretired("gateway_addresses"));
-    }
-    // The floor is what every already-queued packet was sized against. A packet built for the old floor and a
-    // floor that has already moved cannot both be right, and the epoch is the axis that retires the queue - so
-    // a floor that moves without it is a downstream change nothing retired. The floor *not* moving is the
-    // ordinary case at every other axis, which is why an epoch may advance on its own.
-    if next.downstream_epoch == previous.downstream_epoch
-        && previous.downstream_mtu_floor != next.downstream_mtu_floor
-    {
-        return Err(Invalid::Unretired("downstream_mtu_floor"));
     }
     Ok(())
 }
@@ -122,13 +99,11 @@ mod tests {
         ShizukuSessionConfig {
             sequence: 1,
             upstream_generation: 1,
-            downstream_epoch: 1,
             admit: false,
             upstream_network: Some(0x1234),
             upstream_interface_index: Some(7),
             virtual_addresses: vec![vec![192, 0, 2, 5]],
             gateway_addresses: vec![vec![192, 0, 2, 1]],
-            downstream_mtu_floor: 1500,
         }
     }
 
@@ -147,9 +122,6 @@ mod tests {
             ("upstream_generation", |c: &mut ShizukuSessionConfig| {
                 c.upstream_generation = 0
             }),
-            ("downstream_epoch", |c: &mut ShizukuSessionConfig| {
-                c.downstream_epoch = 0
-            }),
         ] {
             let mut config = base();
             mutate(&mut config);
@@ -163,9 +135,10 @@ mod tests {
         }
     }
 
-    /// The case the contract exists to permit: closing or opening admission retires nothing.
+    /// The case the contract exists to permit: closing or opening admission retires nothing, so a session
+    /// that leaves and re-enters `ACTIVE` never has to move the one counter that does.
     #[test]
-    fn an_admit_only_update_is_accepted_with_unchanged_axes() {
+    fn an_admit_only_update_is_accepted_with_an_unchanged_generation() {
         let previous = base();
         let next = ShizukuSessionConfig {
             sequence: 2,
@@ -179,6 +152,13 @@ mod tests {
             ..base()
         };
         assert_eq!(Ok(()), check(Some(&next), &closing));
+        // and back again, which is the transition the removed downstream counter used to make expensive
+        let reopened = ShizukuSessionConfig {
+            sequence: 4,
+            admit: true,
+            ..base()
+        };
+        assert_eq!(Ok(()), check(Some(&closing), &reopened));
     }
 
     #[test]
@@ -202,39 +182,27 @@ mod tests {
     }
 
     #[test]
-    fn neither_axis_may_move_backwards() {
+    fn the_generation_may_not_move_backwards() {
         let previous = ShizukuSessionConfig {
             sequence: 1,
             upstream_generation: 4,
-            downstream_epoch: 4,
             ..base()
         };
-        for (field, mutate) in [
-            (
-                "upstream_generation",
-                (|c: &mut ShizukuSessionConfig| c.upstream_generation = 3) as fn(&mut _),
-            ),
-            ("downstream_epoch", |c: &mut ShizukuSessionConfig| {
-                c.downstream_epoch = 3
+        assert_eq!(
+            Err(Invalid::NotAdvanced {
+                field: "upstream_generation",
+                previous: 4,
+                next: 3,
             }),
-        ] {
-            let mut next = ShizukuSessionConfig {
-                sequence: 2,
-                upstream_generation: 4,
-                downstream_epoch: 4,
-                ..base()
-            };
-            mutate(&mut next);
-            assert_eq!(
-                Err(Invalid::NotAdvanced {
-                    field,
-                    previous: 4,
-                    next: 3,
-                }),
-                check(Some(&previous), &next),
-                "{field}"
-            );
-        }
+            check(
+                Some(&previous),
+                &ShizukuSessionConfig {
+                    sequence: 2,
+                    upstream_generation: 3,
+                    ..base()
+                }
+            )
+        );
     }
 
     #[test]
@@ -261,7 +229,7 @@ mod tests {
         }
     }
 
-    /// A change in the immutable `LinkProperties` halves has no axis that retires it, so no advance excuses it.
+    /// A change in the immutable `LinkProperties` halves has nothing that retires it, so no advance excuses it.
     #[test]
     fn the_address_sets_may_not_change_at_all() {
         let previous = base();
@@ -278,7 +246,6 @@ mod tests {
             let mut next = ShizukuSessionConfig {
                 sequence: 2,
                 upstream_generation: 9,
-                downstream_epoch: 9,
                 ..base()
             };
             mutate(&mut next);
@@ -288,67 +255,5 @@ mod tests {
                 "{field}"
             );
         }
-    }
-
-    /// The downstream MTU floor is what queued packets were sized against, so it moves only with the epoch
-    /// that retires them.
-    ///
-    /// Both directions, and both are the same failure: a floor that dropped leaves packets already built too
-    /// large for the link, and one that rose leaves the daemon fragmenting for a limit that is gone. Neither
-    /// is visible in a config whose epoch stayed still, which is why it is refused rather than absorbed.
-    #[test]
-    fn the_mtu_floor_moves_only_with_the_downstream_epoch() {
-        let previous = base();
-        for floor in [1280, 9000] {
-            assert_eq!(
-                Err(Invalid::Unretired("downstream_mtu_floor")),
-                check(
-                    Some(&previous),
-                    &ShizukuSessionConfig {
-                        sequence: 2,
-                        downstream_mtu_floor: floor,
-                        ..base()
-                    }
-                ),
-                "floor {floor} at an unchanged epoch"
-            );
-            assert_eq!(
-                Ok(()),
-                check(
-                    Some(&previous),
-                    &ShizukuSessionConfig {
-                        sequence: 2,
-                        downstream_epoch: base().downstream_epoch + 1,
-                        downstream_mtu_floor: floor,
-                        ..base()
-                    }
-                ),
-                "floor {floor} with the epoch that retires the queue"
-            );
-        }
-        // An epoch that advances on its own is the ordinary shape of every other retirement.
-        assert_eq!(
-            Ok(()),
-            check(
-                Some(&previous),
-                &ShizukuSessionConfig {
-                    sequence: 2,
-                    downstream_epoch: base().downstream_epoch + 1,
-                    ..base()
-                }
-            )
-        );
-        // And so is an admit-only change at both axes.
-        assert_eq!(
-            Ok(()),
-            check(
-                Some(&previous),
-                &ShizukuSessionConfig {
-                    sequence: 2,
-                    admit: !base().admit,
-                    ..base()
-                }
-            )
-        );
     }
 }

@@ -7,9 +7,9 @@
 //!
 //! It also owns every task those transports started, through [vpnhotspotd::shared::workers]. A worker that
 //! finishes - because it failed, because its peer went, or because a retirement asked it to - is joined here,
-//! and only then may its record be removed and its budget refunded. That is what makes an acknowledged epoch
-//! mean the descriptors are actually back rather than merely spoken for, and it is why this loop selects on
-//! the transports' terminals alongside their traffic.
+//! and only then may its record be removed and its budget refunded. That is what makes an acknowledged
+//! generation mean the descriptors are actually back rather than merely spoken for, and it is why this loop
+//! selects on the transports' terminals alongside their traffic.
 //!
 //! Joined is not always the same as retired. A terminating TCP flow whose worker finished *cleanly* while its
 //! client was still closing keeps its client socket and its charge - the descriptor is gone with the task, and
@@ -17,13 +17,16 @@
 //! than by a terminal; see [crate::shizuku::tcp::Engine::attention].
 //!
 //! Admission is checked per packet against the session's last applied config rather than by starting and
-//! stopping this task, because a packet Android already queued in the kernel carries no epoch and arrives
-//! whether the daemon is serving or not. Dropping it on the read side is the only place that decision can be
-//! made.
+//! stopping this task, because a packet Android already queued in the kernel says nothing about the config
+//! and arrives whether the daemon is serving or not. Dropping it on the read side is the only place that
+//! decision can be made, and dropping it is the whole of what closing admission does here: nothing is retired
+//! for the transition itself. That is not the same as a pause. Every deadline arm below goes on firing while
+//! admission is closed and every protocol goes on finishing, and a flow's lifetime is not refreshed while it
+//! lasts - so what a session still holds when it resumes serving is whatever has not ended on its own.
 //!
 //! Config changes arrive as a request that is answered, not as a notification. That is what lets the session
-//! acknowledge an epoch only after the state keyed to the previous one is actually gone: retirement happens
-//! here, and the answer is what says it finished.
+//! acknowledge a generation only after the state bound to the previous one is actually gone: retirement
+//! happens here, and the answer is what says it finished.
 
 use std::io;
 use std::net::{IpAddr, SocketAddr};
@@ -62,7 +65,6 @@ use vpnhotspotd::shared::egress::Egress;
 pub(crate) struct Applied {
     pub(crate) admitting: bool,
     pub(crate) upstream_generation: u64,
-    pub(crate) downstream_epoch: u64,
     /// Where this session's traffic leaves, decoded once by the session loop - see
     /// [vpnhotspotd::shared::egress]. Two facts rather than one, because the resolver and the terminating TCP
     /// engine need only a handle to bind, while an unconnected relay also needs the interface its replies
@@ -70,7 +72,6 @@ pub(crate) struct Applied {
     pub(crate) egress: Egress,
     pub(crate) virtual_addresses: Arc<Vec<IpAddr>>,
     pub(crate) gateway_addresses: Vec<IpAddr>,
-    pub(crate) downstream_mtu_floor: usize,
     /// Answered once retirement is complete. The session waits on it before acknowledging the config.
     pub(crate) retired: oneshot::Sender<()>,
 }
@@ -85,7 +86,7 @@ const FRAGMENT_CONTEXTS: usize = 256;
 /// The fraction of what the byte total still has that the IPv4 identification table may take.
 ///
 /// A sixteenth. It is one owner among many, and the traffic it serves is the exception rather than the rule -
-/// only IPv4 output above the downstream floor ever asks for an Identification - so it may not be sized as
+/// only IPv4 output above the session MTU ever asks for an Identification - so it may not be sized as
 /// though it were the dataplane's main cost. Derived from the measured share rather than fixed at a count,
 /// because what the table can afford is a fact about the device and a count is a guess about it.
 const IDENTIFICATION_SHARE: u64 = 16;
@@ -339,10 +340,10 @@ pub(crate) async fn run(
                 let Some(config) = config else {
                     break Ok(());
                 };
-                let retired = std::mem::replace(&mut stamp, Stamp {
+                let retiring = stamp.generation != config.upstream_generation;
+                stamp = Stamp {
                     generation: config.upstream_generation,
-                    epoch: config.downstream_epoch,
-                });
+                };
                 // The writer is retired first, and this is a command with an answer rather than a published
                 // value: when it returns, the writer has adopted the new stamp and abandoned whatever write it
                 // was parked in, so no packet of the retired stamp can reach a client from here on. Everything
@@ -352,12 +353,11 @@ pub(crate) async fn run(
                 //
                 // Only on a real change: an admit-only update retires nothing, and preempting a write for one
                 // would drop a client's packet for no reason.
-                if stamp != retired {
+                if retiring {
                     if let Err(e) = output.writer().retire(stamp).await {
                         break Err(e.with_report_context("shizuku.tun_ingress.retire"));
                     }
                 }
-                output.set_floor(config.downstream_mtu_floor);
                 // Each of these cancels what it owns, joins every task it started, and refunds only then, so
                 // when the last one returns nothing of the retired stamp holds a descriptor. The virtual-DNS
                 // handoff is deliberately absent: it owns no TUN-visible state and no selected-network socket,
@@ -365,6 +365,11 @@ pub(crate) async fn run(
                 // arrival instead. The TCP engine draws the same distinction inside itself, because it holds
                 // both kinds: a generation change retires the flows that hold a selected-network socket and
                 // leaves the DNS-over-TCP transports, which hold none, running with their clients.
+                //
+                // The reassembly table is absent for a third reason: every context in it is keyed by a
+                // TUN-visible tuple and holds nothing bound to the selected network, so a handover leaves it
+                // exactly as valid as it was. Its contexts expire on their own timer and the whole table goes
+                // at session teardown.
                 //
                 // This task is also the serialized owner every one of those queries is published by, and the
                 // acknowledgement below is what that ordering is for: a query already accepted here was
@@ -377,19 +382,15 @@ pub(crate) async fn run(
                 tcp.apply(
                     stamp,
                     config.egress.selected_network,
-                    output.floor(),
                     &mut admission,
                     &mut output,
                 ).await;
-                if stamp.epoch != retired.epoch {
-                    // Keyed by TUN-visible tuples like everything else, and holding no descriptor, so the
-                    // whole table goes at once and its bytes are freed here rather than awaited.
-                    fragments.retire(&mut admission, &fixed.fragments);
-                    // reported together, because the retirement that just happened is exactly what makes
-                    // the relay's own numbers final for that epoch
-                    report::stdout!("tun ingress {}", counters.describe(retired.epoch));
+                if retiring {
+                    // Read once the sweeps above have returned, because that is what makes each owner's own
+                    // numbers final for the generation being left. The ingress counters are deliberately not
+                    // among them: they count client traffic, which no handover divides, so they run for the
+                    // whole session and are reported once at exit.
                     report_owners(&relay, &echo, &fragments, &dns, &tcp, &output, &admission);
-                    counters = Counters::default();
                 }
                 admitting = config.admitting;
                 virtual_addresses = config.virtual_addresses;
@@ -581,7 +582,7 @@ pub(crate) async fn run(
     echo.shutdown(&mut admission).await;
     tcp.shutdown(&mut admission, &mut output).await;
     dns.shutdown(&mut output, &mut admission).await;
-    report::stdout!("tun ingress {}", counters.describe(stamp.epoch));
+    report::stdout!("tun ingress {}", counters.describe());
     report_owners(&relay, &echo, &fragments, &dns, &tcp, &output, &admission);
     // Every owner gives back its own retained capacity, after everything it admitted has been settled. What
     // remains outstanding after this is a leak, and the line below is where it is visible.
@@ -716,7 +717,7 @@ fn reserve_fixed(admission: &mut Admission, mtu: usize) -> Result<Fixed, Denied>
     // capacity decides how many concurrently-sending tuples may have oversized output, and the right size for
     // that is whatever a documented share of the aggregate will hold. A share rather than the whole of it,
     // because this is one owner among many and the traffic it serves is the exception rather than the rule:
-    // only IPv4 output above the downstream floor ever asks. What the share buys is that *count* - the charge
+    // only IPv4 output above the session MTU ever asks. What the share buys is that *count* - the charge
     // below is the rows' own state, and the container's own indexing around them is count-bounded rather than
     // measured. Reclaiming inside it is logical: the bound does not move, and the charge was taken for that
     // bound rather than for the rows in it, so the one charge covers the table for the whole session however

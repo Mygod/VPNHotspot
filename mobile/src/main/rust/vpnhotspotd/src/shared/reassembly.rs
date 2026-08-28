@@ -490,9 +490,11 @@ impl Table {
         Ok(Accepted::Complete(assembled))
     }
 
-    /// Drops every context, which is what an epoch change requires: each is keyed by a TUN-visible tuple, so
-    /// after one the same key means a different client. Nothing is awaited and no error is sent - a context
-    /// retired because the session moved on is not a path property the client should hear about.
+    /// Drops every context, which is what the end of a session requires: nothing is left to reassemble for
+    /// and nothing is left to deliver to. Nothing is awaited and no error is sent - a context retired because
+    /// the session is over is not a path property the client should hear about. A config change is not one of
+    /// these: a context holds no socket bound to the selected network, so a handover leaves it exactly as
+    /// valid as it was and it expires on its own timer.
     pub fn retire(&mut self, admission: &mut Admission, lease: &Lease) {
         self.contexts.clear();
         let held = self.charged;

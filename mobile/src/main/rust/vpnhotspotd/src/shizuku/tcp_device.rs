@@ -7,12 +7,12 @@
 //! - **Ingress** is push, not pull. The ingress task already read and classified the packet, so it is handed
 //!   over directly rather than polled for. One packet is in flight at a time, consumed inside a single poll.
 //! - **Egress** does not go straight to the descriptor. Segments are collected here and drained by the owner
-//!   into the same writer every other producer uses, so the epoch gate and the final size validation apply
-//!   to TCP exactly as they do to everything else.
+//!   into the same writer every other producer uses, so the generation gate and the final size validation
+//!   apply to TCP exactly as they do to everything else.
 //!
-//! The advertised MTU is the **downstream floor**, not the interface's. That is what makes the floor do the
-//! right thing for TCP with no DF games at all: the stack negotiates an MSS from it at SYN time, so every
-//! segment already fits the narrowest downstream and Android never has to fragment or reject one.
+//! The advertised MTU is the session's own, fixed for its whole life at the value the TUN was verified to
+//! carry. That is what does the right thing for TCP with no DF games at all: the stack negotiates an MSS from
+//! it at SYN time, so every segment already fits the interface and nothing has to fragment or reject one.
 
 use smoltcp::phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken};
 use smoltcp::time::Instant;
@@ -55,12 +55,6 @@ impl Shim {
     /// nothing, which is also how the owner knows a poll made no output progress.
     pub(crate) fn drain(&mut self) -> Option<Vec<u8>> {
         self.outbound.take()
-    }
-
-    /// The floor the stack sizes its segments from. Applied on the next poll, so an existing connection keeps
-    /// the MSS it negotiated - which is correct, since a downstream change advances the epoch and retires it.
-    pub(crate) fn set_mtu(&mut self, mtu: usize) {
-        self.mtu = mtu;
     }
 }
 

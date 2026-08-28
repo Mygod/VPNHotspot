@@ -133,8 +133,8 @@ impl Source {
 /// Which transports a retirement applies to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Retirement {
-    /// Every flow. The epoch, because each flow is keyed by TUN-visible endpoints and a different device may
-    /// be behind them now; and the session ending, which owes nobody anything.
+    /// Every flow, which is the session ending: it owes nobody anything, and every descriptor it opened has
+    /// to be back before the process is.
     Everything,
     /// Only the flows that hold a selected-network socket. A generation change invalidates that socket and
     /// nothing else: a virtual-DNS transport has none, its queries are stamped one at a time at the owner's
@@ -152,10 +152,13 @@ impl Retirement {
     }
 }
 
-/// What the client-side stack needs from a config, and what it does with each axis.
+/// What the client-side stack needs from a config, and what a change to it does to this flow.
 struct Flow {
     /// The TUN-visible endpoints, which with the family are the key the design specifies. The generation is not
-    /// in it because it cannot vary within one table: either axis advancing retires all of this.
+    /// in it because neither kind of flow needs it there. An upstream flow is retired when the generation
+    /// changes, so two of them can never contend for this key; a resolver transport is generation-independent
+    /// and deliberately survives the change, and what carries a generation on its behalf is each query the
+    /// owner stamps as it accepts it and each packet the owner emits for it - never the flow.
     client: SocketAddr,
     destination: SocketAddr,
     /// Which worker this flow's signals must name. Kept beside the handle because smoltcp reuses handles: a
@@ -446,20 +449,16 @@ impl Engine {
         SmolInstant::from_micros(self.started.elapsed().as_micros() as i64)
     }
 
-    /// Adopts a config, retiring by axis rather than wholesale.
+    /// Adopts a config, retiring what the generation invalidates rather than everything.
     ///
-    /// The two axes invalidate different things, and collapsing them was what made a DNS-over-TCP client's
-    /// connection collateral damage of every handover:
+    /// The distinction is what stops a DNS-over-TCP client's connection being collateral damage of every
+    /// handover: the generation retires exactly the flows that hold a socket bound to the network that
+    /// changed, and a virtual-DNS transport holds none. It terminates locally, its answers come from the
+    /// platform resolver, and which network each of its queries went out on is fixed one query at a time when
+    /// this owner accepts it - so the transport itself is untouched, keeps its socket, its bridge and its one
+    /// logical token, and the client goes on using the connection it opened.
     ///
-    /// - the **epoch** retires everything, because every flow is keyed by TUN-visible endpoints and those may
-    ///   name a different device now;
-    /// - the **generation** retires exactly the flows that hold a socket bound to the network that changed.
-    ///   A virtual-DNS transport holds none. It terminates locally, its answers come from the platform
-    ///   resolver, and which network each of its queries went out on is fixed one query at a time when this
-    ///   owner accepts it - so the transport itself is untouched, keeps its socket, its bridge and its one
-    ///   logical token, and the client goes on using the connection it opened.
-    ///
-    /// Neither axis cancels or awaits a resolver transaction: cancelling would return this process's
+    /// Nothing here cancels or awaits a resolver transaction: cancelling would return this process's
     /// descriptor and nothing of the platform's work, and awaiting one would make the config acknowledgement
     /// wait on a remote name server. A transaction that outlives its config settles into a SERVFAIL for its
     /// own query - see [Engine::settle].
@@ -469,17 +468,10 @@ impl Engine {
         &mut self,
         stamp: Stamp,
         upstream: Option<Network>,
-        floor: usize,
         admission: &mut Admission,
         output: &mut Output,
     ) {
-        let retiring = if stamp.epoch != self.stamp.epoch {
-            Some(Retirement::Everything)
-        } else if stamp.generation != self.stamp.generation {
-            Some(Retirement::Upstreams)
-        } else {
-            None
-        };
+        let retiring = (stamp != self.stamp).then_some(Retirement::Upstreams);
         // Adopted before the sweep, because whatever reset a swept flow owes its client is written during it:
         // the
         // writer gates a dequeued packet on the current retirement, so a reset stamped with the one being swept
@@ -487,7 +479,6 @@ impl Engine {
         // after this point is stamped with, which is the successor by construction.
         self.stamp = stamp;
         self.upstream = upstream;
-        self.device.set_mtu(floor);
         if let Some(retiring) = retiring {
             self.retire(retiring, admission, output).await;
             // A cancelled token stays cancelled, so the successor generation's flows would close abortively for

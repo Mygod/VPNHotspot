@@ -171,8 +171,8 @@ impl Sessions {
         before - self.sessions.len()
     }
 
-    /// Drops everything, returning how many went. Used by retirement, where every session belongs to an epoch
-    /// whose client addresses no longer mean anything.
+    /// Drops everything, returning how many went. Used by retirement, where every session belongs to a socket
+    /// that is being closed with the generation that opened it.
     pub(crate) fn clear(&mut self) -> usize {
         let held = self.sessions.len();
         self.sessions.clear();

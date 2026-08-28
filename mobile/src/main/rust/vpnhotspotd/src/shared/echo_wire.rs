@@ -220,8 +220,8 @@ pub fn build_request(ipv6: bool, sequence: u16, payload: &[u8]) -> Vec<u8> {
 /// asked, restoring the client's own identifier and sequence.
 ///
 /// `identification` is the IPv4 fragmentation permission and works exactly as in
-/// [crate::shared::udp_wire::build_reply]: `None` sets DF, which is what a reply within the downstream floor
-/// gets, and `Some` clears it and carries the value Android's downstream fragmentation repeats into every
+/// [crate::shared::udp_wire::build_reply]: `None` sets DF, which is what a reply within the session MTU
+/// gets, and `Some` clears it and carries the value the caller's own source fragmentation repeats into every
 /// fragment. IPv6 ignores it.
 pub fn build_reply(
     remote: IpAddr,

@@ -142,10 +142,10 @@ fn transport(slice: &[u8]) -> Result<(UdpHeader, &[u8]), Reject> {
 /// Builds the TUN-side packet for one reply, from the remote that sent it to the client that asked.
 ///
 /// `identification` decides the IPv4 fragmentation permission and is the whole DF policy in one
-/// argument: `None` sets DF, which is what every packet within the downstream floor gets, and `Some`
-/// clears it and carries the guarded value that Android's downstream fragmentation will then repeat into
-/// every fragment. Passing `Some` for a packet that fits would hand out an Identification for nothing;
-/// passing `None` for one that does not would make Android drop it and answer with Fragmentation Needed.
+/// argument: `None` sets DF, which is what every packet within the session MTU gets, and `Some` clears it
+/// and carries the guarded value the caller's own source fragmentation then repeats into every fragment.
+/// Passing `Some` for a packet that fits would hand out an Identification for nothing; passing `None` for
+/// one that does not would leave a datagram too large for the interface that may not be split.
 ///
 /// IPv6 ignores it: the reply is either within the limit or source-fragmented by the caller, and its
 /// Identification is 32 bits wide rather than 16.
