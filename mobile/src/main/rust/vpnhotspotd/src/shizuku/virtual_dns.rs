@@ -581,7 +581,7 @@ impl Handoff {
         };
         // Built while the grant still covers the query *and* a whole answer allowance, which is what makes
         // this allocation one that was charged for before it existed. The query then dies as soon as it has
-        // been built from, so what the split below retains is only what is physically on its way out.
+        // been built from, so what the split below retains is only the bytes still on their way out.
         let (query, response) = match answered {
             Some(response) => (Some(query), Some(response)),
             None => {
@@ -591,8 +591,8 @@ impl Handoff {
             }
         };
         let Some(response) = response else {
-            // A query too malformed for a SERVFAIL to be formed from: nothing physically survives this call,
-            // so the whole grant ends here rather than being split for a delivery.
+            // A query too malformed for a SERVFAIL to be formed from: nothing is left allocated after this
+            // call, so the whole grant ends here rather than being split for a delivery.
             drop(query);
             admission.release(lease);
             return;
@@ -644,7 +644,9 @@ impl Handoff {
         match self.queries.get_mut(&answer.transaction) {
             Some(held) => held.record.answer = Some(answer),
             // Its record is gone, which means its terminal was settled first and this answer arrived after -
-            // only reachable if a worker outlived its own terminal, which the join fence forbids.
+            // reachable only if an answer were sent after the task that sent it had been reported and its row
+            // taken back, which the join fence rules out: [Workers::finished] reports a task only once tokio
+            // has dropped its future, and the send happens before that task returns.
             None => self.counters.discarded += 1,
         }
     }

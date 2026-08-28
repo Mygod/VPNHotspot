@@ -222,8 +222,13 @@ On the app-UID path a worker reports which kind of ending it had. A retirement o
 an ordinary protocol end is silent; a peer that reset, timed out or became
 unreachable is one log line per record, never per packet; anything else, including
 a task that did not run to completion, is a structured report. Whichever it was,
-its completion removes the record and releases the budget reservation that record
-held.
+its completion is what permits the record to be removed and the budget
+reservation released. That is immediate except in one case: a terminated TCP flow
+whose transport task completed cleanly while the client's own connection was
+still open keeps its record and its reservation until that client-side close
+finishes, or until an idle floor, a configuration retirement or session shutdown
+reaches it first
+([`shizuku.md`](shizuku.md#transport-completion-and-client-side-close)).
 
 ## Best-Effort Cleanup
 

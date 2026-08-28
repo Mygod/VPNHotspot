@@ -31,16 +31,16 @@ use vpnhotspotd::shared::workers::Terminal;
 /// Three of them are endings and are settled by [crate::shizuku::tcp::terminal]; the fourth is traffic and is
 /// settled by polling the stack. They are one enum because they are one wait: the ingress task cannot hold
 /// two futures over the same tables, and which of these is answered first is a decision rather than an
-/// accident - a worker that has finished is holding a record and a charge nothing else will release, so it
+/// accident - a task that has finished is holding a record and a charge nothing else will release, so it
 /// comes before bytes that are merely waiting.
 pub(crate) enum Attention {
     Flow(Terminal<SocketHandle>),
-    /// A flow whose worker finished cleanly earlier and whose client side has now finished too. Its exact
-    /// identity rather than a terminal, because there is no task left to produce one - see
-    /// [Engine::settled].
-    Detached {
+    /// A flow whose transport task completed cleanly earlier and whose client side has now finished too. Its
+    /// exact identity rather than a terminal, because there is no task left to produce one - see
+    /// [Engine::finish_client_close].
+    ClientClosed {
         handle: SocketHandle,
-        worker: u64,
+        incarnation: u64,
     },
     /// A resolver transaction that outlived the flow which asked for it. A value rather than a terminal
     /// message, because this owner polls its rows itself - see [crate::shizuku::tcp_dns].
@@ -75,8 +75,8 @@ impl Engine {
         // already holds, and the only thing that can change it is work this owner just did - every
         // transition to `Closed` comes from a packet or a poll this loop performed, and the loop re-enters
         // here immediately afterwards, so there is no waker to register.
-        if let Some(detached) = self.detached() {
-            return Poll::Ready(detached);
+        if let Some(closed) = self.next_client_closed() {
+            return Poll::Ready(closed);
         }
         if let Poll::Ready(terminal) = self.flows.poll_finished(cx) {
             return Poll::Ready(Attention::Flow(terminal));
@@ -174,9 +174,9 @@ impl Engine {
             if !std::mem::take(&mut held.record.refresh) {
                 continue;
             }
-            let worker = held.record.worker;
+            let incarnation = held.id;
             if admitting {
-                lifetime::rearm(flows, sockets, *handle, worker, now);
+                lifetime::rearm(flows, sockets, *handle, incarnation, now);
             }
         }
     }

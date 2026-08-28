@@ -4,9 +4,9 @@
 //!
 //! smoltcp hands back socket handles, so a handle alone names a slot rather than a flow: a terminal from a
 //! closed flow and a request belonging to the flow that reused its handle are indistinguishable by handle.
-//! Every owner-side operation therefore takes the retained worker identity beside the handle and validates
-//! the pair. A stale identity is discarded on sight and - the part that matters - cannot suppress the
-//! successor that took its slot.
+//! Every owner-side operation therefore takes the flow's retained incarnation beside the handle and
+//! validates the pair. A stale identity is discarded on sight and - the part that matters - cannot suppress
+//! the successor that took its slot.
 //!
 //! # Admission is a transaction
 //!
@@ -33,20 +33,28 @@ use std::net::SocketAddr;
 
 /// One flow, named by the pair that actually identifies it.
 ///
-/// The worker id is the retained identity the task registry issued, so it is unique for the life of the
-/// process rather than for the life of a slot.
+/// The incarnation is the identity the owner's registry issued this flow. It is never reissued for as long
+/// as that registry lives - the counter only moves forward and refuses rather than wrapping - which is
+/// exactly the scope handle reuse happens in, because the slot table and the registry that names its rows
+/// are built and dropped together. It is not a process-global number: a new registry starts counting again,
+/// and no signal outlives the one it was issued by. It names *which* flow has held this handle and nothing
+/// about what is servicing it: a flow keeps the same incarnation after its transport task has completed and
+/// only its client-facing side is left.
 /// `H` is whatever the owner's transport names a slot by - a smoltcp `SocketHandle` for the TCP engine - and
 /// is a parameter rather than a number so that nothing here has to convert one, and so that this module stays
 /// free of the transport it serves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FlowId<H> {
     pub handle: H,
-    pub worker: u64,
+    pub incarnation: u64,
 }
 
 impl<H> FlowId<H> {
-    pub fn new(handle: H, worker: u64) -> Self {
-        Self { handle, worker }
+    pub fn new(handle: H, incarnation: u64) -> Self {
+        Self {
+            handle,
+            incarnation,
+        }
     }
 }
 
@@ -203,17 +211,17 @@ pub trait FlowOps {
     /// so a refusal costs nothing to unwind.
     fn has_room(&self) -> bool;
 
-    /// Opens the socket, takes the grant, builds the bridge, and answers the identity they belong to.
+    /// Opens the socket, takes the grant, builds the bridge, and answers the incarnation they belong to.
     fn build(&mut self) -> Result<(Self::Handle, u64, Self::Record), Self::Error>;
 
     /// Undoes [FlowOps::build] exactly: the socket, the bridge and the grant all go.
-    fn unwind(&mut self, handle: Self::Handle, worker: u64, record: Self::Record);
+    fn unwind(&mut self, handle: Self::Handle, incarnation: u64, record: Self::Record);
 
     /// Hands the record to the worker table and starts its task. The record comes back on refusal.
     fn admit(
         &mut self,
         handle: Self::Handle,
-        worker: u64,
+        incarnation: u64,
         record: Self::Record,
     ) -> Result<(), Self::Record>;
 }
@@ -251,12 +259,12 @@ pub fn admit_flow<O: FlowOps>(
     if !ops.has_room() || turns.len() >= prepared {
         return Err(Refused::AtCapacity(AtCapacity { prepared }));
     }
-    let (handle, worker, record) = ops.build().map_err(Refused::Unbuildable)?;
+    let (handle, incarnation, record) = ops.build().map_err(Refused::Unbuildable)?;
     turns.admit(handle);
-    if let Err(record) = ops.admit(handle, worker, record) {
+    if let Err(record) = ops.admit(handle, incarnation, record) {
         // Exactly the place just taken, never every place this handle holds - see [Turns::undo].
         turns.undo(handle);
-        ops.unwind(handle, worker, record);
+        ops.unwind(handle, incarnation, record);
         return Err(Refused::AtCapacity(AtCapacity { prepared }));
     }
     Ok(handle)
@@ -401,7 +409,7 @@ mod tests {
             Ok((handle, u64::from(handle) + 1_000, Record { handle }))
         }
 
-        fn unwind(&mut self, handle: u32, _worker: u64, record: Record) {
+        fn unwind(&mut self, handle: u32, _incarnation: u64, record: Record) {
             assert_eq!(
                 record.handle, handle,
                 "a record may only be unwound against the handle it was built for"
@@ -411,7 +419,7 @@ mod tests {
             self.ledger.leases -= 1;
         }
 
-        fn admit(&mut self, _handle: u32, _worker: u64, record: Record) -> Result<(), Record> {
+        fn admit(&mut self, _handle: u32, _incarnation: u64, record: Record) -> Result<(), Record> {
             if self.refuse_admit {
                 return Err(record);
             }

@@ -2,7 +2,7 @@
 //!
 //! This is the outer, userspace half and nothing else. Android's inner IPv4 NAT keeps conntrack state of its
 //! own for the same client, and none of it is mirrored, configured or timed from here: what this owns is the
-//! flow record, its smoltcp socket and the worker behind them.
+//! flow record, its smoltcp socket and the transport task behind them.
 //!
 //! Two floors, and RFC 5382 section 5's exact classification of which phase gets which. `FinWait1`,
 //! `FinWait2` and `CloseWait` are *established* rather than transitory, because in each of them one
@@ -19,9 +19,9 @@
 //!
 //! The floors themselves, the phase classification and the rearm decision are
 //! [vpnhotspotd::shared::lifetime]'s: they are pure maps from a phase to a duration, and the one that decides
-//! what a *halted* flow keeps is the difference between a clean flush finishing and a worker cancelled out
-//! from under bytes this daemon already acknowledged. What is left here is the engine's use of them - which
-//! flow, which identity, and the two tables the answer is written into.
+//! what a *halted* flow keeps is the difference between a clean flush finishing and a transport task
+//! cancelled out from under bytes this daemon already acknowledged. What is left here is the engine's use of them - which
+//! flow, which incarnation, and the two tables the answer is written into.
 //!
 //! **No post-RST retention is claimed.** RFC 7857 later recommends holding a mapping for four minutes after
 //! a matching RST, which would need state outliving the live flow entirely. `Closed` is terminal here, and a
@@ -74,16 +74,16 @@ pub(super) fn rearm(
     flows: &mut Workers<SocketHandle, Flow>,
     sockets: &Sockets,
     handle: SocketHandle,
-    worker: u64,
+    incarnation: u64,
     now: Instant,
 ) {
     // Both halves, because smoltcp reuses handles: a packet or a delivery naming a replaced flow's handle
     // would otherwise hand the successor its predecessor's lease of life.
-    if !flows.current(&handle, worker) {
+    if !flows.current(&handle, incarnation) {
         return;
     }
-    // Already retiring and waiting only on its worker. A refreshed deadline would outlive the record it
-    // belongs to, and [Engine::next_deadline] excludes it from the schedule anyway.
+    // Already retiring and waiting only on its transport task. A refreshed deadline would outlive the
+    // record it belongs to, and [Engine::next_deadline] excludes it from the schedule anyway.
     let Some(held) = flows.get(&handle) else {
         return;
     };
@@ -116,11 +116,12 @@ impl Engine {
     /// flow holds.
     ///
     /// A cancelled flow is excluded, and that is load-bearing rather than tidy. Cancelling does not remove
-    /// one - what removes it is whichever of its two endings applies: an attached flow leaves when its worker
-    /// finishes, so that the refund lands when the descriptor actually closes, and a *detached* one has no
-    /// worker left and leaves when this owner's own scan finds its client finished (see
-    /// [Engine::detached]). Either way a flow just retired for being idle would otherwise keep its passed
-    /// deadline as the earliest in the table and spin the owner's select loop until that ending arrived.
+    /// one - what removes it is whichever of its two endings applies: a flow whose transport task is still
+    /// running leaves when that task finishes, so that the refund lands once everything the task held is
+    /// back, while one already closing client-side has no task left and leaves when this owner's own scan
+    /// finds its client finished (see [Engine::next_client_closed]). Either way a flow just retired for being
+    /// idle would otherwise keep its passed deadline as the earliest in the table and spin the owner's select
+    /// loop until that ending arrived.
     pub(crate) fn next_deadline(&mut self) -> Option<Instant> {
         let stack = self
             .interface
@@ -147,11 +148,11 @@ impl Engine {
     /// is not a network being left - its upstream closes the ordinary way.
     ///
     /// Nothing is removed or refunded here. The flow keeps its record, its socket and its charge until its
-    /// own ending arrives, and which ending that is depends on whether it still has a worker: an attached
-    /// flow waits for that worker's terminal through [Engine::close], the join fence every other ending goes
-    /// through, while a detached one has no terminal coming and is settled by this owner's own scan through
-    /// [Engine::settled]. Repeated ticks are idempotent either way: a flow already on its way out is
-    /// skipped.
+    /// own ending arrives, and which ending that is depends on which phase it is in: one whose transport task
+    /// is still running waits for that task's terminal through [Engine::close], the join fence every other
+    /// ending goes through, while one already closing client-side has no terminal coming and is settled by
+    /// this owner's own scan through [Engine::finish_client_close]. Repeated ticks are idempotent either way:
+    /// a flow already on its way out is skipped.
     pub(crate) fn expire(&mut self, now: Instant, output: &mut Output) {
         // Walked over the round-robin order rather than into a list of what is due. That order is registered
         // with every admitted flow and deregistered with every closed one, so it already holds each live
@@ -179,9 +180,9 @@ impl Engine {
                 // A flow already on its way out - by an earlier tick, by a config, or by its own socket
                 // closing - is skipped rather than begun again, which is what makes a repeated tick add
                 // nothing and what keeps a config retirement from aborting a socket this already closed.
-                // A *detached* flow is not on its way out and is not skipped: it has no worker left, so its
-                // floor is the only thing that can still end it, and it is settled by the owner's own scan
-                // rather than by a terminal it will never produce.
+                // A flow closing client-side is not on its way out and is not skipped: it has no task left,
+                // so its floor is the only thing that can still end it, and it is settled by the owner's own
+                // scan rather than by a terminal it will never produce.
                 if held.cancel.is_cancelled()
                     || !held.record.deadline.is_some_and(|deadline| deadline <= now)
                 {

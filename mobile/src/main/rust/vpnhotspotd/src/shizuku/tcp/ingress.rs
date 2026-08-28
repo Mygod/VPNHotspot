@@ -8,9 +8,11 @@
 //! device slot, an iterator over the table, one flow's pieces reachable together, the counters, the flow
 //! builder, and the reporter.
 //!
-//! The one step whose *body* a host cannot execute is [Handling::open], which opens a descriptor, takes a
-//! charged grant and spawns a worker. Its ordering - when it may run, and what happens to what it built when
-//! the stack then refuses the segment - is decided in the shared module and covered there.
+//! The one step whose *body* a host cannot execute is [Handling::open], which builds the client-side socket
+//! and bridge, takes the charged grant and starts the flow's transport task. Only an ordinary relay's task
+//! then opens an upstream descriptor; a virtual-DNS transport opens none. Its ordering - when it may run, and
+//! what happens to what it built when the stack then refuses the segment - is decided in the shared module
+//! and covered there.
 
 use std::net::SocketAddr;
 use std::time::Instant;

@@ -624,10 +624,10 @@ no piece, and no acknowledgment for one.
 expiry or an upstream that failed or vanished drops whatever the engine has not yet written into the client's
 send buffer, which is up to one stream's worth. The client is told the one way a terminated flow can say it:
 a reset. The clean path loses nothing - the end of the stream is reported only after every byte written
-before it, and a clean completion detaches the flow so the engine goes on delivering what the task left in
-the stream. That works because a worker shuts its write half down before returning, not because it drops it -
-a `simplex` half signals nothing on drop - and because every path that reclaims a flow cancels and joins its
-worker before this owner's own halves go.
+before it, and a clean completion whose client is still open leaves the flow closing client-side so the
+engine goes on delivering what the task left in the stream. That works because a worker shuts its write half
+down before returning, not because it drops it - a `simplex` half signals nothing on drop - and because a
+flow with a running task is cancelled and joined before this owner's own halves go.
 
 #### The Client's Half-Close, And What A Closed Socket May Cancel
 
@@ -705,10 +705,13 @@ whether bytes survive. The engine makes a **Closed-socket check** over its flows
 configuration *sweep* that retires them, and never a substitute for it. Every non-packet caller makes it with
 the poll it asks for; the packet path deliberately does not, and defers its single scan to the end of the
 sequence, because the scan cancels workers and the decisions above it are entitled to run first. When the
-client-side socket has reached `Closed`, that check cancels the flow's worker, which is right for a reset,
-for a flow that never opened, and for a worker already gone. It is **wrong for a connection that ended the
-way its protocol says it ends**: the worker may still be writing bytes this daemon acknowledged to the
-client, held in the bridge or in the copy's own scratch, and cancellation is abortive and would drop them.
+client-side socket has reached `Closed`, that check cancels the flow's transport task, which is right for a
+reset and for a flow that never opened. It is **wrong for a connection that ended the way its protocol says it
+ends**: the task may still be writing bytes this daemon acknowledged to the client, held in the bridge or in
+the copy's own scratch, and cancellation is abortive and would drop them - such a flow keeps running and its
+later joined terminal is what reclaims it. And a flow already in the client-closing phase has no task to
+cancel at all: its terminal was joined before it entered that phase, so `Closed` there is the owner's own
+signal to reclaim and refund the row directly.
 
 **A reset is therefore what the stack accepted, never what a bit said.** `smoltcp` accepts a reset in the
 connected and closing phases alike and leaves exactly the `Closed` a completed shutdown leaves, so by the time
@@ -758,8 +761,8 @@ extracted, and a scan reaching a `Closed` socket first would do neither in that 
 therefore the stack, the device and the output and nothing of any flow's; the scan happens once, after the
 whole sequence has decided. Every other caller still reaches both together.
 
-So a cleanly half-closed flow is not cancelled by `Closed` alone. It ends on its worker's own completion,
-which is ordinary work rather than a teardown to cut short. What still bounds it is unchanged and still
+So a cleanly half-closed flow is not cancelled by `Closed` alone. It ends on its transport task's own
+completion, which is ordinary work rather than a teardown to cut short. What still bounds it is unchanged and still
 abortive: its outer idle floor, any configuration retirement, and the session's own shutdown.
 
 **And the flush needs a bound that survives the teardown, in both close orderings.** A flow is somewhere in
@@ -800,28 +803,36 @@ phase after it, in both orderings - and never by a figure invented for the purpo
 
 | How the client's side ended | Recorded as | What `Closed` does |
 | --- | --- | --- |
-| FIN, after every byte it sent was across | a clean half-close | nothing; the worker's completion ends the flow |
-| reset, whether or not a clean FIN came first | not a half-close; the cause outranks the phase | cancels the worker |
-| never opened, or worker already gone | not a half-close | cancels the worker |
+| FIN, after every byte it sent was across, task still flushing | a clean half-close | nothing; the flow lives on until that task's joined terminal reclaims it |
+| reset, whether or not a clean FIN came first | not a half-close; the cause outranks the phase | cancels the live transport task |
+| never opened | not a half-close | cancels the live transport task |
+| already closing client-side, task joined at its terminal | not a half-close | nothing to cancel; the owner reclaims and refunds the row |
 
-#### A Flow Can Outlive Its Worker
+#### Transport Completion And Client-Side Close
 
-Both TCP workers return as soon as their own ordered work is done - as soon as their last bytes and their
-ordered end of stream are *in the stream*, not delivered. The client's socket at that moment is typically
-still `ESTABLISHED` with bytes to deliver, or in `LAST-ACK`, `CLOSING` or `TIME-WAIT`. A clean terminal from a
-flow nobody asked to stop therefore **detaches** the flow instead of ending it: the worker and its upstream
-descriptor are gone, while the flow keeps its socket, its buffers, its reservation and whatever its half of
-the stream still holds until `smoltcp` reaches `Closed`, its outer floor passes, a configuration retires it,
-or the session ends. What the worker wrote stays readable, and the end of the stream follows it - **because
-the worker shut its write half down before returning, not because it dropped it**. Dropping a `simplex` half
-signals nothing at all; only `tokio::io::duplex` did that. `copy_bidirectional` shuts a direction down when
-its reader reaches the end of the stream, a DNS-over-TCP transport does the same explicitly, this owner's own
-`Bridge` closes both of its write halves whenever its side goes, and every reclamation cancels and joins the
-worker first. So the engine goes on delivering exactly as it did while the worker existed - which is also why
-the detach arm has nothing to discard. Its record is removed and its reservation released exactly once, by
-whichever ending happens first, and no retirement waits for a second terminal from it. A cancelled worker, a
-socket that never completed its handshake, and a failed worker are not this case: each has no client teardown
-left to protect.
+A flow's transport task completes when its own ordered work is done - its last bytes and its ordered end of
+stream are *in the stream*, not delivered. An ordinary relay's task also closes the upstream descriptor
+there; a DNS-over-TCP transport has none, it terminates locally, and the resolver transactions it asked for
+are owned separately and can outlive it ([`dns.md`](dns.md)).
+
+What follows depends on the client-facing connection at that moment:
+
+- **it is still open** - past its handshake, not yet `Closed`, and the ending is a clean one nobody
+  cancelled. The flow keeps its client-facing socket, its buffers, its reservation and whatever its half of
+  the stream still holds, and the engine goes on delivering that, end of stream included;
+- **it is already closed, never opened, cancelled, or the ending is a failure or a reported one.** There is
+  no client-side close to protect, so the joined terminal ends the flow immediately, resetting the client
+  where a failure or a report is what ended it.
+
+Entering that retained phase discards nothing by itself. What can still discard is a later abortive ending:
+the outer idle floor, a configuration retirement that applies to the flow, or session shutdown, each of which
+reclaims the flow along with whatever the stream still held. So it is reclaimed when its client side reaches
+`Closed`, when its floor passes, when a retirement applies, or when the session ends - whichever comes first,
+and exactly once.
+
+The join fence applies wherever there is something to join: a flow with a running task is cancelled and
+joined before its record is reclaimed and its reservation refunded, while a flow closing client-side was
+already joined at its own terminal and needs no second join - a retirement settles it directly.
 
 ## External State And Cleanup
 

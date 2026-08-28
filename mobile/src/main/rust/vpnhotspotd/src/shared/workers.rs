@@ -161,9 +161,10 @@ impl<K: Copy + Eq + Hash, R> Workers<K, R> {
     /// - `held <= prepared`, because [Workers::admits] refuses rather than grows, and every held record was
     ///   paid for by its owner before this table was asked to take it;
     /// - `running <= held`, because a task is registered only alongside the row it belongs to, and a row is
-    ///   only ever taken back *after* [Workers::finished] has reported that task and removed it - on the
-    ///   detached path too, where the report comes first and the row is taken back much later. Nothing else
-    ///   spawns here, and nothing spawns a child of a worker's token.
+    ///   only ever taken back *after* [Workers::finished] has reported that task and removed it - including
+    ///   where an owner deliberately keeps the row after the report and takes it back much later, as a TCP
+    ///   flow closing client-side does. Nothing else spawns here, and nothing spawns a child of a worker's
+    ///   token.
     ///
     /// Both counts are over records this table admitted. A candidate identity an owner is holding between
     /// [Workers::identity] and [Workers::admit] is deliberately outside them - this table never sees one, and
@@ -221,9 +222,13 @@ impl<K: Copy + Eq + Hash, R> Workers<K, R> {
 
     /// Records one admission and starts its worker.
     ///
-    /// The worker must own everything whose close this record stands for, so that completing is what closes
-    /// it. The identity is borrowed rather than taken because the worker is built from it first: it has to
-    /// name the same one, or a terminal would settle the wrong record.
+    /// The worker must own every task-local resource whose release a caller intends to prove by observing
+    /// this task complete - a descriptor above all - so that completing is what releases it. That is not a
+    /// rule that the record must be empty afterwards: state the *record* owns may outlive the terminal by
+    /// design, and the TCP engine's client-closing phase is the case that does so, keeping a socket, a bridge
+    /// and a grant on a row whose task has already been joined. The identity is borrowed rather than taken
+    /// because the worker is built from it first: it has to name the same one, or a terminal would settle the
+    /// wrong record.
     ///
     /// A key this table already holds is refused rather than replaced - see [Refused::Duplicate]. The record
     /// comes back on refusal, so the caller can unwind what it was built from rather than having it dropped
@@ -304,8 +309,8 @@ impl<K: Copy + Eq + Hash, R> Workers<K, R> {
     }
 
     /// How many records this table holds. Deliberately not how many *tasks* are running: a retired record's
-    /// task has already been reported, and a detached one's row outlives its task by design - see
-    /// [Workers::working] for the other count.
+    /// task has already been reported, and an owner may deliberately keep a row after its task has been
+    /// reported - as a TCP flow closing client-side does - see [Workers::working] for the other count.
     pub fn len(&self) -> usize {
         self.held.len()
     }

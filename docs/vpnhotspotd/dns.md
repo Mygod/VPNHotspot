@@ -108,9 +108,12 @@ Host- or network-unreachable response writes are treated as downstream
 reachability churn and logged. Other I/O failures are returned to the
 connection task.
 
-On the app-UID path a transport outlives its own task while the client is still
-closing ([Shizuku Mode](shizuku.md#a-flow-can-outlive-its-worker)), and ending a
-transport ends the transport only: its resolver transaction is owned separately,
+On the app-UID path a transport task can complete while the client's own
+connection is still open, and the flow's client-facing side then stays until that
+close reaches `Closed` - unless its idle floor, a configuration retirement that
+applies to it, or session shutdown reclaims it first and discards the remainder
+([Shizuku Mode](shizuku.md#transport-completion-and-client-side-close)). Ending
+a transport ends the transport only: its resolver transaction is owned separately,
 is never cancelled with it, and keeps the platform's slot reserved until it
 finishes, so a late answer is discarded rather than delivered to whatever reused
 the connection. A session that has stopped serving refuses a question it has not

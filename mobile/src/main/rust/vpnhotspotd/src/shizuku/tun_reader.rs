@@ -11,10 +11,10 @@
 //! generation mean the descriptors are actually back rather than merely spoken for, and it is why this loop
 //! selects on the transports' terminals alongside their traffic.
 //!
-//! Joined is not always the same as retired. A terminating TCP flow whose worker finished *cleanly* while its
-//! client was still closing keeps its client socket and its charge - the descriptor is gone with the task, and
-//! what is left is a teardown this loop lets finish. Such a flow is settled by the owner's own scan rather
-//! than by a terminal; see [crate::shizuku::tcp::Engine::attention].
+//! Joined is not always the same as retired. A terminating TCP flow whose transport task completed *cleanly*
+//! while its client was still open keeps its client socket and its charge - everything that task held is back,
+//! and what is left is a client-side close this loop lets finish. Such a flow is settled by the owner's own
+//! scan rather than by a terminal; see [crate::shizuku::tcp::Engine::attention].
 //!
 //! Admission is checked per packet against the session's last applied config rather than by starting and
 //! stopping this task, because a packet Android already queued in the kernel says nothing about the config
@@ -394,8 +394,10 @@ pub(crate) async fn run(
                 }
                 admitting = config.admitting;
                 virtual_addresses = config.virtual_addresses;
-                // Only now, with every worker of the previous stamp joined and every refund made, may the
-                // session acknowledge the config.
+                // Only now, with every task this retirement cancelled joined and every allocation those
+                // retired records held refunded, may the session acknowledge the config. Not everything the
+                // session owns: a preserved DNS transport is still running and still charged, and so is any
+                // resolver transaction it asked for, both by design - see above.
                 if config.retired.send(()).is_err() {
                     break Err(io::Error::other("the session abandoned a config it sent")
                         .with_report_context("shizuku.tun_ingress.acknowledge"));
@@ -427,12 +429,12 @@ pub(crate) async fn run(
                 echo.closed(terminal, &mut admission);
                 continue;
             }
-            // Four kinds, and three of them are endings because two things outlive the flow that started
-            // them. A DNS-over-TCP transaction settles when the platform is actually done, which can be after
-            // the config that swept its flow was acknowledged. And a flow can outlive its own *worker*: both
-            // workers finish as soon as their ordered work is done, while the client's teardown still has a
-            // FIN to retransmit and an acknowledgment to wait for, so a clean terminal detaches the flow and
-            // the third kind is the client side of it finally finishing.
+            // Four kinds, and three of them are endings because a terminated flow does not always end all at
+            // once. A DNS-over-TCP transaction settles when the platform is actually done, which can be after
+            // the config that swept its flow was acknowledged. And a transport task completes as soon as its
+            // ordered work is in the bridge, which can leave a client still holding bytes to deliver, a FIN to
+            // retransmit and an acknowledgment to wait for - so a clean terminal from an open client leaves
+            // the flow closing client-side, and the third kind is that client side finally finishing.
             //
             // The fourth is not an ending but traffic: one pass over every flow has already moved everything
             // both directions could move, so what is left is to run the stack for it. It travels with the
@@ -443,9 +445,10 @@ pub(crate) async fn run(
                 match attention {
                     tcp::Attention::Flow(terminal) => tcp.close(terminal, &mut admission, &mut output),
                     tcp::Attention::Transaction(terminal) => tcp.settle(terminal, &mut admission),
-                    tcp::Attention::Detached { handle, worker } => {
-                        tcp.settled(handle, worker, &mut admission)
-                    }
+                    tcp::Attention::ClientClosed {
+                        handle,
+                        incarnation,
+                    } => tcp.finish_client_close(handle, incarnation, &mut admission),
                     tcp::Attention::Traffic => tcp.traffic(admitting, now(), &mut output),
                 }
                 continue;
@@ -608,7 +611,7 @@ pub(crate) async fn run(
     result
 }
 
-/// Gives the fixed reservations back, and only once every allocation they paid for is physically gone.
+/// Gives the fixed reservations back, and only once every allocation they paid for has been dropped.
 ///
 /// The order is the whole point, and it is the reverse of [prepare]. Releasing while the thing still exists
 /// would be an under-charge for as long as the gap lasted, which is the fail-open case the aggregate exists

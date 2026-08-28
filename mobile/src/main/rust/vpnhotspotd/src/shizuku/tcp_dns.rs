@@ -452,9 +452,9 @@ impl Serving {
         self.delivery.acknowledge(admission, acked)
     }
 
-    /// The flow is closing. Everything physical goes first - the parked delivery, whatever query was still
-    /// travelling back, both channel ends - and only then the reservation's grant, so nothing is refunded
-    /// while the memory it covered is still alive.
+    /// The flow is closing. Every buffer and endpoint is dropped first - the parked delivery, whatever query
+    /// was still travelling back, both channel ends - and only then is the reservation's grant refunded, so
+    /// nothing is refunded while the memory it covered is still alive.
     ///
     /// Answers with the transaction this transport left outstanding, which its close has to hand a token to.
     pub(crate) fn close(self, admission: &mut Admission) -> Closed {
@@ -483,7 +483,8 @@ impl Serving {
     }
 }
 
-/// What a closing flow still physically owns, and the reservation whose grant covers part of it.
+/// What a closing flow still holds - both channel ends, and whatever query is still travelling on one of
+/// them - and the reservation whose grant covers part of it.
 ///
 /// The reservation is *inside*, and [Closing::drained] is the only way out - which destroys both channel ends
 /// and whatever query was still travelling on one of them first. That makes the order structural rather than
@@ -554,8 +555,8 @@ pub(crate) fn answered_here(
         reserved.end(admission);
         return None;
     };
-    // Reconciled to exactly what physically survives this call: the answer and the framed copy the transport
-    // builds beside it. Nothing here is a new charge - the reservation covered both - and what is left of
+    // Reconciled to exactly what is still allocated after this call: the answer and the framed copy the
+    // transport builds beside it. Nothing here is a new charge - the reservation covered both - and what is left of
     // that reservation ends inside the split.
     let delivery = reserved.settle(admission, delivery_bytes(servfail.capacity()));
     Some(Answering {
@@ -615,11 +616,13 @@ pub(crate) enum Granted {
 
 /// Serves one flow's stream until the client stops asking or the engine cancels it.
 ///
-/// This task holds no descriptor, so its terminal is not what releases the flow. On the clean path - the
-/// client has finished asking and this hands over an ordered end of stream - the engine *detaches* the flow
-/// and the client's own teardown finishes first; see `shizuku/tcp/terminal.rs`. The resolver slot belongs to the
-/// transaction either way, which the ingress owner holds in a table of its own when this is swept. Nothing
-/// terminal travels on the events channel, exactly as for an ordinary flow.
+/// This task owns no descriptor, so its terminal proves only that the task itself has completed - never that
+/// a socket of the flow's has closed. What the owner does with that terminal is the owner's decision and is
+/// read off the client-side state: a client still open leaves the flow closing client-side, while one that
+/// never opened or is already `Closed` is reclaimed there and then; see `shizuku/tcp/terminal.rs`. The
+/// resolver slot belongs to the transaction rather than to this task either way, which the ingress owner
+/// holds in a table of its own when this is swept. Nothing terminal travels on the events channel, exactly as
+/// for an ordinary flow.
 pub(crate) async fn serve(
     flow: Event,
     mut bridge: Worker,

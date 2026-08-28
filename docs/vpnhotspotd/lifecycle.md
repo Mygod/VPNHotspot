@@ -243,9 +243,11 @@ resource accounting carry on. The order is:
    still reach a client and the notifications below are not discarded with them;
 2. cancel every affected flow, mapping and socket, then join their tasks and
    return what they held, so an acknowledged configuration means those descriptors
-   are closed. An upstream connect still in flight is cancelled rather than waited
-   for, and every wait inside a worker can be interrupted by its own cancellation,
-   so a stalled peer cannot delay the acknowledgement;
+   are closed. A TCP flow whose transport task already completed cleanly has
+   nothing left to join and is settled directly instead. An upstream connect still in
+   flight is cancelled rather than waited for, and every wait inside a worker can
+   be interrupted by its own cancellation, so a stalled peer cannot delay the
+   acknowledgement;
 3. close each retired upstream socket abortively, with `SO_LINGER` zero, so nothing
    further is transmitted over the network being left; UDP and ping sockets close
    directly;

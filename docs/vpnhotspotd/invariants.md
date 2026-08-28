@@ -29,20 +29,33 @@ compatibility or cleanup impact.
   and transport, and is what reports when retirement has finished. The session
   loop owns the two dataplane task handles, joins each exactly once, and ends the
   session as soon as either completes.
-- A terminated TCP flow is identified by its socket handle and worker together,
-  never by the handle alone, because smoltcp reuses handles.
-- A terminated TCP flow's worker crosses the boundary to the ingress owner as a
-  bounded Tokio `AsyncRead + AsyncWrite` stream and nothing else. That stream is
-  three one-way library pipes joined and chained, all three charged to admission
-  before the flow exists, and the worker cannot tell how many there are. Both directions
-  are bounded by that stream's own buffer and both wakes are the library's: the
-  worker writing is what makes the owner runnable, and the worker reading is what
-  returns the capacity the owner was waiting for. Neither direction may be
-  governed by reading a capacity, a timer, a periodic poll, an unrelated event or
-  a readiness message, and neither may travel on anything other flows share.
+- A terminated TCP flow is identified by its socket handle and incarnation
+  together, never by the handle alone, because smoltcp reuses handles. The
+  incarnation names the flow for its whole life, including after its transport
+  task has completed, and is never reissued for as long as the table that issued
+  it lives - which is the scope handles are reused in.
+- One bounded Tokio `AsyncRead + AsyncWrite` stream carries every raw
+  client-facing TCP byte chunk between a terminated flow's transport task and the
+  ingress owner, and is the only readiness and backpressure path for those
+  chunks: the task holds one endpoint of it, the owner the other, and no stream
+  chunk and no wake for one travels anywhere else. That stream is three one-way
+  library pipes joined and chained, all three charged to admission before the flow
+  exists, and the task cannot tell how many there are. Both directions are bounded
+  by that stream's own buffer and both wakes are the library's: the task writing
+  is what makes the owner runnable, and the task reading is what returns the
+  capacity the owner was waiting for. Neither direction may be governed by reading
+  a capacity, a timer, a periodic poll, an unrelated event or a readiness message,
+  and neither may travel on anything other flows share. A DNS-over-TCP transport
+  additionally uses the dedicated, charged `asks`, `control` and `filled` channels
+  documented below, which carry admission decisions and transfer ownership of
+  parsed and framed DNS buffers - the admitted query buffer out and back, and the
+  answer the owner hands over. Those are per-question ownership transfers, never
+  an alternate readiness path for the raw stream chunks above.
 - The ingress owner moves bytes straight between that stream and `smoltcp`'s own
   buffers, so nothing is ever held between the two. What the client's send buffer
-  will not take stays in the stream, which stops the worker reading its upstream;
+  will not take stays in the stream, which stops an ordinary relay's task reading
+  its upstream socket and stops a DNS-over-TCP transport writing the answer it is
+  framing;
   what the stream will not take stays in the client's receive buffer, which closes
   the client's window. Neither direction may drop a byte to relieve pressure.
 - The owner does not read the stream while the client's send buffer is full, and
@@ -126,12 +139,15 @@ compatibility or cleanup impact.
   because there is no cause to change. Which flow a segment names is both of its
   endpoints in the client's own direction, and is one rule shared with the
   decision to open a flow for a SYN.
-- A client-side socket the stack has finished with cancels its worker, except when
-  the client half-closed cleanly and the extraction completed: that worker may still be flushing bytes this
-  daemon acknowledged, and cancellation is abortive. Such a flow ends on its
-  worker's own completion, and stays bounded by its idle floor, by any retirement
-  and by session shutdown - all of which remain abortive. A reset, a flow that
-  never opened and a worker already gone are not this case.
+- A client-side socket the stack has finished with cancels its transport task
+  while one is live, except when the client half-closed cleanly and the extraction
+  completed: that task may still be flushing bytes this daemon acknowledged, and
+  cancellation is abortive. Such a flow ends on its transport task's own
+  completion, and stays bounded by its idle floor, by any retirement and by
+  session shutdown - all of which remain abortive. A reset and a flow that never
+  opened are not this case and are cancelled. A flow already in the client-closing
+  phase has no task to cancel: its terminal was joined before it entered that
+  phase, so the owner reclaims and refunds that row on `Closed` instead.
 - A clean client ending is bounded from the moment the *stack* sees the FIN, and
   the idle floor is armed **before** the extraction changes what the phase means -
   in the same synchronous ingress call, after the poll that produced the phase and
@@ -151,18 +167,29 @@ compatibility or cleanup impact.
   zero and either would unbound the flush or make it immediately due.
 - No figure in any of the above is invented for the purpose: every one is an
   existing RFC 5382 floor, applied to the phase whose behaviour it describes.
-- A clean terminal may arrive with bytes still in the stream, so a flow is
-  detached rather than removed: what the worker wrote stays readable and the end
-  of the stream it shut its write half down for follows it, and the owner goes on
-  delivering. Only a flow that is ending discards what it still owed.
+- A clean terminal may arrive with bytes still in the stream, so a flow whose
+  client-facing connection is still open is left closing client-side rather than
+  removed: what the transport wrote stays readable and the end of the stream it
+  shut its write half down for follows it, and the owner goes on delivering. A
+  client half already closed, never opened or cancelled has no such close to
+  protect and is reclaimed at the terminal. Only an abortive ending - a
+  cancellation, an idle expiry, a retirement or session shutdown - discards what
+  the flow still owed.
 - A flow begins retiring once, and its record is removed and its budget
-  reservation released once, whichever of an idle timeout, a configuration change
-  or the session ending reaches it first. A flow whose worker has already
-  finished is settled directly, and nothing waits for a second terminal from it.
+  reservation released once, whichever ending reaches it first. Which endings
+  those are depends on the phase: a flow whose transport task is still live is
+  released by that task's joined terminal, by an idle timeout, by a configuration
+  change or by the session ending, and its client reaching `Closed` does not
+  release it; a flow already in the client-closing phase is released by its client
+  reaching `Closed` as well, and is settled directly there and at a retirement,
+  because no second terminal is coming for it.
 - Nothing a worker holds is released before that worker has finished, and the
   owner learns that by joining the task rather than by receiving a message: it
-  cancels, joins, closes and only then returns the reservation, so an
-  acknowledged configuration means those descriptors are closed.
+  cancels, joins, closes and only then returns the reservation. A descriptor a
+  task opened is task-local - an ordinary TCP relay's upstream socket is one,
+  while a DNS-over-TCP transport opens none - so completing and being joined is
+  the observable proof that such a descriptor has closed, and an acknowledged
+  configuration means exactly that for every task that held one.
 - Every descriptor-bearing worker is owned rather than detached, on both paths.
   Root's IPsec probe is cancelled and joined before the control loop stops session
   state or ends the control writer.

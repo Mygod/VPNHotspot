@@ -209,8 +209,9 @@ enum Upstream {
     /// is the worker writing those bytes upstream, which is ordinary work rather than a teardown to cut
     /// short.
     Halted,
-    /// There is nowhere left to put the client's bytes: the worker went, its flow was detached, or the
-    /// reserved tail could not take the ending.
+    /// There is nowhere left to put the client's bytes: the upstream half went - because it failed, or
+    /// because it completed and left the flow closing client-side - or the reserved tail could not take the
+    /// ending.
     Gone,
 }
 
@@ -265,11 +266,11 @@ impl Bridge {
         matches!(self.upstream, Upstream::Halted)
     }
 
-    /// Stops draining the client's receive buffer for a flow whose worker has gone.
+    /// Stops draining the client's receive buffer for a flow whose upstream half has gone.
     ///
-    /// The detach path's, and it is not a close: it only stops the owner asking a bridge whose reader has
-    /// gone. Deliberately not [Upstream::Halted] - nothing is flushing upstream any more, so nothing is owed
-    /// a wait.
+    /// The client-side-close path's, and it is not a close: it only stops the owner asking a bridge whose
+    /// reader has gone. Deliberately not [Upstream::Halted] - nothing is flushing upstream any more, so
+    /// nothing is owed a wait.
     pub fn stop_sending(&mut self) {
         self.upstream = Upstream::Gone;
     }
@@ -290,7 +291,7 @@ impl Bridge {
     pub fn ending(&self, state: State) -> Ending {
         match self.upstream {
             // Nowhere left to put the client's bytes, so there is no flush to protect and nothing to wait
-            // for. A detached flow and one whose worker went are both this.
+            // for. A flow closing client-side and one whose worker went are both this.
             Upstream::Gone => Ending::Ordinary,
             Upstream::Halted => Ending::Flushing,
             Upstream::Open if self.established && peer_finished(state) => Ending::Pending,
@@ -1088,8 +1089,8 @@ mod tests {
     fn the_worker_finishing_closes_the_client_after_every_byte_it_wrote() {
         let mut wired = Wired::new(1, 64);
         assert_eq!(wired.worker_writes(b"answer"), Some(6));
-        // The worker's task completes, which is the clean completion an engine detaches on: what it wrote
-        // stays readable and the end of the stream follows it.
+        // The worker's task completes, which is the clean completion an engine leaves closing client-side:
+        // what it wrote stays readable and the end of the stream follows it.
         wired.worker_completes();
         wired.run();
         assert_eq!(wired.delivered(), b"answer");
@@ -1148,7 +1149,7 @@ mod tests {
     }
 
     #[test]
-    fn a_detached_flow_stops_the_owner_draining_for_it() {
+    fn a_flow_closing_client_side_stops_the_owner_draining_for_it() {
         let mut wired = Wired::new(4096, 64);
         let client = wired.client;
         wired
@@ -1156,9 +1157,10 @@ mod tests {
             .send_slice(&pattern(4096))
             .expect("an established socket may send");
         wired.run();
-        // The worker's terminal reached the owner and the flow was detached: nothing reads the downward pipe
-        // any more, so the owner is told to stop draining the receive buffer for it. That is the production
-        // path - the engine calls this from `Engine::close` - rather than something inferred from a pipe.
+        // The worker's terminal reached the owner and the flow is left closing client-side: nothing reads the
+        // downward pipe any more, so the owner is told to stop draining the receive buffer for it. That is the
+        // production path - the engine calls this from `Engine::close` - rather than something inferred from a
+        // pipe.
         assert!(wired.bridge.sending());
         wired.bridge.stop_sending();
         assert!(!wired.bridge.sending());

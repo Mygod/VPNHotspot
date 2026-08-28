@@ -2,8 +2,8 @@
 //! them.
 //!
 //! A lease, a socket with two buffers in a real set, one bounded byte bridge with its reserved terminal
-//! tail, two control channels and a
-//! worker identity are taken in an order where each step can undo the ones before it. The engine keeps the
+//! tail, two control channels and an
+//! identity are taken in an order where each step can undo the ones before it. The engine keeps the
 //! record it stores, the future it spawns and the reports it writes, and calls these two functions for the
 //! rest.
 //!
@@ -105,12 +105,14 @@ pub(crate) enum Denied {
 /// Every field is something [release] must undo, which is why they arrive together rather than as a tuple the
 /// caller reassembles.
 pub(crate) struct Prepared {
-    /// The composite grant: the record, the descriptor and every byte of this flow's buffers.
+    /// The composite grant: this flow's record slot, every byte of its buffers and channels, and - for a
+    /// DNS-over-TCP transport - the one logical resolver token.
     pub(crate) connection: Connection,
     /// The client-side socket's slot in the engine's set.
     pub(crate) handle: SocketHandle,
-    /// The worker identity this flow's task will run under. Issued here because a flow that cannot have one
-    /// must not have a socket either.
+    /// The identity this flow's record and its transport task share, which is also the incarnation that goes
+    /// on naming the flow once that task has completed. Issued here because a flow that cannot have one must
+    /// not have a socket either.
     pub(crate) identity: Identity,
     /// The engine's half of this flow's byte bridge: an ordinary bounded Tokio stream it reads the upstream's
     /// payload out of and writes the client's into, beside what it has learned about the flow's two
@@ -158,12 +160,12 @@ pub(crate) fn prepare<R>(
     endpoint: IpListenEndpoint,
 ) -> Result<Prepared, Denied> {
     // One composite grant, and it is taken before a socket buffer, a channel, an identity or a worker exists.
-    // It covers the flow's record and upstream descriptor, its two stack buffers, both directions of the byte
-    // bridge, the scratch its worker reads into, both per-flow control channels built below - and, for a
-    // DNS-over-TCP flow, the one logical resolver token its transport holds for its whole life. One token per
-    // *transport*,
-    // not one per query: this flow's tasks cannot reach the accounting to ask per message, so the token is
-    // taken here or the flow is refused.
+    // It covers the flow's record slot in the general descriptor floor - the upstream socket an ordinary
+    // relay's task opens, and a count alone for a DNS-over-TCP transport, which opens none - its two stack
+    // buffers, both directions of the byte bridge, the scratch its worker reads into, both per-flow control
+    // channels built below, and, for a DNS-over-TCP flow, the one logical resolver token its transport holds
+    // for its whole life. One token per *transport*, not one per query: this flow's tasks cannot reach the
+    // accounting to ask per message, so the token is taken here or the flow is refused.
     //
     // What it does *not* own is an exchange's worth of bytes. An idle connection has no query, no answer and
     // nothing to frame; those belong to the debt each actually submitted query takes, which is also what

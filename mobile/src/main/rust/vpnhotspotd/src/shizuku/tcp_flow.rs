@@ -24,16 +24,16 @@
 //! idle expiry or an upstream that failed or vanished discards whatever the engine has not written into the
 //! client's send buffer yet, which is up to one bridge's worth. The client learns of it the one way a
 //! terminated flow can say it, a reset, and nothing about the clean path changes: an orderly end of stream
-//! reaches the engine only after every byte queued in front of it, and a clean completion detaches the flow
-//! so the engine goes on delivering what this task left in the bridge.
+//! reaches the engine only after every byte queued in front of it, and a clean completion leaves the flow
+//! closing client-side so the engine goes on delivering what this task left in the bridge.
 //!
 //! The copy therefore races the flow's token, and that is not defensive. It can block for as long as a peer
 //! chooses: a write into a full send buffer waits on a remote that stopped reading, a read waits on one that
 //! says nothing, and a write into the bridge waits on an engine that has stopped draining in order to retire
 //! this very flow. A retirement has to be abortive, so none of them may be what a retirement waits for - and
-//! this task *finishing* is what the engine joins. Finishing is not the same as the flow being removed: a
-//! clean completion whose client is still closing detaches the flow, which keeps its socket and its charge
-//! until that teardown ends. See `shizuku/tcp/terminal.rs`.
+//! this task *finishing* is what the engine joins. Finishing is not the same as the flow being removed: after
+//! a clean completion whose client is still closing, the flow keeps its client-facing socket and its charge
+//! until that close ends. See `shizuku/tcp/terminal.rs`.
 
 use std::io;
 use std::time::Duration;
@@ -95,10 +95,11 @@ pub(crate) async fn splice(
     }
     // Explicit, because dropping this is the close: the engine joins this task before it may refund, so the
     // descriptor has to be gone by the time this returns rather than merely unreferenced. The refund itself
-    // may come later still - a clean completion detaches the flow rather than ending it.
+    // may come later still - after a clean completion whose client is still open, the flow goes on closing
+    // client-side rather than ending.
     drop(upstream);
     // And the bridge with it, which leaves everything this task wrote readable and then reports the end of
-    // the stream - so a detached flow's engine goes on delivering exactly what it was delivering.
+    // the stream - so the engine goes on delivering exactly what it was delivering.
     drop(bridge);
     match failure {
         Some((context, error)) if !expected(&error) => Ended::Failed { context, error },

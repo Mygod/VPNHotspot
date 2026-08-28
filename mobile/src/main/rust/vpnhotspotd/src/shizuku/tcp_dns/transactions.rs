@@ -108,8 +108,8 @@ struct Pending {
 }
 
 impl Pending {
-    /// The session is over. Everything physical goes first - the platform transaction's descriptor, whatever
-    /// the resolver left behind, the query - and only then the grant that accounted for them.
+    /// The session is over. The platform transaction's descriptor, whatever the resolver left behind and the
+    /// query are all dropped first, and only then is the grant that accounted for them released.
     fn drain(self, admission: &mut Admission) {
         let Self {
             debt,
@@ -185,8 +185,8 @@ impl Reserved {
         self.submittable
     }
 
-    /// Reconciles this reservation down to what physically survives answering the query here, and names the
-    /// delivery by the same identity a submitted query's would have used.
+    /// Reconciles this reservation down to the bytes still allocated after answering the query here, and
+    /// names the delivery by the same identity a submitted query's would have used.
     pub(crate) fn settle(self, admission: &mut Admission, delivery_bytes: u64) -> Delivery {
         dns_debt::settle(admission, self.debt, delivery_bytes)
     }
@@ -413,8 +413,8 @@ impl Transactions {
         // that asked, and a transport ending on a local failure is reported once by [crate::shizuku::tcp] where every
         // other worker's ending is - which is also where a question that stopped being observable *later*
         // arrives. Reporting here as well made one failure two reports from two sites.
-        // Everything physical goes back - the descriptor was returned by the dropped submission, and the
-        // query and the answer allowance are this process's - while the logical token does not: the caller
+        // The descriptor and the bytes go back - the descriptor was returned by the dropped submission, and
+        // the query and the answer allowance are this process's - while the logical token does not: the caller
         // moves that into the quarantine, because for a DNS-over-TCP query the token belongs to the transport
         // rather than to this debt. See [Transactions::quarantine].
         if let Some(pending) = self.rows.remove(&id) {
@@ -540,8 +540,8 @@ impl Transactions {
     /// `None` is that move failing, and it is the one outcome with nothing to deliver. A token on the debt
     /// means the transport that asked has already closed and handed it here, so there is nobody an answer
     /// could go to; and settling would release the very grant the token is sitting on, handing back capacity
-    /// for a resolver slot the platform still holds. So the physical owners die here in the order every other
-    /// terminal uses and the grant is kept - see [QueryDebt::kept] - which shows up as an outstanding lease in
+    /// for a resolver slot the platform still holds. So the answer and the query are dropped here in the
+    /// order every other terminal uses and the grant is kept - see [QueryDebt::kept] - which shows up as an outstanding lease in
     /// the exit report and as `unquarantined` in this table's own. Deliberately not a delivery built from a
     /// second grant: that would be a ledger row this table has no reason to own, for an answer nobody is
     /// waiting for.
@@ -598,7 +598,7 @@ impl Transactions {
         ))
     }
 
-    /// The session is over: every row goes, in physical order.
+    /// The session is over: every row goes, each dropping what it holds before its grant is released.
     ///
     /// Not a cancellation that reclaims capacity - the process is about to exit. Dropping a row returns this
     /// process's descriptor, which is as far as a process can get: the platform's slot is released when its

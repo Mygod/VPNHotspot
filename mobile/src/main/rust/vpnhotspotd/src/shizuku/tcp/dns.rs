@@ -65,7 +65,7 @@ impl Engine {
 
     /// The exact flow an identity names, or nothing when it names one this owner no longer holds.
     fn serving(&mut self, flow: Event) -> Option<&mut Held<Flow>> {
-        if !self.flows.current(&flow.handle, flow.worker) {
+        if !self.flows.current(&flow.handle, flow.incarnation) {
             return None;
         }
         self.flows.get_mut(&flow.handle)
@@ -201,8 +201,9 @@ impl Engine {
                 self.counters.unprepared += 1;
                 self.answer_here(flow, reserved, query, admission);
             }
-            // The platform took the question and this process can no longer watch it. Everything physical is
-            // already back; what is left is the one logical token, which belongs to the *transport* rather
+            // The platform took the question and this process can no longer watch it. The descriptor came
+            // back with the dropped submission, and the query's bytes and its answer allowance with it; what
+            // is left is the one logical token, which belongs to the *transport* rather
             // than to the query - so it is moved out of this flow's own grant and quarantined for the rest
             // of the session, and only then is the transport ended. It cannot carry on: its next question
             // would be one asked under a token that no longer exists.
@@ -320,9 +321,9 @@ impl Engine {
         };
         // Exact identity, both halves, rather than a scan for whichever flow claims this transaction id.
         // smoltcp reuses handles, so a predecessor's answer must never reach the flow that took its place -
-        // and the worker is what tells those two apart.
+        // and the incarnation is what tells those two apart.
         let asked = delivered.flow();
-        let live = self.flows.current(&asked.handle, asked.worker);
+        let live = self.flows.current(&asked.handle, asked.incarnation);
         // Read once, because it decides two separate things below: where this query's token goes, and whether
         // the generation is allowed to have an opinion about the answer at all.
         let unobservable = delivered.unobservable();

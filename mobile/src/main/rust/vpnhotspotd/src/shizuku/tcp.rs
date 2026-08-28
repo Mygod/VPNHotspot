@@ -153,6 +153,12 @@ impl Retirement {
 }
 
 /// What the client-side stack needs from a config, and what a change to it does to this flow.
+///
+/// This flow's incarnation is deliberately not a field here. [Workers] already keeps it beside the record as
+/// `Held::id`, and that one value is what every signal naming this flow is matched against - a terminal, a
+/// DNS-over-TCP request or a delivery naming only a handle cannot be told apart from one belonging to the
+/// flow that reused it, because smoltcp reuses handles, and acting on the difference is a reset sent to the
+/// wrong client. See [vpnhotspotd::shared::flow::FlowId].
 struct Flow {
     /// The TUN-visible endpoints, which with the family are the key the design specifies. The generation is not
     /// in it because neither kind of flow needs it there. An upstream flow is retired when the generation
@@ -161,15 +167,16 @@ struct Flow {
     /// owner stamps as it accepts it and each packet the owner emits for it - never the flow.
     client: SocketAddr,
     destination: SocketAddr,
-    /// Which worker this flow's signals must name. Kept beside the handle because smoltcp reuses handles: a
-    /// terminal or a DNS-over-TCP request naming only a handle cannot be told apart from one belonging to
-    /// the flow that reused it, and acting on the difference is a reset sent to the wrong client.
-    worker: u64,
     /// What this flow carries, which is what a config change consults - never the transaction below.
     kind: Kind,
-    /// Everything this flow owns: its record and upstream descriptor, its two stack buffers and both
-    /// directions of its byte bridge - and, for a DNS-over-TCP flow, the one logical resolver token its
-    /// transport holds for its whole life.
+    /// The one grant this flow holds for its whole life. It covers the record slot every flow takes from the
+    /// general descriptor floor, its two stack buffers, both directions of its byte bridge and the scratch
+    /// its task reads into, both of its control channels - and, for a DNS-over-TCP flow, the one logical
+    /// resolver token its transport holds until it closes.
+    ///
+    /// That slot is a count rather than a descriptor of this flow's own. Only an ordinary relay's task opens
+    /// one - the upstream socket it closes when it completes - while a DNS-over-TCP transport terminates
+    /// locally and opens none.
     ///
     /// Not an exchange's worth of bytes: those belong to the debt each submitted query takes, which is what
     /// lets them stay charged when this transport closes over a question still in flight. See
@@ -193,27 +200,29 @@ struct Flow {
     /// `TIME-WAIT`, whose cleanup is smoltcp's own protocol timer rather than this owner's - see
     /// [crate::shizuku::tcp::lifetime].
     deadline: Option<Instant>,
-    /// Set once this flow's worker has run to completion cleanly and the client side has not finished yet.
+    /// Set once this flow's transport task has completed cleanly and only its client-facing side is left.
     ///
-    /// The state that keeps a terminating close honest. A worker returns as soon as *its* ordered work is
-    /// done, and for either kind that means as soon as its last bytes and its ordered end of stream are **in
-    /// the bridge**, not delivered. At that moment the client socket is typically still `ESTABLISHED` with
-    /// bytes to deliver, or in `LAST-ACK`, `CLOSING` or `TIME-WAIT` with a FIN to retransmit and a final
-    /// acknowledgment to wait for. Removing the flow there took the client's half of the connection away
-    /// mid-teardown, and now takes undelivered bytes with it.
+    /// The state that keeps a terminating close honest. A transport task completes as soon as *its* ordered
+    /// work is done, and for either kind that means as soon as its last bytes and its ordered end of stream
+    /// are **in the bridge**, not delivered; an ordinary relay's upstream descriptor goes back there too,
+    /// while a DNS-over-TCP transport holds none. Whether this flag is set depends on the client's own half
+    /// at that moment: one still `ESTABLISHED` with bytes to deliver, or in `LAST-ACK`, `CLOSING` or
+    /// `TIME-WAIT` with a FIN to retransmit and a final acknowledgment to wait for, is a close removing the
+    /// flow would take away mid-teardown, undelivered bytes and all - while a client half that never opened
+    /// or is already `Closed` has none to protect and its flow is reclaimed at the terminal instead.
     ///
-    /// So a clean terminal *detaches* instead: the worker's descriptor is gone with its task, and what is
-    /// left is a client-side-only flow that still owns its socket, its conservative grant, its DNS state and
-    /// whatever its half of the bridge still holds - until smoltcp reaches `Closed`, its outer floor runs
-    /// out, a config retires it, or the session ends. What the worker left in the bridge stays readable, and
-    /// the end of the stream it shut its write half down for before returning follows it - a `simplex` half
-    /// signals nothing on drop - so the engine goes on crossing exactly as it did while the worker existed;
-    /// what the bridge cannot get any more is anything new. No task of its own and
-    /// no *per-flow* timer task stands behind it - its teardown is still scheduled, by the engine's combined
-    /// stack-and-floor deadline, which is what lets the remaining bytes be written and the FIN
-    /// retransmitted. The ingress owner polls for it, exactly as it polls for a settled resolver
-    /// transaction. See [Engine::detached] and [Engine::settled].
-    detached: bool,
+    /// So a clean terminal from an open client enters this phase: what remains is a client-facing flow that
+    /// still owns its socket, its conservative grant, its DNS state and whatever its half of the bridge still
+    /// holds - until smoltcp reaches `Closed`, its outer floor runs out, a config retires it, or the session
+    /// ends. Entering it discards nothing: what the task left in the bridge stays readable, and the end of the
+    /// stream it shut its write half down for before finishing follows it - a `simplex` half signals nothing
+    /// on drop - so the engine goes on crossing exactly as it did before; what the bridge cannot get any more
+    /// is anything new. An abortive ending that arrives first still discards the rest, as it always did. No
+    /// task of its own and no *per-flow* timer task stands behind it, and its teardown is still scheduled all
+    /// the same, by the engine's combined stack-and-floor deadline, which is what lets the remaining bytes be
+    /// written and the FIN retransmitted. The ingress owner polls for it, exactly as it polls for a settled
+    /// resolver transaction. See [Engine::next_client_closed] and [Engine::finish_client_close].
+    client_closing: bool,
 }
 
 #[derive(Default)]
@@ -230,9 +239,9 @@ struct Counters {
     unprepared: u64,
     /// A token that could not be handed to the question it belonged to.
     unsettled: u64,
-    /// Workers that finished cleanly while their client's teardown was still running, so the flow outlived
-    /// its worker instead of being removed under a half-finished close.
-    detached: u64,
+    /// Transport tasks that completed cleanly while their client's close was still running, so the flow went
+    /// on delivering client-side instead of being removed under a half-finished close.
+    client_closing: u64,
     no_upstream: u64,
     /// Everything the packet boundary counts, in the shape that boundary defines - see
     /// [boundary::Counters]. One home per figure, and the selection of which figure a
@@ -250,7 +259,7 @@ impl Counters {
     fn describe(&self) -> String {
         format!(
             "opened {} resolved {} answered-here {} denied {} preserved {} no-upstream {} reset {} \
-             tail-failed {} expired {} detached {} closed {} to-upstream {} to-client {} stale {} \
+             tail-failed {} expired {} client-closing {} closed {} to-upstream {} to-client {} stale {} \
              unconsumed {}",
             self.opened,
             self.resolved,
@@ -261,7 +270,7 @@ impl Counters {
             self.ingress.reset,
             self.ingress.tail_failed,
             self.expired,
-            self.detached,
+            self.client_closing,
             self.closed,
             self.ingress.to_upstream,
             self.to_client,
@@ -275,8 +284,11 @@ pub(crate) struct Engine {
     interface: Interface,
     sockets: flow_setup::Sockets,
     device: Shim,
-    /// Each flow beside the task that holds its upstream descriptor. A flow comes back out of here only once
-    /// that task has run to completion, which is what the refunds below are keyed to.
+    /// One row per flow: its record, and its transport task for as long as that task is live. A row comes
+    /// back out of here only once its task has run to completion, which is what the refunds below are keyed
+    /// to - and a row whose task completed cleanly while its client was still open stays here, in the
+    /// client-closing phase, after that task has been joined. What that task holds differs by kind: an
+    /// ordinary relay's owns the upstream descriptor, while a DNS-over-TCP transport owns none.
     flows: Workers<SocketHandle, Flow>,
     /// The transactions DNS-over-TCP flows asked for, which outlive them. Kept apart from [Engine::flows]
     /// because a retirement joins that one and must not join this one - see [crate::shizuku::tcp_dns].
@@ -420,7 +432,7 @@ impl Engine {
     }
 
     /// Releases the engine's own capacity, after every flow and transaction has been settled.
-    /// Gives this engine's own retained capacity back, once everything it covers is physically gone.
+    /// Gives this engine's own retained capacity back, once everything it covers has been dropped.
     ///
     /// The receiver comes in by value rather than outliving the call, for the same reason the UDP and Echo
     /// relays take theirs: the `tables` lease below covers the ask channel *whole* - shared state, blocks and
@@ -502,8 +514,9 @@ impl Engine {
 
     /// Sweeps the flows this retirement applies to: discard what their upstream halves were carrying, reset
     /// each client the stack has a remote endpoint for - one still listening, or already closed, goes in
-    /// silence - then join each of their tasks so that every descriptor is actually gone before anything is
-    /// refunded. A row a detached flow left behind has no task to join and is settled directly.
+    /// silence - then join each of their tasks, so that every descriptor one of those tasks held is actually
+    /// gone before anything is refunded. A row whose transport task already completed has nothing left to join and is settled
+    /// directly.
     ///
     /// Also called by the whole-session path above, which adds the one thing a handover must not do.
     async fn retire(&mut self, scope: Retirement, admission: &mut Admission, output: &mut Output) {
@@ -568,27 +581,29 @@ impl Engine {
             }
         }
         self.poll(output);
-        // Settled here rather than waited for: a detached flow's worker finished long ago, so no terminal will
-        // ever name it and the loop below would wait for one for ever. Found one at a time because settling
-        // one removes it from the table this scan reads, and a sequence of single lookups allocates nothing.
+        // Settled here rather than waited for: a flow already closing client-side had its transport task
+        // joined long ago, so no terminal will ever name it and the loop below would wait for one for ever.
+        // Found one at a time because settling one removes it from the table this scan reads, and a sequence
+        // of single lookups allocates nothing.
         loop {
-            let Some((handle, worker)) = self
+            let Some((handle, incarnation)) = self
                 .flows
                 .iter()
-                .find(|(_, held)| held.record.detached && scope.retires(held.record.kind))
-                .map(|(handle, held)| (*handle, held.record.worker))
+                .find(|(_, held)| held.record.client_closing && scope.retires(held.record.kind))
+                .map(|(handle, held)| (*handle, held.id))
             else {
                 break;
             };
-            self.settled(handle, worker, admission);
+            self.finish_client_close(handle, incarnation, admission);
         }
         // Waited for by kind rather than by "nothing is running any more", because a preserved transport *is*
         // still running and must not be waited for: it holds no descriptor of the retired generation, and its
         // client is still using it. Over the live table rather than over what this call initiated, so a flow
         // an expiry had already cancelled is still joined and closed here - its descriptor is this
         // generation's, and an acknowledged config has to mean that descriptor is gone. Nothing can enter the
-        // table while this awaits: the one owner that admits a flow is the task inside this call. Detached
-        // rows are excluded because they were settled above; waiting for one is waiting for nothing.
+        // table while this awaits: the one owner that admits a flow is the task inside this call. Rows left
+        // closing client-side are excluded because they were settled above; waiting for one of those is
+        // waiting for a task that was joined at its own terminal.
         //
         // Nothing of a retired flow's is drained here, because there is nowhere left to drain to: its bytes
         // live in the bridge it owns, which dies with the record in [Engine::reclaim], and a task parked on
@@ -596,7 +611,7 @@ impl Engine {
         while self
             .flows
             .values()
-            .any(|held| scope.retires(held.record.kind) && !held.record.detached)
+            .any(|held| scope.retires(held.record.kind) && !held.record.client_closing)
         {
             let terminal = self.flows.finished().await;
             self.close(terminal, admission, output);
@@ -780,9 +795,10 @@ impl Engine {
             let Some(held) = flows.get(handle) else {
                 continue;
             };
-            // An attached flow's worker is told to stop and the release follows joining it, so the descriptor
-            // is gone before the accounting says so; a detached flow has no worker left, and the ingress
-            // owner's own scan is what settles it - see [Engine::detached].
+            // A flow whose transport task is still running has that task told to stop, and the release
+            // follows joining it, so whatever it held is back before the accounting says so; a flow already
+            // closing client-side has no task left, and the ingress owner's own scan is what settles it -
+            // see [Engine::next_client_closed].
             held.record
                 .bridge
                 .teardown(sockets.get::<Socket>(*handle).state(), &held.cancel);
@@ -882,6 +898,9 @@ impl Admit<'_> {
     }
 
     /// Turns prepared resources into the record the worker table will take, and the pieces its worker needs.
+    ///
+    /// The identity it answers is this flow's incarnation: the record is validated against it, the task is
+    /// built from it, and it goes on naming the flow after that task has completed.
     fn assemble(&self, prepared: flow_setup::Prepared) -> (SocketHandle, u64, Built) {
         let flow_setup::Prepared {
             connection,
@@ -893,15 +912,14 @@ impl Admit<'_> {
             control,
             filled,
         } = prepared;
-        let worker = identity.id;
+        let incarnation = identity.id;
         (
             handle,
-            worker,
+            incarnation,
             Built {
                 flow: Flow {
                     client: self.client,
                     destination: self.destination,
-                    worker,
                     // Decided by the classification the caller already made, and recorded rather than
                     // rediscovered: what this flow *is* cannot be read off what it happens to be doing.
                     kind: self.source.kind(),
@@ -909,7 +927,7 @@ impl Admit<'_> {
                     bridge,
                     refresh: false,
                     serving,
-                    detached: false,
+                    client_closing: false,
                     // Set before the flow is admitted, so a SYN whose stack path never runs - the device
                     // still held an untaken packet - is a flow this owner will take back rather than one
                     // that never got a deadline at all. Read off the socket that was just built rather than
@@ -957,11 +975,11 @@ impl flow::FlowOps for Admit<'_> {
                 return Err(());
             }
         };
-        let (handle, worker, built) = self.assemble(prepared);
-        Ok((handle, worker, built))
+        let (handle, incarnation, built) = self.assemble(prepared);
+        Ok((handle, incarnation, built))
     }
 
-    fn unwind(&mut self, handle: SocketHandle, _worker: u64, record: Built) {
+    fn unwind(&mut self, handle: SocketHandle, _incarnation: u64, record: Built) {
         let Built {
             flow,
             stream,
@@ -995,7 +1013,12 @@ impl flow::FlowOps for Admit<'_> {
         );
     }
 
-    fn admit(&mut self, handle: SocketHandle, _worker: u64, record: Built) -> Result<(), Built> {
+    fn admit(
+        &mut self,
+        handle: SocketHandle,
+        _incarnation: u64,
+        record: Built,
+    ) -> Result<(), Built> {
         self.start(handle, record)
     }
 }
