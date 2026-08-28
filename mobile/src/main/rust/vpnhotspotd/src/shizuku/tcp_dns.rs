@@ -29,15 +29,21 @@
 //! A resolver outcome is not a stream outcome. Everything the platform answers - a refusal, a timeout, its own
 //! per-UID limiter, a name that does not resolve - is what one query the client chose to send answers, so it
 //! becomes a SERVFAIL for that message and the connection carries on. So does an answer resolved on a
-//! selection the session has since left, and so does a query there was no selected network for. Only this
-//! daemon's own wrapper failing, a query too malformed to answer at all, or framing that can never
-//! resynchronize ends the flow.
+//! selection the session has since left, and so does a query there was no selected network for. A query too
+//! malformed to answer at all, or framing that can never resynchronize, ends the flow.
+//!
+//! This daemon's own wrapper around a transaction failing ends more than the flow, and never reaches a
+//! transport at all. Making the descriptor Android returned nonblocking, registering it, and the readiness
+//! registration it is then watched with are not any one query's outcome: an owner whose wrapper failed cannot
+//! wrap the next query either. So the ingress owner keeps that failure - see [transactions::Transactions] -
+//! ends the app-UID dataplane task on it, and the session delivers the one report it carries; the flow ends
+//! with the session rather than being told anything.
 //!
 //! **The transaction is owned apart from the transport, and it outlives it.** A retirement has to be abortive -
 //! the config acknowledgement waits for it - while a submitted resolver transaction must not be cancelled to
-//! reclaim capacity: cancelling returns this process's descriptor and nothing of the resolver's work, so the
-//! platform's own per-UID slot stays taken either way, and cancelling would also destroy the completion that
-//! made the debt exact. The two requirements only fit if the transaction is not part of the transport's
+//! reclaim capacity: `android_res_cancel` closes this process's descriptor and recovers nothing of the
+//! resolver's work, so Android's own operation runs to its end either way, and cancelling would also destroy
+//! the completion that made the debt exact. The two requirements only fit if the transaction is not part of the transport's
 //! lifetime. So a swept transport's question keeps running in the ingress owner's own transaction table -
 //! see [transactions] - and its answer is then discarded, because the client it was for has been reset. That
 //! is a lifetime, not a task: the table is a prepared map the owner polls, which is what keeps a transaction
@@ -104,9 +110,10 @@ pub(crate) struct Deliverable {
 
 /// What one settled result really is, decided before a delivery slot is taken for it.
 ///
-/// `ending` collects the one outcome that has no answer *and* has to be said out loud: this daemon's own
-/// wrapper failing, or a query too malformed for even a SERVFAIL. Both end the flow, and neither parks
-/// anything.
+/// `ending` collects the one outcome that has no answer *and* has to be said out loud: a query too malformed
+/// for even a SERVFAIL. It ends the flow and parks nothing. This daemon's own wrapper failing never arrives
+/// here - the transaction table keeps it and ends the ingress owner instead, so what reaches this
+/// classification is always something one client drove.
 fn classify(resolved: Resolved, ending: &mut Option<Failure>) -> Option<Deliverable> {
     let Resolved { result, message } = resolved;
     match result {
@@ -134,12 +141,7 @@ pub(crate) struct Delivered {
     answering: Answering,
     /// Carried out of settlement so the engine can classify this answer against the config current now.
     stamp: crate::shizuku::tun_writer::Stamp,
-    flow: Event,
     network: vpnhotspotd::shared::model::Network,
-    /// Whether this process lost the ability to watch a transaction the platform had accepted. The table has
-    /// already moved whatever token it was holding; what is left for the engine is the token a *live*
-    /// transport is still holding, and ending that transport.
-    unobservable: bool,
 }
 
 /// What the transport receives back from its owner.
@@ -152,10 +154,10 @@ pub(crate) enum Answered {
     /// whoever built it: what ends a stream is never an answer, so a client that is told to try again keeps
     /// the connection it would have to reopen.
     Delivered { delivery: DeliveryId, result: Owned },
-    /// There is no answer and there never will be: this daemon's own wrapper around the transaction failed,
-    /// the query was too malformed for anything to be echoed back, or the platform kept a slot this process
-    /// can no longer watch. There is no delivery and nothing to acknowledge; the transport ends its flow,
-    /// which is what the client is told.
+    /// There is no answer and there never will be: the query was too malformed for anything to be echoed
+    /// back. There is no delivery and nothing to acknowledge; the transport ends its flow, which is what the
+    /// client is told. Always something one client drove - this daemon's own wrapper failing ends the ingress
+    /// owner rather than being sent to a transport - so this is one line per record and never a report.
     Refused(Failure),
 }
 
@@ -220,36 +222,13 @@ impl Delivered {
     pub(crate) fn new(
         settled: dns_debt::Settled<Resolved>,
         stamp: crate::shizuku::tun_writer::Stamp,
-        flow: Event,
         network: vpnhotspotd::shared::model::Network,
-        unobservable: bool,
     ) -> Self {
         Self {
             answering: Answering { settled },
             stamp,
-            flow,
             network,
-            unobservable,
         }
-    }
-
-    /// Whether the transport that asked may carry on, and whether the token it holds may ever be reused.
-    ///
-    /// `true` is the platform holding a resolver slot whose end nothing here can observe: the transport is
-    /// ended and its token is quarantined, exactly as for a submission that could not be watched from the
-    /// moment it was made.
-    pub(crate) fn unobservable(&self) -> bool {
-        self.unobservable
-    }
-
-    /// The local failure this settlement is carrying, if it is carrying one.
-    ///
-    /// A borrow, so the answer still leaves only through [Answering::hand_over] and nothing here can deliver
-    /// anything. What it is for is the discard paths in [crate::shizuku::tcp::Engine::settle]: a transport that is
-    /// gone or reused never reaches its own terminal with this failure, so the owner about to drop the
-    /// settlement is the last one that can say what happened.
-    pub(crate) fn refusal(&self) -> Option<&Failure> {
-        self.answering.settled.answer()?.result.as_ref().err()
     }
 
     /// Whether there is an answer at all. `false` for a transaction that produced nothing, which parks
@@ -258,13 +237,9 @@ impl Delivered {
         self.answering.settled.has_answer()
     }
 
-    /// Which config this answer belongs to, and which exact transport asked for it.
+    /// Which config this answer belongs to.
     pub(crate) fn stamp(&self) -> crate::shizuku::tun_writer::Stamp {
         self.stamp
-    }
-
-    pub(crate) fn flow(&self) -> Event {
-        self.flow
     }
 
     pub(crate) fn network(&self) -> vpnhotspotd::shared::model::Network {
@@ -427,12 +402,6 @@ impl Serving {
 
     fn answer(&mut self, answered: Answered) {
         self.send(Control::Answered(answered));
-    }
-
-    /// Tells this transport there will be no answer and the stream is over. Nothing is parked, so there is
-    /// nothing to acknowledge.
-    pub(crate) fn refuse(&mut self, failure: Failure) {
-        self.answer(Answered::Refused(failure));
     }
 
     /// The transaction this transport has outstanding.
@@ -620,8 +589,8 @@ pub(crate) enum Granted {
 /// a socket of the flow's has closed. What the owner does with that terminal is the owner's decision and is
 /// read off the client-side state: a client still open leaves the flow closing client-side, while one that
 /// never opened or is already `Closed` is reclaimed there and then; see `shizuku/tcp/terminal.rs`. The
-/// resolver slot belongs to the transaction rather than to this task either way, which the ingress owner
-/// holds in a table of its own when this is swept. Nothing terminal travels on the events channel, exactly as
+/// resolver transaction belongs to the ingress owner's own table rather than to this task either way, which
+/// is what lets it outlive a sweep. Nothing terminal travels on the events channel, exactly as
 /// for an ordinary flow.
 pub(crate) async fn serve(
     flow: Event,
@@ -742,11 +711,11 @@ pub(crate) async fn serve(
                             (delivery, result)
                         }
                         // Everything a client can drive has already become this message's own SERVFAIL, so
-                        // what is left here is the daemon's own wrapper failing - a structured report - a
-                        // query too malformed to answer at all, or a platform slot this process can no longer
-                        // watch. All of them end the flow, and a reset beats a silent stall either way: a
-                        // client retries elsewhere on a closed connection and waits on an open one. No
-                        // delivery was named, so nothing is acknowledged.
+                        // what is left here is a query too malformed to answer at all. It ends the flow, and
+                        // a reset beats a silent stall: a client retries elsewhere on a closed connection and
+                        // waits on an open one. No delivery was named, so nothing is acknowledged. The
+                        // daemon's own wrapper failing never arrives here - it ends the ingress owner, and
+                        // this flow with the session.
                         Some(Control::Answered(Answered::Refused(failure))) => {
                             return failure.ended("resolver query")
                         }

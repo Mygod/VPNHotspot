@@ -325,7 +325,7 @@ pub(crate) async fn run(
     // Whatever ends this loop - EOF, cancellation, or a failure - the fence below it runs. A failure that
     // returned from inside would leave every worker to be aborted by the runtime instead of joined, which is
     // the one thing this task must never do with a descriptor.
-    let result = loop {
+    let mut result = loop {
         // Read before the select rather than inside it. Every arm is a future the macro builds up front, so a
         // deadline or a guard evaluated there would borrow an owner that a terminal arm has already borrowed
         // mutably - and these are the answers those arms would have given anyway.
@@ -444,7 +444,14 @@ pub(crate) async fn run(
             attention = tcp.attention() => {
                 match attention {
                     tcp::Attention::Flow(terminal) => tcp.close(terminal, &mut admission, &mut output),
-                    tcp::Attention::Transaction(terminal) => tcp.settle(terminal, &mut admission),
+                    // The one ending here that is not about a flow: this daemon's own wrapper around a
+                    // resolver transaction failing is not the client's outcome and is not answered as one -
+                    // it ends this task, and with it the session that owns the broken owner.
+                    tcp::Attention::Transaction(terminal) => {
+                        if let Err(e) = tcp.settle(terminal, &mut admission) {
+                            break Err(e);
+                        }
+                    }
                     tcp::Attention::ClientClosed {
                         handle,
                         incarnation,
@@ -456,8 +463,22 @@ pub(crate) async fn run(
             // One arm, because an answer is not an event this loop acts on: it is state parked on the
             // transaction it belongs to, and the event is the worker completing. That is also what makes the
             // two orders the scheduler may present - answer first, or terminal first - into one order.
-            terminal = dns.settled() => {
-                dns.settle(terminal, &mut output, &mut admission);
+            settled = dns.settled() => {
+                match settled {
+                    virtual_dns::Settled::Terminal(terminal) => {
+                        if let Err(e) = dns.settle(terminal, &mut output, &mut admission) {
+                            break Err(e);
+                        }
+                    }
+                    // Taken and left with, in the same turn: this loop commits no DNS submission after
+                    // observing one of these, because the only paths that reach a submission are the ask arm
+                    // and the dispatch below and neither is reached again. The bias above does not make that
+                    // true - it ranks arms within one poll, and a task sending between two polls can lose to
+                    // a TUN arm that was already ready - so what holds is the bound *after* the observation
+                    // rather than a claim about which arrives first. The record it came from is still charged
+                    // and is settled by the fence below.
+                    virtual_dns::Settled::Ending(e) => break Err(e),
+                }
                 continue;
             }
             event = events.recv() => {
@@ -483,7 +504,11 @@ pub(crate) async fn run(
                 match ask {
                     // Answered against the session's current admission state, not the one the transport was
                     // opened under: a stopping session drains the exchanges it already owns and starts none.
-                    Some(ask) => tcp.ask(ask, admitting, &mut admission),
+                    Some(ask) => {
+                        if let Err(e) = tcp.ask(ask, admitting, &mut admission) {
+                            break Err(e);
+                        }
+                    }
                     // impossible while the engine holds a sender
                     None => break Ok(()),
                 }
@@ -558,7 +583,7 @@ pub(crate) async fn run(
             counters.unadmitted += 1;
             continue;
         }
-        Dispatch {
+        if let Err(e) = (Dispatch {
             counters: &mut counters,
             relay: &mut relay,
             echo: &mut echo,
@@ -571,8 +596,11 @@ pub(crate) async fn run(
             gateways: &gateways,
             stamp,
             virtual_addresses: &virtual_addresses,
+        })
+        .accept(&buffer[..read], now())
+        {
+            break Err(e);
         }
-        .accept(&buffer[..read], now());
     };
     // The session is over, so every owner is told to stop and every task it started is joined before this
     // returns. Nothing daemon-owned outlives this task: the egress task is joined by the session loop, and the
@@ -584,7 +612,16 @@ pub(crate) async fn run(
     relay.shutdown(&mut admission).await;
     echo.shutdown(&mut admission).await;
     tcp.shutdown(&mut admission, &mut output).await;
-    dns.shutdown(&mut output, &mut admission).await;
+    // A wrapper failure still in the answer channel when the loop ended surfaces here rather than at its own
+    // arm. Whatever ended the loop stays this task's result, because that is the causal failure; a DNS one
+    // found beside it has no call of its own to belong to and becomes a nonfatal instead of being folded into
+    // a message that would carry neither attached report - see [crate::shizuku::app_session] for the same
+    // rule one level up.
+    result = report::keep_first(
+        "shizuku.tun_ingress.dns_shutdown",
+        result,
+        dns.shutdown(&mut output, &mut admission).await,
+    );
     report::stdout!("tun ingress {}", counters.describe());
     report_owners(&relay, &echo, &fragments, &dns, &tcp, &output, &admission);
     // Every owner gives back its own retained capacity, after everything it admitted has been settled. What

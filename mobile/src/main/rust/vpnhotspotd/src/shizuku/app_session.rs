@@ -256,7 +256,8 @@ impl Session {
         // that frame - at most one does, and the session's own is offered first because a dataplane task that
         // ended when the session did is the consequence rather than the cause. A failure already carried by
         // the frame this session owes is left alone. Everything else has no call to belong to and goes out as
-        // a nonfatal. No owner emits its own report, so exactly one of these three runs for each failure.
+        // a nonfatal. Exactly one of the three runs for each failure that arrives here, because a failure an
+        // owner returned is one it did not also emit.
         //
         // A refused config is the one ending whose failure the frame already describes: [app_config::refuse]
         // built its report where the refusal happened, so offering it again would answer the same call twice
@@ -303,10 +304,16 @@ impl Session {
 /// [describe_io_error] hands back the report an owner already attached rather than rebuilding one, so the
 /// errno, the details and the Rust source location are the failing site's own rather than this line's.
 ///
-/// Owners deliberately do not emit their own - [crate::shizuku::tun_writer] and the session seed attach a
-/// report and return it, and nothing else - which is what makes "one failure, one delivery" hold whichever
-/// of the two paths a failure takes. Emitting at the owner *and* answering a call with the same attached
-/// report is exactly the duplicate this shape removes.
+/// An owner never both returns a failure and emits it - [crate::shizuku::tun_writer] and the session seed
+/// attach a report and return it, and nothing else - which is what makes "one failure, one delivery" hold
+/// whichever of the two paths a failure takes. Emitting at the owner *and* answering a call with the same
+/// attached report is exactly the duplicate this shape removes.
+///
+/// That is a rule about each failure, not about each owner. A result carries one error, so an owner that
+/// observes a *second*, independently caused failure has nothing left to return it on and routes that one
+/// itself, once - see [crate::shizuku::virtual_dns] for the DNS drain and the query task whose owner is
+/// already gone. Those never reach here, and the one that does is still the only failure this frame
+/// describes.
 ///
 /// `#[track_caller]` so a failure arriving without an attached report is located at the caller naming it
 /// rather than at this line, which every one of them would otherwise share and the coalescer would then read

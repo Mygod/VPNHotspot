@@ -1,15 +1,18 @@
-//! The resolver transactions an engine's DNS-over-TCP flows have outstanding, and the slots they hold.
+//! The resolver transactions an engine's DNS-over-TCP flows have outstanding, and what each of them owes.
 //!
 //! Apart from the engine's flow table because a retirement joins that one and may not touch this one, and
 //! keyed by its own identity rather than by the flow's handle, which the client-side stack reuses once the
 //! flow is gone. That independence is the invariant: a transaction outlives the transport that asked for it,
-//! survives a config handover, and ends when the platform is really done - never when a client's connection
-//! goes away.
+//! survives a config handover, and ends when this daemon's own side of it is over - the platform answered, or
+//! the wrapper watching for that answer failed - never when a client's connection goes away. Android's
+//! resolver work is not what ends a row and is not waited for: it finishes when it finishes, which nothing
+//! here observes.
 //!
 //! # A lifetime, not a task
 //!
-//! This is a fixed-capacity table the ingress owner polls. [Transactions::finished] scans the prepared
-//! rows, takes exactly one whose platform transaction has reached its terminal, and removes it. Nothing is
+//! This is a fixed-capacity table the ingress owner polls. [Transactions::poll_finished] scans the prepared
+//! rows, takes exactly one that has reached a terminal this process can see - an answer, what the platform
+//! answered instead, or this daemon's own wrapper around the descriptor failing - and removes it. Nothing is
 //! spawned, nothing is cancelled to reclaim capacity, and dropping a row is what returns this process's
 //! descriptor. A retirement does not touch these rows, and a row settles into whatever its own stamp says it
 //! is.
@@ -27,13 +30,13 @@ use std::io;
 use std::task::{Context, Poll};
 
 use vpnhotspotd::shared::admission::{logical_footprint, Admission, Class, Denied, Lease, Request};
-use vpnhotspotd::shared::dns_debt::{self, Delivery, Quarantine, QueryDebt};
+use vpnhotspotd::shared::dns_debt::{self, Delivery, QueryDebt};
 use vpnhotspotd::shared::dns_wire::resolved;
 use vpnhotspotd::shared::failure::Failure;
 use vpnhotspotd::shared::model::Network;
 
 use crate::shizuku::owned::Owned;
-use crate::shizuku::resolver::{Completed, Resolving, Submission};
+use crate::shizuku::resolver::Resolving;
 use crate::shizuku::tcp_flow::Event;
 use crate::shizuku::tun_writer::Stamp;
 
@@ -63,16 +66,13 @@ fn unreached() -> Failure {
 }
 
 impl Awaiting {
-    fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Completed> {
+    fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Vec<u8>, Failure>> {
         match self {
             Self::Resolver(resolving) => resolving.poll_result(cx),
-            Self::Failed(failure) => {
-                let failure = failure.take().unwrap_or_else(unreached);
-                Poll::Ready(Completed::Answered(Err(failure)))
-            }
+            Self::Failed(failure) => Poll::Ready(Err(failure.take().unwrap_or_else(unreached))),
             // Unreachable: `submit` replaces it before it returns. Answered rather than left pending, because
             // a row nothing can ever settle is a grant nothing gives back.
-            Self::Unsubmitted => Poll::Ready(Completed::Answered(Err(unreached()))),
+            Self::Unsubmitted => Poll::Ready(Err(unreached())),
         }
     }
 }
@@ -108,8 +108,11 @@ struct Pending {
 }
 
 impl Pending {
-    /// The session is over. The platform transaction's descriptor, whatever the resolver left behind and the
-    /// query are all dropped first, and only then is the grant that accounted for them released.
+    /// Ends one row whole, for the two reasons a row ends without an answer: the session is over, or this
+    /// daemon's own wrapper around its transaction failed and the owner is about to end on that.
+    ///
+    /// The platform transaction's descriptor, whatever the resolver left behind and the query are all dropped
+    /// first, and only then is the grant that accounted for them released.
     fn drain(self, admission: &mut Admission) {
         let Self {
             debt,
@@ -134,10 +137,6 @@ pub(crate) struct Settlement {
     /// that query's own SERVFAIL by this point, and only this daemon's own wrapper failing or a query too
     /// malformed to echo is still an error.
     result: Result<Owned, Failure>,
-    /// Whether this process lost the ability to watch a transaction the platform had accepted, so the logical
-    /// token that named it may never be reused. Carried rather than folded into the failure, because a
-    /// `Failure` says which step went wrong and this says who still owns a resolver slot.
-    unobservable: bool,
 }
 
 impl Settlement {
@@ -145,21 +144,20 @@ impl Settlement {
     pub(crate) fn key(&self) -> u64 {
         self.key
     }
+
+    /// The exact transport that asked, both halves, for an owner that has to reach it whatever this
+    /// settlement turns out to be. Read before the settle rather than out of the delivery it produces,
+    /// because a settlement that ends the session produces none.
+    pub(crate) fn flow(&self) -> Event {
+        self.pending.flow
+    }
 }
 
 /// What publishing one accepted query came to.
 pub(crate) enum Submitted {
-    /// The row is in the table and the platform has the question.
+    /// The row is in the table and the platform has the question - or has refused it, which is that query's
+    /// own outcome and settles into its SERVFAIL at the next poll.
     Outstanding(u64),
-    /// The platform took the question and its completion can never be observed: this process's own wrapper
-    /// around the descriptor failed after `android_res_nsend` had already succeeded. Everything else is given
-    /// back, and this transport may not carry on - it cannot ask again under a token that no longer exists.
-    ///
-    /// The token itself is *not* dealt with here, because for a DNS-over-TCP query it belongs to the
-    /// transport rather than to this table: the caller owns that grant and moves the token into the
-    /// quarantine. `transaction` is named so the caller can leave the question recorded on its flow if that
-    /// move does not happen, which is what makes the flow's own close refuse to hand the token back.
-    Unobservable { transaction: u64, failure: Failure },
     /// The table refused the row, so the platform was never asked. The reservation and its query come back
     /// whole for the local-answer path.
     Refused(Reserved, Owned),
@@ -194,8 +192,8 @@ impl Reserved {
     /// Nobody will submit or answer this: the transport is gone, or nothing could be built for it.
     ///
     /// Whatever buffer it covered must already be dropped - a release while those bytes are alive is capacity
-    /// refunded for memory this process is still holding. No descriptor was opened and no platform slot was
-    /// taken, so there is nothing else to settle.
+    /// refunded for memory this process is still holding. No descriptor was opened and the platform was never
+    /// asked, so there is nothing else to settle.
     pub(crate) fn end(self, admission: &mut Admission) {
         dns_debt::abandon(admission, self.debt);
     }
@@ -210,21 +208,10 @@ pub(crate) struct Transactions {
     /// The next transaction identity. Checked and never reused, because a terminal, a delivery and an
     /// acknowledgment are all matched against it.
     next: u64,
-    /// The table's own retained capacity, charged once for the session - and the grant every quarantined
-    /// logical token is moved onto, which is why releasing it is what ends them.
+    /// The table's own retained capacity, charged once for the session.
     tables: Lease,
-    /// Logical tokens the platform took and this process can no longer watch. A count and nothing else: the
-    /// tokens themselves live on [Transactions::tables], because a grant per token would consume ledger rows
-    /// the aggregate's derivation never budgeted - see [Quarantine].
-    quarantined: Quarantine,
     /// Framed queries nothing could be granted for, which the transport skips.
     skipped: u64,
-    /// Submissions the platform accepted and this process cannot observe. Counted, because each is capacity
-    /// that is gone for the rest of the session.
-    unobservable: u64,
-    /// A token that could not be moved into the quarantine, which would be capacity this session goes on
-    /// believing it has. Counted rather than assumed away.
-    unquarantined: u64,
 }
 
 impl Transactions {
@@ -233,9 +220,6 @@ impl Transactions {
     /// Charged once by its owner and kept charged until the table is dropped, because it is a charge on the
     /// prepared bound rather than on the rows currently in it. Checked throughout: a figure that would wrap is
     /// a capacity that cannot be accounted for and therefore must not be prepared.
-    ///
-    /// The quarantine adds nothing to this, and that is deliberate: it allocates nothing, holding its tokens
-    /// on the very grant this figure covers.
     pub(crate) fn footprint(tokens: usize) -> Option<u64> {
         logical_footprint::<(u64, Pending)>(tokens)?.checked_add(std::mem::size_of::<Self>() as u64)
     }
@@ -254,19 +238,12 @@ impl Transactions {
             prepared,
             next: 0,
             tables,
-            quarantined: Quarantine::default(),
             skipped: 0,
-            unobservable: 0,
-            unquarantined: 0,
         })
     }
 
-    /// Releases the table's own capacity, after every row is settled - and with it every logical token this
-    /// session had to quarantine, because those were moved onto this very grant.
-    ///
-    /// The tokens are the one thing here released *because the process is ending* rather than because the work
-    /// they stood for finished: Android's slot is its own, and nothing in this process can observe or wait for
-    /// it. One release, so there is no second path to get the count wrong on.
+    /// Releases the table's own capacity, after every row is settled. One release, so there is no second path
+    /// to get it wrong on.
     pub(crate) fn release(self, admission: &mut Admission) {
         drop(self.rows);
         admission.release(self.tables);
@@ -304,7 +281,7 @@ impl Transactions {
         admission: &mut Admission,
     ) -> Option<(Reserved, Owned)> {
         // The token cap, which is the logical maximum this table was charged row state for. A settled
-        // transaction frees its slot for the next question; the map's own backing is opaque count-bounded
+        // transaction frees its row for the next question; the map's own backing is opaque count-bounded
         // overhead and is not consulted. A query skipped here gets its own SERVFAIL and the stream carries on.
         if self.rows.len() >= self.prepared {
             self.skipped += 1;
@@ -361,6 +338,10 @@ impl Transactions {
     /// `android_res_nsend` holds a question this table is not accounting for. The one refusal left is the
     /// table itself being full, which the room check at [Transactions::reserve] makes unreachable and which
     /// hands the reservation back whole for the local-answer path rather than dropping it.
+    ///
+    /// `Err` is this daemon's own wrapper around the descriptor Android returned having failed. That is not
+    /// one query's outcome - an owner that could not wrap this descriptor cannot wrap the next either - so
+    /// the row is drained here and the failure ends the ingress task rather than this one transport.
     pub(crate) fn submit(
         &mut self,
         network: Network,
@@ -369,11 +350,11 @@ impl Transactions {
         reserved: Reserved,
         query: Owned,
         admission: &mut Admission,
-    ) -> Submitted {
+    ) -> io::Result<Submitted> {
         // Re-checked here because the reservation above and this insertion are separate owner steps and the
         // table may have taken a row in between.
         if self.rows.len() >= self.prepared {
-            return Submitted::Refused(reserved, query);
+            return Ok(Submitted::Refused(reserved, query));
         }
         let Reserved { id, debt, .. } = reserved;
         self.rows.insert(
@@ -393,36 +374,36 @@ impl Transactions {
         let submission = match self.rows.get(&id) {
             Some(pending) => crate::shizuku::resolver::submit(network, &pending.message),
             // Unreachable: it was inserted immediately above and nothing since has removed it.
-            None => Submission::NeverReached(unreached()),
+            None => Err(unreached()),
         };
         let failure = match submission {
-            Submission::Accepted(resolving) => {
+            Ok(resolving) => {
                 self.set(id, Awaiting::Resolver(resolving));
-                return Submitted::Outstanding(id);
+                return Ok(Submitted::Outstanding(id));
             }
-            // Nothing of the platform's is held, so this is one query's own expected failure: the row settles
-            // at the next poll and the client gets its SERVFAIL on a stream that carries on.
-            Submission::NeverReached(failure) => {
-                self.set(id, Awaiting::Failed(Some(failure)));
-                return Submitted::Outstanding(id);
-            }
-            Submission::Unobservable(failure) => failure,
+            Err(failure) => failure,
         };
-        self.unobservable += 1;
-        // Not reported here. The failure travels out with [Submitted::Unobservable] and ends the transport
-        // that asked, and a transport ending on a local failure is reported once by [crate::shizuku::tcp] where every
-        // other worker's ending is - which is also where a question that stopped being observable *later*
-        // arrives. Reporting here as well made one failure two reports from two sites.
-        // The descriptor and the bytes go back - the descriptor was returned by the dropped submission, and
-        // the query and the answer allowance are this process's - while the logical token does not: the caller
-        // moves that into the quarantine, because for a DNS-over-TCP query the token belongs to the transport
-        // rather than to this debt. See [Transactions::quarantine].
-        if let Some(pending) = self.rows.remove(&id) {
-            pending.drain(admission);
-        }
-        Submitted::Unobservable {
-            transaction: id,
-            failure,
+        match failure.ending([("transaction", id)]) {
+            // Nothing of the platform's is held for this process to wrap, so this is one query's own expected
+            // failure: the row settles at the next poll and the client gets its SERVFAIL on a stream that
+            // carries on.
+            Ok(expected) => {
+                self.set(id, Awaiting::Failed(Some(expected)));
+                Ok(Submitted::Outstanding(id))
+            }
+            // This daemon's own wrapper around the descriptor Android returned. Everything this row held
+            // goes back: the descriptor was cancelled and closed by the dropped submission, and the query,
+            // the answer allowance and the DNS-class descriptor record are this process's. The transport's
+            // own logical token is untouched here because a query never held one - and nothing is recorded
+            // on the flow for this question, so that transport's close releases the token with its own grant
+            // rather than trying to hand it to a row that is gone. Nothing is reported here either: this
+            // failure travels, and the session that ends on it delivers the report it already carries.
+            Err(ending) => {
+                if let Some(pending) = self.rows.remove(&id) {
+                    pending.drain(admission);
+                }
+                Err(ending)
+            }
         }
     }
 
@@ -431,49 +412,6 @@ impl Transactions {
     fn set(&mut self, id: u64, awaiting: Awaiting) {
         if let Some(pending) = self.rows.get_mut(&id) {
             pending.awaiting = awaiting;
-        }
-    }
-
-    /// Moves one logical token out of the grant that was holding it and onto this table's own, for the
-    /// session.
-    ///
-    /// Called by the owner of that grant - for a DNS-over-TCP query the flow's own connection, since the
-    /// token is per transport - once the platform has taken a question this process can no longer watch.
-    /// `false` is a token that could not be moved, which is counted rather than believed: it would be
-    /// capacity this session goes on thinking it has, and its caller is expected to keep the token where it
-    /// is rather than release it.
-    ///
-    /// Cannot be refused for capacity: the move is onto a ledger row that already exists, which is the whole
-    /// reason the tokens live here rather than in grants of their own.
-    pub(crate) fn quarantine(&mut self, admission: &mut Admission, from: &Lease) -> bool {
-        if !Quarantine::holds_a_token(admission, from) {
-            // Nothing at risk on this grant, so there is nothing to move and nothing to count. Reached when
-            // a closing transport has already handed the token to the question that is settling now.
-            return true;
-        }
-        if self
-            .quarantined
-            .take(admission, from, &self.tables)
-            .is_err()
-        {
-            self.unquarantined += 1;
-            return false;
-        }
-        true
-    }
-
-    /// Takes over a closed transport's grant whose token could not reach the question still outstanding.
-    ///
-    /// The one place the two ways a token goes at risk meet: a submission the platform accepted and could not
-    /// be watched, and a close that could not hand its token over. Both end with the token on this table's own
-    /// grant, and both leave the rest of what the closed transport owned released as usual. If even that move
-    /// cannot be represented the closed grant is kept whole, which shows up as an outstanding lease in the
-    /// session's exit report rather than as capacity handed back for a slot Android may still hold.
-    pub(crate) fn strand(&mut self, admission: &mut Admission, stranded: dns_debt::Stranded) {
-        if self.quarantine(admission, stranded.lease()) {
-            stranded.released(admission);
-        } else {
-            stranded.kept();
         }
     }
 
@@ -501,17 +439,16 @@ impl Transactions {
         let mut ready = None;
         for (key, pending) in self.rows.iter_mut() {
             if let Poll::Ready(completed) = pending.awaiting.poll(cx) {
-                let unobservable = completed.unobservable();
                 // Classified here, where the query it was for is still owned, so what leaves this table is
                 // either something to put on the stream or something that ends it - never a platform outcome
                 // the transport would have to guess about. Owned from here: this is the buffer the daemon
                 // carries through the settle, the park and the handoff.
-                let result = resolved(completed.answer(), &pending.message).map(Owned::new);
-                ready = Some((*key, result, unobservable));
+                let result = resolved(completed, &pending.message).map(Owned::new);
+                ready = Some((*key, result));
                 break;
             }
         }
-        let Some((key, result, unobservable)) = ready else {
+        let Some((key, result)) = ready else {
             return Poll::Pending;
         };
         let Some(pending) = self.rows.remove(&key) else {
@@ -522,105 +459,88 @@ impl Transactions {
             key,
             pending,
             result,
-            unobservable,
         })
     }
 
     /// Settles one finished transaction, and hands back what the *delivery* after it still owns.
     ///
-    /// The descriptor record and any logical token end here, because the platform's transaction is over. The
-    /// answer does not: the transport has yet to receive it, classify it, frame it and write the framing into
-    /// its flow's bridge, and every one of those buffers exists after this returns.
+    /// The descriptor record and any logical token a closing transport handed here end with it, because this
+    /// process's side of the transaction is over: the descriptor is closed and nothing else will be read from
+    /// it. That is not a claim about Android, whose own resolver work for the same query ends when it ends -
+    /// the accounting released here is this daemon's own. The answer does not end with it either: the
+    /// transport has yet to receive it, classify it, frame it and write the framing into its flow's bridge,
+    /// and every one of those buffers exists after this returns.
     ///
-    /// Unless the transaction was one this process stopped being able to watch, in which case the token is not
-    /// over at all. It sits in exactly one of two places by then - on the debt, if a closing transport already
-    /// handed it there, or still on a live transport's own connection - so this moves whichever one it holds
-    /// and tells its caller, through [Delivered::unobservable], to deal with the other.
-    ///
-    /// `None` is that move failing, and it is the one outcome with nothing to deliver. A token on the debt
-    /// means the transport that asked has already closed and handed it here, so there is nobody an answer
-    /// could go to; and settling would release the very grant the token is sitting on, handing back capacity
-    /// for a resolver slot the platform still holds. So the answer and the query are dropped here in the
-    /// order every other terminal uses and the grant is kept - see [QueryDebt::kept] - which shows up as an outstanding lease in
-    /// the exit report and as `unquarantined` in this table's own. Deliberately not a delivery built from a
-    /// second grant: that would be a ledger row this table has no reason to own, for an answer nobody is
-    /// waiting for.
+    /// `Err` is this daemon's own wrapper around the transaction having failed while it was being watched.
+    /// There is nothing to deliver then and nothing to tell a transport: the owner that could not watch this
+    /// transaction cannot watch the next one, so it ends. Everything this row held goes back in the order
+    /// every other terminal here uses - the resolver's own half, then the query, and only then the grant,
+    /// including a token a closed transport had handed here - and the failure travels out carrying the one
+    /// report it will ever produce.
     pub(crate) fn settle(
         &mut self,
         settlement: Settlement,
         admission: &mut Admission,
-    ) -> Option<Delivered> {
+    ) -> io::Result<Delivered> {
         let Settlement {
             key,
             pending,
             result,
-            unobservable,
         } = settlement;
         let Pending {
             debt,
             message,
             stamp,
-            flow,
             network,
             awaiting,
+            ..
         } = pending;
-        // The platform transaction is over by construction - it produced this result - so what is left of it
-        // is dropped here rather than carried into a delivery that has nothing to do with it.
+        // This row's own side of the transaction is over by construction - it produced this result, whether
+        // that was an answer or this daemon's wrapper around the descriptor failing - so what is left of it
+        // is dropped here rather than carried into a delivery that has nothing to do with it. Dropping it
+        // closes this process's descriptor and nothing more: Android's resolver work for the same query is
+        // not ended by it and is not waited for.
         drop(awaiting);
-        if unobservable {
-            self.unobservable += 1;
-            // Before the settle below, which is what releases a token a closed transport had handed here.
-            if !self.quarantine(admission, debt.lease()) {
-                // Said before it is destroyed, because nothing downstream can say it: the transport that put
-                // this token here has closed, and returning `None` means no delivery reaches an engine and no
-                // terminal reaches a transport. This owner is the last one that sees the failure at all.
-                if let Err(failure) = &result {
-                    crate::shizuku::resolver::report_unobservable(key, failure);
+        let result = match result {
+            Ok(answer) => Ok(answer),
+            Err(failure) => match failure.ending([("transaction", key)]) {
+                Ok(expected) => Err(expected),
+                Err(ending) => {
+                    drop(message);
+                    dns_debt::abandon(admission, debt);
+                    return Err(ending);
                 }
-                // The answer, then the query - the resolver's own half went above - and only then is the
-                // grant kept rather than released. Every byte this transaction held is gone; what stays
-                // charged is one row carrying a token that must never be reused.
-                drop(result);
-                drop(message);
-                debt.kept();
-                return None;
-            }
-        }
-        Some(Delivered::new(
+            },
+        };
+        Ok(Delivered::new(
             dns_debt::Settled::delivering(
                 dns_debt::settle(admission, debt, DELIVERY_BYTES),
                 Resolved::new(result, Some(message)),
             ),
             stamp,
-            flow,
             network,
-            unobservable,
         ))
     }
 
     /// The session is over: every row goes, each dropping what it holds before its grant is released.
     ///
     /// Not a cancellation that reclaims capacity - the process is about to exit. Dropping a row returns this
-    /// process's descriptor, which is as far as a process can get: the platform's slot is released when its
-    /// own work finishes, and nothing here can observe or wait for that.
+    /// process's descriptor, which is as far as a process can get: Android's own operation ends when its
+    /// resolver work returns, and nothing here can observe or wait for that.
     pub(crate) fn shutdown(&mut self, admission: &mut Admission) {
         for (_, pending) in self.rows.drain() {
             pending.drain(admission);
         }
     }
 
-    /// Nothing about a duplicate settlement appears here, and that is deliberate: [Transactions::finished]
-    /// removes the row it yields, and a [Settlement] is a value that carries it - so a second settlement for
-    /// the same transaction is unrepresentable rather than counted.
+    /// Nothing about a duplicate settlement appears here, and that is deliberate:
+    /// [Transactions::poll_finished] removes the row it yields, and a [Settlement] is a value that carries
+    /// it - so a second settlement for the same transaction is unrepresentable rather than counted.
     pub(crate) fn describe(&self) -> String {
         format!(
-            "{} outstanding transactions, skipped {}, unobservable {}, quarantined {}, \
-             unquarantined {}",
+            "{} outstanding transactions, skipped {}",
             self.rows.len(),
-            self.skipped,
-            self.unobservable,
-            self.quarantined.count(),
-            self.unquarantined
+            self.skipped
         )
     }
 }

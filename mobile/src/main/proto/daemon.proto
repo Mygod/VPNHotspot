@@ -6,12 +6,6 @@ option java_package = "be.mygod.vpnhotspot.root.daemon";
 option java_outer_classname = "DaemonProto";
 option optimize_for = LITE_RUNTIME;
 
-// Deliberately carries no protocol version. The daemon is not a separately installed component: it is
-// exec'd in place from the same APK as the dex that launched it, so the two cannot disagree. An app
-// upgrade kills the app's processes and removes the old APK path, a leftover daemon from a previous
-// version connects to a socket name that no longer exists, and a tampered APK controls both sides
-// anyway. Add one only if the daemon ever ships or updates independently of the dex.
-
 // Shizuku-mode session control, which is the same conversation shape as root - ClientEnvelope in,
 // DaemonEnvelope out, every failure attributable to the call that caused it - and none of root's
 // vocabulary. Downstream, masquerade, ipv6_nat and the per-MAC client list all describe mutations that need

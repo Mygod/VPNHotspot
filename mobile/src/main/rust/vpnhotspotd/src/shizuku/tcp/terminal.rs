@@ -222,20 +222,27 @@ impl Engine {
         let transaction = closed.transaction;
         // One call, which is what keeps the two halves of this from disagreeing: a DNS-over-TCP transport
         // whose question is still outstanding hands that question its own token rather than giving it back -
-        // the platform's slot is still taken, and a moment where the token looked free would admit a second
-        // query the limiter has no room for - while a transport that closed idle simply releases it with the
-        // rest of its grant. Neither path touches the query's own bytes: the resolver still holds them.
+        // that query has not finished, and a moment where its token looked free would admit a second query
+        // this session never sized itself for - while a transport that closed idle simply releases it with
+        // the rest of its grant. Neither path touches the query's own bytes: the resolver still holds them.
         let mut connection = connection;
         connection.asking(transaction);
         let debt = transaction.and_then(|transaction| self.queries.debt(transaction));
-        if let Err(stranded) = dns_debt::close(admission, connection, debt) {
-            // The token did not reach the question this transport says is still outstanding, so it may not go
-            // back into circulation: the platform's slot for that question is taken and nothing here can
-            // observe its end. The grant came back rather than being released, and the one place a token
-            // nobody can account for lives is the transaction table's own - see
-            // [tcp_dns::Transactions::strand].
+        if !dns_debt::close(admission, connection, debt) {
+            // The token did not reach the question this transport says is still outstanding, which this
+            // owner's own ordering says cannot happen: it records a question only once that row exists, and
+            // clears it before the row is removed, both synchronously on this task. So this is the ledger or
+            // this table contradicting itself rather than a resolver lifetime nothing modelled, and the one
+            // useful thing to do with it is say so. The grant was released like any other - see
+            // [vpnhotspotd::shared::dns_debt::close] for why keeping it would only hold a record and a token
+            // nothing will ever give back.
             self.counters.unsettled += 1;
-            self.queries.strand(admission, stranded);
+            report::message_with_details(
+                "shizuku.tcp_dns.close",
+                "a closing DNS-over-TCP transport could not hand its logical token to the question it names",
+                "InvalidData",
+                [("transaction", format!("{transaction:?}"))],
+            );
         }
         self.counters.closed += 1;
     }

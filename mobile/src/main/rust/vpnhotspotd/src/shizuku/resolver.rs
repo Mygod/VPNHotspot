@@ -1,22 +1,27 @@
 //! One resolver transaction on a chosen `Network`, through the platform resolver rather than sockets the
 //! daemon owns.
 //!
-//! The app-UID TestNetwork path's resolver, and only that: [crate::shizuku::virtual_dns] is the sole caller.
-//! Root's DNS proxy keeps its own resolver code in `root/dns.rs`, unchanged, and nothing here is reachable
-//! from it.
+//! The app-UID TestNetwork path's resolver, and only that: [crate::shizuku::virtual_dns] and the DNS-over-TCP
+//! transaction table are its callers. Root's DNS proxy keeps its own resolver code in `root/dns.rs`,
+//! unchanged, and nothing here is reachable from it.
 //!
 //! Going through the platform keeps private DNS, caching, and per-network resolver configuration, none of
-//! which the daemon could reimplement. What it costs is that the transaction belongs to Android once
-//! submitted: cancelling recovers this process's descriptor and not the resolver's work.
+//! which the daemon could reimplement. What it costs is that the operation belongs to Android once submitted:
+//! `android_res_cancel` is a `close()` of the descriptor this process was handed, so dropping it recovers
+//! this process's descriptor and not the resolver's work. Android's own query limiter releases the slot when
+//! its `resolv_res_nsend` eventually returns, which is a temporary lifetime of Android's rather than
+//! something this process can shorten, prove, or has to model.
 //!
-//! # Reaching the platform is not the same as being able to watch it
+//! # Two steps here are the daemon's own
 //!
-//! `android_res_nsend` is synchronous and irreversible: when it answers with a descriptor, Android is holding
-//! one of this UID's resolver slots whatever happens next in this process. The two steps that follow it -
-//! making that descriptor nonblocking and registering it with the runtime - are this daemon's own, and either
-//! of them failing leaves a slot that is taken and a completion nothing here can ever observe. That is a
-//! third outcome, not a variety of failure, so [Submission] names it: see [Submission::Unobservable] and the
-//! quarantine its callers put the logical token into.
+//! `android_res_nsend` is synchronous: when it answers with a descriptor, the query is Android's. The two
+//! steps that follow it - making that descriptor nonblocking and registering it with the runtime - are this
+//! daemon's, and so is the readiness registration polled afterwards. None of them is one query's outcome, so
+//! none of them is answered per query: each comes back as a [Failure::Local], which
+//! [Failure::ending] turns into the error its owner ends on. An owner whose wrapper around the platform
+//! failed cannot be trusted to wrap the next query either, so it stops accepting them - by ending the
+//! app-UID dataplane task, and with it the session. What the platform itself answers, before or after
+//! acceptance, stays [Failure::Expected] and is that one query's SERVFAIL.
 
 use std::future::poll_fn;
 use std::io;
@@ -32,42 +37,14 @@ use vpnhotspotd::shared::model::Network;
 
 use crate::socket::set_nonblocking;
 
-/// The two steps of a transaction that are this process's own, named so a failure at one of them is reported
-/// as itself rather than as one more resolver answer. Not prefixed per mode: this path is shared, and both
+/// The steps of a transaction that are this process's own, named so a failure at one of them is reported as
+/// itself rather than as one more resolver answer. Not prefixed per mode: this path is shared, and both
 /// conversations call the same two functions.
 const NONBLOCK: &str = "resolver.nonblock";
 const REGISTER: &str = "resolver.register";
 
 /// android/multinetwork.h: `ResNsendFlags::ANDROID_RESOLV_NO_RETRY`.
 const ANDROID_RESOLV_NO_RETRY: u32 = 1 << 0;
-
-/// Says out loud that the platform is holding a resolver slot this process can no longer watch.
-///
-/// One function for both protocols and every owner that can be the last to see such an outcome, because the
-/// sentence is about the *platform* rather than about who noticed: a second copy of it is a second wording to
-/// keep in step and, since the coalescer keys on the reporting site, a second site for one fact.
-///
-/// Saying it is not the same as deciding *who* says it, and that decision is per protocol and deliberate. A
-/// UDP query owns its own transaction, so its terminal always reports. A DNS-over-TCP transaction can outlive
-/// the transport that asked for it, so the rule there is "whoever is last": the transport's own terminal while
-/// there is one, and otherwise the owner about to destroy or keep the state - see
-/// [crate::shizuku::tcp::Engine::settle]. Exactly one of those runs for any one outcome, which is why this needs no
-/// flag to remember whether it has already been called.
-///
-/// `#[track_caller]` so the report names the owner that made the call rather than this line, which is what
-/// makes a duplicate visible as two sites if one is ever introduced.
-#[track_caller]
-pub(crate) fn report_unobservable(transaction: u64, failure: &Failure) {
-    let Some((context, error)) = failure.reportable() else {
-        return;
-    };
-    crate::report::message_with_details(
-        context,
-        format!("the platform accepted a DNS query this process can no longer observe: {error}"),
-        format!("{:?}", error.kind()),
-        [("transaction", transaction)],
-    );
-}
 
 /// Owns the descriptor `android_res_nsend` returned, so that dropping it before the answer is read
 /// cancels the transaction rather than leaking the descriptor.
@@ -136,50 +113,6 @@ pub(crate) struct Resolving {
     fd: Option<AsyncFd<ResolverQuery>>,
 }
 
-/// What polling one accepted transaction came to.
-///
-/// Two outcomes, for the same reason [Submission] has three: losing the ability to *watch* a transaction the
-/// platform has already accepted is a different ownership from any answer, and an owner handed it as an
-/// ordinary failure would refund a logical token for a per-UID slot Android is still holding. This is the
-/// same distinction [Submission::Unobservable] draws, reached at the other end of the same transaction.
-pub(crate) enum Completed {
-    /// The platform's own outcome for this query: its answer, or what it answered instead.
-    Answered(Result<Vec<u8>, Failure>),
-    /// The readiness registration this transaction was being watched with failed after `android_res_nsend`
-    /// had accepted the query. The descriptor is returned - it is dropped with this transaction, which
-    /// cancels it - but Android's slot is not, and there is no longer anything here that could observe its
-    /// end.
-    ///
-    /// # How reachable this is, and why owners must not rely on the answer
-    ///
-    /// Narrowly, from a poll: `Registration::poll_ready` answers `Err` when the runtime's `ScheduledIo` for
-    /// this descriptor has been shut down, not for an ordinary `EPOLLERR` - error readiness arrives as bits in
-    /// the ready set, which is why the terminal condition above reads them rather than an errno. So on the
-    /// pinned runtime the poll-time case implies the I/O driver is going away, and an owner that saw it would
-    /// not go on to adopt a config and admit more work.
-    ///
-    /// That is an argument about a dependency's internals, and no owner here is built on it. The submission
-    /// case has no such caveat, and a runtime bump could change the reasoning. Owners therefore treat this
-    /// outcome as terminal on its own terms - see the generation-versus-observability ordering in
-    /// `shizuku/tcp/dns.rs`.
-    Unobservable(Failure),
-}
-
-impl Completed {
-    /// This transaction's own answer, for a caller that has already dealt with the ownership.
-    pub(crate) fn answer(self) -> Result<Vec<u8>, Failure> {
-        match self {
-            Self::Answered(answer) => answer,
-            Self::Unobservable(failure) => Err(failure),
-        }
-    }
-
-    /// Whether a logical token this transaction stood for may never be reused.
-    pub(crate) fn unobservable(&self) -> bool {
-        matches!(self, Self::Unobservable(_))
-    }
-}
-
 impl Resolving {
     /// Polls this transaction to its terminal, on the owner's own task rather than in one of its own.
     ///
@@ -199,25 +132,24 @@ impl Resolving {
     /// transaction that never reaches a terminal at all: a descriptor record, a logical token and a query
     /// held until the session ends, with no timer by design. So the write direction is polled too, purely as
     /// a close detector, and its readiness is cleared when it says only that the socket is writable.
-    pub(crate) fn poll_result(&mut self, cx: &mut Context<'_>) -> Poll<Completed> {
+    pub(crate) fn poll_result(&mut self, cx: &mut Context<'_>) -> Poll<Result<Vec<u8>, Failure>> {
         let Some(fd) = self.fd.as_ref() else {
             // Unreachable: an owner removes a transaction the moment it produces a result, so nothing polls
             // one twice. Answered rather than asserted, because a panic here would take the process with it -
-            // and answered as an ordinary failure, because nothing about it says Android kept a slot.
+            // and answered as this daemon's own, because a transaction polled past its terminal is a bug here
+            // rather than anything a client asked for.
             let stale = io::Error::other("a resolver transaction polled after its own terminal");
-            return Poll::Ready(Completed::Answered(Err(Failure::local(REGISTER)(stale))));
+            return Poll::Ready(Err(Failure::local(REGISTER)(stale)));
         };
-        // The readiness wait is the runtime's. A failure in it is this process's own *and* it is the loss of
-        // the only thing watching a transaction Android has already accepted, which is why it is not an
-        // ordinary failure.
+        // The readiness wait is the runtime's, so a failure in it is this process's own rather than one more
+        // resolver answer - which is what makes it end the owner watching this transaction instead of
+        // becoming that query's SERVFAIL.
         let mut closed = false;
         loop {
             let mut ready = match fd.poll_read_ready(cx) {
                 Poll::Pending => break,
                 Poll::Ready(Ok(ready)) => ready,
-                Poll::Ready(Err(e)) => {
-                    return Poll::Ready(Completed::Unobservable(Failure::local(REGISTER)(e)))
-                }
+                Poll::Ready(Err(e)) => return Poll::Ready(Err(Failure::local(REGISTER)(e))),
             };
             if ready.ready().is_read_closed() {
                 closed = true;
@@ -229,9 +161,7 @@ impl Resolving {
             let mut ready = match fd.poll_write_ready(cx) {
                 Poll::Pending => break,
                 Poll::Ready(Ok(ready)) => ready,
-                Poll::Ready(Err(e)) => {
-                    return Poll::Ready(Completed::Unobservable(Failure::local(REGISTER)(e)))
-                }
+                Poll::Ready(Err(e)) => return Poll::Ready(Err(Failure::local(REGISTER)(e))),
             };
             if ready.ready().is_write_closed() {
                 closed = true;
@@ -246,40 +176,24 @@ impl Resolving {
             // Unreachable: it was present at the top of this call and nothing above takes it.
             return Poll::Pending;
         };
-        let answer = fd.into_inner().finish().map_err(Failure::platform);
-        Poll::Ready(Completed::Answered(answer))
+        Poll::Ready(fd.into_inner().finish().map_err(Failure::platform))
     }
 
     /// Awaits this transaction's terminal, for an owner that runs it in a task of its own.
-    pub(crate) async fn read(mut self) -> Completed {
+    pub(crate) async fn read(mut self) -> Result<Vec<u8>, Failure> {
         poll_fn(|cx| self.poll_result(cx)).await
     }
 }
 
-/// What one submission at the syscall boundary came to.
+/// Submits one query on `network`, synchronously, and hands back what there is to wait on.
 ///
-/// Three outcomes rather than two, because "Android never got it" and "Android got it and this process
-/// cannot watch it" are different *ownerships* rather than two flavours of failure. Only the second leaves a
-/// per-UID resolver slot taken with nothing here able to observe its end, and an owner that treated it as an
-/// ordinary failure would refund a logical token for work Android is still doing.
-pub(crate) enum Submission {
-    /// `android_res_nsend` refused it, so nothing of Android's is held. One query's own expected failure.
-    NeverReached(Failure),
-    /// Accepted, with something this process can poll until the answer is terminal.
-    Accepted(Resolving),
-    /// Accepted by Android, and then this daemon's own wrapper failed. The descriptor is returned here - the
-    /// dropped [ResolverQuery] cancels and closes it - but Android's slot is not, and there is nothing left
-    /// to observe its completion with, so the logical token that named it may never be reused.
-    Unobservable(Failure),
-}
-
-/// Submits one query on `network`, synchronously, and answers what that submission came to.
-///
-/// The failure is classified because a client drives how many of these there are. What `android_res_nsend`
-/// answers is the platform's - a full per-UID limiter, a name that could not be resolved - and every one of
-/// those reaches the client as SERVFAIL rather than as a report. Only the two wrapper steps below are this
-/// daemon's own; see [vpnhotspotd::shared::failure].
-pub(crate) fn submit(network: Network, message: &[u8]) -> Submission {
+/// `Err` is that there is nothing to wait on, and *which* failure it was decides what the caller does with
+/// it. `android_res_nsend` refusing - a full per-UID limiter, a name that could not be resolved - is the
+/// platform's answer to one query the client chose to send, so it is [Failure::Expected] and reaches that
+/// client as SERVFAIL. The two wrapper steps below are this daemon's own, so they are [Failure::Local] and
+/// end the owner that asked; the descriptor Android returned is cancelled and closed by the dropped
+/// [ResolverQuery] either way. See [vpnhotspotd::shared::failure].
+pub(crate) fn submit(network: Network, message: &[u8]) -> Result<Resolving, Failure> {
     // SAFETY: message outlives the call and its length is what the resolver is told to read.
     let fd = unsafe {
         android_res_nsend(
@@ -290,16 +204,17 @@ pub(crate) fn submit(network: Network, message: &[u8]) -> Submission {
         )
     };
     if fd < 0 {
-        return Submission::NeverReached(Failure::platform(io::Error::from_raw_os_error(-fd)));
+        return Err(Failure::platform(io::Error::from_raw_os_error(-fd)));
     }
     let fd = ResolverQuery { fd: Some(fd) };
-    // Past this point Android is holding a slot for this query whatever this process does next, which is why
-    // both of the steps below answer with [Submission::Unobservable] rather than an ordinary failure.
+    // Past this point the query is Android's, and the two steps below are this process's own wrapper around
+    // the descriptor it was handed - so each is classified as local, and each ends the owner that asked
+    // rather than answering one query. Returning either way drops the descriptor, which cancels and closes
+    // it; Android's own operation ends when its resolver work does, which nothing here waits for.
     if let Err(e) = set_nonblocking(fd.as_raw_fd()) {
-        return Submission::Unobservable(Failure::local(NONBLOCK)(e));
+        return Err(Failure::local(NONBLOCK)(e));
     }
-    match AsyncFd::new(fd) {
-        Ok(fd) => Submission::Accepted(Resolving { fd: Some(fd) }),
-        Err(e) => Submission::Unobservable(Failure::local(REGISTER)(e)),
-    }
+    AsyncFd::new(fd)
+        .map(|fd| Resolving { fd: Some(fd) })
+        .map_err(Failure::local(REGISTER))
 }

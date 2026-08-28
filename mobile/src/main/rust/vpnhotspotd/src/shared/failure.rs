@@ -16,6 +16,7 @@ use std::fmt;
 use std::io;
 
 use crate::shared::ended::Ended;
+use crate::shared::protocol::IoErrorReportExt;
 
 /// One failed operation, classified by which side of it failed.
 #[derive(Debug)]
@@ -65,6 +66,34 @@ impl Failure {
         }
     }
 
+    /// Splits one failure by whose it was: the error the owner meeting it has to end on, or the failure
+    /// itself for the per-operation answer that owns it.
+    ///
+    /// One call because the classification *is* the whole decision, and spelling it out per site is how the
+    /// two halves drift apart. An operation a client drives - a name that does not resolve, a full per-UID
+    /// limiter, a peer that refused - is that one operation's outcome and its owner answers it and carries
+    /// on. This daemon's own setup failing is not any one operation's outcome: the owner that met it cannot
+    /// be trusted to do the same work again, so it ends and the conversation that owns it is what says so.
+    ///
+    /// `Err` carries the structured report built here, where the context, the errno, the details and - via
+    /// `#[track_caller]` - the source location are the failing owner's rather than the teardown's. That is
+    /// what makes it exactly one report: the owner returns it rather than emitting one, and the conversation
+    /// delivers it once. See [crate::shared::protocol::describe_io_error].
+    #[track_caller]
+    pub fn ending<I, K, V>(self, details: I) -> Result<Self, io::Error>
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: ToString,
+        V: ToString,
+    {
+        match self {
+            Self::Local { context, error } => {
+                Err(error.with_report_context_details(context, details))
+            }
+            expected => Ok(expected),
+        }
+    }
+
     /// How a worker's owner is told about it: `what` names the operation for the one line an expected outcome
     /// is worth.
     pub fn ended(self, what: &str) -> Ended {
@@ -87,6 +116,7 @@ impl fmt::Display for Failure {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shared::protocol::reported_io_error_report;
 
     fn errno(errno: i32) -> io::Error {
         io::Error::from_raw_os_error(errno)
@@ -153,6 +183,58 @@ mod tests {
             wrapper.reportable().map(|(context, _)| context),
             Some("resolver.register")
         );
+    }
+
+    /// The resolver's two halves, split by the one question an owner asks of an outcome: may this owner
+    /// carry on?
+    ///
+    /// Everything the platform answers - including the `EBUSY` of its own per-UID limiter, which a burst of
+    /// client queries reaches on its own - is one query's own outcome, comes back to be answered per query,
+    /// and never ends anything. The wrapper steps around the descriptor this daemon opened are its own, so
+    /// each comes back as the error its owner ends on, carrying one structured report that already names the
+    /// step, the errno and the transaction rather than whatever teardown finds it.
+    #[test]
+    fn only_the_daemons_own_resolver_failure_ends_the_owner_that_met_it() {
+        for code in [
+            libc::EBUSY,
+            libc::ETIMEDOUT,
+            libc::ECONNREFUSED,
+            libc::ENOENT,
+        ] {
+            let kept = Failure::platform(errno(code))
+                .ending([("transaction", 7u64)])
+                .expect("what the platform answered is one query's own outcome");
+            assert_eq!(kept.error().raw_os_error(), Some(code));
+            assert!(kept.reportable().is_none(), "{code}");
+        }
+        for context in ["resolver.nonblock", "resolver.register"] {
+            let ending = Failure::local(context)(errno(libc::EMFILE))
+                .ending([("transaction", 7u64)])
+                .expect_err("the daemon's own wrapper step ends its owner");
+            // The errno rides in the report rather than on the error, which is what carries it through a
+            // session teardown that folds messages together.
+            assert_eq!(ending.kind(), errno(libc::EMFILE).kind());
+            let report = reported_io_error_report(&ending)
+                .expect("exactly one report, built where it failed");
+            assert_eq!(report.context, context);
+            assert_eq!(report.errno, Some(libc::EMFILE));
+            assert_eq!(
+                report
+                    .details
+                    .iter()
+                    .map(|detail| (detail.key.as_str(), detail.value.as_str()))
+                    .collect::<Vec<_>>(),
+                vec![("transaction", "7")]
+            );
+            // Attached rather than emitted, and attaching it twice is what a second owner describing the
+            // same failure would do: the report the failing step built is what survives.
+            assert_eq!(
+                reported_io_error_report(&ending.with_report_context("teardown"))
+                    .expect("still the first one")
+                    .context,
+                context
+            );
+        }
     }
 
     #[test]

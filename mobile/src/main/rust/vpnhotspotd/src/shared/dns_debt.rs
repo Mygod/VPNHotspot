@@ -15,9 +15,11 @@
 //!   is: a query copied first and admitted afterwards is an allocation nothing agreed to.
 //! - **closing** a connection releases the connection's own grant, and nothing else. If a question is still
 //!   in flight the token moves to that question's debt in one operation rather than being released and
-//!   re-reserved, because the platform's slot is still taken: a moment where the token looked free is a
-//!   moment a second query could be admitted against a limiter with no room for it. The query's bytes are not
-//!   touched at all - the resolver task still holds the query and will still return an answer.
+//!   re-reserved, because that question is still outstanding *here*: it has not settled, so the token this
+//!   session took for it is not free, and a moment where it looked free is a moment a second query could be
+//!   admitted beyond what this session sized itself for. Whether Android is still working on it is a
+//!   separate question nothing here asks. The query's bytes are not touched at all - the resolver task still
+//!   holds the query and will still return an answer.
 //! - **answering here** owes the query and the answer built from it, and nothing else. There is no descriptor
 //!   and no platform transaction, so no record and no token - but both buffers are real, with the same
 //!   unbounded life as any other, because the client may take as long as it likes to read the answer. This is
@@ -30,89 +32,6 @@
 //! part that can be checked.
 
 use crate::shared::admission::{Admission, Class, Denied, Lease, Request};
-
-/// The logical resolver tokens one owner has had to give up on, until its session ends.
-///
-/// A token reaches here when `android_res_nsend` succeeded and this process then lost the ability to observe
-/// that transaction - the descriptor could not be made nonblocking or registered, the readiness registration
-/// it was being watched with failed, or a closing transport could not hand it to the question still in
-/// flight. Android is holding one of this UID's resolver slots in every one of those cases and nothing here
-/// can observe its end. Refunding such a token would let a second query be admitted against a limiter that
-/// has no room for it, and cancelling recovers nothing of Android's - so the honest thing is to stop counting
-/// that slot as available for the rest of the session, and to say so.
-///
-/// # Why this holds no grant of its own
-///
-/// The token is *moved onto a grant its owner already holds* - the retained-table lease that owner keeps for
-/// its whole session - rather than split into a lease per token. The ledger is derived as one row per
-/// record-backed owner, plus the statically known byte-only owners, plus **one** spare for the single
-/// owner-confined split in flight (see `Admission::ledger_slots`). A row per quarantined
-/// token would therefore consume rows the derivation never budgeted, and the first quarantine that found
-/// none would be refused - handing a token back while Android still holds its slot, which is the exact
-/// fail-open this type exists to prevent. A move onto an existing row needs no slot at all, so it cannot be
-/// refused for capacity; and the owner releasing that lease at the end of its session releases these with
-/// it, exactly once, without a second release path to get wrong.
-#[derive(Debug, Default)]
-pub struct Quarantine {
-    held: u32,
-}
-
-/// A logical token whose ownership could not be represented at all.
-///
-/// Not a capacity denial. [Quarantine::take] moves onto a row that already exists, so the only ways to get
-/// here are a grant that was not holding the token it was asked for and a ledger that has lost one of the
-/// two rows - both of which are the accounting contradicting itself rather than a session running out of
-/// anything. There is no honest local recovery: the alternatives are handing the token back while Android
-/// holds its slot, or keeping a grant nothing will ever release, so the caller says which of those it
-/// prefers and reports it either way.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Unrepresentable;
-
-impl Quarantine {
-    /// Moves one logical token out of the grant that was holding it and onto `onto`, for the session.
-    ///
-    /// A move rather than a release and a reserve: the platform's slot is taken either way, and a moment
-    /// where the token looked free is a moment a second query could be admitted against a limiter with no
-    /// room for it. `onto` must be the same session-lived grant every time, so that releasing it once
-    /// releases every token this ever took.
-    pub fn take(
-        &mut self,
-        admission: &mut Admission,
-        from: &Lease,
-        onto: &Lease,
-    ) -> Result<(), Unrepresentable> {
-        let moved = Request {
-            dns_tokens: 1,
-            ..Request::default()
-        };
-        if admission.transfer(from, onto, moved).is_err() {
-            return Err(Unrepresentable);
-        }
-        // Saturating rather than checked: this is a count for a report, and a `u32` of them cannot be
-        // reached by any session whose token cap is what bounds how many can ever be at risk.
-        self.held = self.held.saturating_add(1);
-        Ok(())
-    }
-
-    /// Whether `from` is really holding a token right now, asked of the ledger rather than assumed from how
-    /// that grant was opened.
-    ///
-    /// What it is for: for DNS-over-TCP a token at risk sits either on the transport's own connection or on
-    /// the debt a closing transport handed it to, and only one of those two owners can move it. Each asks
-    /// this before it tries. The UDP handoff needs no such question - a query's token is always on that
-    /// query's own grant, and its one terminal is the only place that moves it.
-    pub fn holds_a_token(admission: &Admission, from: &Lease) -> bool {
-        match admission.granted(from) {
-            Some(granted) => granted.dns_tokens > 0,
-            None => false,
-        }
-    }
-
-    /// How many tokens this session has had to give up on.
-    pub fn count(&self) -> u32 {
-        self.held
-    }
-}
 
 /// What a live connection owns: its flow buffers, its record, and one logical resolver token.
 #[derive(Debug)]
@@ -141,11 +60,6 @@ impl Connection {
     pub fn asking(&mut self, query: Option<u64>) {
         self.outstanding = query;
     }
-
-    /// The grant, for an owner that needs to release it directly on a path this module does not cover.
-    pub fn lease(&self) -> &Lease {
-        &self.lease
-    }
 }
 
 impl QueryDebt {
@@ -154,23 +68,13 @@ impl QueryDebt {
         self.id
     }
 
+    /// What this query is charged against, for a test that has to read the ledger row directly. Nothing in
+    /// production reaches for it: every move and release here takes the debt itself, which is what makes a
+    /// double release unrepresentable.
+    #[cfg(test)]
     pub fn lease(&self) -> &Lease {
         &self.lease
     }
-
-    /// Nothing could account for a token a closing transport handed to this question, so nothing is given
-    /// back at all: the grant stays charged until the session's aggregate is dropped.
-    ///
-    /// The mirror of [Stranded::kept], for the other half of the same problem. That one is a *connection*
-    /// whose token could not reach its question; this one is the *question* whose token could not reach the
-    /// table that outlives it - and [settle] must not be reached with such a debt, because settling releases
-    /// the grant the token is sitting on and a token that looked free for an instant is a second query
-    /// admitted against a limiter with no room for it.
-    ///
-    /// The empty body is the operation, for the reason spelled out on [Stranded::kept]: a [Lease] is a handle
-    /// rather than a guard, and taking no `&mut Admission` is what stops a later edit reaching for a release
-    /// from here without changing the shape of the call.
-    pub fn kept(self) {}
 }
 
 /// Admits one DNS-over-TCP connection: its flow buffers, its record, and one logical token.
@@ -230,51 +134,20 @@ pub fn hold(admission: &mut Admission, id: u64, bytes: u64) -> Result<QueryDebt,
     Ok(QueryDebt { id, lease })
 }
 
-/// Ends one reservation whose query will never be submitted and will never be answered.
+/// Ends one query's debt whole: its record, its bytes, and a token a closing transport had handed it.
 ///
-/// The transport was swept between the moment its query was admitted and the moment it handed one back, so
-/// nothing survives this: no descriptor was opened, no platform slot was taken, and whatever buffer the
-/// reservation covered is the caller's to drop *before* calling this - the grant is what accounts for it, and
-/// giving it back while the bytes are alive is a refund for memory this process is still holding.
+/// Two callers, and nothing survives this for either. A reservation whose query will never be submitted -
+/// the transport was swept between the moment its query was admitted and the moment it handed one back -
+/// opened no descriptor and never reached the platform. A submitted query whose wrapper this daemon could
+/// not build or watch did reach it, and this still gives everything back: `android_res_cancel` closed the
+/// descriptor, Android's own operation ends when its resolver work returns, and the owner that met such a
+/// failure is ending anyway, so there is nothing local left worth holding.
+///
+/// Whatever buffer the debt covered is the caller's to drop *before* calling this - the grant is what
+/// accounts for it, and giving it back while the bytes are alive is a refund for memory this process is
+/// still holding.
 pub fn abandon(admission: &mut Admission, debt: QueryDebt) {
     admission.release(debt.lease);
-}
-
-/// A closed connection whose token did not reach the question that is still outstanding, with its grant
-/// handed back to the caller rather than released.
-///
-/// The grant is *inside*, and that is the whole point: releasing it would return a logical token while the
-/// platform may still be holding the slot that token stands for, and there is no way for [close] to know
-/// where such a token belongs instead. Its caller does - it owns the session's [Quarantine] - so the grant
-/// travels there, and the only two things that can be done with it are named below.
-#[derive(Debug)]
-pub struct Stranded {
-    lease: Lease,
-}
-
-impl Stranded {
-    /// The grant still holding the token, so its caller can move that token somewhere it will not be reused.
-    pub fn lease(&self) -> &Lease {
-        &self.lease
-    }
-
-    /// The token has been accounted for elsewhere, so what is left is ordinary bytes and a record the closed
-    /// transport really is done with.
-    pub fn released(self, admission: &mut Admission) {
-        admission.release(self.lease);
-    }
-
-    /// Nothing could account for the token, so nothing is given back at all. The grant stays charged until
-    /// this session's aggregate is dropped, which shows up as an outstanding lease in the exit report -
-    /// conservative, visible, and bounded by the session, where the alternative is capacity handed back for a
-    /// resolver slot Android is still holding.
-    ///
-    /// The empty body *is* the operation. A [Lease] is a handle rather than a guard - only
-    /// [Admission::release] moves the ledger - so consuming one and letting it go is precisely "this row
-    /// stays". What makes that safe to write as nothing at all is the signature: this takes no `&mut
-    /// Admission`, so releasing the grant from here is not something a later edit can reach for without
-    /// changing the shape of the call.
-    pub fn kept(self) {}
 }
 
 /// Closes a connection, handing its token to the question still in flight if there is one.
@@ -285,29 +158,30 @@ impl Stranded {
 ///
 /// `debt` is the outstanding query's, and must be the one [Connection::outstanding] names.
 ///
-/// # Every path that does not release the token
+/// # `false` is this process's own accounting contradicting itself
 ///
-/// A connection that names an outstanding question and whose token did not reach that question's debt may
-/// not have its grant released, because the token would go back into
-/// circulation while the platform's slot for that question is still taken - and a token that looked free for
-/// an instant is a second query admitted against a limiter with no room for it. So the transfer failing,
-/// `debt` naming a *different* question, and `debt` being absent altogether are all the same answer:
-/// [Stranded], with the grant handed back rather than released.
+/// A connection that names an outstanding question is closed by the one owner that recorded that question,
+/// and that owner records it only after the row exists, clears it before the row is removed, and does both
+/// synchronously in its own serial order. So a close that finds no debt for the question it names, a debt
+/// naming a *different* question, or a transfer the ledger refuses is not a resolver lifetime this module
+/// failed to model - it is a state this daemon's own ownership rules say cannot happen.
 ///
-/// The exception is a connection that is not actually holding a token - asked of the ledger rather than
-/// assumed - where there is nothing at risk and keeping its bytes and its record would be a leak for no
-/// reason.
-pub fn close(
-    admission: &mut Admission,
-    connection: Connection,
-    debt: Option<&QueryDebt>,
-) -> Result<(), Stranded> {
+/// There is no honest local recovery from that and no state worth inventing for it. Keeping the grant would
+/// hold a descriptor record and a token nothing will ever release for the rest of the session, on the
+/// strength of a contradiction that says the ledger cannot be trusted anyway. So the grant is released like
+/// any other and `false` says the invariant broke, which the caller reports - see
+/// [crate::shared::protocol] for what such a report has to carry.
+///
+/// `true` for every ordinary close, including a connection that is not actually holding a token - asked of
+/// the ledger rather than assumed - which is what a transport that already handed its token to the question
+/// settling now looks like.
+pub fn close(admission: &mut Admission, connection: Connection, debt: Option<&QueryDebt>) -> bool {
     let Connection { lease, outstanding } = connection;
     let Some(query) = outstanding else {
         // Closed idle, or its question settled before it did: the token goes back with the rest of the
         // grant, which is what releasing it does.
         admission.release(lease);
-        return Ok(());
+        return true;
     };
     let moved = Request {
         dns_tokens: 1,
@@ -317,24 +191,26 @@ pub fn close(
         Some(debt) => admission.transfer(&lease, &debt.lease, moved).is_ok(),
         None => false,
     };
-    if handed || !Quarantine::holds_a_token(admission, &lease) {
-        admission.release(lease);
-        return Ok(());
-    }
-    Err(Stranded { lease })
+    // Asked of the ledger rather than assumed from how this grant was opened, and read before the release
+    // that would make it unanswerable: a connection holding no token had nothing to hand over, so nothing
+    // about it is a contradiction.
+    let contradicted = !handed
+        && admission
+            .granted(&lease)
+            .is_some_and(|granted| granted.dns_tokens > 0);
+    admission.release(lease);
+    !contradicted
 }
 
 /// What is still owed after the resolver worker has been joined: the answer, and the framed copy being built
 /// from it.
 ///
 /// A separate owner because those buffers outlive the transaction that produced them. The worker's terminal
-/// says the descriptor is closed - and, for every outcome this process could watch, that the platform's slot
-/// is over with it. It says neither of the other two things: not that the answer has been delivered, and not
-/// that an *unobservable* transaction's slot has ended, which is exactly the outcome whose token is
-/// quarantined instead of released. Releasing the whole grant here gave back capacity for memory that was
-/// about to be *created*:
-/// the transport had yet to receive the answer, frame it, and write the framing into its flow's bridge. Not
-/// `Clone`, like every other grant here, so there is exactly one thing that can end it.
+/// says the descriptor is closed and that the question this process asked is over. It does not say that the
+/// answer has been delivered: releasing the whole grant there gave back capacity for memory that was about
+/// to be *created*, because the transport had yet to receive the answer, frame it, and write the framing
+/// into its flow's bridge. Not `Clone`, like every other grant here, so there is exactly one thing that can
+/// end it.
 #[derive(Debug)]
 pub struct Delivery {
     id: DeliveryId,
@@ -353,6 +229,9 @@ pub struct Delivery {
 pub struct DeliveryId(u64);
 
 impl Delivery {
+    /// The same as [QueryDebt::lease] and for the same reason: a test reads the row, production takes the
+    /// owner.
+    #[cfg(test)]
     pub fn lease(&self) -> &Lease {
         &self.lease
     }
@@ -402,16 +281,6 @@ impl<R> Settled<R> {
     /// Whether there is an answer to deliver at all. `false` for a transaction that was cancelled.
     pub fn has_answer(&self) -> bool {
         self.answer.is_some()
-    }
-
-    /// A borrow of what is waiting, for an owner that has to say something about it before discarding it.
-    ///
-    /// Reading is not taking, so the park-first ordering is untouched: the answer still leaves only through
-    /// [Settled::classify] and the park that follows it, and nothing can be delivered from here. What this
-    /// exists for is the discard paths, where the last owner of a settlement has to describe a failure the
-    /// transport it was built for will never see.
-    pub fn answer(&self) -> Option<&R> {
-        self.answer.as_ref()
     }
 
     /// Replaces the answer in place, without taking it out.
@@ -631,7 +500,7 @@ mod tests {
         // Explicitly: nothing like an exchange's worth is charged for a connection that has asked nothing.
         assert!(admission.bytes_charged() < before + EXCHANGE_BYTES);
 
-        close(&mut admission, connection, None).expect("closed idle");
+        assert!(close(&mut admission, connection, None), "closed idle");
         assert_eq!(admission.bytes_charged(), before);
         assert_eq!(
             admission.dns_tokens_charged(),
@@ -662,7 +531,10 @@ mod tests {
             "the query took no second token"
         );
 
-        close(&mut admission, connection, Some(&debt)).expect("the token moves");
+        assert!(
+            close(&mut admission, connection, Some(&debt)),
+            "the token moves"
+        );
         let delivery = settle(&mut admission, debt, DELIVERY_BYTES);
         delivered(&mut admission, delivery);
         assert_eq!(admission.bytes_charged(), before);
@@ -680,7 +552,10 @@ mod tests {
         let debt = submit(&mut admission, 11, EXCHANGE_BYTES).expect("granted");
         connection.asking(Some(debt.id()));
 
-        close(&mut admission, connection, Some(&debt)).expect("the token moves");
+        assert!(
+            close(&mut admission, connection, Some(&debt)),
+            "the token moves"
+        );
         // The flow's own buffers and record are gone...
         assert_eq!(
             admission.bytes_charged(),
@@ -688,8 +563,8 @@ mod tests {
             "only the flow's bytes went"
         );
         assert_eq!(admission.records_charged(), 1, "the query's record stands");
-        // ...and the token went *with the question*, not with the transport: the platform's slot is still
-        // taken, so it may not look free for even an instant.
+        // ...and the token went *with the question*, not with the transport: that question is still
+        // outstanding, so the token it stands for may not look free for even an instant.
         assert_eq!(admission.dns_tokens_charged(), 1);
         assert_eq!(admission.granted(debt.lease()).expect("held").dns_tokens, 1);
 
@@ -733,7 +608,10 @@ mod tests {
         assert_eq!(admission.records_charged(), 64);
 
         for (connection, debt) in connections.into_iter().zip(debts.iter()) {
-            close(&mut admission, connection, Some(debt)).expect("the token moves");
+            assert!(
+                close(&mut admission, connection, Some(debt)),
+                "the token moves"
+            );
         }
         assert_eq!(
             admission.dns_tokens_charged(),
@@ -749,26 +627,26 @@ mod tests {
         assert_eq!(admission.invariant_violations(), 0);
     }
 
-    /// A close naming a question that is not this connection's does not move anything, and neither grant is
-    /// disturbed.
+    /// A close naming a question that is not this connection's moves nothing, disturbs neither question's
+    /// grant, and says the invariant broke.
+    ///
+    /// The one owner that records a connection's outstanding question records it only after that question's
+    /// row exists, clears it before the row is removed, and does both synchronously - so reaching here means
+    /// this process's own bookkeeping has contradicted itself rather than that a resolver lifetime went
+    /// unmodelled. There is nothing honest to keep for that: the closed transport's grant is released like
+    /// any other, and `false` is what its caller turns into one structured report.
     #[test]
     fn a_close_cannot_hand_its_token_to_someone_elses_question() {
         let mut admission = admission();
+        let before = admission.bytes_charged();
         let mut connection = open(&mut admission, FLOW_BYTES, true).expect("granted");
         let mine = submit(&mut admission, 1, EXCHANGE_BYTES).expect("granted");
         let theirs = submit(&mut admission, 2, EXCHANGE_BYTES).expect("granted");
         connection.asking(Some(mine.id()));
 
-        // Named the wrong debt: the token reaches neither question, so the grant comes back stranded rather
-        // than being released. Releasing it would return a token to circulation while the platform's slot for
-        // the question this connection *does* name is still taken - which is what the previous ordinary
-        // release did, and what a nested cap cannot survive.
-        let stranded =
-            close(&mut admission, connection, Some(&theirs)).expect_err("nothing could be moved");
-        assert_eq!(
-            admission.dns_tokens_charged(),
-            1,
-            "still charged, because nothing has accounted for it yet"
+        assert!(
+            !close(&mut admission, connection, Some(&theirs)),
+            "a debt naming another question is the caller's invariant, not a move"
         );
         assert_eq!(
             admission.granted(theirs.lease()).expect("held").dns_tokens,
@@ -776,43 +654,102 @@ mod tests {
             "and it did not land on a question that never owned it"
         );
         assert_eq!(admission.granted(mine.lease()).expect("held").dns_tokens, 0);
-        // And both questions still own exactly their own bytes.
+        // Both questions still own exactly their own bytes, and the closed transport's grant - token and all
+        // - is gone rather than held for a session against a contradiction.
         assert_eq!(
             admission.granted(mine.lease()).expect("held").bytes,
             EXCHANGE_BYTES
         );
-
-        // Its caller is the only owner that knows where such a token belongs: onto a session-lived grant it
-        // already holds. Only then is the rest of the closed transport's grant released.
-        // Shaped like the retained-table grant the daemon's owners really move a token onto: real
-        // reserved-class bytes, so the transfer touches only the token dimension.
-        let session = admission
-            .reserve(Request::bytes(1, Class::Reserved))
-            .expect("a session-lived grant");
-        let mut quarantine = Quarantine::default();
-        quarantine
-            .take(&mut admission, stranded.lease(), &session)
-            .expect("a move onto a row that already exists");
-        stranded.released(&mut admission);
-        assert_eq!(quarantine.count(), 1);
-        assert_eq!(
-            admission.granted(&session).expect("held").dns_tokens,
-            1,
-            "the token is out of circulation until this grant is released"
-        );
+        assert_eq!(admission.dns_tokens_charged(), 0);
 
         let delivery = settle(&mut admission, mine, DELIVERY_BYTES);
         delivered(&mut admission, delivery);
         let delivery = settle(&mut admission, theirs, DELIVERY_BYTES);
         delivered(&mut admission, delivery);
-        assert_eq!(
-            admission.dns_tokens_charged(),
-            1,
-            "and only the quarantined one is left"
-        );
-        admission.release(session);
         assert_eq!(admission.dns_tokens_charged(), 0);
         assert_eq!(admission.records_charged(), 0);
+        assert_eq!(
+            admission.bytes_charged(),
+            before,
+            "and nothing this close was holding stayed behind"
+        );
+        // The transfer never happened, so nothing here is charged to the ledger's own violation counter: the
+        // contradiction is the *caller's* to report, from the answer above.
+        assert_eq!(admission.invariant_violations(), 0);
+    }
+
+    /// A query this daemon's own wrapper failed on gives its whole debt back, in both places one can be
+    /// holding a token.
+    ///
+    /// The two sequences the DNS-over-TCP owner performs when it ends on such a failure, spelled with the
+    /// same functions it calls: a submission that never became a live row, and a settled transaction whose
+    /// transport had already closed onto it. Neither may keep anything - the platform's operation ends on its
+    /// own, and there is no local state worth holding for a session that is about to end - so what this pins
+    /// down is that `abandon` really is the whole of it, records, bytes and token alike.
+    #[test]
+    fn a_wrapper_failure_gives_a_querys_whole_debt_back() {
+        let mut admission = admission();
+        let baseline = (
+            admission.records_charged(),
+            admission.bytes_charged(),
+            admission.dns_tokens_charged(),
+        );
+
+        // The submission path: a row was taken, the platform was asked, and this process could not wrap what
+        // it returned. Its own transport is still live and still holding the one token, which is not this
+        // debt's to give back.
+        let connection = open(&mut admission, FLOW_BYTES, true).expect("granted");
+        let debt = submit(&mut admission, 1, EXCHANGE_BYTES).expect("granted");
+        assert_eq!(admission.records_charged(), baseline.0 + 2);
+        abandon(&mut admission, debt);
+        assert_eq!(
+            (admission.records_charged(), admission.bytes_charged()),
+            (baseline.0 + 1, baseline.1 + FLOW_BYTES),
+            "the query's record and every byte of it went; the connection's did not"
+        );
+        assert_eq!(
+            admission.dns_tokens_charged(),
+            baseline.2 + 1,
+            "and the token is still the transport's, to release when it closes"
+        );
+        assert!(
+            close(&mut admission, connection, None),
+            "which it does with the rest of its grant"
+        );
+        assert_eq!(
+            (
+                admission.records_charged(),
+                admission.bytes_charged(),
+                admission.dns_tokens_charged()
+            ),
+            baseline
+        );
+
+        // The settled path: the transport closed while the question was outstanding, so the token is on the
+        // debt by the time the failure is classified - and `abandon` has to give that one back too, or a
+        // session would end holding a token nothing will ever release.
+        let mut connection = open(&mut admission, FLOW_BYTES, true).expect("granted");
+        let debt = submit(&mut admission, 2, EXCHANGE_BYTES).expect("granted");
+        connection.asking(Some(debt.id()));
+        assert!(
+            close(&mut admission, connection, Some(&debt)),
+            "handed over"
+        );
+        assert_eq!(
+            admission.granted(debt.lease()).expect("held").dns_tokens,
+            1,
+            "the token is the question's now"
+        );
+        abandon(&mut admission, debt);
+        assert_eq!(
+            (
+                admission.records_charged(),
+                admission.bytes_charged(),
+                admission.dns_tokens_charged()
+            ),
+            baseline,
+            "and abandoning the question gives it back with everything else"
+        );
         assert_eq!(admission.invariant_violations(), 0);
     }
 
@@ -869,14 +806,24 @@ mod tests {
         let debt = submit(&mut admission, 9, EXCHANGE_BYTES).expect("granted");
         connection.asking(Some(debt.id()));
 
-        close(&mut admission, connection, Some(&debt)).expect("the token moves");
+        assert!(
+            close(&mut admission, connection, Some(&debt)),
+            "the token moves"
+        );
         assert_eq!(admission.dns_tokens_charged(), 1, "with the question");
         assert_eq!(admission.bytes_charged(), empty + EXCHANGE_BYTES);
 
-        // The join then ends the token with the descriptor - the platform's slot really is over - while the
-        // answer's bytes carry on into the delivery.
+        // The join then ends the token with the descriptor, while the answer's bytes carry on into the
+        // delivery. What that proves is this daemon's own accounting and nothing more: the descriptor is
+        // closed and the query's debt is over, so the local token may be reused. Android's operation for the
+        // same query is its own, ends when its resolver work returns, and is neither observed nor waited for
+        // here.
         let delivery = settle(&mut admission, debt, DELIVERY_BYTES);
-        assert_eq!(admission.dns_tokens_charged(), 0, "the slot is over");
+        assert_eq!(
+            admission.dns_tokens_charged(),
+            0,
+            "this daemon's own token is free again"
+        );
         assert_eq!(admission.records_charged(), 0);
         assert_eq!(admission.bytes_charged(), empty + DELIVERY_BYTES);
 
@@ -966,7 +913,7 @@ mod tests {
         abandon(&mut admission, debt);
         assert_eq!(admission.bytes_charged(), empty + FLOW_BYTES);
         admission.release(held);
-        close(&mut admission, connection, None).expect("closed idle");
+        assert!(close(&mut admission, connection, None), "closed idle");
         assert_eq!(admission.bytes_charged(), empty);
         assert_eq!(admission.records_charged(), 0);
         assert_eq!(admission.dns_tokens_charged(), 0);
@@ -992,6 +939,6 @@ mod tests {
             charged,
             "a refused query charges nothing at all"
         );
-        close(&mut admission, connection, None).expect("closed idle");
+        assert!(close(&mut admission, connection, None), "closed idle");
     }
 }

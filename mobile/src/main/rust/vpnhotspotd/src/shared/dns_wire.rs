@@ -143,9 +143,13 @@ pub fn frame(answer: &[u8]) -> Option<Vec<u8>> {
 /// could drive by looking up nonsense.
 ///
 /// Only the daemon's own wrapper around the transaction - making the resolver's descriptor nonblocking,
-/// registering it with the runtime - is this process's doing, and that is the one thing that comes back as a
-/// failure for the caller to report and end the stream on. A query too malformed for a SERVFAIL to be built
-/// from comes back as one too: there is no question to echo, so there is nothing to answer with.
+/// registering it with the runtime, and the readiness registration it is then watched with - is this
+/// process's doing, and that is the one thing that comes back for its caller to end on rather than answer.
+/// What "end" means is the caller's: for the app-UID DNS owners it is the whole dataplane task, because an
+/// owner whose wrapper failed cannot wrap the next query either - see
+/// [crate::shared::failure::Failure::ending]. A query too malformed for a SERVFAIL to be built from comes
+/// back as a failure too, and that one really is per query: there is no question to echo, so there is
+/// nothing to answer with and only that stream ends.
 pub fn resolved(result: Result<Vec<u8>, Failure>, query: &[u8]) -> Result<Vec<u8>, Failure> {
     match result {
         Ok(answer) => Ok(answer),
@@ -289,6 +293,7 @@ mod tests {
     use std::io;
 
     use super::*;
+    use crate::shared::protocol::reported_io_error_report;
 
     /// One ordinary query for `example.com`, which is what a client's stream carries.
     fn query(id: u16) -> Vec<u8> {
@@ -341,6 +346,49 @@ mod tests {
         );
         // Neither is a query nothing can be built from: there is no question to echo back.
         assert!(resolved(Err(Failure::platform(errno(libc::EBUSY))), &[]).is_err());
+    }
+
+    /// Which failures end which owner, in the order the DNS-over-TCP settlement really makes the decision:
+    /// [resolved] first, then [Failure::ending] on whatever it hands back.
+    ///
+    /// The trap this pins down is that "`resolved` answered `Err`" and "this owner has to end" are *not* the
+    /// same question. A query too malformed for a SERVFAIL to be built from comes back as an `Err` and ends
+    /// nothing but its own flow; only the daemon's own wrapper failing ends the owner. An owner that read the
+    /// first as the second would end the whole app-UID dataplane on a packet any local app can send, and one
+    /// that read the second as the first would answer a broken resolver wrapper with a SERVFAIL and go on
+    /// accepting queries through it.
+    #[test]
+    fn only_the_daemons_own_wrapper_failure_ends_more_than_one_query() {
+        let query = query(0x4d2);
+        for code in [libc::EBUSY, libc::ETIMEDOUT, libc::ECONNREFUSED] {
+            let answer = resolved(Err(Failure::platform(errno(code))), &query)
+                .expect("what the platform answered is this query's own SERVFAIL");
+            assert_eq!(rcode(&answer), RCODE_SERVFAIL, "{code}");
+        }
+        // Same failure, no question to echo: still this query's business, and still not an ending.
+        let unanswerable = resolved(Err(Failure::platform(errno(libc::EBUSY))), &[])
+            .expect_err("nothing can be built from it");
+        assert!(
+            unanswerable
+                .ending([("query", 0u64)])
+                .is_ok_and(|failure| failure.reportable().is_none()),
+            "a query nothing can answer ends that flow and nothing else"
+        );
+        // The daemon's own wrapper: never a SERVFAIL, and always the error its owner ends on - carrying the
+        // one report, built where the step failed.
+        for context in ["resolver.nonblock", "resolver.register"] {
+            let local = resolved(Err(Failure::local(context)(errno(libc::EMFILE))), &query)
+                .expect_err("the daemon's own setup failure is never an answer");
+            let ending = local
+                .ending([("query", 7u64)])
+                .expect_err("and it ends the owner that met it");
+            assert_eq!(
+                reported_io_error_report(&ending)
+                    .expect("one report")
+                    .context,
+                context
+            );
+        }
     }
 
     /// The property a per-query SERVFAIL exists for: the connection outlives the failure. Two queries arrive

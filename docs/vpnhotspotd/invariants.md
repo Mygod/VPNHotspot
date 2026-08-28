@@ -197,9 +197,12 @@ compatibility or cleanup impact.
   otherwise bounded only by a peer.
 - Platform resolver work is not owned and cannot be joined, so the daemon's
   accounting is exact for its own descriptors only. No submitted transaction is
-  cancelled by a configuration change, and a transaction Android accepted but
-  this process can no longer observe keeps its resolver slot reserved until the
-  session ends; see [`dns.md`](dns.md).
+  cancelled by a configuration change, and `android_res_cancel` closes this
+  process's descriptor without ending Android's operation - which ends when its
+  own resolver work returns, and is not modelled here. If this daemon's own
+  wrapper around a transaction fails, that transaction's whole reservation is
+  released and the app-UID dataplane task ends, so no local capacity is held for
+  it past the session; see [`dns.md`](dns.md).
 - The nonfatal reporter belongs to exactly one conversation, and a successor
   cannot install one while its predecessor is still finishing.
 - A packet leaving on the app-UID path carries the `upstream_generation` it was

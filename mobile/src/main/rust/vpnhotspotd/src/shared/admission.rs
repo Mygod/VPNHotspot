@@ -2025,9 +2025,9 @@ mod tests {
     /// packetized.
     ///
     /// "Whatever it was holding" rather than "its token", because which grant holds one is per protocol: a
-    /// UDP query owns its own, a DNS-over-TCP connection keeps the transport's between questions, and an
-    /// unobservable outcome's token is moved into a quarantine instead of released at all. What is under test
-    /// here is the split itself, on a grant that does hold one.
+    /// UDP query owns its own, and a DNS-over-TCP connection keeps the transport's between questions, handing
+    /// it to the question still in flight only when it closes over one. What is under test here is the split
+    /// itself, on a grant that does hold one.
     ///
     /// The race this shape removes is the two orders of one pair of events: the answer arriving and the
     /// worker's terminal. Releasing the whole grant on the terminal freed capacity for a result buffer that
@@ -2158,8 +2158,8 @@ mod tests {
         assert_eq!(admission.records_charged(), 64);
 
         // A transport closing with its question still in flight hands that question its own token, rather
-        // than releasing one and reserving another - which would leave a moment where the platform's slot
-        // looked free while it was still taken.
+        // than releasing one and reserving another - which would leave a moment where a token looked free
+        // while the query it was taken for was still outstanding.
         admission
             .transfer(
                 &connections[0],

@@ -266,6 +266,7 @@ mod tests {
     use std::sync::Arc;
 
     use super::*;
+    use crate::shared::protocol::{reported_io_error_report, IoErrorReportExt};
 
     /// What an owner does with [Tasks::shutdown]'s per-task results once it has described each: fold them
     /// into the one error the session returns.
@@ -397,6 +398,21 @@ mod tests {
         // Both accounts survive, and the kind is the one the session actually failed on.
         assert_eq!(both.kind(), io::ErrorKind::InvalidData);
         assert_eq!(both.to_string(), "ingress; the writer stopped");
+
+        // What survives is the *messages*, and nothing else: a fresh error carries neither input's attached
+        // report, so the errno, the details and the source location of both are gone. That is why every owner
+        // that folds with this routes its failures to a destination first - see
+        // [crate::shared::app_terminal::Terminal::claim] and the app-UID session's teardown - rather than
+        // folding and describing what comes out.
+        let described = combine(
+            Err(io::Error::from_raw_os_error(libc::ENFILE).with_report_context("ingress")),
+            Err(io::Error::from_raw_os_error(libc::EMFILE).with_report_context("writer")),
+        )
+        .unwrap_err();
+        assert!(
+            reported_io_error_report(&described).is_none(),
+            "a folded message is not a structured report"
+        );
     }
 
     /// The failure this exists for: one half of the dataplane dies while the control socket is quiet. The

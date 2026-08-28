@@ -316,6 +316,37 @@ pub(crate) fn message_with_details<I, K, V>(
     ));
 }
 
+/// Keeps the first of two independently observed failures, and reports the other.
+///
+/// The counterpart to [vpnhotspotd::shared::tasks::combine], and the distinction is whose failure each is.
+/// That folds two halves of a *single* ending - a session that failed and could not shut down cleanly - into
+/// one message. This is for failures with separate causes, where that fold would be a lie and, worse, a loss:
+/// [vpnhotspotd::shared::tasks::combine] builds a fresh error out of two messages, so the structured report
+/// each failing step attached survives neither.
+///
+/// One result carries one error, so only one of these can travel out on it. The first observed stays the
+/// causal failure its owner ends on; the second becomes a nonfatal here, because dropping it is exactly the
+/// silent discard structured reporting exists to prevent.
+///
+/// `context` is only used for a failure that arrived with no report of its own:
+/// [vpnhotspotd::shared::protocol::describe_io_error] hands an attached one back unchanged, so what is
+/// emitted names the failing site rather than this one.
+#[track_caller]
+pub(crate) fn keep_first(
+    context: &'static str,
+    kept: io::Result<()>,
+    beside: io::Result<()>,
+) -> io::Result<()> {
+    let Err(kept) = kept else {
+        // Nothing has been observed yet, so whatever this is becomes the causal failure - or stays `Ok`.
+        return beside;
+    };
+    if let Err(beside) = beside {
+        io_with_details(context, beside, std::iter::empty::<(&str, &str)>());
+    }
+    Err(kept)
+}
+
 #[track_caller]
 pub(crate) fn io_with_details<I, K, V>(context: impl Into<String>, error: io::Error, details: I)
 where

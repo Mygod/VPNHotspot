@@ -50,6 +50,11 @@ DNS queries are sent through bionic's Android resolver API:
 - `android_res_nsend` starts a one-shot query on the selected Android network;
 - `android_res_nresult` reads and closes the result;
 - `android_res_cancel` is used if the query object is dropped before finish.
+  It is a `close()` of the descriptor this process was handed, so it recovers
+  this process's descriptor and nothing of Android's work: the platform's own
+  query limiter releases that operation's slot when its `resolv_res_nsend`
+  returns. That external lifetime is temporary and belongs to Android; the
+  daemon cannot observe, shorten or prove it, and does not model it.
 
 `android_res_nsend` returns a file descriptor. The daemon sets it nonblocking
 and wraps it in `AsyncFd`. The daemon waits for the resolver-side socket to
@@ -66,14 +71,17 @@ public result API.
 The rootless TestNetwork path does not share the code above: it has its own
 resolver owner in
 [`shizuku/resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shizuku/resolver.rs), whose
-only caller is `shizuku/virtual_dns.rs`, while root's DNS proxy keeps
+callers are `shizuku/virtual_dns.rs` and the DNS-over-TCP transaction table in
+`shizuku/tcp_dns/transactions.rs`, while root's DNS proxy keeps
 [`root/dns.rs`](../../mobile/src/main/rust/vpnhotspotd/src/root/dns.rs) unchanged. It watches
 both directions of the resolver descriptor and treats closure of that descriptor,
 however the platform closes it, as completion of the transaction; the readiness
 bits behind that are in
 [`shizuku/resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shizuku/resolver.rs). Missing a
-closure would hold that query's descriptor and resolver slot until the session
-ends, because transactions carry no timer.
+closure would hold this daemon's own descriptor and the local token standing for
+it until the session ends, because transactions carry no timer. It would hold
+nothing of Android's: that operation ends when its own resolver work returns,
+whatever this process does with the descriptor it was handed.
 
 DNS accounting counts the DNS payload bytes handed to `android_res_nsend` and
 the response bytes returned by `android_res_nresult`. It does not try to account
@@ -113,10 +121,10 @@ connection is still open, and the flow's client-facing side then stays until tha
 close reaches `Closed` - unless its idle floor, a configuration retirement that
 applies to it, or session shutdown reclaims it first and discards the remainder
 ([Shizuku Mode](shizuku.md#transport-completion-and-client-side-close)). Ending
-a transport ends the transport only: its resolver transaction is owned separately,
-is never cancelled with it, and keeps the platform's slot reserved until it
-finishes, so a late answer is discarded rather than delivered to whatever reused
-the connection. A session that has stopped serving refuses a question it has not
+a transport ends the transport only: its resolver transaction is owned separately
+and is never cancelled with it, so a late answer is discarded rather than
+delivered to whatever reused the connection. Android's own operation for that
+query runs to its end either way. A session that has stopped serving refuses a question it has not
 admitted rather than dropping it, so the stream stays framed, while accepted
 queries finish normally.
 
@@ -142,29 +150,67 @@ Every outcome returned by the platform - no selected upstream network, a timeout
 `EBUSY` from its per-UID limiter, an unresolvable name, a remote failure -
 returns SERVFAIL when possible and is otherwise silent, because a client chooses
 how many queries it sends. Only the daemon's own wrapper around a transaction is
-not client-driven, and a failure there is a structured, coalesced nonfatal naming
-its step; see [`errors.md`](errors.md).
+not client-driven; see [`errors.md`](errors.md).
 
-A submission therefore has three outcomes, which
-[`shizuku/resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shizuku/resolver.rs) keeps
-typed all the way to the owner that acts on them:
+A submission therefore has two outcomes, and
+[`shizuku/resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shizuku/resolver.rs) hands
+them back as an ordinary `Result`:
 
-- **`NeverReached`** - `android_res_nsend` refused the query, so nothing of
-  Android's is held;
-- **`Accepted`** - the platform has the query, and this process can wait for the
-  DNS result or for the failure the platform returns instead;
-- **`Unobservable`** - Android accepted the query and then this daemon's wrapper
-  around the descriptor failed, or the readiness registration went away, so a
-  per-UID slot is held whose end nothing here can observe.
+- **accepted** - the platform has the query, and this process waits for the DNS
+  result or for the failure the platform returns instead;
+- **failed** - there is nothing to wait on, and `Failure`'s own classification in
+  [`shared/failure.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shared/failure.rs) says
+  whose failure it was.
 
-The first two are ordinary answers, and the query's reservation is released with
-them. `Unobservable` is not: the daemon's own memory and descriptor are released,
-but the resolver slot stays reserved for the rest of the session, because
-returning capacity for a transaction Android still holds is what drives its
-limiter into `EBUSY`.
-A DNS-over-TCP stream that hits this is closed, because no resolver capacity
-remains for it to ask another query with. Root mode has no per-UID resolver
-ceiling of its own and reserves nothing.
+Which failure it was is the whole decision, and `Failure::ending` is the one
+place it is made. `android_res_nsend` refusing - a full per-UID limiter, an
+unresolvable name - is the platform's answer to one query the client chose to
+send, so it is `Failure::Expected` and reaches that client as SERVFAIL, on a
+DNS-over-TCP stream that carries on. The steps around it that are this daemon's
+own - setting the returned descriptor nonblocking, registering it with the
+runtime, and the readiness registration it is then watched with - are
+`Failure::Local`. Those are not any one query's outcome: an owner whose wrapper
+around the platform failed cannot wrap the next query either.
+
+A local wrapper or readiness failure therefore **ends the app-UID dataplane
+session**. The descriptor is cancelled and closed by the dropped submission, and
+everything that query owed goes back: both buffers and its DNS-class descriptor
+record, plus its logical resolver token for UDP, where the token is the query's
+own. A DNS-over-TCP query holds no token - its transport does, for that
+transport's whole life - so that one is released when the session's shutdown
+closes the flow. No query state survives for it: there is no per-query quarantine
+and no session-long local token reservation.
+
+The bound the ingress owner enforces is on what happens **after** it observes
+such a failure, not on when it observes one. Every path that observes one leaves
+the loop with it, and the only two paths that commit a DNS submission - the
+DNS-over-TCP ask arm and the per-packet dispatch - are not reached again, so no
+submission is committed afterwards. What is *not* claimed is an ordering against
+arrival: the ingress select is biased, but biased ordering only ranks arms within
+a single poll, so a datagram can still be dispatched while a failure is in flight
+from a query task that has not sent yet.
+
+Each of the three moments such a failure can happen at reaches that bound:
+
+- **at submission**, where the ingress owner calls the platform itself, the
+  failure is returned from the submitting call and the dispatch of that packet
+  stops there;
+- **while a DNS-over-TCP registration is polled**, which the ingress owner also
+  does itself, the settlement carrying it is taken before the next query can be
+  committed;
+- **while a UDP registration is polled**, which happens in that query's own task,
+  the task hands the failure to the owner instead of an answer, on the channel it
+  would have answered on. That handoff is not raced against the session's
+  cancellation - the channel is one slot per logical token and each query sends
+  at most one arrival, so it cannot block and never has to be abandoned - and
+  consuming the message is what makes the failure observed exactly once. The
+  query's own accounting stays on its record until session shutdown joins the
+  task that sent it.
+
+Nothing here reserves anything on Android's behalf. Root mode has no per-UID
+resolver ceiling of its own and reserves nothing either; the 32-query local
+ceiling is this daemon's own accounting, sized well under Android's 256-query
+per-UID limit.
 
 Listener setup failures do not stop the session.
 Routing omits the missing DNS redirect, so normal IP traffic and manually
@@ -176,3 +222,26 @@ MAC redirect and direct-port guard, the staged listener is cancelled before the
 session publishes committed capabilities. A TCP listener accept failure after
 cancellation is treated as teardown; transient active-listener accept failures
 are retried.
+
+## Where A Resolver Failure Is Reported
+
+Exactly one report per failure, and which owner emits it depends only on whether
+that failure still has a result to travel out on.
+
+- The **first** local failure the ingress owner observes becomes that task's
+  error. It is not reported by any DNS owner: it travels to
+  `shizuku/app_session.rs`, whose single routing point delivers the structured
+  report the error already carries - as the start call's terminal error frame
+  when that frame is still unclaimed, and as a nonfatal otherwise.
+- **Additional independently observed** local failures cannot fit in that one
+  result - every outstanding query fails the same way if the runtime's I/O driver
+  goes - so each is routed once, locally, as a nonfatal by the DNS drain and
+  shutdown path. The report emitted is the one its own failing step attached, so
+  it names that step rather than the drain.
+- A failure whose owner is **already gone** - the answer channel's receiver was
+  dropped before the query task could hand it over - is routed once as a nonfatal
+  by that task, for the same reason: there is no result left for it to travel on.
+  It is never downgraded to an ordinary cancellation.
+
+Dropping any of them would be the silent discard structured reporting exists to
+prevent; emitting one that also travels would be the same failure twice.

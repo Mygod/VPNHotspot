@@ -178,11 +178,22 @@ error.
 - **Local** is the daemon's own setup: creating a socket, binding it to the
   selected `Network`, making it nonblocking, registering it with the runtime, or
   wrapping a resolver descriptor. A client cannot drive any of those, so such a
-  failure becomes a structured, coalesced nonfatal naming the exact step -
+  failure becomes a structured report naming the exact step -
   `shizuku.tcp_connect_socket`, `shizuku.tcp_connect_bind`,
   `shizuku.tcp_connect_nonblock`, `shizuku.tcp_connect_register`,
   `resolver.nonblock`, `resolver.register` - with the record's own details
-  beside it.
+  beside it. A per-flow one is a coalesced nonfatal and the flow ends. The two
+  resolver ones and the readiness registration behind them are wider than one
+  query: `Failure::ending` turns them into the error the app-UID ingress task
+  returns, so the session ends and `shizuku/app_session.rs` delivers that one
+  attached report through its single routing point - the start call's terminal
+  error frame when nothing has claimed it, a nonfatal otherwise. That is the
+  *first* such failure only. Any further one observed independently - every
+  outstanding query fails the same way if the runtime's I/O driver goes - has no
+  result left to travel on, so the DNS drain and shutdown path emits it locally
+  as a nonfatal through `report::keep_first`, and a query task whose owner is
+  already gone emits its own the same way. Each failure therefore takes exactly
+  one of the two routes and never both; see [`dns.md`](dns.md) for which.
 - **Expected** is what the peer, the path or the platform answered: refused,
   unreachable, timed out, or the resolver's own outcomes. That is an ordinary
   per-flow or per-query outcome and never a report, because a client chooses how
@@ -191,10 +202,11 @@ error.
   it from SERVFAIL.
 
 An expected outcome is also never a *stream* outcome: a resolver answer becomes a
-framed SERVFAIL for that one message and the connection carries on. Only a local
-wrapper failure, or a query too malformed to answer, ends a DNS-over-TCP flow.
-[`dns.md`](dns.md) owns which resolver outcomes fall on which side, including the
-accepted-but-unobservable submission that is neither.
+framed SERVFAIL for that one message and the connection carries on. A query too
+malformed for a SERVFAIL to be built from ends that DNS-over-TCP flow, and a
+local resolver wrapper failure ends more than the flow - it ends the session that
+owns the resolver, as above. [`dns.md`](dns.md) owns which resolver outcomes fall
+on which side.
 
 ## Logs
 

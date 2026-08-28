@@ -9,6 +9,7 @@
 //! *same* path, or a reassembled datagram would be classified, parsed and admitted by rules that had drifted
 //! from the ones a whole one meets.
 
+use std::io;
 use std::net::IpAddr;
 use std::time::Instant;
 
@@ -107,7 +108,11 @@ pub(crate) struct Dispatch<'a> {
 }
 
 impl Dispatch<'_> {
-    pub(crate) fn accept(&mut self, packet: &[u8], now: Instant) {
+    /// `Err` is the one thing a packet can produce that is not about that packet: this daemon's own wrapper
+    /// around a resolver transaction failing, which ends the ingress task that called this rather than being
+    /// answered to whoever sent the query. Nothing else here is fallible - a packet nothing can place is
+    /// counted, not returned.
+    pub(crate) fn accept(&mut self, packet: &[u8], now: Instant) -> io::Result<()> {
         // Up to three passes, and the bound is the number of wrappings one packet can carry rather than a
         // guess: an extension chain in front of a Fragment header is stripped first, reassembly then completes
         // the datagram, and whatever chain sat *behind* the Fragment header - in the fragmentable part, where
@@ -115,22 +120,23 @@ impl Dispatch<'_> {
         let mut rewritten: Option<Vec<u8>> = None;
         for _ in 0..PASSES {
             let produced = match rewritten.as_deref() {
-                Some(current) => self.deliver(current, now),
-                None => self.deliver(packet, now),
+                Some(current) => self.deliver(current, now)?,
+                None => self.deliver(packet, now)?,
             };
             match produced {
                 Some(produced) => rewritten = Some(produced),
-                None => return,
+                None => return Ok(()),
             }
         }
         // A packet still asking to be unwrapped after three passes is one no conforming sender produces.
         self.counters.unparseable += 1;
+        Ok(())
     }
 
     /// Dispatches one whole datagram, or holds one fragment, or unwraps one extension chain. Returns a packet
     /// that still has to be dispatched, which is either the datagram a fragment completed or one with its
     /// extension headers removed.
-    fn deliver(&mut self, packet: &[u8], now: Instant) -> Option<Vec<u8>> {
+    fn deliver(&mut self, packet: &[u8], now: Instant) -> io::Result<Option<Vec<u8>>> {
         match classify(packet, self.virtual_addresses) {
             // Answered rather than relayed, and it must never reach the relay: the destination is an
             // address the daemon occupies.
@@ -141,12 +147,12 @@ impl Dispatch<'_> {
                 self.counters.dns += 1;
                 match udp_wire::parse(packet) {
                     Ok(datagram) if !provisional => {
-                        self.dns.submit(datagram, self.output, self.admission)
+                        self.dns.submit(datagram, self.output, self.admission)?
                     }
                     // A provisional fragment carries no ports yet, so it is not known to be DNS at all and goes
                     // to reassembly to find out.
-                    Err(Reject::Fragmented) => return self.fragment(packet, now),
-                    Err(Reject::Extended) => return self.unwrap(packet),
+                    Err(Reject::Fragmented) => return Ok(self.fragment(packet, now)),
+                    Err(Reject::Extended) => return Ok(self.unwrap(packet)),
                     // TCP port 53 to a virtual address is the same principal over the terminating engine, which
                     // answers it from the resolver rather than from an upstream connection.
                     Err(Reject::NotUdp) => match tcp_wire::peek(packet) {
@@ -199,20 +205,20 @@ impl Dispatch<'_> {
                         // handles the packet: an ICMP type Android's own downstream link control owns, or a
                         // protocol this mode does not carry.
                         Err(Reject::NotUdp) => self.counters.unsupported += 1,
-                        Err(Reject::Fragmented) => return self.fragment(packet, now),
-                        Err(Reject::Extended) => return self.unwrap(packet),
+                        Err(Reject::Fragmented) => return Ok(self.fragment(packet, now)),
+                        Err(Reject::Extended) => return Ok(self.unwrap(packet)),
                         Err(Reject::Malformed(_)) => self.counters.unparseable += 1,
                     },
                 },
-                Err(Reject::Fragmented) => return self.fragment(packet, now),
-                Err(Reject::Extended) => return self.unwrap(packet),
+                Err(Reject::Fragmented) => return Ok(self.fragment(packet, now)),
+                Err(Reject::Extended) => return Ok(self.unwrap(packet)),
                 Err(Reject::Malformed(_)) => self.counters.unparseable += 1,
             },
             Classified::Dropped(Drop::Reserved) => self.counters.reserved += 1,
             Classified::Dropped(Drop::Unroutable) => self.counters.unroutable += 1,
             Classified::Dropped(Drop::Malformed) => self.counters.malformed += 1,
         }
-        None
+        Ok(None)
     }
 
     /// Removes one packet's IPv6 extension chain, and hands back what is left for the transports to parse.

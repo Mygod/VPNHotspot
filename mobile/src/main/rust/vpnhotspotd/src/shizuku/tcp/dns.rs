@@ -9,9 +9,10 @@
 //! handles: a request naming only a handle could be admitted against, published for, or released from
 //! whatever flow reused it.
 
+use std::io;
+
 use vpnhotspotd::shared::admission::Admission;
 use vpnhotspotd::shared::dns_debt;
-use vpnhotspotd::shared::failure::Failure;
 
 use super::{Engine, Flow};
 use crate::report;
@@ -31,12 +32,21 @@ impl Engine {
     /// owner has not accepted yet allocates nothing, a query it accepted while admission was open is answered
     /// from the capacity that reservation already holds rather than becoming platform work, and a delivery
     /// already parked is acknowledged and released exactly as it would have been.
-    pub(crate) fn ask(&mut self, ask: tcp_dns::Ask, admitting: bool, admission: &mut Admission) {
+    ///
+    /// `Err` is the one answer that is not this transport's: this daemon's own wrapper around the descriptor
+    /// Android returned failed, so the ingress task that owns this engine ends rather than publishing another
+    /// query into it.
+    pub(crate) fn ask(
+        &mut self,
+        ask: tcp_dns::Ask,
+        admitting: bool,
+        admission: &mut Admission,
+    ) -> io::Result<()> {
         match ask {
             tcp_dns::Ask::Reserve { flow, length } => {
                 self.reserve_query(flow, length, admitting, admission)
             }
-            tcp_dns::Ask::Query(flow) => self.commit_query(flow, admitting, admission),
+            tcp_dns::Ask::Query(flow) => return self.commit_query(flow, admitting, admission),
             // The transport has written the whole answer into its bridge and dropped both of its own
             // buffers, so the delivery grant may end. Validated on both halves first: a report naming a
             // handle whose flow has been replaced would end the successor's delivery instead of its
@@ -49,7 +59,7 @@ impl Engine {
                 // would release its successor's grant while those bytes are still being framed.
                 let Some(held) = self.serving(flow) else {
                     self.counters.ingress.stale += 1;
-                    return;
+                    return Ok(());
                 };
                 match held.record.serving.acknowledge(admission, delivery) {
                     dns_debt::Acked::Released => {}
@@ -61,6 +71,7 @@ impl Engine {
                 }
             }
         }
+        Ok(())
     }
 
     /// The exact flow an identity names, or nothing when it names one this owner no longer holds.
@@ -149,21 +160,27 @@ impl Engine {
     /// Nothing travels here but the identity. The query itself comes back on the depth-one channel this owner
     /// kept when it granted the capacity, so a buffer waiting to be accepted is one the flow's close can end
     /// before it refunds - rather than one sitting in a shared queue while its grant is given back.
-    fn commit_query(&mut self, flow: Event, admitting: bool, admission: &mut Admission) {
+    fn commit_query(
+        &mut self,
+        flow: Event,
+        admitting: bool,
+        admission: &mut Admission,
+    ) -> io::Result<()> {
         let Some(held) = self.serving(flow) else {
             self.counters.ingress.stale += 1;
-            return;
+            return Ok(());
         };
         let Some((reserved, query)) = held.record.serving.accept() else {
             // Nothing was admitted for this transport, so there is no query to publish and no grant to end.
             self.counters.ingress.stale += 1;
-            return;
+            return Ok(());
         };
         let Some(query) = query else {
             // Unreachable: the transport hands the buffer over before it says so. Ended rather than assumed
             // away, because a reservation nobody consumes is capacity nothing gives back.
             self.counters.ingress.stale += 1;
-            return reserved.end(admission);
+            reserved.end(admission);
+            return Ok(());
         };
         // Sampled together and now: which selection this query goes out on, and which config it belongs to.
         // A query with no descriptor behind it never had a transaction to open, so it takes the same path as
@@ -180,11 +197,16 @@ impl Engine {
         let Some((network, stamp)) = published else {
             // No selected network, or no descriptor: the client is answered here rather than left waiting on
             // a question nobody took, and its stream carries on.
-            return self.answer_here(flow, reserved, query, admission);
+            self.answer_here(flow, reserved, query, admission);
+            return Ok(());
         };
+        // `?` is the one outcome that is not this transport's: this daemon's own wrapper around the
+        // descriptor Android returned failed, so everything the row held has already gone back - including
+        // the token, since the flow's close now finds no question to hand one to - and the failure ends the
+        // ingress task. Nothing is recorded on the flow for it, because there is no question to record.
         match self
             .queries
-            .submit(network, stamp, flow, reserved, query, admission)
+            .submit(network, stamp, flow, reserved, query, admission)?
         {
             Submitted::Outstanding(transaction) => {
                 // Remembered so that a transport closing over a question still in flight can hand that
@@ -201,74 +223,8 @@ impl Engine {
                 self.counters.unprepared += 1;
                 self.answer_here(flow, reserved, query, admission);
             }
-            // The platform took the question and this process can no longer watch it. The descriptor came
-            // back with the dropped submission, and the query's bytes and its answer allowance with it; what
-            // is left is the one logical token, which belongs to the *transport* rather
-            // than to the query - so it is moved out of this flow's own grant and quarantined for the rest
-            // of the session, and only then is the transport ended. It cannot carry on: its next question
-            // would be one asked under a token that no longer exists.
-            Submitted::Unobservable {
-                transaction,
-                failure,
-            } => {
-                self.counters.unsettled += 1;
-                self.end_unobservable(flow, transaction, failure, admission);
-            }
         }
-    }
-
-    /// Quarantines one transport's logical token and ends its stream, because the platform is holding a slot
-    /// this process can no longer watch.
-    ///
-    /// The token is per transport for DNS-over-TCP, so the flow's own connection is the grant really holding
-    /// it. If the move cannot be represented, the question is deliberately *left recorded* on the flow: its
-    /// close then finds an outstanding question with no debt for it, which is exactly the state
-    /// [vpnhotspotd::shared::dns_debt::close] refuses to release a token from, so it comes back here through
-    /// [Engine::close] instead of going back into circulation.
-    fn end_unobservable(
-        &mut self,
-        flow: Event,
-        transaction: u64,
-        failure: Failure,
-        admission: &mut Admission,
-    ) {
-        let moved = self.quarantine(flow, admission);
-        match self.flows.get_mut(&flow.handle) {
-            Some(held) => {
-                held.record.serving.asking((!moved).then_some(transaction));
-                // The failure goes with the refusal rather than being reported here: it ends this transport,
-                // and a transport ending on a local failure is reported once at its terminal - see
-                // [Engine::close] - which is the same place a question lost later is reported from.
-                held.record.serving.refuse(failure);
-            }
-            // No transport left to carry it, so this is the last owner that can say the platform is holding a
-            // slot this process cannot watch. Without this the outcome would be silent in exactly the case
-            // where nothing else will speak for it.
-            None => crate::shizuku::resolver::report_unobservable(transaction, &failure),
-        }
-    }
-
-    /// Moves one flow's logical token out of its own grant and onto the transaction table's, for the session.
-    ///
-    /// `false` is counted rather than believed: it would be capacity this session goes on thinking it has.
-    fn quarantine(&mut self, flow: Event, admission: &mut Admission) -> bool {
-        // Destructured so the table holding the grant and the table holding the quarantine can be borrowed
-        // at once: they are disjoint fields, which a `&mut self` helper would hide.
-        let Engine {
-            flows,
-            queries,
-            counters,
-            ..
-        } = self;
-        let Some(held) = flows.get(&flow.handle) else {
-            counters.ingress.stale += 1;
-            return false;
-        };
-        if queries.quarantine(admission, held.record.connection.lease()) {
-            return true;
-        }
-        counters.unsettled += 1;
-        false
+        Ok(())
     }
 
     /// Answers one query this daemon will not submit, and parks its delivery on the flow that asked.
@@ -308,81 +264,49 @@ impl Engine {
     /// this has run, so the "delivered" report it sends afterwards necessarily finds the delivery already
     /// parked on its flow. [tcp_dns::Answering::hand_over] makes the order structural: the answer is inside
     /// the settled delivery, classification happens before the park, and parking is the only way out of it.
-    pub(crate) fn settle(&mut self, settlement: tcp_dns::Settlement, admission: &mut Admission) {
+    ///
+    /// `Err` is this daemon's own wrapper around the transaction having failed while it was being watched.
+    /// The table has already given everything that transaction held back; what is left is that this engine's
+    /// owner may not publish another query, so the failure ends the ingress task rather than this one stream.
+    pub(crate) fn settle(
+        &mut self,
+        settlement: tcp_dns::Settlement,
+        admission: &mut Admission,
+    ) -> io::Result<()> {
         let transaction = settlement.key();
-        let Some(mut delivered) = self.queries.settle(settlement, admission) else {
-            // The table kept this query's whole grant because the token a closing transport had handed it
-            // could not be moved anywhere it would not be reused. There is nothing to deliver and nothing to
-            // tell a transport: a token on the debt means the transport that asked closed to put it there, so
-            // no live flow can be holding this transaction. Counted *and* reported where it happened, in the
-            // table itself, because that is the owner that destroys the state - see
-            // [tcp_dns::Transactions::settle].
-            return;
-        };
         // Exact identity, both halves, rather than a scan for whichever flow claims this transaction id.
         // smoltcp reuses handles, so a predecessor's answer must never reach the flow that took its place -
-        // and the incarnation is what tells those two apart.
-        let asked = delivered.flow();
+        // and the incarnation is what tells those two apart. Read off the settlement rather than off the
+        // delivery below, because the delivery does not exist for a settlement that ends the session.
+        let asked = settlement.flow();
         let live = self.flows.current(&asked.handle, asked.incarnation);
-        // Read once, because it decides two separate things below: where this query's token goes, and whether
-        // the generation is allowed to have an opinion about the answer at all.
-        let unobservable = delivered.unobservable();
-        // The platform is holding a slot whose end this process stopped being able to watch. The table has
-        // already moved whatever token *it* was holding; a live transport's own token is still on its
-        // connection, so it is moved here. Only the token: what ends this stream is the classification below,
-        // which is already an unanswerable local failure and sends exactly one refusal for it.
-        if unobservable && live {
-            let moved = self.quarantine(asked, admission);
-            if let Some(flow) = self.flows.get_mut(&asked.handle) {
-                // Left recorded when the move did not happen, so this flow's close refuses to hand the token
-                // back and comes through [Engine::close]'s stranded path instead.
-                flow.record.serving.asking((!moved).then_some(transaction));
-            }
-        } else if live {
-            // The flow that asked has no question outstanding any more, so a close from here on releases its
-            // own token rather than trying to hand it to a transaction that has already settled. Only when it
-            // is *this* transaction: a flow whose question was replaced still owes the one it has now.
+        // The flow that asked has no question outstanding any more, whatever this settlement turns out to be:
+        // its row leaves the table either way. So a close from here on releases its own token rather than
+        // trying to hand it to a transaction that has already settled. Only when it is *this* transaction: a
+        // flow whose question was replaced still owes the one it has now.
+        if live {
             if let Some(flow) = self.flows.get_mut(&asked.handle) {
                 if flow.record.serving.transaction() == Some(transaction) {
                     flow.record.serving.asking(None);
                 }
             }
         }
+        let mut delivered = self.queries.settle(settlement, admission)?;
         let stamp = delivered.stamp();
         // A flow that is absent, closed or reused is one there is nobody left to answer: the transport that
-        // asked is gone, and a handle that has been handed to a successor belongs to a different client.
+        // asked is gone, and a handle that has been handed to a successor belongs to a different client. Not
+        // reported: an answer nobody is waiting for says nothing about this daemon, and what would have been
+        // its own failure never reaches here - that ends the session above.
         if !live {
             self.counters.ingress.stale += 1;
-            // Silent on the wire, not in the log. There is no transport left to carry this failure to a
-            // terminal, so for the one outcome that is this daemon's own - the platform holding a slot
-            // nothing here can watch - this is the last owner that can say it, and it says it before the
-            // settlement is destroyed. An ordinary stale answer says nothing about the daemon and is not
-            // reported: the client that asked is simply no longer there.
-            if unobservable {
-                if let Some(failure) = delivered.refusal() {
-                    crate::shizuku::resolver::report_unobservable(transaction, failure);
-                }
-            }
             delivered.discard(admission);
-            return;
+            return Ok(());
         }
         // Resolved on a selection this session has stopped claiming. The transport itself survived the
         // handover untouched, so the client is told to try again rather than left waiting - but the answer
         // that came back over the retired network is dropped before that refusal is built. See
         // [tcp_dns::Delivered::stale].
-        //
-        // Only for an outcome this owner could actually observe, and that condition is the whole of the fix.
-        // The replacement below exists for a *predecessor's answer* on a transport that legitimately still
-        // owns its logical token and may therefore ask again; an unobservable outcome is the opposite of that
-        // on both counts. Its token has just been quarantined, so the transport can never carry another
-        // query, and [tcp_dns::Delivered::stale] replaces every result it is given - including this one's
-        // local failure - with an `Ok(SERVFAIL)`. Composed, the two would tell a client to retry on a
-        // connection that has nothing left to retry with, and would overwrite the one refusal that ends it.
-        //
-        // Whether the two can compose in production is a question about Tokio's readiness internals rather
-        // than about this owner: see the module note in [crate::shizuku::resolver]. Making the classification total
-        // costs one condition and stops it being a question at all.
-        if stamp.generation != self.stamp.generation && !unobservable {
+        if stamp.generation != self.stamp.generation {
             report::stdout!(
                 "discarding a DNS-over-TCP answer resolved on network {} at generation {}",
                 delivered.network(),
@@ -392,17 +316,17 @@ impl Engine {
                 // No SERVFAIL could be formed from that query, so there is nothing to send and nothing left
                 // to park; this is the last owner that can end these bytes.
                 delivered.discard(admission);
-                return;
+                return Ok(());
             }
         }
         if !delivered.has_answer() {
             // Nothing was produced at all, so nobody will ever acknowledge these bytes.
             delivered.discard(admission);
-            return;
+            return Ok(());
         }
         let Some(flow) = self.flows.get_mut(&asked.handle) else {
             delivered.discard(admission);
-            return;
+            return Ok(());
         };
         // One call, and it classifies before it parks and parks before it hands anything over. At most one
         // delivery per flow, because a transport is sequential; anything already there would be a second
@@ -413,5 +337,6 @@ impl Engine {
         {
             self.counters.unsettled += 1;
         }
+        Ok(())
     }
 }

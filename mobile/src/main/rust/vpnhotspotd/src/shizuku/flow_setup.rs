@@ -227,15 +227,15 @@ pub(crate) fn prepare<R>(
 
 /// Closes a connection that never had a question outstanding.
 ///
-/// [dns_debt::close] can only refuse when it was asked to hand a token to a query, and none of the callers
-/// here has one: the flow does not exist yet. Reported rather than discarded, because the alternative to
-/// saying so is a logical token this session goes on believing it has.
+/// [dns_debt::close] can only answer `false` when it was asked to hand a token to a query, and none of the
+/// callers here has one: the flow does not exist yet. Reported rather than discarded, because the answer
+/// says this daemon's own bookkeeping has contradicted itself about a grant it is holding.
 fn close_idle(admission: &mut Admission, connection: Connection) {
-    if dns_debt::close(admission, connection, None).is_err() {
+    if !dns_debt::close(admission, connection, None) {
         report::message(
             "shizuku.tcp_flow_setup",
-            "a flow that never asked anything could not release its logical token",
-            "Stranded",
+            "a flow that never asked anything reported an outstanding question",
+            "InvalidData",
         );
     }
 }
