@@ -11,9 +11,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, Interest, Ready};
 use tokio::net::{
     TcpListener as TokioTcpListener, TcpStream as TokioTcpStream, UdpSocket as TokioUdpSocket,
 };
+use tokio::select;
 use tokio::sync::Mutex;
-use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use crate::report;
 use crate::socket::{
@@ -37,6 +38,8 @@ pub(crate) struct Runtime {
     reply_mark: u32,
     config: Arc<Mutex<SessionConfig>>,
     stop: CancellationToken,
+    /// Detached report-capable listener and query tasks.
+    detached: TaskTracker,
     clients: HashMap<[u8; 6], ClientRuntime>,
     counters: DnsCounters,
 }
@@ -71,6 +74,7 @@ impl Runtime {
         reply_mark: u32,
         config: Arc<Mutex<SessionConfig>>,
         stop: CancellationToken,
+        detached: TaskTracker,
         initial_config: &SessionConfig,
     ) -> Self {
         let mut runtime = Self {
@@ -79,6 +83,7 @@ impl Runtime {
             reply_mark,
             config,
             stop,
+            detached,
             clients: HashMap::new(),
             counters: DnsCounters::default(),
         };
@@ -179,6 +184,7 @@ impl Runtime {
                 listener,
                 self.config.clone(),
                 stop.clone(),
+                self.detached.clone(),
                 self.counters.clone(),
                 mac,
             )?;
@@ -201,6 +207,7 @@ impl Runtime {
                 socket,
                 self.config.clone(),
                 stop.clone(),
+                self.detached.clone(),
                 self.counters.clone(),
                 mac,
             )?;
@@ -324,11 +331,14 @@ fn spawn_tcp_loop(
     listener: TcpListener,
     config: Arc<Mutex<SessionConfig>>,
     stop: CancellationToken,
+    detached: TaskTracker,
     counters: DnsCounters,
     mac: [u8; 6],
 ) -> io::Result<()> {
     let listener = TokioTcpListener::from_std(listener)?;
-    spawn(async move {
+    // Spawn children before the tracked listener exits, preventing a transient empty tracker.
+    let connections = detached.clone();
+    detached.spawn(async move {
         loop {
             select! {
                 biased;
@@ -338,7 +348,7 @@ fn spawn_tcp_loop(
                         let config = config.clone();
                         let counters = counters.clone();
                         let connection_stop = stop.child_token();
-                        spawn(async move {
+                        connections.spawn(async move {
                             select! {
                                 biased;
                                 _ = connection_stop.cancelled() => {}
@@ -443,11 +453,14 @@ fn spawn_udp_loop(
     socket: UdpSocket,
     config: Arc<Mutex<SessionConfig>>,
     stop: CancellationToken,
+    detached: TaskTracker,
     counters: DnsCounters,
     mac: [u8; 6],
 ) -> io::Result<()> {
     let socket = Arc::new(TokioUdpSocket::from_std(socket)?);
-    spawn(async move {
+    // Spawn children before the tracked listener exits, preventing a transient empty tracker.
+    let queries = detached.clone();
+    detached.spawn(async move {
         let mut buffer = [0u8; 65535];
         loop {
             select! {
@@ -455,12 +468,17 @@ fn spawn_udp_loop(
                 _ = stop.cancelled() => break,
                 received = socket.recv_from(&mut buffer) => match received {
                     Ok((size, source)) => {
-                        let snapshot = config.lock().await.clone();
+                        // The outer select no longer covers waits entered after recv completes.
+                        let snapshot = select! {
+                            biased;
+                            _ = stop.cancelled() => break,
+                            snapshot = config.lock() => snapshot.clone(),
+                        };
                         let query = buffer[..size].to_vec();
                         let socket = socket.clone();
                         let query_stop = stop.child_token();
                         let counters = counters.clone();
-                        spawn(async move {
+                        queries.spawn(async move {
                             select! {
                                 biased;
                                 _ = query_stop.cancelled() => {}
@@ -475,7 +493,12 @@ fn spawn_udp_loop(
                                         ) {
                                             report::io("dns.counter", e);
                                         }
-                                        if let Err(e) = socket.send_to(&response.bytes, source).await {
+                                        let sent = select! {
+                                            biased;
+                                            _ = query_stop.cancelled() => None,
+                                            sent = socket.send_to(&response.bytes, source) => Some(sent),
+                                        };
+                                        if let Some(Err(e)) = sent {
                                             if is_udp_reply_unreachable(&e) {
                                                 report::stderr!(
                                                     "dns udp response dropped: source={source}: {e}"

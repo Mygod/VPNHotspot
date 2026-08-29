@@ -12,6 +12,7 @@ use rtnetlink::packet_route::{
 use rtnetlink::MulticastGroup;
 use tokio::select;
 use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use crate::report;
 use crate::report::{ControllerSender, ControllerSenderExt};
@@ -48,11 +49,12 @@ pub(crate) async fn run(
     call_id: u64,
     sender: ControllerSender,
     cancel: &CancellationToken,
+    detached: &TaskTracker,
 ) -> io::Result<()> {
     let mut events = netlink::EventConnection::new(&EVENT_GROUPS)
         .with_report_context("neighbour.events.netlink")?;
-    let mut request =
-        netlink::RequestConnection::new().with_report_context("neighbour.request.netlink")?;
+    let mut request = netlink::RequestConnection::new(detached)
+        .with_report_context("neighbour.request.netlink")?;
     let mut topology = netlink::bridge_topology(&mut request).await?;
     send_update(
         &sender,

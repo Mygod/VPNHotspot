@@ -5,9 +5,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex as StdMutex, Weak};
 
 use tokio::io::unix::AsyncFd;
-use tokio::spawn;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use crate::report;
 use crate::root::netlink;
@@ -35,7 +36,10 @@ struct DispatcherInner {
     state: Arc<EchoState>,
     registrations: Arc<StdMutex<HashMap<u32, Weak<IcmpSession>>>>,
     next_session_key: AtomicU64,
-    task: StdMutex<Option<JoinHandle<()>>>,
+    /// Cancels pending waits and is checked inside the synchronous queue drain.
+    stop: CancellationToken,
+    /// Restart handle; the task tracker owns shutdown waiting.
+    task: StdMutex<Option<JoinHandle<Option<()>>>>,
 }
 
 impl Drop for DispatcherInner {
@@ -43,12 +47,7 @@ impl Drop for DispatcherInner {
         if let Err(e) = self.state.cancel_all_upstream() {
             report::io("nat66.icmp_upstream_cancel", e);
         }
-        let Ok(mut task) = self.task.lock() else {
-            return;
-        };
-        if let Some(task) = task.take() {
-            task.abort();
-        }
+        self.stop.cancel();
     }
 }
 
@@ -77,12 +76,13 @@ pub(crate) struct UdpErrorContext {
 }
 
 impl Dispatcher {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(detached: TaskTracker) -> Self {
         Self {
             inner: Arc::new(DispatcherInner {
-                state: Arc::new(EchoState::default()),
+                state: Arc::new(EchoState::new(detached)),
                 registrations: Arc::new(StdMutex::new(HashMap::new())),
                 next_session_key: AtomicU64::new(1),
+                stop: CancellationToken::new(),
                 task: StdMutex::new(None),
             }),
         }
@@ -144,11 +144,19 @@ impl Dispatcher {
             return Ok(());
         }
         let queue = AsyncFd::new(create_downstream_queue()?)?;
-        *task = Some(spawn(downstream::run_queue(
+        let stop = self.inner.stop.clone();
+        let queued = downstream::run_queue(
             queue,
             self.inner.registrations.clone(),
             self.inner.state.clone(),
-        )));
+            stop.clone(),
+        );
+        *task = Some(
+            self.inner
+                .state
+                .detached
+                .spawn(stop.run_until_cancelled_owned(queued)),
+        );
         Ok(())
     }
 }

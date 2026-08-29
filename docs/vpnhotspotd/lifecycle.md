@@ -88,7 +88,11 @@ performs:
    committed, cancelling uncommitted staged resources before ACK.
 
 An empty client set defers NAT66. Other DNS, NAT66 and routing failures remove
-only the affected optional capability where possible.
+only the affected optional capability where possible. A start that fails cancels
+its staged listeners, RA loop and netlink connections. Call cancellation is
+observed while awaiting downstream IPv4; after discovery, startup produces an
+owned `Session` and then runs its normal rollback instead of dropping partially
+applied external state.
 
 After ACK, the start task owns the session command queue. Replace, read and stop
 run in order. On stop it removes the public handle, drains queued commands, stops
@@ -137,8 +141,14 @@ lease until completion.
 
 On control EOF, the daemon cancels and joins active calls and IPsec work, stops
 the neighbour monitor and sessions, clears process-wide NAT66 firewall state,
-ends the writer and exits. Exiting drops the reply-socket registry and remaining
-descriptors.
+releases its own control state, waits for every detached report-capable future,
+finishes its nonfatal reporter, ends the writer and exits. Detached DNS, NAT66, RA
+and ICMP tasks are tracked through cancellation; rtnetlink request drivers are
+tracked until their owning connection drops. Their destructors are included.
+Pending waits race stop tokens, and continuously ready drains recheck cancellation
+per item. This keeps reporting open through teardown and runs resolver cancellation
+before process exit. Exiting drops the reply-socket registry and remaining
+descriptors. See [`errors.md`](errors.md#coalescing-and-delivery).
 
 `CleanRoutingCommand` additionally:
 

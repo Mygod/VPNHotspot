@@ -9,6 +9,7 @@ use tokio::sync::{Mutex, Notify};
 use tokio::task::JoinHandle;
 use tokio::time::{sleep_until, Instant as TokioInstant};
 use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use cidr::Ipv6Inet;
 
@@ -37,13 +38,15 @@ const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 pub(crate) struct ProcessResources {
     icmp: IcmpDispatcher,
     reply_sockets: Arc<ReplySocketPool>,
+    detached: TaskTracker,
 }
 
 impl ProcessResources {
-    pub(crate) fn new(reply_mark: u32) -> Self {
+    pub(crate) fn new(reply_mark: u32, detached: TaskTracker) -> Self {
         Self {
-            icmp: IcmpDispatcher::new(),
+            icmp: IcmpDispatcher::new(detached.clone()),
             reply_sockets: Arc::new(ReplySocketPool::new(reply_mark)),
+            detached,
         }
     }
 }
@@ -61,13 +64,16 @@ pub(crate) struct Runtime {
     pub(crate) ports: Ipv6NatPorts,
     shared: Arc<Mutex<SessionConfig>>,
     stop: CancellationToken,
+    /// Detached report-capable client and RA tasks.
+    detached: TaskTracker,
     dns: dns::CounterSink,
     resources: ProcessResources,
     clients: HashMap<[u8; 6], ClientRuntime>,
     counters: Nat66Counters,
     cleanup_prefixes: Vec<Ipv6Inet>,
     config_changed: Arc<Notify>,
-    ra_task: Option<JoinHandle<()>>,
+    /// Joined by [Runtime::stop]; `None` is normal cancellation.
+    ra_task: Option<JoinHandle<Option<()>>>,
     _icmp_registration: Option<icmp::Registration>,
 }
 
@@ -101,6 +107,7 @@ impl Runtime {
             },
             shared: shared.clone(),
             stop,
+            detached: resources.detached.clone(),
             dns,
             resources,
             clients: HashMap::new(),
@@ -154,8 +161,9 @@ impl Runtime {
                     shared.clone(),
                     config_changed.clone(),
                     events,
-                    netlink::RequestConnection::new()?,
+                    netlink::RequestConnection::new(&runtime.detached)?,
                     runtime.stop.clone(),
+                    runtime.detached.clone(),
                     config,
                 )
             }) {
@@ -280,6 +288,7 @@ impl Runtime {
                 listener,
                 self.shared.clone(),
                 stop.clone(),
+                self.detached.clone(),
                 self.counters.clone(),
                 self.dns.clone(),
                 mac,

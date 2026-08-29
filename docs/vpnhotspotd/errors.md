@@ -40,13 +40,17 @@ example:
 - daemon-owned background work or best-effort cleanup failed without invalidating
   the command.
 
-The two modes share report builders but have separate registries:
+Each process mode installs one reporter for its control conversation. Root's lasts
+for the process and covers all calls, sessions and probes; the app-UID conversation
+covers one session. A successor cannot install until its predecessor finishes.
 
-| | Root | App-UID session |
-| --- | --- | --- |
-| Reporter | process-global | one per session, flushed before its terminal frame |
-| Coalescing key | `(context, kind, errno, file, line)` | Rust source file, line and column, so attacker-controlled context cannot create unbounded categories |
-| Nonfatal call ID | present when a specific active call owns the failure; otherwise absent | absent; call-owned failures use terminal `ErrorFrame`s with their `call_id` |
+Both modes coalesce by Rust source site `(file, line, column)`, bounding pending
+categories to compiled report sites. Context, kind, errno, message, details and the
+optional call ID remain payload; a summary carries the last report in its batch.
+
+The optional call ID only correlates a degradation with its owning call. Root can
+report call-owned nonfatals after the call succeeds. On the app-UID path such a
+failure is terminal and uses an `ErrorFrame`, so its nonfatal reports omit call IDs.
 
 App-UID contexts begin with `shizuku.` and details describe only TUN-visible
 source, destination and family. `platform_dns`, `platform_ipv4` and
@@ -58,16 +62,21 @@ counted or logged, not reported per packet.
 
 ## Coalescing And Delivery
 
-The first report for a key is sent immediately. Further reports in the
+The first report for a source site is attempted immediately. Further reports in the
 one-second window are suppressed; the last becomes a summary with
-`coalesced.suppressed_count` and `coalesced.window_ms`. A continuing category
-emits at most one summary per window. Terminal frames are not coalesced.
+`coalesced.suppressed_count` and `coalesced.window_ms`. A continuing site emits at
+most one summary per window. Terminal frames are not coalesced.
 
-Coalescing occurs before queueing, so at most one pending batch exists per key.
-Orderly shutdown flushes summaries before ending the writer.
-Delivery during disconnect is best effort; an undeliverable report falls back to
-stderr/logcat. App-UID sessions account for undelivered reports in the failure
-that ends the session.
+Coalescing occurs before queueing, leaving at most one pending batch per site. The
+reporter reserves one place in the control writer's queue. While it is occupied, a
+push updates only its own batch; returning the place wakes the reporter, which
+emits overdue sites by oldest deadline without waiting another window.
+
+Orderly shutdown flushes summaries before ending the writer. Root first waits for
+all report-capable detached tasks and their destructors; the app-UID session
+finishes reporting before its terminal frame. Undelivered reports become part of
+the conversation's result, and root combines that with the writer result. Reports
+made outside a live conversation fall back to stderr/logcat.
 
 ## Local Setup Versus Remote Outcome
 

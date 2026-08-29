@@ -8,9 +8,10 @@ use socket2::SockRef;
 use tokio::io::{copy, AsyncRead, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::net::{TcpListener as TokioTcpListener, TcpStream as TokioTcpStream};
+use tokio::select;
 use tokio::sync::Mutex;
-use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use crate::report;
 use crate::root::dns::{self, DNS_PORT};
@@ -26,12 +27,15 @@ pub(crate) fn spawn_loop(
     listener: TcpListener,
     config: Arc<Mutex<SessionConfig>>,
     stop: CancellationToken,
+    detached: TaskTracker,
     counters: Nat66Counters,
     dns: dns::CounterSink,
     mac: [u8; 6],
 ) -> io::Result<()> {
     let listener = TokioTcpListener::from_std(listener)?;
-    spawn(async move {
+    // Spawn children before the tracked listener exits, preventing a transient empty tracker.
+    let connections = detached.clone();
+    detached.spawn(async move {
         loop {
             select! {
                 biased;
@@ -43,7 +47,7 @@ pub(crate) fn spawn_loop(
                             let counters = counters.clone();
                             let dns = dns.clone();
                             let connection_stop = stop.child_token();
-                            spawn(async move {
+                            connections.spawn(async move {
                                 select! {
                                     biased;
                                     _ = connection_stop.cancelled() => {}

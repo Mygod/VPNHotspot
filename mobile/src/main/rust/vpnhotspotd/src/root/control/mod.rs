@@ -8,6 +8,7 @@ use tokio::select;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use crate::report::{ControllerSender, ControllerSenderExt};
 use crate::root::{ipsec, nat66, neighbour, netlink, routing, session::Session};
@@ -20,7 +21,7 @@ use vpnhotspotd::shared::protocol::{
     daemon_io_error_report_with_details, error_frame, ipsec_forward_policy_frame,
     read_session_config, traffic_counters_frame, IoErrorReportExt, IoResultReportExt,
 };
-use vpnhotspotd::shared::tasks::Background;
+use vpnhotspotd::shared::tasks::{combine, Background};
 
 mod calls;
 mod session_control;
@@ -37,14 +38,17 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
     // read loop below learns about a peer that closed just its read half.
     let cancel = CancellationToken::new();
     let (sender, writer) = spawn_writer(controller_write, cancel.clone());
-    report::init(sender.clone())?;
+    let reporter = report::init(sender.clone())?;
+    // Reporting stays open until every detached report-capable task exits.
+    let detached = TaskTracker::new();
     let state = Arc::new(State {
         ipsec: Mutex::new(UpstreamTracker::default()),
-        nat66: nat66::ProcessResources::new(DAEMON_REPLY_MARK),
+        nat66: nat66::ProcessResources::new(DAEMON_REPLY_MARK, detached.clone()),
         sessions: Mutex::new(HashMap::new()),
         probes: Background::new("control.ipsec_probe"),
         ipv6_nat_firewall_base: Mutex::new(false),
         neighbour_monitor: Mutex::new(None),
+        detached: detached.clone(),
     });
     let active_calls: Arc<Mutex<HashMap<u64, Arc<CallState>>>> =
         Arc::new(Mutex::new(HashMap::new()));
@@ -154,14 +158,21 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
         report::message("control.ipsec_probe_join", e.to_string(), "JoinError");
     }
     state.stop(false).await;
-    report::flush().await;
+    // Drop root's ICMP-dispatcher owner so its final clone drops before or inside the tracker wait.
+    drop(state);
+    detached.close();
+    detached.wait().await;
+    // Task destruction can report, so finish only after the tracker is empty.
+    let reported = reporter.finish().await;
     drop(sender);
-    match writer.await {
+    let writing = match writer.await {
         Ok(result) => result,
         Err(e) => Err(io::Error::other(format!(
             "controller writer task failed: {e}"
         ))),
-    }
+    };
+    // Reporter and writer failures are independent.
+    combine(reported, writing)
 }
 
 struct State {
@@ -173,6 +184,8 @@ struct State {
     probes: Background,
     ipv6_nat_firewall_base: Mutex<bool>,
     neighbour_monitor: Mutex<Option<MonitorState>>,
+    /// Detached report-capable work for this conversation.
+    detached: TaskTracker,
 }
 
 struct SessionState {
@@ -411,7 +424,7 @@ async fn handle_command(
             Ok(CallOutput::NoFrame)
         }
         daemon::client_envelope::Command::ReplaceStaticAddresses(command) => {
-            let mut handle = netlink::RequestConnection::new()
+            let mut handle = netlink::RequestConnection::new(&state.detached)
                 .with_report_context("control.replace_static_addresses.netlink")?;
             routing::replace_static_addresses(&mut handle, &command)
                 .await
@@ -449,7 +462,7 @@ async fn handle_command(
             for id in complete_ids {
                 send_complete(id, sender);
             }
-            let mut handle = netlink::RequestConnection::new()
+            let mut handle = netlink::RequestConnection::new(&state.detached)
                 .with_report_context("control.clean_routing.netlink")?;
             routing::clean(&mut handle, &command)
                 .await
@@ -529,12 +542,19 @@ async fn start_session(
     }
     let mut guard = slot.control.lock().await;
     let ipsec_config = config.clone();
-    let session = match Session::start(id, config, state.nat66.clone(), cancel)
-        .await
-        .with_report_context_details(
-            "control.start_session",
-            [("downstream", downstream.as_str())],
-        ) {
+    // After downstream discovery, startup must produce an owned Session so applied state can be rolled back.
+    let session = match Session::start(
+        id,
+        config,
+        state.nat66.clone(),
+        state.detached.clone(),
+        cancel,
+    )
+    .await
+    .with_report_context_details(
+        "control.start_session",
+        [("downstream", downstream.as_str())],
+    ) {
         Ok(session) => session,
         Err(e) => {
             drop(guard);
@@ -658,7 +678,7 @@ async fn start_neighbour_monitor(
         cancel: cancel.clone(),
     });
     drop(current);
-    let result = neighbour::run(id, sender, &cancel)
+    let result = neighbour::run(id, sender, &cancel, &state.detached)
         .await
         .with_report_context("control.start_neighbour_monitor");
     let mut current = state.neighbour_monitor.lock().await;

@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex as StdMutex, Weak};
 use etherparse::{Icmpv6Header, Icmpv6Type, IpNumber, Ipv6Slice};
 use nfq::{Queue, Verdict};
 use tokio::io::unix::AsyncFd;
+use tokio_util::sync::CancellationToken;
 
 use super::raw_socket::{send_downstream_icmp, send_upstream_echo, set_upstream_echo_hop_limit};
 use super::state::EchoState;
@@ -45,6 +46,7 @@ pub(super) async fn run_queue(
     mut queue: AsyncFd<Queue>,
     registrations: Arc<StdMutex<HashMap<u32, Weak<IcmpSession>>>>,
     state: Arc<EchoState>,
+    stop: CancellationToken,
 ) {
     loop {
         let mut ready = match queue.readable_mut().await {
@@ -55,6 +57,10 @@ pub(super) async fn run_queue(
             }
         };
         loop {
+            // Continuous packets can keep one poll active; return instead of re-entering uncleared readiness.
+            if stop.is_cancelled() {
+                return;
+            }
             let message = match ready.try_io(|queue| queue.get_mut().recv()) {
                 Ok(Ok(message)) => message,
                 Ok(Err(e)) if e.kind() == io::ErrorKind::Interrupted => continue,
@@ -182,6 +188,7 @@ pub(super) async fn run_queue(
                         session.session_key,
                         state.clone(),
                         session.counters.clone(),
+                        &stop,
                     )
                     .await;
                 }
@@ -329,6 +336,7 @@ async fn handle_downstream_echo(
     session_key: u64,
     state: Arc<EchoState>,
     counters: Nat66Counters,
+    stop: &CancellationToken,
 ) {
     let Ok((header, payload)) = Icmpv6Header::from_slice(&packet.payload) else {
         return;
@@ -458,8 +466,13 @@ async fn handle_downstream_echo(
             }
             Err(e) => {
                 let checked_error_queue = if socket.error_queue {
-                    match super::upstream::drain_echo_error_queue(&socket.socket, network, &state)
-                        .await
+                    match super::upstream::drain_echo_error_queue(
+                        &socket.socket,
+                        network,
+                        &state,
+                        stop,
+                    )
+                    .await
                     {
                         Ok(_) => true,
                         Err(error) => {

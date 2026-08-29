@@ -140,6 +140,7 @@ leaves no external state to clean up.
 Root listener setup failure does not stop the session. Routing omits the missing
 redirect so ordinary traffic and manually configured downstream DNS may continue.
 Transient active-listener accept failures are retried; cancellation-time failures
-are teardown.
+are teardown. Root shutdown waits for detached queries, ensuring their
+`android_res_cancel` runs before exit without waiting for Android itself.
 
 See [`errors.md`](errors.md) for single-delivery report routing.

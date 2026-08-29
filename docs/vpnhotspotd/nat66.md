@@ -256,6 +256,10 @@ The dispatcher owns:
 - shared Echo mapping state;
 - UDP error registrations used by live UDP associations.
 
+Dropping the last dispatcher handle cancels the upstream and NFQUEUE tasks. Their
+token cancels pending waits and is also checked inside continuously ready packet
+and error-queue drains.
+
 A NAT66 session registers ICMP only after proving that downstream send support
 is available for its downstream interface and reply mark. If the transparent raw
 IPv6 bind probe fails with `EADDRNOTAVAIL`, kernels older than Linux 5.11.14

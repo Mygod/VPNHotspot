@@ -107,7 +107,7 @@ impl Session {
             report: None,
         };
         // Install background reporting only after the conversation has an accepted call ID.
-        self.reporter = Some(report::init_owned(control.clone())?);
+        self.reporter = Some(report::init(control.clone())?);
         // The app cannot prove what it transferred, so the descriptor is checked against itself here. A
         // refusal closes every descriptor that arrived.
         let (tun, gateway) = handoff::verify_tun(received, &start.interface_name, start.mtu)?;

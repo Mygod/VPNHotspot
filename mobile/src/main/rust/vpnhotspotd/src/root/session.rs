@@ -4,6 +4,7 @@ use std::sync::Arc;
 use rtnetlink::MulticastGroup;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use crate::root::{dns, downstream, nat66, netlink, routing};
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
@@ -29,13 +30,16 @@ impl Session {
         call_id: u64,
         mut config: SessionConfig,
         nat66_resources: nat66::ProcessResources,
+        detached: TaskTracker,
         cancel: &CancellationToken,
     ) -> io::Result<Self> {
         let stop = CancellationToken::new();
+        // Cancel staged async resources unless the completed Session takes ownership.
+        let stop_guard = stop.clone().drop_guard();
         let mut downstream_events =
             netlink::EventConnection::new(&[MulticastGroup::Link, MulticastGroup::Ipv4Ifaddr])
                 .with_report_context("session.downstream_ipv4.events")?;
-        let mut routing_netlink = netlink::RequestConnection::new()
+        let mut routing_netlink = netlink::RequestConnection::new(&detached)
             .with_report_context("session.downstream_ipv4.netlink")?;
         let downstream_ipv4 = downstream::wait_ipv4(
             &mut routing_netlink,
@@ -52,6 +56,7 @@ impl Session {
             config.reply_mark,
             shared.clone(),
             stop.clone(),
+            detached.clone(),
             &config,
         );
         let mut nat66 = nat66::Runtime::start(
@@ -107,7 +112,7 @@ impl Session {
             nat66_resources,
             routing,
             downstream_ipv4,
-            stop,
+            stop: stop_guard.disarm(),
         })
     }
 

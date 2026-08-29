@@ -40,6 +40,15 @@ owning document.
   [`dns.md`](dns.md).
 - Each conversation owns one nonfatal reporter, and a successor cannot install
   it while its predecessor is finishing.
+- Nonfatals coalesce by compiled source site. One handoff bounds queued nonfatals;
+  a full handoff leaves batches overdue and drains the oldest first.
+- Root waits for every detached report-capable task and destructor before
+  finishing its reporter.
+- Failed session startup cancels staged resources. Cancellation after downstream
+  discovery waits for a complete `Session`, then uses its normal rollback.
+- Tracked packet loops observe cancellation at blocking waits and within
+  continuously ready drains. Rtnetlink request drivers end when their owning
+  connection drops.
 
 ## Interception
 

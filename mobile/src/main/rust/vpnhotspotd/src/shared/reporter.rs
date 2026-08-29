@@ -1,4 +1,4 @@
-//! Coalesces nonfatal reports before handing them to the session writer.
+//! One control conversation's nonfatal coalescer and writer handoff.
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
@@ -12,7 +12,7 @@ use crate::shared::nonfatal::{NonfatalReport, SiteCoalescer};
 use crate::shared::proto::daemon::DaemonErrorReport;
 
 /// Where an emitted report goes, and whether it got there. `false` is a report the conversation could no
-/// longer carry, which the finalizer turns into the session's own failure rather than losing.
+/// longer carry, which the finalizer turns into the conversation's own failure rather than losing.
 type Sink = Box<dyn Fn(NonfatalReport, Handed) -> bool + Send + Sync>;
 
 /// A reporter's share of its conversation's writer queue: how many reports may be waiting in it at once.
@@ -102,7 +102,7 @@ pub struct Reporter {
 #[derive(Default)]
 struct Shutdown {
     /// Taken by the finalizer that runs, and only by it. A cancelled `finish` waiter never touches it, so a
-    /// dropped future cannot detach the task the session's result depends on.
+    /// dropped future cannot detach the task the conversation's result depends on.
     window: Option<JoinHandle<()>>,
     /// Whether a finalizer task has been spawned. Exactly one ever is.
     running: bool,
@@ -125,8 +125,7 @@ struct State {
     /// besides its own task.
     drained: Notify,
     undelivered: AtomicUsize,
-    /// Woken by a push that opened a window, which is the only thing the task below waits for besides the
-    /// window itself.
+    /// Woken on the first pending window; existing windows already have a deadline or wait for room.
     opened: Notify,
 }
 
@@ -164,19 +163,22 @@ impl Reporter {
     /// Coalesces one report and emits whatever that made due. Never waits, so a packet path can call it.
     pub fn push(&self, call_id: Option<u64>, report: DaemonErrorReport) -> Pushed {
         let mut refused = None;
+        let mut opened = false;
         self.state.emit(|admission, room| {
             if admission.closed {
                 refused = Some(report);
                 return Vec::new();
             }
-            admission.coalescer.push(now(), call_id, report, room)
+            let (ready, wake) = admission.coalescer.push(now(), call_id, report, room);
+            opened = wake;
+            ready
         });
         match refused {
             Some(report) => Pushed::Closed(report),
             None => {
-                // A first report of its kind opens a window whose summary falls due later, and nothing else
-                // in the process would wake for it.
-                self.state.opened.notify_one();
+                if opened {
+                    self.state.opened.notify_one();
+                }
                 Pushed::Coalesced
             }
         }
@@ -583,6 +585,32 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn only_the_first_pending_window_wakes_the_window_task() {
+        let (emitted, sink) = collecting();
+        let reporter = Reporter::new(WINDOW, HANDOFF, sink);
+
+        assert!(matches!(
+            reporter.push(None, report("shizuku.udp_send", 42)),
+            Pushed::Coalesced
+        ));
+        reporter.state.opened.notified().await;
+
+        for line in [42u32, 77u32] {
+            assert!(matches!(
+                reporter.push(None, report("shizuku.udp_send", line)),
+                Pushed::Coalesced
+            ));
+        }
+        assert!(
+            tokio::time::timeout(Duration::from_millis(1), reporter.state.opened.notified())
+                .await
+                .is_err(),
+            "an existing deadline already wakes the window task",
+        );
+        assert_eq!(count(&emitted), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn the_window_task_closes_a_window_and_finish_joins_it() {
         let registry = ReporterRegistry::new();
         let (emitted, sink) = collecting();
@@ -726,7 +754,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_report_the_conversation_could_not_carry_fails_the_session() {
+    async fn a_report_the_conversation_could_not_carry_is_returned_by_finish() {
         let registry = ReporterRegistry::new();
         let reporter = registry
             .install(Reporter::new(WINDOW, HANDOFF, |_: NonfatalReport, _| false))
@@ -738,7 +766,7 @@ mod tests {
         let failed = reporter
             .finish()
             .await
-            .expect_err("an undelivered report has to reach the session's result");
+            .expect_err("an undelivered report has to reach the conversation's result");
         assert!(failed.to_string().contains("could not be delivered"));
     }
 
@@ -1040,6 +1068,123 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn freeing_the_one_place_drains_every_waiting_site_without_another_window() {
+        let registry = ReporterRegistry::new();
+        let places: Arc<Mutex<Vec<Handed>>> = Arc::new(Mutex::new(Vec::new()));
+        let (emitted, mut arriving) = tokio::sync::mpsc::unbounded_channel();
+        let sink = Arc::clone(&places);
+        let reporter = registry
+            .install(Reporter::new(WINDOW, 1, move |report, place| {
+                sink.lock().expect("the sink is poisoned").push(place);
+                emitted.send(report).is_ok()
+            }))
+            .expect("the first installation must be accepted");
+        let pushing = registry.get().expect("a producer finds the reporter");
+        let sites = [42u32, 77u32, 99u32];
+        for line in sites {
+            for _ in 0..2 {
+                assert!(matches!(
+                    pushing.push(None, report("shizuku.udp_send", line)),
+                    Pushed::Coalesced
+                ));
+            }
+        }
+        let first = arriving.recv().await.expect("the first site is emitted");
+        assert!(sites.contains(&first.report.line));
+        assert_eq!(suppressed(&first), None);
+        assert_eq!(places.lock().expect("the sink is poisoned").len(), 1);
+        assert!(arriving.try_recv().is_err());
+
+        tokio::time::advance(WINDOW * 2).await;
+        assert!(
+            arriving.try_recv().is_err(),
+            "a window that falls due with no room has nowhere to go yet",
+        );
+
+        let mut summarised = Vec::new();
+        for _ in 0..sites.len() {
+            let released = tokio::time::Instant::now();
+            places.lock().expect("the sink is poisoned").remove(0);
+            let summary = arriving
+                .recv()
+                .await
+                .expect("a place coming back releases a waiting summary");
+            assert_eq!(
+                tokio::time::Instant::now(),
+                released,
+                "a summary waiting on room must not also wait out another window",
+            );
+            summarised.push(summary.report.line);
+        }
+        summarised.sort_unstable();
+        assert_eq!(
+            summarised, sites,
+            "every site drains, so the one that won the place cannot starve the others",
+        );
+        reporter.finish().await.expect("the flush must complete");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_writer_slower_than_the_window_still_drains_every_waiting_site() {
+        let registry = ReporterRegistry::new();
+        let places: Arc<Mutex<Vec<Handed>>> = Arc::new(Mutex::new(Vec::new()));
+        let (emitted, mut arriving) = tokio::sync::mpsc::unbounded_channel();
+        let sink = Arc::clone(&places);
+        let reporter = registry
+            .install(Reporter::new(WINDOW, 1, move |report, place| {
+                sink.lock().expect("the sink is poisoned").push(place);
+                emitted.send(report).is_ok()
+            }))
+            .expect("the first installation must be accepted");
+        let pushing = registry.get().expect("a producer finds the reporter");
+        let sites = [42u32, 77u32, 99u32];
+        for line in sites {
+            for _ in 0..2 {
+                assert!(matches!(
+                    pushing.push(None, report("shizuku.udp_send", line)),
+                    Pushed::Coalesced
+                ));
+            }
+        }
+        assert!(sites.contains(
+            &arriving
+                .recv()
+                .await
+                .expect("a site is emitted")
+                .report
+                .line
+        ));
+        assert!(arriving.try_recv().is_err());
+
+        let mut summarised = Vec::new();
+        for _ in 0..sites.len() {
+            tokio::time::advance(WINDOW * 2).await;
+            for line in sites {
+                assert!(matches!(
+                    pushing.push(None, report("shizuku.udp_send", line)),
+                    Pushed::Coalesced
+                ));
+            }
+            places.lock().expect("the sink is poisoned").remove(0);
+            summarised.push(
+                arriving
+                    .recv()
+                    .await
+                    .expect("a place coming back releases a waiting summary")
+                    .report
+                    .line,
+            );
+        }
+        summarised.sort_unstable();
+        assert_eq!(
+            summarised, sites,
+            "each release must go to the site that has waited longest, so none is passed over forever",
+        );
+        // Finishing would wait for the held slot; the next test covers that path.
+        drop(reporter);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn the_final_flush_waits_for_the_writer_between_summaries() {
         let registry = ReporterRegistry::new();
         let held: Arc<Mutex<Vec<(NonfatalReport, Handed)>>> = Arc::new(Mutex::new(Vec::new()));
@@ -1086,7 +1231,7 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_writer_that_disconnects_fails_the_reports_it_could_not_take() {
+    async fn a_writer_that_disconnects_reports_what_it_could_not_take_at_finish() {
         let registry = ReporterRegistry::new();
         let held: Arc<Mutex<Vec<(NonfatalReport, Handed)>>> = Arc::new(Mutex::new(Vec::new()));
         let connected = Arc::new(AtomicBool::new(true));
@@ -1120,9 +1265,9 @@ mod tests {
             .expect_err("the flush must wait for the one permit");
         connected.store(false, Ordering::SeqCst);
         held.lock().expect("the sink is poisoned").clear();
-        let failed = finishing
-            .await
-            .expect_err("a report the writer could not take has to reach the session's result");
+        let failed = finishing.await.expect_err(
+            "a report the writer could not take has to reach the conversation's result",
+        );
         assert!(failed.to_string().contains("could not be delivered"));
     }
 }

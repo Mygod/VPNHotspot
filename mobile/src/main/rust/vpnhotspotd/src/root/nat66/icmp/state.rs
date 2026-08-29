@@ -8,6 +8,7 @@ use socket2::Socket;
 use tokio::io::unix::AsyncFd;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use super::super::IDLE_TIMEOUT;
 use super::probe::normalize_udp_error_addr;
@@ -18,9 +19,10 @@ use vpnhotspotd::shared::icmp_nat::{EchoAllocation, EchoEntry, EchoMap};
 use vpnhotspotd::shared::model::Network;
 use vpnhotspotd::shared::nat66_counter::Nat66Counters;
 
-#[derive(Default)]
 pub(super) struct EchoState {
     inner: StdMutex<EchoStateInner>,
+    /// Detached report-capable upstream loops.
+    pub(super) detached: TaskTracker,
 }
 
 #[derive(Default)]
@@ -70,6 +72,13 @@ impl Drop for UdpErrorRegistration {
 }
 
 impl EchoState {
+    pub(super) fn new(detached: TaskTracker) -> Self {
+        Self {
+            inner: StdMutex::default(),
+            detached,
+        }
+    }
+
     pub(super) fn register_session(
         &self,
         session_key: u64,

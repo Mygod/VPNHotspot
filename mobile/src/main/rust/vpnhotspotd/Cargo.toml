@@ -25,7 +25,8 @@ rtnetlink = { version = "0.21.0", default-features = false, features = ["tokio_s
 smoltcp = { version = "0.13", default-features = false, features = ["std", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp"] }
 socket2 = { version = "0.6.5", features = ["all"] }
 tokio = { version = "1.53.1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
-tokio-util = "0.7.19"
+# `rt` for `task::TaskTracker`: root waits for every detached report-capable future before ending reporting.
+tokio-util = { version = "0.7.19", features = ["rt"] }
 
 [dev-dependencies]
 tokio = { version = "1.53.1", features = ["test-util"] }

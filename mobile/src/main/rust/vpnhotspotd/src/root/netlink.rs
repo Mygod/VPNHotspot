@@ -18,6 +18,7 @@ use rtnetlink::{
     IpVersion, MulticastGroup,
 };
 use tokio::task::JoinHandle;
+use tokio_util::task::TaskTracker;
 use vpnhotspotd::shared::proto::daemon;
 
 pub(crate) struct RequestConnection {
@@ -26,11 +27,12 @@ pub(crate) struct RequestConnection {
 }
 
 impl RequestConnection {
-    pub(crate) fn new() -> io::Result<Self> {
+    /// Tracks the report-capable driver until its owning connection drops and abort completes.
+    pub(crate) fn new(detached: &TaskTracker) -> io::Result<Self> {
         let (connection, inner, _) = rtnetlink::new_connection()?;
         Ok(Self {
             inner,
-            task: tokio::spawn(async move {
+            task: detached.spawn(async move {
                 connection.await;
                 crate::report::message(
                     "netlink.request_connection",

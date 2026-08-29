@@ -12,10 +12,12 @@ use rtnetlink::packet_route::{
 };
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::io::unix::AsyncFd;
+use tokio::select;
 use tokio::sync::{Mutex, Notify};
+use tokio::task::JoinHandle;
 use tokio::time::{sleep_until, Instant as TokioInstant};
-use tokio::{select, spawn, task::JoinHandle};
 use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use cidr::Ipv6Inet;
 
@@ -56,10 +58,12 @@ pub(crate) fn spawn_loop(
     mut events: netlink::EventConnection,
     mut netlink: netlink::RequestConnection,
     stop: CancellationToken,
+    detached: TaskTracker,
     initial: &SessionConfig,
-) -> io::Result<JoinHandle<()>> {
+) -> io::Result<JoinHandle<Option<()>>> {
     let socket = AsyncFd::new(create_recv_socket(&initial.downstream, initial.reply_mark)?)?;
-    Ok(spawn(async move {
+    // Tracking covers failed startup; Runtime::stop joins normal shutdown and withdraws prefixes.
+    Ok(detached.spawn(stop.clone().run_until_cancelled_owned(async move {
         let mut next_ra = Instant::now();
         let mut next_suppressed_ra = None;
         let mut suppressed_prefixes = HashMap::<Ipv6Inet, Instant>::new();
@@ -286,6 +290,10 @@ pub(crate) fn spawn_loop(
                         }
                     };
                     loop {
+                        // Continuous solicitations can keep one poll active.
+                        if stop.is_cancelled() {
+                            break;
+                        }
                         match recv_request(socket.get_ref(), &mut buffer) {
                             Ok(RaRequest::RouterSolicitation(source)) => {
                                 if let Some(router) = router {
@@ -342,7 +350,7 @@ pub(crate) fn spawn_loop(
                 }
             }
         }
-    }))
+    })))
 }
 
 pub(crate) async fn withdraw_prefixes_once(

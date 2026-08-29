@@ -2,15 +2,12 @@ use std::ffi::CString;
 use std::fmt;
 use std::io;
 use std::io::Write;
-use std::sync::{LazyLock, OnceLock};
-use std::time::{Duration, Instant};
+use std::sync::LazyLock;
+use std::time::Duration;
 
 use libc::{c_char, c_int};
-use tokio::sync::mpsc::{
-    unbounded_channel, UnboundedReceiver, UnboundedSender, WeakUnboundedSender,
-};
-use tokio::sync::oneshot;
-use vpnhotspotd::shared::nonfatal::{NonfatalCoalescer, NonfatalReport};
+use tokio::sync::mpsc::UnboundedSender;
+use vpnhotspotd::shared::nonfatal::NonfatalReport;
 use vpnhotspotd::shared::proto::daemon::DaemonErrorReport;
 use vpnhotspotd::shared::protocol::{
     daemon_error_report, daemon_error_report_with_details, daemon_io_error_report,
@@ -18,45 +15,26 @@ use vpnhotspotd::shared::protocol::{
 };
 use vpnhotspotd::shared::reporter::{Handed, Pushed, Reporter, ReporterGuard, ReporterRegistry};
 
-/// Where a report made anywhere in this process finds the conversation that can carry it. Holds the reporter
-/// weakly and refuses a second installation - see [ReporterRegistry] - so the reporter belongs to the
-/// conversation that installed it and stops existing when that conversation finishes.
+/// Process-wide registry for the active control conversation.
 static REPORTER: LazyLock<ReporterRegistry> = LazyLock::new(ReporterRegistry::default);
 
 const NONFATAL_COALESCE_WINDOW: Duration = Duration::from_secs(1);
-/// How many reports may be waiting in the controller's queue at once.
-///
-/// One, and derived rather than picked. That queue is unbounded, because a reply or an event the session must
-/// not lose can always be put on it, so this is what keeps *reporting* on it bounded: a controller that has
-/// stopped reading cannot be made to make room, and reporting that kept handing it summaries would grow the
-/// queue by one per window per report site for as long as the daemon ran. Under this bound the reports stay
-/// in their windows instead, where the coalescer already holds them to one batch per site, and the writer's
-/// own progress is what releases them.
-///
-/// The writer is serial - one task, writing one frame at a time - so a second handed report cannot be written
-/// any sooner than the first is. A larger number would only move reports out of the coalescer, where they are
-/// summarised, and into a queue where they are not.
+/// Limits nonfatals in the unbounded serial writer queue to one. Extra slots cannot
+/// increase throughput; they only move reports out of the bounded coalescer.
 const NONFATAL_QUEUE: usize = 1;
 const ANDROID_LOG_INFO: c_int = 4;
 const ANDROID_LOG_ERROR: c_int = 6;
 const LOG_TAG: &[u8] = b"vpnhotspotd\0";
 
 pub(crate) type ControllerSender = UnboundedSender<ControllerMessage>;
-pub(crate) type WeakControllerSender = WeakUnboundedSender<ControllerMessage>;
 
 pub(crate) enum ControllerMessage {
     Frame(Vec<u8>),
     Nonfatal {
         frame: Vec<u8>,
         report: DaemonErrorReport,
-        /// This report's place in this queue, given back when the writer drops the message it has written -
-        /// which is what lets the next report be handed over. Named for nothing to read, because nothing
-        /// should: it is released by dropping the message, so every path the writer has out of one gives the
-        /// place back without having to remember to.
-        ///
-        /// `None` for the root daemon, which has no such bound: its queue is unbounded and its reporter is a
-        /// single coalescing task, exactly as it always was. Only the app session hands out places.
-        _place: Option<Handed>,
+        /// Releases the reporter's handoff slot when the writer drops this message.
+        _place: Handed,
     },
 }
 
@@ -89,21 +67,9 @@ impl ControllerMessage {
 
 pub(crate) trait ControllerSenderExt {
     fn send_frame(&self, frame: Vec<u8>) -> bool;
-
-    /// Root's nonfatal send: no place, because root's queue is unbounded and nothing is waiting on room.
-    fn send_nonfatal(&self, call_id: Option<u64>, report: DaemonErrorReport) -> bool;
 }
 
 impl ControllerSenderExt for ControllerSender {
-    fn send_nonfatal(&self, call_id: Option<u64>, report: DaemonErrorReport) -> bool {
-        self.send(ControllerMessage::Nonfatal {
-            frame: nonfatal_frame(call_id, report.clone()),
-            report,
-            _place: None,
-        })
-        .is_ok()
-    }
-
     fn send_frame(&self, frame: Vec<u8>) -> bool {
         self.send(ControllerMessage::Frame(frame)).is_ok()
     }
@@ -129,17 +95,8 @@ unsafe extern "C" {
     fn __android_log_write(priority: c_int, tag: *const c_char, text: *const c_char) -> c_int;
 }
 
-/// Installs the one reporter this process may have and hands its owner back, so the conversation that called
-/// this is the thing that owns reporting: nothing else can extend it, and finishing the guard is what ends it
-/// - see [ReporterGuard::finish], whose result the session returns.
-///
-/// The sender is downgraded rather than held: the reporter is reachable from every packet path, so a strong
-/// reference here would keep the control writer alive past the point its owner drops it and the session would
-/// never see the writer's own result.
-///
-/// Fails when another conversation's reporter is still installed, and fails having started nothing at all -
-/// the registration is what admits the window task, so an overlapping second conversation cannot leak one.
-pub(crate) fn init_owned(sender: ControllerSender) -> io::Result<ReporterGuard> {
+/// Installs this conversation's reporter. The weak sender cannot extend the writer's lifetime.
+pub(crate) fn init(sender: ControllerSender) -> io::Result<ReporterGuard> {
     let controller = sender.downgrade();
     REPORTER.install(Reporter::new(
         NONFATAL_COALESCE_WINDOW,
@@ -149,12 +106,9 @@ pub(crate) fn init_owned(sender: ControllerSender) -> io::Result<ReporterGuard> 
                 match sender.send(ControllerMessage::Nonfatal {
                     frame: nonfatal_frame(call_id, report.clone()),
                     report,
-                    _place: Some(place),
+                    _place: place,
                 }) {
                     Ok(()) => true,
-                    // The conversation is the only place a report can go, so this is where one is
-                    // lost. It goes to stderr, which the app reads, and the loss itself reaches the
-                    // session through the guard's finish rather than ending here.
                     Err(e) => {
                         e.0.log_drop_after_disconnect();
                         false
@@ -169,121 +123,22 @@ pub(crate) fn init_owned(sender: ControllerSender) -> io::Result<ReporterGuard> 
     ))
 }
 
-/// Root's reporter, exactly as it has always been: one coalescing task behind a process-global channel,
-/// installed for the daemon's single control conversation and drained once at the end.
-///
-/// Kept whole rather than folded into the app's registry. The app session needs an owned reporter whose
-/// finish is part of the session's own result and whose handover is bounded by its writer queue; root needs
-/// neither, and giving it either would be changing root's behaviour to suit a mode it does not run.
-static ROOT: OnceLock<UnboundedSender<ReportCommand>> = OnceLock::new();
-
-enum ReportCommand {
-    Report {
-        call_id: Option<u64>,
-        report: DaemonErrorReport,
-    },
-    Flush {
-        done: oneshot::Sender<()>,
-    },
-}
-
-pub(crate) fn init(sender: ControllerSender) -> io::Result<()> {
-    let controller = sender.downgrade();
-    let (report_sender, report_receiver) = unbounded_channel();
-    ROOT.set(report_sender)
-        .map_err(|_| io::Error::other("nonfatal reporter already initialized"))?;
-    tokio::spawn(run_reporter(controller, report_receiver));
-    Ok(())
-}
-
-pub(crate) async fn flush() {
-    let Some(sender) = ROOT.get() else {
-        return;
-    };
-    let (done, flushed) = oneshot::channel();
-    if sender.send(ReportCommand::Flush { done }).is_ok() {
-        let _ = flushed.await;
-    }
-}
-
-async fn run_reporter(
-    controller: WeakControllerSender,
-    mut commands: UnboundedReceiver<ReportCommand>,
-) {
-    let mut coalescer = NonfatalCoalescer::new(NONFATAL_COALESCE_WINDOW);
-    loop {
-        let command = if let Some(deadline) = coalescer.next_deadline() {
-            tokio::select! {
-                command = commands.recv() => command,
-                () = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => {
-                    emit_reports(&controller, coalescer.emit_due(Instant::now()));
-                    continue;
-                }
-            }
-        } else {
-            commands.recv().await
-        };
-        let Some(command) = command else {
-            emit_reports(&controller, coalescer.flush());
-            break;
-        };
-        match command {
-            ReportCommand::Report { call_id, report } => {
-                emit_reports(&controller, coalescer.push(Instant::now(), call_id, report));
-            }
-            ReportCommand::Flush { done } => {
-                emit_reports(&controller, coalescer.flush());
-                let _ = done.send(());
-            }
-        }
-    }
-}
-
-fn emit_reports(controller: &WeakControllerSender, reports: Vec<NonfatalReport>) {
-    for NonfatalReport { call_id, report } in reports {
-        if let Some(sender) = controller.upgrade() {
-            if sender.send_nonfatal(call_id, report.clone()) {
-                continue;
-            }
-        }
-        stderr!("nonfatal report dropped after controller disconnect: {report:?}");
-    }
-}
-
 pub(crate) fn report(report: DaemonErrorReport) {
     report_for(None, report);
 }
 
-/// Coalesces one report into whichever conversation owns reporting in *this* process.
-///
-/// The app registry first, and if one is installed it is the only answer: a session whose reporter has
-/// finished gets a stderr line rather than a silent fall-through to root's pipeline, because the app UID has
-/// no root pipeline and pretending otherwise would report a session's failures as somebody else's. Root
-/// installs no registry, so a root daemon always takes the second arm - master's behaviour, unchanged.
+/// Routes a report to the active conversation, or logs it when none can accept it.
 pub(crate) fn report_for(call_id: Option<u64>, report: DaemonErrorReport) {
-    if let Some(reporter) = REPORTER.get() {
-        match reporter.push(call_id, report) {
-            Pushed::Coalesced => {}
-            // Handed back rather than dropped inside, so this costs nothing on the path that works: the
-            // report is only formatted where there is no longer anywhere to send it.
-            Pushed::Closed(report) => {
-                stderr!("nonfatal report made after the reporter finished: {report:?}");
-            }
-        }
+    let Some(reporter) = REPORTER.get() else {
+        stderr!("nonfatal report made with no reporter to carry it: {report:?}");
         return;
-    }
-    if let Some(sender) = ROOT.get() {
-        if sender
-            .send(ReportCommand::Report {
-                call_id,
-                report: report.clone(),
-            })
-            .is_ok()
-        {
-            return;
+    };
+    match reporter.push(call_id, report) {
+        Pushed::Coalesced => {}
+        Pushed::Closed(report) => {
+            stderr!("nonfatal report made after the reporter finished: {report:?}");
         }
     }
-    stderr!("nonfatal report dropped after controller disconnect: {report:?}");
 }
 
 #[track_caller]

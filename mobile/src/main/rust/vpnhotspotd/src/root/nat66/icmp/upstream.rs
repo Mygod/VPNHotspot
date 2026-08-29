@@ -5,8 +5,8 @@ use std::sync::Arc;
 use etherparse::{Icmpv6Header, Icmpv6Type};
 use socket2::Socket;
 use tokio::io::unix::AsyncFd;
+use tokio::select;
 use tokio::sync::Notify;
-use tokio::{select, spawn};
 use tokio_util::sync::CancellationToken;
 
 use super::super::sleep_until_deadline;
@@ -44,7 +44,7 @@ pub(super) fn spawn_loop(
     state: Arc<EchoState>,
     stop: CancellationToken,
 ) {
-    spawn(async move {
+    state.detached.clone().spawn(async move {
         let mut buffer = vec![0u8; 65535];
         loop {
             let deadline = match state.upstream_activity(network) {
@@ -63,6 +63,7 @@ pub(super) fn spawn_loop(
                 }
             };
             let mut ready = select! {
+                biased;
                 _ = stop.cancelled() => break,
                 _ = changed.notified() => continue,
                 _ = sleep_until_deadline(deadline) => {
@@ -88,7 +89,12 @@ pub(super) fn spawn_loop(
                     break;
                 }
                 if error_queue {
-                    match drain_echo_error_queue(&socket, network, &state).await {
+                    let drained = select! {
+                        biased;
+                        _ = stop.cancelled() => break,
+                        drained = drain_echo_error_queue(&socket, network, &state, &stop) => drained,
+                    };
+                    match drained {
                         Ok(_) => {}
                         Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
                         Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
@@ -100,7 +106,11 @@ pub(super) fn spawn_loop(
                     }
                 }
                 match recv_raw_icmp_packet(&socket, &mut buffer) {
-                    Ok(Some(packet)) => handle_upstream_icmp_packet(network, &state, packet).await,
+                    Ok(Some(packet)) => select! {
+                        biased;
+                        _ = stop.cancelled() => break,
+                        () = handle_upstream_icmp_packet(network, &state, packet) => {}
+                    },
                     Ok(None) => continue,
                     Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
                         ready.clear_ready();
@@ -347,9 +357,14 @@ pub(super) async fn drain_echo_error_queue(
     socket: &AsyncFd<Socket>,
     network: Network,
     state: &EchoState,
+    stop: &CancellationToken,
 ) -> io::Result<usize> {
     let mut drained = 0;
     loop {
+        // Continuous error-queue traffic can keep one poll active.
+        if stop.is_cancelled() {
+            return Ok(drained);
+        }
         let message = match recv_error_queue(socket) {
             Ok(message) => message,
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => return Ok(drained),
