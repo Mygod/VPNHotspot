@@ -34,8 +34,9 @@ stops all owned work and exits.
 launches the child with `ProcessBuilder`. The child inherits the app UID; the app
 retains its `Process` and PID and accepts only a peer whose credentials match
 both. On the app-UID path, inherited `SCHED_BATCH` or `SCHED_IDLE` is reset to
-ordinary `SCHED_OTHER` before Tokio starts. Failure to reset is logged and does
-not prevent startup.
+ordinary `SCHED_OTHER` before Tokio starts. Failing to read or reset the policy
+is logged immediately, then reported once as a nonfatal after the session reporter
+is installed. Startup continues under the inherited policy.
 
 `StartShizukuSessionCommand` is the event call that owns the session. Each direct
 `ShizukuSessionConfig` is a one-shot call correlated by its own `call_id`.

@@ -25,7 +25,11 @@ use crate::shizuku::handoff;
 use crate::shizuku::tun_reader;
 use crate::shizuku::tun_writer;
 
-pub(crate) async fn run(socket_name: String) -> io::Result<()> {
+/// Carries an early scheduling failure until this session installs its reporter.
+pub(crate) async fn run(
+    socket_name: String,
+    scheduling: Option<daemon::DaemonErrorReport>,
+) -> io::Result<()> {
     let stream = connect_control_socket(&socket_name).await?;
     // The descriptor rides on the start call's frame, so that frame is read with `recvmsg` before the stream
     // is split. Nothing can be answered yet and nothing tries to be: a frame malformed at this level names no
@@ -49,7 +53,9 @@ pub(crate) async fn run(socket_name: String) -> io::Result<()> {
         writing,
         terminal: Terminal::Nobody,
     };
-    let result = session.serve(&mut reader, payload, received).await;
+    let result = session
+        .serve(&mut reader, payload, received, scheduling)
+        .await;
     session.finish(result).await
 }
 
@@ -79,6 +85,7 @@ impl Session {
         reader: &mut OwnedReadHalf,
         payload: Vec<u8>,
         received: Vec<OwnedFd>,
+        scheduling: Option<daemon::DaemonErrorReport>,
     ) -> io::Result<()> {
         let control = self
             .control
@@ -108,6 +115,10 @@ impl Session {
         };
         // Install background reporting only after the conversation has an accepted call ID.
         self.reporter = Some(report::init(control.clone())?);
+        // Startup already logged this failure to stderr before the reporter existed.
+        if let Some(report) = scheduling {
+            report::report(report);
+        }
         // The app cannot prove what it transferred, so the descriptor is checked against itself here. A
         // refusal closes every descriptor that arrived.
         let (tun, gateway) = handoff::verify_tun(received, &start.interface_name, start.mtu)?;
