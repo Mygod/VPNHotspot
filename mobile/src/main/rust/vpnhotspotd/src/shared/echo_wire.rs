@@ -1,28 +1,3 @@
-//! Wire format for relayed Echo: the strict parse of a client Echo Request read from the TUN, and the
-//! construction of the Echo Reply that goes back out through the common writer.
-//!
-//! Only Echo. Every other ICMP type a client sends belongs to somebody else - Neighbor Discovery, Router
-//! Advertisement and DHCP are Android's downstream link control, and an *error* from a client describes a
-//! packet this daemon never forwarded - so this recognises one message and rejects the rest rather than
-//! growing into a dispatch table.
-//!
-//! The two families are built separately and never by reinterpreting one header as the other. The type
-//! numbers differ (8 and 128 for a request, 0 and 129 for a reply) and ICMPv6's checksum covers a
-//! pseudo-header that ICMPv4's does not, so one numeric path would produce a packet that looks right here
-//! and fails validation at the client.
-//!
-//! The identifier and the sequence get different treatment, and that asymmetry is forced by the kernel
-//! rather than chosen. An unprivileged ping socket overwrites the identifier of everything sent through it
-//! with its own bound port, so on the wire every session on one socket shares an identifier and it cannot
-//! tell them apart. The sequence is passed through untouched, which makes it the only field left to
-//! allocate - and the client's own values then have to be carried in the table and restored on the way
-//! back.
-//!
-//! Both halves of that pair are restored, for two different readers. `nf_conntrack_proto_icmp` builds its
-//! tuple from type, code and the identifier only, so the identifier is what Android's inner IPv4 NAT
-//! reverses a reply by - and the sequence's absence from that tuple is exactly why substituting it is safe.
-//! The client's own sequence still has to come back, because a ping matches replies on the pair.
-
 use std::net::IpAddr;
 #[cfg(test)]
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -36,37 +11,18 @@ use crate::shared::ip_wire::{ipv6_payload, Ipv6Payload, Packet};
 use crate::shared::packet_writer::WriterError;
 use crate::shared::udp_wire::Reject;
 
-/// Type, code, checksum, identifier, sequence. The same eight bytes in both families, which is the only
-/// thing about them that is the same.
 pub const ECHO_HEADER_LEN: usize = 8;
 
-/// One client Echo Request, in the terms the table keys and forwards on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Request<'a> {
-    /// The TUN-visible source, which is where the reply goes. Never an identity: for IPv4 this is Android's
-    /// own inner NAT address, and nothing distinguishes a tethered client's from one a local app chose.
     pub client: IpAddr,
     pub remote: IpAddr,
-    /// As it arrived, not yet decremented. The forwarding decision belongs to the caller, which is also the
-    /// only thing that can answer an expired one.
     pub hop_limit: u8,
-    /// IPv4 DF, which the caller reapplies to the shared ping socket before each send.
-    ///
-    /// True for IPv6, where it is not a bit at all: no router may fragment an IPv6 packet, so the permission
-    /// the IPv4 bit withholds is withheld unconditionally there.
     pub dont_fragment: bool,
-    /// The client's own pair, neither half of which survives the trip: the kernel overwrites the identifier
-    /// and the daemon substitutes the sequence. So both have to be kept here to be restored.
     pub identity: Identity,
     pub payload: &'a [u8],
 }
 
-/// The identifier and sequence pair that names one Echo message.
-///
-/// A unit rather than two arguments because both directions need both together: coming back from a ping
-/// socket the pair is what the session is looked up by, and going out to a client it is what the session
-/// restores. Whose values they are differs by direction, and that is the caller's business - the sequence
-/// arriving from upstream is the daemon's own, while the pair written toward a client is the client's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Identity {
     pub identifier: u16,
@@ -79,14 +35,10 @@ pub fn parse(packet: &[u8]) -> Result<Request<'_>, Reject> {
             if header.protocol() != IpNumber::ICMP {
                 return Err(Reject::NotUdp);
             }
-            // more-fragments, or a non-zero offset
             if header.more_fragments() || header.fragments_offset() != IpFragOffset::ZERO {
                 return Err(Reject::Fragmented);
             }
             let echo = message(payload, icmpv4::TYPE_ECHO_REQUEST)?;
-            // Never optional, unlike UDP's over IPv4: RFC 792 requires it. Verified because the message
-            // leaves under a substituted sequence and so acquires a fresh valid checksum, which makes this
-            // the only place corruption in it can still be seen.
             if Icmpv4Header::with_checksum(Icmpv4Type::EchoRequest(echo.header()), echo.payload)
                 .checksum
                 != echo.checksum
@@ -103,8 +55,6 @@ pub fn parse(packet: &[u8]) -> Result<Request<'_>, Reject> {
             })
         }
         Packet::Ipv6 { header, payload } => {
-            // the extension-header set comes from the library rather than a list repeated here, so a chain
-            // this parse cannot walk is never mistaken for an unsupported transport
             match ipv6_payload(header.next_header(), IpNumber::IPV6_ICMP) {
                 Ipv6Payload::Transport => {}
                 Ipv6Payload::Fragment => return Err(Reject::Fragmented),
@@ -138,18 +88,6 @@ pub fn parse(packet: &[u8]) -> Result<Request<'_>, Reject> {
     }
 }
 
-/// Reads the identifier and sequence out of one Echo Reply as a ping socket delivers it, which is the ICMP
-/// message with no IP header in front of it.
-///
-/// The identifier is the kernel's rather than the client's, since the kernel imposed it on the way out and the
-/// remote echoed it back. It is checked for nothing: demultiplexing on it is how this message reached the
-/// socket at all.
-///
-/// The checksum is not verified and cannot usefully be: over IPv4 it covers only the message, which the
-/// kernel already checked before demultiplexing, and over IPv6 it covers a pseudo-header whose destination
-/// address is the selected network's own and is not reported with the datagram. Nothing here is repeated to
-/// the client either - the reply is rebuilt around the client's own identity - so an undetected flip in the
-/// payload is a payload the client compares against what it sent, which is where a ping expects to catch it.
 pub fn peek_reply(message: &[u8], ipv6: bool) -> Result<(Identity, &[u8]), Reject> {
     peek(
         message,
@@ -161,10 +99,6 @@ pub fn peek_reply(message: &[u8], ipv6: bool) -> Result<(Identity, &[u8]), Rejec
     )
 }
 
-/// Reads the identity out of an Echo *Request* quoted back inside an ICMP error.
-///
-/// The sequence in it is the one the daemon substituted, which is what identifies the session - a ping socket's
-/// errors name no destination, so this is the only handle on which request the error is about.
 pub fn peek_request(message: &[u8], ipv6: bool) -> Result<(Identity, &[u8]), Reject> {
     peek(
         message,
@@ -192,11 +126,6 @@ fn peek(message: &[u8], expected: u8) -> Result<(Identity, &[u8]), Reject> {
     ))
 }
 
-/// Builds the Echo Request to write to a ping socket, under the sequence the caller allocated.
-///
-/// The checksum is left zero because the kernel computes it for a ping socket, and the identifier is left
-/// zero because the kernel overwrites it: writing either would be writing a value that never reaches the
-/// wire, which would then have to be explained at every reader.
 pub fn build_request(ipv6: bool, sequence: u16, payload: &[u8]) -> Vec<u8> {
     let mut message = Vec::with_capacity(ECHO_HEADER_LEN + payload.len());
     message.extend([
@@ -216,13 +145,6 @@ pub fn build_request(ipv6: bool, sequence: u16, payload: &[u8]) -> Vec<u8> {
     message
 }
 
-/// Builds the TUN-side Echo Reply for one upstream reply, from the remote that answered to the client that
-/// asked, restoring the client's own identifier and sequence.
-///
-/// `identification` is the IPv4 fragmentation permission and works exactly as in
-/// [crate::shared::udp_wire::build_reply]: `None` sets DF, which is what a reply within the session MTU
-/// gets, and `Some` clears it and carries the value the caller's own source fragmentation repeats into every
-/// fragment. IPv6 ignores it.
 pub fn build_reply(
     remote: IpAddr,
     client: IpAddr,
@@ -242,12 +164,6 @@ pub fn build_reply(
     )
 }
 
-/// Rebuilds the Echo Request a client sent, as it looked on the TUN.
-///
-/// Only ever needed as the quote inside an error about that request. The daemon does not keep the packet, so
-/// this is a reconstruction: the addresses and the client's own identifier and sequence are exact, which is what
-/// lets the client match the error to the ping that caused it, and the payload is empty because inventing bytes
-/// the client would then compare against what it sent would be worse than sending none.
 pub fn build_request_packet(
     client: IpAddr,
     remote: IpAddr,
@@ -258,8 +174,6 @@ pub fn build_request_packet(
     build(true, client, remote, hop_limit, None, identity, payload)
 }
 
-/// One Echo packet from `source` to `destination`. `request` picks the type, which differs per family and is
-/// never derived by arithmetic on the other one.
 fn build(
     request: bool,
     source: IpAddr,
@@ -294,7 +208,6 @@ fn build(
             };
             ip.set_payload_len(ECHO_HEADER_LEN + payload.len())
                 .map_err(|_| WriterError::Malformed("echo reply exceeds an IPv4 datagram"))?;
-            // last, because to_bytes serializes the stored value rather than recomputing it
             ip.header_checksum = ip.calc_header_checksum();
             Ok(assemble(&ip.to_bytes(), &icmp.to_bytes(), payload))
         }
@@ -308,7 +221,6 @@ fn build(
             };
             ip.set_payload_length(ECHO_HEADER_LEN + payload.len())
                 .map_err(|_| WriterError::Malformed("echo reply exceeds an IPv6 datagram"))?;
-            // ICMPv6's checksum covers a pseudo-header, unlike ICMPv4's, so it needs the addresses
             let icmp = Icmpv6Header::with_checksum(
                 if request {
                     Icmpv6Type::EchoRequest(echo)
@@ -328,7 +240,6 @@ fn build(
     }
 }
 
-/// The Echo header's own fields, before either family's checksum has been verified.
 struct Echo<'a> {
     checksum: u16,
     identifier: u16,
@@ -337,9 +248,6 @@ struct Echo<'a> {
 }
 
 impl Echo<'_> {
-    /// The identifier and sequence in the shape both families' checksum builders take. The wrapping type
-    /// differs per family and is applied at the call site, which is what keeps one numeric path from
-    /// producing an ICMPv4 checksum for an ICMPv6 message.
     fn header(&self) -> IcmpEchoHeader {
         IcmpEchoHeader {
             id: self.identifier,
@@ -355,8 +263,6 @@ impl Echo<'_> {
     }
 }
 
-/// The fixed Echo header and the payload behind it. A different type is [Reject::NotUdp] rather than
-/// malformed, because it is a well-formed message for somebody else.
 fn message(slice: &[u8], expected: u8) -> Result<Echo<'_>, Reject> {
     if slice.len() < ECHO_HEADER_LEN {
         return Err(Reject::Malformed("ICMP echo header does not fit"));
@@ -364,8 +270,6 @@ fn message(slice: &[u8], expected: u8) -> Result<Echo<'_>, Reject> {
     if slice[0] != expected {
         return Err(Reject::NotUdp);
     }
-    // Both RFC 792 and RFC 4443 define Echo with code 0 only. A non-zero one is not an Echo this daemon may
-    // repeat: the remote echoes the code back, and the client's stack would then see a message it never sent.
     if slice[1] != 0 {
         return Err(Reject::Malformed("ICMP echo code is not zero"));
     }
@@ -390,7 +294,6 @@ mod tests {
     use super::*;
     use crate::shared::packet_writer::{validate, IPV4_HEADER_LEN, IPV6_HEADER_LEN};
 
-    /// Whatever the identity is, when the test is about something else.
     const ONE: Identity = Identity {
         identifier: 1,
         sequence: 1,
@@ -401,9 +304,6 @@ mod tests {
     const CLIENT6: IpAddr = IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 1, 0, 0, 0, 0, 2));
     const REMOTE6: IpAddr = IpAddr::V6(Ipv6Addr::new(0x2606, 0x4700, 0, 0, 0, 0, 0, 0x1111));
 
-    /// A client Echo Request as it would arrive on the TUN. Built by hand rather than through
-    /// [build_reply], because a request is not a reply: the type byte differs, so reusing the reply builder
-    /// would test the parse against the wrong message.
     fn client_request(
         client: IpAddr,
         remote: IpAddr,
@@ -477,7 +377,6 @@ mod tests {
     fn a_corrupted_checksum_is_rejected_in_both_families() {
         for (client, remote) in [(CLIENT4, REMOTE4), (CLIENT6, REMOTE6)] {
             let mut packet = client_request(client, remote, 1, 1, b"probe");
-            // the last payload byte, which every family's checksum covers
             *packet.last_mut().unwrap() ^= 0xff;
             assert_eq!(
                 parse(&packet),
@@ -492,13 +391,10 @@ mod tests {
 
     #[test]
     fn only_echo_requests_are_accepted() {
-        // An Echo *Reply* from a client is a well-formed message for somebody else, not a malformed request:
-        // it must not be mistaken for something to relay.
         for (client, remote) in [(CLIENT4, REMOTE4), (CLIENT6, REMOTE6)] {
             let packet = build_reply(client, remote, 64, None, ONE, b"probe").unwrap();
             assert_eq!(parse(&packet), Err(Reject::NotUdp));
         }
-        // and a non-zero code is a request this daemon may not repeat, because the remote echoes it back
         let mut packet = client_request(CLIENT4, REMOTE4, 1, 1, b"probe");
         packet[IPV4_HEADER_LEN + 1] = 3;
         assert_eq!(
@@ -510,11 +406,9 @@ mod tests {
     #[test]
     fn a_fragmented_request_is_separated_from_an_unsupported_one() {
         let mut packet = client_request(CLIENT4, REMOTE4, 1, 1, b"probe");
-        // clear DF and set a non-zero fragment offset, which is what a trailing fragment looks like
         packet[6] = 0;
         packet[7] = 1;
         assert_eq!(parse(&packet), Err(Reject::Fragmented));
-        // Keep fragmentation distinguishable from an unsupported protocol so the two are counted separately.
         let mut packet = client_request(CLIENT6, REMOTE6, 1, 1, b"probe");
         packet[6] = IpNumber::IPV6_FRAGMENTATION_HEADER.0;
         assert_eq!(parse(&packet), Err(Reject::Fragmented));
@@ -541,7 +435,6 @@ mod tests {
             } else {
                 IPV4_HEADER_LEN
             };
-            // an Echo Reply of the client's own family, carrying the identifier and sequence it chose
             assert_eq!(
                 packet[header],
                 if client.is_ipv6() {
@@ -584,7 +477,6 @@ mod tests {
                     icmpv4::TYPE_ECHO_REQUEST
                 }
             );
-            // code, then the checksum and identifier the kernel fills in, then the allocated sequence
             assert_eq!(&message[1..6], &[0, 0, 0, 0, 0]);
             assert_eq!(u16::from_be_bytes([message[6], message[7]]), 0x2211);
             assert_eq!(&message[ECHO_HEADER_LEN..], b"probe");

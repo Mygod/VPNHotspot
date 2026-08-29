@@ -1,28 +1,4 @@
-//! One resolver transaction on a chosen `Network`, through the platform resolver rather than sockets the
-//! daemon owns.
-//!
-//! The app-UID TestNetwork path's resolver, and only that: [crate::shizuku::virtual_dns] and the DNS-over-TCP
-//! transaction table are its callers. Root's DNS proxy keeps its own resolver code in `root/dns.rs`,
-//! unchanged, and nothing here is reachable from it.
-//!
-//! Going through the platform keeps private DNS, caching, and per-network resolver configuration, none of
-//! which the daemon could reimplement. What it costs is that the operation belongs to Android once submitted:
-//! `android_res_cancel` is a `close()` of the descriptor this process was handed, so dropping it recovers
-//! this process's descriptor and not the resolver's work. Android's own query limiter releases the slot when
-//! its `resolv_res_nsend` eventually returns, which is a temporary lifetime of Android's rather than
-//! something this process can shorten, prove, or has to model.
-//!
-//! # Two steps here are the daemon's own
-//!
-//! `android_res_nsend` is synchronous: when it answers with a descriptor, the query is Android's. The two
-//! steps that follow it - making that descriptor nonblocking and registering it with the runtime - are this
-//! daemon's, and so is the readiness registration polled afterwards. None of them is one query's outcome, so
-//! none of them is answered per query: each comes back as a [Failure::Local], which
-//! [Failure::ending] turns into the error its owner ends on. An owner whose wrapper around the platform
-//! failed cannot be trusted to wrap the next query either, so it stops accepting them - by ending the
-//! app-UID dataplane task, and with it the session. What the platform itself answers, before or after
-//! acceptance, stays [Failure::Expected] and is that one query's SERVFAIL.
-
+//! Wraps Android's asynchronous resolver descriptors for Tokio readiness.
 use std::future::poll_fn;
 use std::io;
 use std::os::fd::{AsRawFd, RawFd};
@@ -100,13 +76,6 @@ unsafe extern "C" {
 }
 
 /// A transaction the platform has accepted, waiting only to be read.
-///
-/// Split from the read deliberately, and it is the whole reason this type exists. `android_res_nsend` is
-/// synchronous: it hands the query to the platform on the `Network` it was given and returns a descriptor.
-/// Awaiting the answer is not. Keeping the two together meant the submission happened wherever the spawned
-/// task first got scheduled, so a query classified under one config could reach the resolver *after* its
-/// successor had been acknowledged - on a `Network` the session had already stopped claiming. Handing the
-/// submission back as a value lets the owner perform it in its own serial order and poll only the wait.
 pub(crate) struct Resolving {
     /// Taken at the terminal, which is what hands the descriptor to `android_res_nresult` to read and close.
     /// Absent afterwards, so a second poll cannot read a descriptor this transaction has already given up.
@@ -115,23 +84,6 @@ pub(crate) struct Resolving {
 
 impl Resolving {
     /// Polls this transaction to its terminal, on the owner's own task rather than in one of its own.
-    ///
-    /// `dnsproxyd`'s resnsend handler writes one result and then drops the client socket, so what says the
-    /// answer is whole is the *peer close*, not readability: `android_res_nresult` performs synchronous reads
-    /// and must not be handed a nonblocking descriptor that has only part of a message. Readability without a
-    /// close is therefore cleared and waited on again.
-    ///
-    /// # Both directions, because neither alone sees every close
-    ///
-    /// [AsyncFd] offers no arbitrary-interest poll, only one per direction, and each direction's readiness is
-    /// masked to its own bits - so `Ready::is_error` is never set in either and a terminal condition written
-    /// against it would be dead. What the two directions do cover between them is every way this descriptor
-    /// can end: `mio` reports `EPOLLHUP` and `EPOLLIN|EPOLLRDHUP` as read-closed, and a bare `EPOLLERR` -
-    /// with no `HUP` beside it - as *write*-closed. Watching only the read direction would therefore have
-    /// rested on a claim about when the kernel raises `HUP`, and the cost of that claim being wrong is a
-    /// transaction that never reaches a terminal at all: a descriptor record, a logical token and a query
-    /// held until the session ends, with no timer by design. So the write direction is polled too, purely as
-    /// a close detector, and its readiness is cleared when it says only that the socket is writable.
     pub(crate) fn poll_result(&mut self, cx: &mut Context<'_>) -> Poll<Result<Vec<u8>, Failure>> {
         let Some(fd) = self.fd.as_ref() else {
             // Unreachable: an owner removes a transaction the moment it produces a result, so nothing polls
@@ -186,13 +138,6 @@ impl Resolving {
 }
 
 /// Submits one query on `network`, synchronously, and hands back what there is to wait on.
-///
-/// `Err` is that there is nothing to wait on, and *which* failure it was decides what the caller does with
-/// it. `android_res_nsend` refusing - a full per-UID limiter, a name that could not be resolved - is the
-/// platform's answer to one query the client chose to send, so it is [Failure::Expected] and reaches that
-/// client as SERVFAIL. The two wrapper steps below are this daemon's own, so they are [Failure::Local] and
-/// end the owner that asked; the descriptor Android returned is cancelled and closed by the dropped
-/// [ResolverQuery] either way. See [vpnhotspotd::shared::failure].
 pub(crate) fn submit(network: Network, message: &[u8]) -> Result<Resolving, Failure> {
     // SAFETY: message outlives the call and its length is what the resolver is told to read.
     let fd = unsafe {

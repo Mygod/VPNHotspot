@@ -1,4 +1,5 @@
 use std::collections::{hash_map::Entry, HashMap};
+use std::hash::Hash;
 use std::time::{Duration, Instant};
 
 use crate::shared::proto::daemon::{DaemonErrorReport, ErrorDetail};
@@ -14,12 +15,15 @@ pub struct NonfatalReport {
 }
 
 #[derive(Debug)]
-pub struct NonfatalCoalescer {
+pub struct Coalescer<K> {
     window: Duration,
-    pending: HashMap<ReportKey, PendingBatch>,
+    pending: HashMap<K, PendingBatch>,
 }
 
-impl NonfatalCoalescer {
+impl<K> Coalescer<K>
+where
+    K: Clone + Eq + Hash + for<'a> From<&'a DaemonErrorReport>,
+{
     pub fn new(window: Duration) -> Self {
         Self {
             window,
@@ -27,20 +31,21 @@ impl NonfatalCoalescer {
         }
     }
 
-    pub fn push(
+    fn push_with_room(
         &mut self,
         now: Instant,
         call_id: Option<u64>,
         report: DaemonErrorReport,
+        room: usize,
     ) -> Vec<NonfatalReport> {
-        let mut ready = self.emit_due(now);
-        match self.pending.entry(ReportKey::from(&report)) {
+        let mut ready = self.emit_due_with_room(now, room);
+        match self.pending.entry(K::from(&report)) {
             Entry::Occupied(mut entry) => {
                 let batch = entry.get_mut();
                 batch.suppressed_count = batch.suppressed_count.saturating_add(1);
                 batch.last = Some(NonfatalReport { call_id, report });
             }
-            Entry::Vacant(entry) => {
+            Entry::Vacant(entry) if ready.len() < room => {
                 ready.push(NonfatalReport { call_id, report });
                 entry.insert(PendingBatch {
                     deadline: now + self.window,
@@ -48,11 +53,18 @@ impl NonfatalCoalescer {
                     last: None,
                 });
             }
+            Entry::Vacant(entry) => {
+                entry.insert(PendingBatch {
+                    deadline: now + self.window,
+                    suppressed_count: 1,
+                    last: Some(NonfatalReport { call_id, report }),
+                });
+            }
         }
         ready
     }
 
-    pub fn emit_due(&mut self, now: Instant) -> Vec<NonfatalReport> {
+    fn emit_due_with_room(&mut self, now: Instant, room: usize) -> Vec<NonfatalReport> {
         let due_keys = self
             .pending
             .iter()
@@ -64,6 +76,8 @@ impl NonfatalCoalescer {
             if let Some(batch) = self.pending.get_mut(&key) {
                 if batch.suppressed_count == 0 {
                     remove = true;
+                } else if ready.len() >= room {
+                    batch.deadline = now + self.window;
                 } else if let Some(mut report) = batch.last.take() {
                     add_coalesced_details(&mut report.report, batch.suppressed_count, self.window);
                     ready.push(report);
@@ -106,12 +120,63 @@ struct PendingBatch {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-struct ReportKey {
+pub struct ReportKey {
     context: String,
     kind: String,
     errno: Option<i32>,
     file: String,
     line: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub(crate) struct SiteKey {
+    file: String,
+    line: u32,
+    column: u32,
+}
+
+impl From<&DaemonErrorReport> for SiteKey {
+    fn from(report: &DaemonErrorReport) -> Self {
+        Self {
+            file: report.file.clone(),
+            line: report.line,
+            column: report.column,
+        }
+    }
+}
+
+pub type NonfatalCoalescer = Coalescer<ReportKey>;
+pub(crate) type SiteCoalescer = Coalescer<SiteKey>;
+
+impl Coalescer<ReportKey> {
+    pub fn push(
+        &mut self,
+        now: Instant,
+        call_id: Option<u64>,
+        report: DaemonErrorReport,
+    ) -> Vec<NonfatalReport> {
+        self.push_with_room(now, call_id, report, usize::MAX)
+    }
+
+    pub fn emit_due(&mut self, now: Instant) -> Vec<NonfatalReport> {
+        self.emit_due_with_room(now, usize::MAX)
+    }
+}
+
+impl Coalescer<SiteKey> {
+    pub(crate) fn push(
+        &mut self,
+        now: Instant,
+        call_id: Option<u64>,
+        report: DaemonErrorReport,
+        room: usize,
+    ) -> Vec<NonfatalReport> {
+        self.push_with_room(now, call_id, report, room)
+    }
+
+    pub(crate) fn emit_due(&mut self, now: Instant, room: usize) -> Vec<NonfatalReport> {
+        self.emit_due_with_room(now, room)
+    }
 }
 
 impl From<&DaemonErrorReport> for ReportKey {
@@ -303,6 +368,33 @@ mod tests {
         );
         assert_eq!(ready.len(), 1);
         assert_eq!(ready[0].report.message, "second");
+    }
+
+    #[test]
+    fn site_coalescer_retains_reports_until_writer_room_is_available() {
+        let window = Duration::from_secs(1);
+        let now = Instant::now();
+        let mut coalescer = SiteCoalescer::new(window);
+        assert!(coalescer
+            .push(now, None, report("one", "A", "first", 7), 0)
+            .is_empty());
+        assert!(coalescer
+            .push(now, None, report("two", "B", "second", 7), 0)
+            .is_empty());
+
+        let ready = coalescer.emit_due(now + window, 1);
+        assert_eq!(ready.len(), 1);
+        assert_eq!(ready[0].report.message, "second");
+        assert_summary(&ready[0].report, 2, 1000);
+
+        let mut different_column = report("three", "C", "third", 7);
+        different_column.column = 2;
+        assert_eq!(
+            coalescer
+                .push(now + window, None, different_column, usize::MAX)
+                .len(),
+            1
+        );
     }
 
     fn assert_summary(report: &DaemonErrorReport, suppressed_count: usize, window_ms: u128) {

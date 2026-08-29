@@ -1,5 +1,3 @@
-//! Root daemon control and system-state owners.
-
 mod control;
 mod dns;
 mod downstream;

@@ -16,13 +16,7 @@ pub const PREFIX: usize = 2;
 /// A DNS message cannot exceed what its 16-bit length prefix can describe.
 pub const MAX_MESSAGE: usize = u16::MAX as usize;
 
-/// Where a framed message's bytes are stored: a buffer whose capacity was granted before it existed.
-///
-/// A trait rather than a buffer type because the two halves belong in different places. The storage is the
-/// daemon's - admitted by its ingress owner, charged against its aggregate, counted by whoever owns it -
-/// while the framing is here, on the attacker-facing side that has to be answerable without a device. What
-/// every implementation promises is the one thing the bound rests on: appending never grows the buffer past
-/// the capacity that was admitted for it.
+/// Storage granted before allocation; implementations must never grow past admitted capacity.
 pub trait Body {
     /// Appends as much of `bytes` as the granted capacity still has room for, and answers how much that was.
     fn extend_within_capacity(&mut self, bytes: &[u8]) -> usize;
@@ -30,33 +24,17 @@ pub trait Body {
 
 /// What the next bytes of a DNS stream turned out to be.
 pub enum Framed {
-    /// A whole length prefix. The message is *announced* and not one byte of it is stored: its bytes may only
-    /// be kept once that many have been admitted, which is what the caller does next.
+    /// A complete prefix whose body has not yet been allocated.
     Length(usize),
-    /// The announced message is complete - filled into the admitted body, or skipped when there was none to
-    /// fill.
+    /// The announced message was filled or deliberately skipped.
     Message,
-    /// This chunk is spent. Ordinary: TCP does not promise that one read is one message, and a client
-    /// dribbling a query one byte at a time is doing nothing wrong.
+    /// This chunk is spent before the message is complete.
     Hungry,
-    /// A zero-length message, which is not a query and never becomes one - so there is nothing to wait for,
-    /// and nothing after it can be trusted to be framed either. The stream is over.
-    ///
-    /// Also what a body smaller than the length it was admitted for reads as, which is this daemon
-    /// disagreeing with itself rather than a client doing anything: the capacity is granted from exactly the
-    /// announced length, so it cannot happen, and if it ever did, storing a truncated message would be worse
-    /// than ending the stream.
+    /// A zero-length message or a body smaller than its admitted length.
     Broken,
 }
 
-/// The message boundaries of a DNS-over-TCP stream, framed *before* anything is stored.
-///
-/// What bounds the memory is the length prefix, and the way it bounds it is the whole point of this type. The
-/// prefix is parsed out of the stream first, the length it announces is admitted by the ingress owner, and
-/// only then does the message have anywhere to go. So what this holds between reads is two bytes and a count:
-/// never a buffer a client can grow by dribbling, and never a copy taken before anything agreed to pay for
-/// it. Kept here, away from the transport, because this is the attacker-facing half of the flow and the half
-/// that has to be answerable without a device.
+/// Frames the two-byte prefix before the caller admits and allocates its body.
 #[derive(Default)]
 pub struct DnsStream {
     /// The length prefix as it arrives, one byte at a time if that is how the client sends it.
@@ -68,11 +46,7 @@ pub struct DnsStream {
 }
 
 impl DnsStream {
-    /// Whether any bytes of a message have arrived without completing one.
-    ///
-    /// What a half-close has to ask: a client that stops sending with a complete message boundary behind it
-    /// has finished asking, while one that stops mid-length or mid-message has truncated its own request, and
-    /// the two end the connection differently.
+    /// Whether a half-close would truncate a prefix or message.
     pub fn partial(&self) -> bool {
         self.framed > 0 || self.wanted.is_some()
     }
@@ -132,24 +106,7 @@ pub fn frame(answer: &[u8]) -> Option<Vec<u8>> {
     Some(framed)
 }
 
-/// What one DNS query is answered with when the resolver did not answer it, and which failures are still the
-/// daemon's own afterwards.
-///
-/// The resolver's own outcomes belong to the client rather than to the app. A refusal, a timeout, a full
-/// per-UID limiter, a name that does not resolve: each is what one query the client chose to send answers, and
-/// the client chooses how many of those it sends. So each becomes a SERVFAIL for *that* message and nothing
-/// else happens - the connection carries on, because a reset per unresolvable name would end a stream the
-/// client is entitled to keep using, and a report per unresolvable name would be a report flood any local app
-/// could drive by looking up nonsense.
-///
-/// Only the daemon's own wrapper around the transaction - making the resolver's descriptor nonblocking,
-/// registering it with the runtime, and the readiness registration it is then watched with - is this
-/// process's doing, and that is the one thing that comes back for its caller to end on rather than answer.
-/// What "end" means is the caller's: for the app-UID DNS owners it is the whole dataplane task, because an
-/// owner whose wrapper failed cannot wrap the next query either - see
-/// [crate::shared::failure::Failure::ending]. A query too malformed for a SERVFAIL to be built from comes
-/// back as a failure too, and that one really is per query: there is no question to echo, so there is
-/// nothing to answer with and only that stream ends.
+/// Maps resolver outcomes to per-query SERVFAIL while preserving daemon-wrapper failures for the owner.
 pub fn resolved(result: Result<Vec<u8>, Failure>, query: &[u8]) -> Result<Vec<u8>, Failure> {
     match result {
         Ok(answer) => Ok(answer),
@@ -219,11 +176,6 @@ fn name_end(packet: &[u8], mut offset: usize) -> Option<usize> {
 #[cfg(test)]
 mod tests {
 
-    /// The daemon's admitted buffer, as this side of the framing sees one: a capacity granted before the
-    /// message exists, which appending may fill and may never grow past.
-    ///
-    /// The daemon's own is its counted `Owned` buffer; what this stands in for is only the capacity contract,
-    /// because that is the half of it the framing depends on.
     struct Admitted(Vec<u8>);
 
     impl Admitted {
@@ -241,15 +193,11 @@ mod tests {
         }
     }
 
-    /// A half-close with a complete message boundary behind it is a client that has finished asking; one
-    /// with bytes that never completed a message has truncated its own request, and the two end differently.
     #[test]
     fn a_partial_message_is_distinguishable_from_a_clean_boundary() {
         let mut stream = DnsStream::default();
-        assert!(!stream.partial(), "nothing received is not partial");
+        assert!(!stream.partial());
 
-        // The prefix comes out first and stores nothing, which is what lets its length be admitted before
-        // there is anywhere to put the message.
         let message = vec![0xabu8; 12];
         let framed = frame(&message).expect("framed");
         let mut chunk = &framed[..];
@@ -257,22 +205,20 @@ mod tests {
             panic!("a whole prefix announces a length")
         };
         assert_eq!(length, message.len());
-        assert!(stream.partial(), "a message is being framed");
+        assert!(stream.partial());
 
-        // A whole message, filled into the buffer that length was admitted for: the boundary is clean again.
         let mut body = Admitted::granted(length);
         assert!(matches!(
             stream.advance(&mut chunk, Some(&mut body)),
             Framed::Message
         ));
         assert_eq!(body.0, message);
-        assert!(chunk.is_empty(), "and the chunk is spent");
+        assert!(chunk.is_empty());
         assert!(
             !stream.partial(),
             "a consumed message leaves a clean boundary"
         );
 
-        // Half a length prefix is partial, and so is a message short of its own length.
         let mut half = &framed[..1];
         assert!(matches!(stream.advance(&mut half, None), Framed::Hungry));
         assert!(stream.partial());
@@ -287,7 +233,7 @@ mod tests {
             stream.advance(&mut truncated, Some(&mut body)),
             Framed::Hungry
         ));
-        assert!(stream.partial(), "a truncated message is partial");
+        assert!(stream.partial());
     }
 
     use std::io;
@@ -295,7 +241,6 @@ mod tests {
     use super::*;
     use crate::shared::protocol::reported_io_error_report;
 
-    /// One ordinary query for `example.com`, which is what a client's stream carries.
     fn query(id: u16) -> Vec<u8> {
         let mut query = vec![
             0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 7, b'e', b'x',
@@ -313,9 +258,6 @@ mod tests {
         response[3] & 0x0f
     }
 
-    /// Every outcome a client can drive has to become an answer *for its own message*, with that message's ID
-    /// and question echoed back, because a resolver failure is not a protocol failure. `EBUSY` is the
-    /// platform's per-UID limiter, which a burst of a client's own queries reaches on its own.
     #[test]
     fn a_platform_resolver_outcome_answers_its_own_query() {
         for code in [
@@ -334,7 +276,6 @@ mod tests {
             assert_eq!(rcode(&answered), RCODE_SERVFAIL, "{code}");
             assert_eq!(&answered[HEADER_LEN..], &query[HEADER_LEN..], "{code}");
         }
-        // The daemon's own wrapper is the one thing that comes back for the caller to report and reset on.
         let local = resolved(
             Err(Failure::local("resolver.register")(errno(libc::EMFILE))),
             &query(1),
@@ -344,19 +285,9 @@ mod tests {
             local.reportable().map(|(context, _)| context),
             Some("resolver.register")
         );
-        // Neither is a query nothing can be built from: there is no question to echo back.
         assert!(resolved(Err(Failure::platform(errno(libc::EBUSY))), &[]).is_err());
     }
 
-    /// Which failures end which owner, in the order the DNS-over-TCP settlement really makes the decision:
-    /// [resolved] first, then [Failure::ending] on whatever it hands back.
-    ///
-    /// The trap this pins down is that "`resolved` answered `Err`" and "this owner has to end" are *not* the
-    /// same question. A query too malformed for a SERVFAIL to be built from comes back as an `Err` and ends
-    /// nothing but its own flow; only the daemon's own wrapper failing ends the owner. An owner that read the
-    /// first as the second would end the whole app-UID dataplane on a packet any local app can send, and one
-    /// that read the second as the first would answer a broken resolver wrapper with a SERVFAIL and go on
-    /// accepting queries through it.
     #[test]
     fn only_the_daemons_own_wrapper_failure_ends_more_than_one_query() {
         let query = query(0x4d2);
@@ -365,7 +296,6 @@ mod tests {
                 .expect("what the platform answered is this query's own SERVFAIL");
             assert_eq!(rcode(&answer), RCODE_SERVFAIL, "{code}");
         }
-        // Same failure, no question to echo: still this query's business, and still not an ending.
         let unanswerable = resolved(Err(Failure::platform(errno(libc::EBUSY))), &[])
             .expect_err("nothing can be built from it");
         assert!(
@@ -374,8 +304,6 @@ mod tests {
                 .is_ok_and(|failure| failure.reportable().is_none()),
             "a query nothing can answer ends that flow and nothing else"
         );
-        // The daemon's own wrapper: never a SERVFAIL, and always the error its owner ends on - carrying the
-        // one report, built where the step failed.
         for context in ["resolver.nonblock", "resolver.register"] {
             let local = resolved(Err(Failure::local(context)(errno(libc::EMFILE))), &query)
                 .expect_err("the daemon's own setup failure is never an answer");
@@ -391,9 +319,6 @@ mod tests {
         }
     }
 
-    /// The property a per-query SERVFAIL exists for: the connection outlives the failure. Two queries arrive
-    /// in one segment, the first is one the resolver refused, and the second still has to be read and
-    /// answered on the same stream.
     #[test]
     fn a_servfail_does_not_end_the_stream_it_was_answered_on() {
         let mut stream = DnsStream::default();
@@ -406,7 +331,6 @@ mod tests {
 
         let first = message(&mut stream, &mut chunk).expect("a whole query in one segment");
         assert_eq!(&first[..2], &[0, 1]);
-        // Refused by the platform, answered to the client, and nothing about the stream changes.
         let answer = resolved(Err(Failure::platform(errno(libc::EBUSY))), &first)
             .expect("a refusal is answered rather than reset");
         assert_eq!(rcode(&answer), RCODE_SERVFAIL);
@@ -415,7 +339,6 @@ mod tests {
             PREFIX + answer.len()
         );
 
-        // The second query was behind it all along, and is still there to be served.
         let second = message(&mut stream, &mut chunk).expect("readable after a SERVFAIL");
         assert_eq!(&second[..2], &[0, 2]);
         assert_eq!(
@@ -426,14 +349,10 @@ mod tests {
         assert!(matches!(stream.advance(&mut chunk, None), Framed::Hungry));
     }
 
-    /// Everything the transport does with a chunk, minus the ownership: frame it, admit exactly the length
-    /// each prefix announces, and answer with the message that completed. `None` is a chunk that ran out
-    /// before one did.
     fn message(stream: &mut DnsStream, chunk: &mut &[u8]) -> Option<Vec<u8>> {
         let mut body: Option<Admitted> = None;
         loop {
             match stream.advance(chunk, body.as_mut().map(|body| body as &mut dyn Body)) {
-                // Admitted at exactly the announced length, which is the only capacity this message ever gets.
                 Framed::Length(length) => body = Some(Admitted::granted(length)),
                 Framed::Message => return Some(body.expect("a message was being filled").0),
                 Framed::Hungry => return None,
@@ -442,16 +361,12 @@ mod tests {
         }
     }
 
-    /// A stream is bytes, not messages: a client may dribble one and may put several in one read, and only a
-    /// length that can never complete ends it.
     #[test]
     fn a_stream_reassembles_and_only_a_zero_length_message_breaks_it() {
         let mut stream = DnsStream::default();
         let framed = frame(&query(7)).expect("a query fits its own prefix");
         let mut nothing: &[u8] = &[];
         assert!(matches!(stream.advance(&mut nothing, None), Framed::Hungry));
-        // One byte at a time: the prefix announces its length as soon as its second byte lands, and every
-        // byte after that goes into the buffer that length was admitted for.
         let mut body: Option<Admitted> = None;
         for byte in &framed[..framed.len() - 1] {
             let mut dribble = std::slice::from_ref(byte);
@@ -466,7 +381,7 @@ mod tests {
                 Framed::Hungry => {}
                 Framed::Message | Framed::Broken => panic!("the message is not complete yet"),
             }
-            assert!(stream.partial(), "a message is being framed");
+            assert!(stream.partial());
         }
         let mut last = &framed[framed.len() - 1..];
         assert!(matches!(
@@ -476,21 +391,12 @@ mod tests {
         assert_eq!(body.expect("filled").0, query(7));
         assert!(!stream.partial());
 
-        // Nothing waited for and nothing recoverable: a zero length is not a query and every byte behind it
-        // is at an offset nothing can resynchronize on.
         let mut zero: &[u8] = &[0, 0, 0, 1];
         assert!(matches!(stream.advance(&mut zero, None), Framed::Broken));
-        // And an answer no prefix can describe is refused rather than truncated.
         assert!(frame(&vec![0u8; MAX_MESSAGE]).is_some());
         assert!(frame(&vec![0u8; MAX_MESSAGE + 1]).is_none());
     }
 
-    /// A message nothing could be admitted for is skipped rather than stored, and the stream stays framed
-    /// behind it: the client's next query is read exactly as if the refused one had been answered.
-    ///
-    /// This is the shape a refusal takes on a stream. There is no back-pressure to apply and no offset to
-    /// resynchronize on, so the announced bytes have to be consumed by *something* - and consuming them into
-    /// a buffer nobody admitted is the allocation the admission exists to prevent.
     #[test]
     fn a_message_with_no_body_is_skipped_and_the_stream_stays_framed() {
         let mut stream = DnsStream::default();
@@ -500,25 +406,17 @@ mod tests {
         }
         let mut chunk = &segment[..];
 
-        // Announced, refused, and skipped: not one byte of it is kept.
         assert!(matches!(
             stream.advance(&mut chunk, None),
             Framed::Length(_)
         ));
         assert!(matches!(stream.advance(&mut chunk, None), Framed::Message));
-        assert!(!stream.partial(), "and the boundary is clean again");
+        assert!(!stream.partial());
 
-        // The query behind it is framed as usual.
         let next = message(&mut stream, &mut chunk).expect("the stream is still framed");
         assert_eq!(&next[..2], &[0, 12]);
     }
 
-    /// A body smaller than the length it was admitted for is this daemon disagreeing with itself, and it ends
-    /// the stream rather than storing a truncated message.
-    ///
-    /// Unreachable by construction - the capacity is granted from exactly the announced length - which is why
-    /// it is stated here rather than assumed: what would otherwise happen is a query silently cut short and
-    /// then resolved as though the client had sent it that way.
     #[test]
     fn a_body_shorter_than_its_admitted_length_breaks_the_stream() {
         let mut stream = DnsStream::default();

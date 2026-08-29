@@ -1,19 +1,3 @@
-//! This engine's side of the packet owner's boundary: where its tables are, and nothing about what to do
-//! with them.
-//!
-//! Every decision one client segment provokes - the order the steps run in, which transition counts as a
-//! reset, which figure moves, what a refused terminal tail is reported as, whether the socket or the worker
-//! goes first - is [vpnhotspotd::shared::ingress]'s, because that is a platform-neutral module the host
-//! builds and tests and this is a binary target that runs none. What is left here is field access: a poll, a
-//! device slot, an iterator over the table, one flow's pieces reachable together, the counters, the flow
-//! builder, and the reporter.
-//!
-//! The one step whose *body* a host cannot execute is [Handling::open], which builds the client-side socket
-//! and bridge, takes the charged grant and starts the flow's transport task. Only an ordinary relay's task
-//! then opens an upstream descriptor; a virtual-DNS transport opens none. Its ordering - when it may run, and
-//! what happens to what it built when the stack then refuses the segment - is decided in the shared module
-//! and covered there.
-
 use std::net::SocketAddr;
 use std::time::Instant;
 
@@ -75,10 +59,7 @@ impl ingress::Owner for Engine {
         &mut self.counters.ingress
     }
 
-    /// The one primitive whose body no host test can execute: it reaches this process's reporter
-    /// registries, and on their own failure path a platform log this daemon only has on Android. It is
-    /// deliberately one line and decides nothing - what is delivered, when, and from which of the two paths
-    /// that can raise one, is all [vpnhotspotd::shared::ingress]'s and covered there.
+    /// Android-owned reporting boundary used by production ingress.
     fn deliver(&mut self, report: DaemonErrorReport) {
         report::report(report);
     }
@@ -89,9 +70,6 @@ impl ingress::Owner for Engine {
 }
 
 /// One `accept` call's borrow of the engine and of everything that call may write to.
-///
-/// A borrow rather than the engine itself, because three of the steps need the session's output, its
-/// admission or the wall clock, and none of those belongs to the engine's own state.
 struct Handling<'a> {
     engine: &'a mut Engine,
     output: &'a mut Output,

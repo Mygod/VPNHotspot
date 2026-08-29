@@ -1,14 +1,3 @@
-//! One read from the TUN, dispatched to the transport that owns it.
-//!
-//! Apart from the ingress task because it is the one piece of that task with no lifecycle in it: nothing here
-//! admits, retires, joins or refunds. It borrows the owners the ingress task holds, decides which of them a
-//! datagram belongs to, and counts what it could not place - which is why it is also where the counters live.
-//!
-//! It has to run twice on a single read, and that is what the grouping is for: once for the packet that
-//! arrived, and once for the datagram whose last fragment it turned out to be. That second pass must be the
-//! *same* path, or a reassembled datagram would be classified, parsed and admitted by rules that had drifted
-//! from the ones a whole one meets.
-
 use std::io;
 use std::net::IpAddr;
 use std::time::Instant;
@@ -30,10 +19,7 @@ use vpnhotspotd::shared::admission::{Admission, Lease};
 /// How many times one read may be unwrapped before it is refused. See [Dispatch::accept].
 const PASSES: usize = 3;
 
-/// Counters rather than per-packet logs: the input is attacker-influenced, so a report per packet would be a
-/// flood by construction. They run for the whole session and are reported once at its exit: what they count
-/// is client traffic, which no config change divides - a handover retires the state bound to the selection
-/// being left, not the clients that were sending.
+/// Session counters avoid attacker-controlled per-packet reporting.
 #[derive(Default)]
 pub(crate) struct Counters {
     dns: u64,
@@ -86,9 +72,6 @@ impl Counters {
 }
 
 /// The owners one datagram may reach, borrowed together.
-///
-/// Grouped rather than passed as nine arguments because the dispatch has to run twice on a single read - see
-/// the module note.
 pub(crate) struct Dispatch<'a> {
     pub(crate) counters: &'a mut Counters,
     pub(crate) relay: &'a mut udp::Relay,
@@ -108,10 +91,7 @@ pub(crate) struct Dispatch<'a> {
 }
 
 impl Dispatch<'_> {
-    /// `Err` is the one thing a packet can produce that is not about that packet: this daemon's own wrapper
-    /// around a resolver transaction failing, which ends the ingress task that called this rather than being
-    /// answered to whoever sent the query. Nothing else here is fallible - a packet nothing can place is
-    /// counted, not returned.
+    /// Only daemon-owned resolver-wrapper failures escape as `Err`; packet failures are handled locally.
     pub(crate) fn accept(&mut self, packet: &[u8], now: Instant) -> io::Result<()> {
         // Up to three passes, and the bound is the number of wrappings one packet can carry rather than a
         // guess: an extension chain in front of a Fragment header is stripped first, reassembly then completes
@@ -222,9 +202,6 @@ impl Dispatch<'_> {
     }
 
     /// Removes one packet's IPv6 extension chain, and hands back what is left for the transports to parse.
-    ///
-    /// Removed rather than preserved because egress goes out through a datagram socket, so the kernel builds
-    /// the IPv6 header and there is nowhere to carry a chain - the same reason the source address changes.
     fn unwrap(&mut self, packet: &[u8]) -> Option<Vec<u8>> {
         self.counters.extended += 1;
         match extension::walk(packet) {
@@ -271,10 +248,6 @@ impl Dispatch<'_> {
     }
 
     /// Answers the reassembly timeouts a router owes, from the interface's own address.
-    ///
-    /// Only for contexts that received fragment zero, since the error has to quote a header the client
-    /// actually sent, and never for a context dropped under resource pressure - that is the daemon's own
-    /// limit, not a property of the path, and reporting it would tell the client something untrue.
     pub(crate) fn expire(&mut self, now: Instant) {
         // One quote at a time rather than a batch: however many contexts expire together, only the one being
         // reported exists, and it is dropped before the next is built.

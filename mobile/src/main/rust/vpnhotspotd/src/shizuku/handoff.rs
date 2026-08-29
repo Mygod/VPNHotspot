@@ -1,15 +1,3 @@
-//! The TUN handoff: receiving the descriptor the app-UID session will own, and proving it is what the app
-//! said it was.
-//!
-//! The app UID launches this binary directly, so there is no root shell and no privileged dataplane. The TUN
-//! arrives over `SCM_RIGHTS` on the very first control frame, which is the session's start call - the
-//! descriptor and the call that owns it cannot be separated, so they travel together.
-//!
-//! The app cannot prove what arrived on its side of that transfer: it only sets the descriptor nonblocking
-//! before duplicating it and keeps the original. Everything the app asserts about the descriptor is therefore
-//! re-checked here against the descriptor itself, and every check below is a failure the start call is
-//! answered with.
-
 use std::io;
 use std::net::Ipv4Addr;
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
@@ -37,9 +25,6 @@ fn refused(message: String) -> io::Error {
 
 /// `TUNGETIFF`, which is the only way to learn which interface a descriptor belongs to. Not exported
 /// by the `libc` crate for Android, so it is spelled out here: `_IOR('T', 210, unsigned int)`.
-///
-/// Kept as `u32` and cast at the call site because bionic's `ioctl` takes an `int` request while other libc
-/// signatures use an `unsigned long`.
 const TUNGETIFF: u32 = 0x8004_54d2;
 
 /// `SIOCGIFMTU`, cast at the call site for the same reason as [TUNGETIFF].
@@ -80,11 +65,6 @@ struct IfReqMtu {
 /// Reads the first frame entirely through `recvmsg`, because a plain `read` that consumed the bytes the
 /// descriptor is attached to would discard it. Ancillary data is collected across every call, since the
 /// sender's write boundaries are not something this side can rely on.
-///
-/// Runs before the stream is split, and therefore before there is any writer to answer on: a frame this
-/// malformed names no call, so it can only end the conversation. Every later frame is an ordinary read,
-/// which is safe because a descriptor attached to one would be dropped by the kernel rather than leaked into
-/// this process.
 pub(crate) async fn recv_start_frame(stream: &UnixStream) -> io::Result<(Vec<u8>, Vec<OwnedFd>)> {
     let mut received = Vec::new();
     let mut header = [0u8; 4];
@@ -115,8 +95,7 @@ async fn recv_into(
     loop {
         stream.readable().await?;
         let attempt = stream.try_io(tokio::io::Interest::READABLE, || {
-            // room for two descriptors although exactly one is required: the surplus is what lets an
-            // over-sending peer be detected and rejected rather than silently truncated to one
+            // Room for two descriptors lets us reject an over-sending peer instead of truncating it.
             let mut space = nix::cmsg_space!([RawFd; 2]);
             let mut slices = [io::IoSliceMut::new(buffer)];
             let message = recvmsg::<()>(
@@ -160,14 +139,6 @@ async fn recv_into(
 }
 
 /// Turns what the start call transferred into the one descriptor this session owns, or refuses it.
-///
-/// Takes the whole set by value so that a refusal closes every descriptor rather than leaking the ones it
-/// did not want: dropping an [OwnedFd] closes it, and nothing here hands one out except on the path that
-/// accepted exactly one.
-///
-/// Requires a nonblocking TUN naming the expected interface. The flags matter as much as the name: a TAP
-/// descriptor, or one created without `IFF_NO_PI`, would carry a different framing than every parser above
-/// assumes.
 pub(crate) fn verify_tun(
     received: Vec<OwnedFd>,
     interface_name: &str,
@@ -230,27 +201,23 @@ pub(crate) fn verify_tun(
             "{name} has MTU {interface} but {mtu} was declared"
         )));
     }
-    // Read here, where the descriptor is, and compared later against the address each config declares: this is
-    // the one field of that declaration the daemon can check against the interface at all.
+    // Verify the startup declaration against the address on the transferred interface.
     Ok((descriptor, interface_address(&request.name)?))
 }
 
-/// The interface's primary IPv4 address, which is the one field of the app's declaration the daemon can check
-/// against the interface itself.
-///
-/// An ioctl on a descriptor rather than an enumeration, because an enumeration is not available: binding a
-/// `NETLINK_ROUTE` socket is denied at the app UID, and so is `/proc/net/if_inet6`. Both were measured on device.
-/// That is also why there is no IPv6 counterpart here - `SIOCGIFADDR` is IPv4-only, and nothing else at this UID
-/// can read an IPv6 address - so the IPv6 gateway address is taken on the app's word by necessity rather than by
-/// choice.
-fn interface_address(name: &[u8; IFNAMSIZ]) -> io::Result<Ipv4Addr> {
+fn ioctl_probe() -> io::Result<OwnedFd> {
     // SAFETY: an AF_INET datagram socket needs no privilege and is only an ioctl target here.
     let probe = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
     if probe < 0 {
         return Err(context("shizuku.handoff.ioctl_socket"));
     }
-    // SAFETY: probe is owned by this function and closed on every path below.
-    let probe = unsafe { OwnedFd::from_raw_fd(probe) };
+    // SAFETY: this function owns the successful descriptor and returns that ownership.
+    Ok(unsafe { OwnedFd::from_raw_fd(probe) })
+}
+
+/// Primary IPv4 address checked against the startup declaration.
+fn interface_address(name: &[u8; IFNAMSIZ]) -> io::Result<Ipv4Addr> {
+    let probe = ioctl_probe()?;
     let mut request = IfReqAddr {
         name: *name,
         family: 0,
@@ -283,13 +250,7 @@ fn interface_address(name: &[u8; IFNAMSIZ]) -> io::Result<Ipv4Addr> {
 /// so it is read from the interface rather than believed. `TUNGETIFF` does not report it, hence a second ioctl
 /// on a throwaway socket.
 fn interface_mtu(name: &[u8; IFNAMSIZ]) -> io::Result<u32> {
-    // SAFETY: an AF_INET datagram socket needs no privilege and is only an ioctl target here.
-    let probe = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
-    if probe < 0 {
-        return Err(context("shizuku.handoff.ioctl_socket"));
-    }
-    // SAFETY: probe is owned by this function and closed on every path below.
-    let probe = unsafe { OwnedFd::from_raw_fd(probe) };
+    let probe = ioctl_probe()?;
     let mut request = IfReqMtu {
         name: *name,
         mtu: 0,

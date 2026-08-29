@@ -1,38 +1,4 @@
-//! The common TUN writer: the single path every packet the daemon originates or relays leaves through.
-//!
-//! It exists so that the retirement gate, final size validation and the descriptor's own writability wait
-//! happen in exactly one place rather than at each producer.
-//!
-//! **It decides nothing about what a packet contains.** The size policy against the session MTU, the
-//! Identification an oversized IPv4 datagram carries, and source fragmentation for both families all belong
-//! to the ingress task's output owner and have already happened by the time a packet arrives here - see
-//! [crate::shizuku::output] and [vpnhotspotd::shared::packet_writer]. What arrives is finished bytes; what this does
-//! is dequeue them, compare the stamp they were produced under, validate them one last time, write them, and
-//! report what became of them.
-//!
-//! The two backpressure sources are deliberately not the same thing:
-//!
-//! - **The daemon's queue filling** is an admission decision. [Writer::enqueue] refuses, the producer
-//!   refunds whatever it reserved, and no packet is silently dropped after being promised.
-//! - **The kernel's queue filling** is `EAGAIN` on a nonblocking descriptor. That is a wait for
-//!   writability, not an admission decision: a packet already accepted here is not re-admitted or
-//!   re-charged when the wait ends.
-//!
-//! Conflating them would either drop packets the daemon promised to send or let the queue grow past its
-//! budget.
-//!
-//! It is, however, the only owner that knows whether a packet reached the wire, which is why the IPv4
-//! Identification allocator's window is driven from here. A packet accepted into the queue above may be
-//! dropped at the dequeue stamp gate, refused by final validation, abandoned because a retirement preempted
-//! its blocked write, or written - and only the last of those may ever stop that value being issued again.
-//!
-//! **While the session continues, every guarded packet this writer accepts ends in exactly one [Terminal]
-//! back to the ingress task.** The exceptions are the endings of the session itself: a fatal write, a lost
-//! settlement path, cancellation, and an orphaned writer all stop the loop with packets possibly still in
-//! the queue, and those registrations are never settled. That is deliberate rather than overlooked - the
-//! session is over, the allocator is about to be dropped, and the successor session's opening quarantine is
-//! what covers whatever those packets did or did not do on the wire.
-
+//! Serializes nonblocking TUN writes after the retirement-stamp gate.
 use std::io;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
@@ -49,42 +15,14 @@ use vpnhotspotd::shared::reply_bound::{channel_footprint, reply_channel_footprin
 
 use crate::report;
 
-/// Matches the TUN device's own transmit queue length, so the daemon buffers no more toward a client than
-/// the interface itself would. Taken from the kernel's `TUN_READQ_SIZE`, which `tun_setup` assigns to
-/// `dev->tx_queue_len`, rather than picked: a deeper queue would add latency the device does not, and a
-/// shallower one would drop where the device would not.
-///
-/// https://android.googlesource.com/kernel/common/+/refs/heads/android16-6.12/include/uapi/linux/if_tun.h#25
-/// https://android.googlesource.com/kernel/common/+/refs/heads/android16-6.12/drivers/net/tun.c#2342
+/// Matches the kernel TUN transmit queue length (`TUN_READQ_SIZE`).
 pub(crate) const QUEUE_DEPTH: usize = 500;
 
 /// How many guarded packets can be waiting for their ending to be applied at once, and therefore how deep the
 /// settlement channel is.
-///
-/// Derived, not picked: every guarded packet this writer has been given is in exactly one of three places -
-/// a queue slot, the writer's own hand, or this channel - and the allocator refuses to register more than
-/// this many at once. So a terminal can never find the channel full, which is what lets it be sent without
-/// waiting. A writer that waited here could not reach its retirement arm, and the ingress task waiting for
-/// that acknowledgement is the one thing that must never be blocked behind feedback it is itself the
-/// consumer of.
 pub(crate) const TERMINAL_DEPTH: usize = QUEUE_DEPTH + 1;
 
 /// Every Rust-visible byte this writer's construction owns, for the whole session.
-///
-/// One equation rather than a figure assembled at the reserve site, because the terms are facts about the
-/// types below and nothing outside this module can enumerate them correctly. Four terms:
-///
-/// - the packet channel's own blocks and shared state, plus `(QUEUE_DEPTH + 1)` maximum packets - a full
-///   queue and the one the writer has taken out of it and is writing, because taking a message returns its
-///   permit and the queue can refill behind it. Both halves come from [reply_channel_footprint]: this module
-///   used to add the in-hand packet itself, and it is in the shared helper now because every reply queue
-///   needs it for the same reason and the others were short of it;
-/// - the retirement channel at depth one. Its 1 KiB state bound is far more than a one-slot channel needs
-///   and comfortably covers the single `oneshot` the ingress task has outstanding inside it;
-/// - the settlement channel at [TERMINAL_DEPTH].
-///
-/// Checked throughout, and `None` when any term would wrap: a writer whose cost cannot be stated is one that
-/// must not be built.
 pub(crate) fn footprint(mtu: usize) -> Option<u64> {
     // One producer each. The packet queue and the retirement channel are the ingress task's alone - it holds
     // the only [Writer] and hands out references rather than clones - and the settlement channel is the writer
@@ -98,30 +36,14 @@ pub(crate) fn footprint(mtu: usize) -> Option<u64> {
 #[derive(Debug)]
 pub(crate) struct Rejected;
 
-/// Which retirement a packet belongs to: the generation, which says which `Network` its upstream socket was
-/// bound to and is the only field of a config that retires anything. Admission is not one of them - it opens
-/// and closes without retiring, because Android's own conntrack owns the mapping between a physical client
-/// and the TUN-visible endpoint this daemon keys by, so no config can say that one changed hands. Plenty of
-/// state still ends with no config involved at all, on an idle deadline or when its own protocol finishes;
-/// none of that moves this.
-///
-/// A type rather than the bare number, because it travels through every producer and every table here and a
-/// generation confused with a sequence, a handle or a worker id is a packet delivered to the wrong client.
-///
-/// This is what makes the purge free. A packet already queued when a sweep runs carries the retired value, so
-/// dropping it at dequeue needs no second pass over the queue - and the terminal packets a sweep writes are
-/// stamped with the new one, which is why they leave while the non-terminal ones behind them do not.
+/// Generation that bound the packet's upstream selection.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Stamp {
     pub(crate) generation: u64,
 }
 
 pub(crate) struct Queued {
-    /// The retirement the packet was produced under, attached at enqueue and compared at dequeue. There is
-    /// deliberately no second comparison at enqueue: every producer runs on the ingress task, which is also
-    /// what publishes a retirement and drains its own sweeps to completion, so a packet cannot be enqueued
-    /// under a retirement that has already passed. What the dequeue comparison catches is the queue a sweep
-    /// inherits.
+    /// Retirement stamp captured at enqueue and checked at dequeue.
     stamp: Stamp,
     packet: Vec<u8>,
     /// The guarded datagram this packet belongs to, or `None` for everything that carries no Identification
@@ -131,16 +53,6 @@ pub(crate) struct Queued {
 }
 
 /// One retirement, and the half of the handover fence that lives on this side.
-///
-/// A stamp published where the writer merely *reads* it is not a fence. It closes the enqueue side, because
-/// every producer runs on the ingress task and every dequeue compares against the current value - but it says
-/// nothing about the write already in flight when it changed. `write_all` can be parked in
-/// `AsyncFd::writable` for as long as the kernel's queue stays full, and when that wait ends it would put an
-/// old-stamp packet on the wire after the session had already been told the retirement was complete.
-///
-/// So retirement is a command with an answer instead. The writer adopts the new stamp, abandons any write it
-/// was parked in, and only then acknowledges - after which no packet of a retired stamp can reach the wire,
-/// because every remaining one fails the dequeue comparison.
 pub(crate) struct Retirement {
     stamp: Stamp,
     ack: oneshot::Sender<()>,
@@ -181,11 +93,6 @@ impl Writer {
     }
 
     /// Retires everything produced under the previous stamp and returns only once the writer says so.
-    ///
-    /// Awaited rather than fired: the acknowledgement is the proof, and without it the session could
-    /// acknowledge a config while a packet from the retired generation was still on its way to a client.
-    /// Called only when the stamp actually changes, so a write in flight when this arrives is necessarily one
-    /// of the retired stamp and abandoning it is right.
     pub(crate) async fn retire(&self, stamp: Stamp) -> io::Result<()> {
         let (ack, answered) = oneshot::channel();
         self.retirements
@@ -199,14 +106,6 @@ impl Writer {
 }
 
 /// The three channels one session's TUN writer owns, and the receiving end the ingress task keeps.
-///
-/// All three are built together and charged together as one fixed owner, because they exist for exactly as
-/// long as each other and a denial naming one of them would say nothing a denial naming the writer does not.
-///
-/// **This allocates, so production may only reach it after those bytes are reserved.** The one production
-/// caller is [crate::shizuku::tun_reader::prepare], which builds these on the far side of a successful
-/// [footprint]-sized reserve and hands them out inside a bundle; there is no production path that produces a
-/// [Writer] or a [Queue] any other way.
 pub(crate) fn channel() -> (Writer, Queue, mpsc::Receiver<Terminal>) {
     let (sender, packets) = mpsc::channel(QUEUE_DEPTH);
     // One at a time, because the ingress task issues one and awaits its answer before doing anything else.
@@ -240,13 +139,6 @@ enum Progress {
 }
 
 /// Hands one guarded packet's ending back to the allocator, answering whether the writer may carry on.
-///
-/// [mpsc::Sender::try_send] rather than a wait, and that is the deadlock this shape avoids: the ingress task
-/// is the only consumer of this channel, and it stops consuming while it awaits a retirement acknowledgement.
-/// A writer parked on a full settlement channel would never reach the retirement arm that would release it.
-/// It cannot be full - [TERMINAL_DEPTH] holds one terminal for every guarded packet the allocator will
-/// register at once - so a `Full` here is an accounting fault, and the session ends on it rather than losing
-/// an ending and carrying on with a window it can no longer trust.
 fn settle(
     terminals: &mpsc::Sender<Terminal>,
     guarded: Option<Guarded>,
@@ -281,12 +173,7 @@ pub(crate) async fn run(
         terminals,
     } = queue;
     let mut counts = Counts::default();
-    // Everything that must be physically gone *before* the settlement sender is, in its own scope. The
-    // ingress task's teardown fence waits for that sender to close and treats it as proof that this task no
-    // longer owns the queue, either receiver, or a packet taken out of the queue - which is exactly what the
-    // writer's share of the fixed reservation paid for. Left to the compiler this would come out the wrong
-    // way round: the destructuring above declares `terminals` last, so an end-of-function drop would close
-    // the settlement channel *first* and the proof would be worthless.
+    // Drop all queue state before `terminals`; its closure is the ingress task's teardown fence.
     let result = {
         let mut packets = packets;
         let mut retirements = retirements;
@@ -317,10 +204,6 @@ pub(crate) async fn run(
     // `ErrorFrame` when that call is still owed one, and as a nonfatal when it is not. Raised here rather
     // than at the point of failure because this is the one place every fatal way out of the loop converges,
     // so the counts below are attached to whichever errno stopped it.
-    //
-    // Emitting it here as well would be the second copy of one failure: this task's result reaches the
-    // session, and the session has exactly one place to put it. The errno survives the attachment, because
-    // that is what the report records.
     let result = result.map_err(|e| {
         e.with_report_context_details(
             "shizuku.tun_egress",
@@ -402,8 +285,7 @@ async fn writing(
             continue;
         }
         if let Err(e) = validate(&queued.packet, mtu) {
-            // a packetization bug, not client input: the producer built something that does not fit or
-            // does not describe itself, and sending it would corrupt a client's view
+            // A daemon packetization bug, not client input.
             counts.oversized += 1;
             report::message_with_details(
                 "shizuku.tun_egress",
@@ -451,12 +333,6 @@ async fn writing(
 /// One packet per write, because a TUN descriptor delivers a write as one packet or fails: there is no
 /// short write to resume, so the only partial case is a multi-fragment datagram whose later fragments
 /// fail, and that is the producer's to handle.
-///
-/// That is a contract, so this checks it rather than assuming it. A count that is neither the whole packet
-/// nor an error is a descriptor behaving in a way the whole design rests on it not doing, and there is no
-/// safe reading of it: the bytes on the wire are a truncated packet the client will parse as something else,
-/// and resuming would put the remainder out as a second one. So it is a fatal error naming both counts, and
-/// the packet gets no successful timestamp and no terminal - the session ends instead.
 async fn write_all(
     fd: &AsyncFd<OwnedFd>,
     packet: &[u8],

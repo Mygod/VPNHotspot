@@ -1,19 +1,3 @@
-//! The seam between the TUN this daemon owns and the TCP stack that terminates on it.
-//!
-//! Terminated TCP needs a real TCP implementation, and root mode's answer - `TPROXY`, letting the kernel do
-//! it - needs netfilter, which the app UID cannot touch. So the stack is in-process. Nothing here implements
-//! TCP; this is the two-line adapter that lets one exist:
-//!
-//! - **Ingress** is push, not pull. The ingress task already read and classified the packet, so it is handed
-//!   over directly rather than polled for. One packet is in flight at a time, consumed inside a single poll.
-//! - **Egress** does not go straight to the descriptor. Segments are collected here and drained by the owner
-//!   into the same writer every other producer uses, so the generation gate and the final size validation
-//!   apply to TCP exactly as they do to everything else.
-//!
-//! The advertised MTU is the session's own, fixed for its whole life at the value the TUN was verified to
-//! carry. That is what does the right thing for TCP with no DF games at all: the stack negotiates an MSS from
-//! it at SYN time, so every segment already fits the interface and nothing has to fragment or reject one.
-
 use smoltcp::phy::{Device, DeviceCapabilities, Medium, RxToken, TxToken};
 use smoltcp::time::Instant;
 
@@ -21,12 +5,6 @@ pub(crate) struct Shim {
     /// The packet the ingress task just handed over, if the stack has not taken it yet.
     inbound: Option<Vec<u8>>,
     /// One segment the stack has produced, waiting for the owner to drain it to the writer.
-    ///
-    /// One, structurally, rather than a `Vec` of however many one poll produced. How many sockets have
-    /// something to send is a client's choice, and a poll that emitted one segment per socket into a growing
-    /// vector was an allocation sized by that choice. A device that refuses to transmit is the interface
-    /// smoltcp already has for a busy link - [Device::transmit] answering `None` leaves the socket's data
-    /// queued and untouched - so the owner drains between polls and the stack simply retries.
     outbound: Option<Vec<u8>>,
     mtu: usize,
 }

@@ -1,10 +1,3 @@
-//! Strict, zero-copy parsing of the IP envelope shared by every TUN packet consumer.
-//!
-//! `etherparse` validates each base header and exposes typed fields. This layer adds the relay's stricter
-//! packet-boundary rule: the length declared by the IP header must equal the entire supplied slice. A zero
-//! IPv6 Payload Length therefore accepts only an empty payload rather than guessing that trailing bytes form
-//! a jumbogram.
-
 use etherparse::{IpNumber, Ipv4HeaderSlice, Ipv6HeaderSlice};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

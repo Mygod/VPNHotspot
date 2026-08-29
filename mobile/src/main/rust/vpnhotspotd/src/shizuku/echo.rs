@@ -1,19 +1,3 @@
-//! Relayed Echo: one session per outstanding ping, over one shared ping socket per family.
-//!
-//! The shape is forced by what an unprivileged ping socket will and will not let the daemon choose. It
-//! overwrites the identifier of everything sent through it with its own bound port, so the identifier cannot
-//! distinguish sessions - every session on one socket wears the same one. It passes the sequence through
-//! untouched, so the sequence is the only field left to allocate, and a session is therefore keyed by the
-//! remote it is talking to and the sequence the daemon substituted. The client's own pair is carried here and
-//! restored on the way back.
-//!
-//! That is the mirror image of the root mode's NAT66 table, which allocates the identifier and keeps the
-//! client's sequence. Root mode rewrites packets it owns outright; here the kernel owns one of the two fields
-//! and hands over the other.
-//!
-//! The table lives in the TUN ingress task with the other relays, so nothing here is locked. The descriptors
-//! it sends through are [crate::shizuku::echo_socket]'s, because they are retired by a different protocol.
-
 use std::io;
 use std::net::SocketAddr;
 use std::time::Instant;
@@ -106,12 +90,6 @@ impl Counters {
 }
 
 /// How many outstanding pings the session table is prepared for.
-///
-/// The logical maximum, charged once and never grown, so a send that has already left the device is never
-/// followed by a session with nowhere to go. Each session is a record against the aggregate as well, so the
-/// record ceiling is what actually bounds them on a device whose descriptor limit is lower than this; this is
-/// the cardinality bound beside it, and what is charged for it is the rows' own state - see
-/// [Sessions::footprint].
 const SESSIONS_PREPARED: usize = 1024;
 
 pub(crate) struct Relay {
@@ -169,9 +147,6 @@ impl Relay {
 
     /// Releases both tables' capacity, after every socket has been settled and every session dropped.
     /// Gives this owner's retained capacity back, once everything it covers is physically gone.
-    ///
-    /// `echoes` is the caller's half of the reply channel and is dropped inside [Sockets::release], which owns
-    /// the lease covering it - see there for why it cannot outlive that call.
     pub(crate) fn release(self, echoes: mpsc::Receiver<Event<Family>>, admission: &mut Admission) {
         self.sockets.release(echoes, admission);
         drop(self.sessions);
@@ -181,9 +156,6 @@ impl Relay {
 
     /// Adopts a config. The generation advancing retires everything, because each socket is bound to the
     /// network that changed and a session is nothing without the socket that carries it.
-    ///
-    /// Returns only once every retired socket's receive task has been joined and its descriptor closed, which
-    /// is what makes the caller's acknowledgement mean what the design says it means.
     pub(crate) async fn apply(
         &mut self,
         stamp: Stamp,
@@ -201,15 +173,6 @@ impl Relay {
     }
 
     /// Drops every session, cancels every socket, and joins every receive task.
-    ///
-    /// Sessions go first and without awaiting anything: they hold no descriptor, so there is nothing to join,
-    /// and clearing them before the sockets is what makes a reply that arrives mid-retirement fail to match
-    /// rather than be delivered under a sequence the retirement has already given up. Replies still in the
-    /// channel are left there for the ordinary staleness check; a task parked on it wakes on its own token
-    /// instead.
-    ///
-    /// Also the whole-session path, because the session ends with every descriptor closed and every task
-    /// joined, which is exactly this.
     pub(crate) async fn shutdown(&mut self, admission: &mut Admission) {
         // Every session's record goes with it. The table's own row state stays charged to [Relay::tables]:
         // it was charged for the bound rather than for what is in it - and `HashMap::clear`, which is what
@@ -236,8 +199,7 @@ impl Relay {
         admission: &mut Admission,
     ) {
         let Some(upstream) = self.upstream else {
-            // no selectable network, or one whose interface the app could not name: an operation fails, the
-            // session does not
+            // An unavailable upstream drops this operation, not the session.
             self.counters.no_upstream += 1;
             return;
         };
@@ -520,15 +482,6 @@ impl Relay {
     }
 
     /// Repeats one ICMP error a router sent about a relayed ping.
-    ///
-    /// The session is found from the *sequence*, not from an address, because a ping socket's errors name no
-    /// destination: `ping_err` passes no port to `ip_icmp_error`, so the kernel reports none. What it does keep
-    /// is the offending Echo header, and the sequence in it is the one the daemon substituted - so a sequence
-    /// matching exactly one live session is proof this daemon sent that request. More than one is ambiguity, and
-    /// ambiguity is answered with silence rather than a guess.
-    ///
-    /// The session is consumed either way. An error about a request means its reply is not coming, so holding
-    /// the session open would only reserve a sequence for something that will never arrive.
     fn repeat(
         &mut self,
         family: Family,

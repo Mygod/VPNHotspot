@@ -55,35 +55,26 @@ This app only indirectly write persistent changes through system APIs thus it sh
 2. If you edited the system Wi-Fi hotspot configuration through this app, those changes will persist.
 3. If you toggle tethering hardware offload through this app, the Android global `tether_offload_disabled` setting will persist.
    Toggle it back in this app or the matching Developer options setting to revert it.
-4. While a rootless Shizuku session runs, Android is asked to prefer a test network as the tethering upstream.
-   A normal stop clears that preference, but a force stop, a crash, or an app kill can leave it on. Your
-   hotspot keeps working, since with no test network around Android picks an ordinary upstream again, but the
-   next test network to appear is preferred, including one published by another app. Starting *VPN tethering
-   without root* again and stopping it clears the flag; so does a reboot.
+4. Rootless Shizuku mode sets Android's global test-network preference. A normal
+   stop clears it; process death may leave it until another owned session stops,
+   the tethering service restarts, or the device reboots. Meanwhile tethering can
+   select another app's test network.
 
 Routing, firewall, addresses, and daemon/service state managed by this app are cleaned up when stopped, by Clean, or upon reboot.
 
 ### [No root?](https://github.com/Mygod/VPNHotspot/issues/62)
 
-A rootless Shizuku mode is in development ([#789](https://github.com/Mygod/VPNHotspot/issues/789)).
-It is not a drop-in replacement for root mode, and two differences are worth knowing before you rely
-on it.
+Rootless Shizuku mode is in development
+([#789](https://github.com/Mygod/VPNHotspot/issues/789)) and is not equivalent to
+root mode:
 
-**It protects your tethered clients' traffic, but it does not isolate the tunnel from other apps on
-your own phone.** While a rootless session is running, your tethered clients egress over this app's
-own default connection — a VPN when Android applies one to this app, otherwise its ordinary default.
-Any app with network access can send its own packets through that same tunnel, so an app your VPN
-excludes from itself can still reach that connection this way. It cannot read your tethered clients' traffic
-and it cannot receive replies to what it sends. This is a limit of what an app can enforce without
-root: Android lets an app pick a network interface directly, and nothing at this privilege level can
-stop it. Root mode is not affected.
-
-**Ending a rootless session does not stop your hotspot.** Android simply picks an ordinary upstream
-again, so clients keep working — unprotected, with nothing on their side changing to say so. That
-applies to a normal stop and to every way the app can go away, including a crash, a force stop, or an
-uninstall, and none of those can leave anything behind to warn you. Root mode differs here too: its
-privileged daemon notices the app going and tears its own routing down, so the hotspot stops carrying
-traffic rather than quietly carrying it unprotected.
+- It relays tethered traffic over this app's default connection, but other apps
+  can inject packets through the TUN interface. They cannot read tunnel traffic
+  or receive downstream-routed replies. A VPN-excluded app may therefore send
+  through the VPN anyway.
+- Stopping or losing the TestNetwork does not stop the hotspot. Android selects
+  an ordinary upstream and clients continue unprotected without a client-side
+  warning.
 
 ### Failed to create group due to internal error/repeater shuts down after a while?
 
@@ -252,47 +243,37 @@ Other:
   transparent sockets. ICMPv6 Echo interception uses app-owned queue `30000`
   and assumes queued downstream packets expose six-byte source hardware-address
   metadata through `NFQA_HWADDR`.
-* (since API 33) The privileged `ConnectivityManager` is allocated without running any
-  constructor, because every hidden constructor can assign the process-wide `sInstance`. It inherits
-  every declared instance field from the process's ordinary manager, since field initializers run in
-  the skipped constructor and the field set is Mainline-dependent. Consequently all fields except
-  `mContext`/`mService` are aliased: both managers share one collection set and one monitor, so the
-  privileged manager is used only for the exact request, its release, and the agent's
-  `CONNECTIVITY_SERVICE` lookup.
-* (since API 33) `TestNetworkManager` is assumed to declare exactly one constructor,
-  whose single parameter type is the TestNetwork interface under whichever name the installed
-  Connectivity module uses. That type's own name is where `$Stub`/`asInterface` are resolved, so
-  relocation needs no prefix candidates.
-* (since API 33) `android.net.IConnectivityManager` is assumed **not** to be
-  jarjar-relocated, unlike the TestNetwork interface: the module's rule generator excludes everything
-  reachable from its UnsupportedAppUsage inventory, and `IConnectivityManager$Stub$Proxy` members are
-  listed there on every supported release.
-* (since API 33) `NetworkRequest.Builder.setNetworkSpecifier(String)` is assumed to
-  yield a `TestNetworkSpecifier` because `TRANSPORT_TEST` is added first; otherwise it produces an
-  `EthernetNetworkSpecifier` that could never match the agent, so the resulting type is asserted.
-* (since API 33) A fresh `NetworkCapabilities.Builder` is assumed to start with an empty
-  allowed-UID set, so the restricted agent submits one without calling the blocked `setAllowedUids`.
-  Omitting `NET_CAPABILITY_NOT_RESTRICTED` is what makes the published network a restricted netd
-  network; the empty allowed-UID set cannot be read back reliably on Android 13-17.
-* (since API 33) `ConnectivityManager.getAllNetworks` is assumed to require only
-  `ACCESS_NETWORK_STATE` and to return every network the service tracks, unfiltered by ownership, on
-  Android 13 through 17; and `getNetworkCapabilities` to need the same permission and no ownership or
-  restricted-network check, to return null for a network that has disappeared, and to preserve
-  transport types — including `TRANSPORT_TEST` — through its sanitizer, which is the only field this
-  app reads there. The pre-publication collision scan rests on both. If a release began redacting
-  transports, the collision distinction is lost and a foreign test network is reported as needing a
-  hotspot cycle instead; `ACTIVE` is unaffected, being identity against the network this session
-  published.
-* (since API 33) Android is assumed to delegate a globally scoped `/64` from a restricted
-  test network's `LinkProperties` to the oldest active tethered downstream, and to clamp the derived
-  downstream MTU into 1280-1500. Only one downstream receives the prefix; a local-only downstream that
-  started first can hold that position and leave every tethered interface without IPv6.
+* (since API 33) The privileged `ConnectivityManager` is allocated without a
+  constructor to avoid changing `sInstance`. It copies all instance fields, then
+  replaces `mContext`/`mService`; other fields and monitors remain shared. It is
+  used only for the exact request, its release and the agent's service lookup.
+* (since API 33) `TestNetworkManager` has one single-parameter constructor. The
+  parameter's runtime name supplies the relocated TestNetwork interface and its
+  `$Stub.asInterface` owner.
+* (since API 33) `android.net.IConnectivityManager` is not jarjar-relocated. Its
+  unsupported-app-usage reachability excludes it from Connectivity relocation.
+* (since API 33) Adding `TRANSPORT_TEST` before
+  `NetworkRequest.Builder.setNetworkSpecifier(String)` produces a
+  `TestNetworkSpecifier`; the resulting type is asserted.
+* (since API 33) A fresh `NetworkCapabilities.Builder` has an empty allowed-UID
+  set. Omitting `NOT_RESTRICTED` publishes a restricted netd network without the
+  blocked `setAllowedUids`; the empty set cannot be read back reliably on Android
+  13-17.
+* (since API 33) `getAllNetworks` and `getNetworkCapabilities` require only
+  `ACCESS_NETWORK_STATE`, are not ownership-filtered, and preserve
+  `TRANSPORT_TEST`. The pre-publication collision scan depends on this; session
+  `ACTIVE` uses exact `Network` identity instead.
+* (since API 33) Tethering delegates a restricted TestNetwork's global `/64` to
+  only the oldest active downstream and clamps its MTU to 1280-1500. An older
+  local-only downstream can therefore prevent tethered IPv6.
 * (since API 30) Relevant tethering APEX classes used here, including `android.net.ITetheringConnector`,
   may be jarjar-relocated under the optional prefixes
   `android.net.connectivity` or `com.android.connectivity`.
 * (since API 31) Relevant netd APEX classes used here, including `android.net.INetd*`,
   may be jarjar-relocated under the optional prefixes
   `android.net.connectivity` or `com.android.connectivity`.
+* (since API 30) Tethering startup callbacks and later state updates are each
+  dispatched from one executor task; `TetherStates` relies on that burst ordering.
 * The Rust DNS proxy reads `android_res_nsend` results only after `dnsproxyd` closes the one-shot
   `resnsend` client socket, so it assumes `resnsend` writes the complete result before returning and
   that the socket buffer holds it until then. See [`docs/vpnhotspotd/dns.md`](docs/vpnhotspotd/dns.md).

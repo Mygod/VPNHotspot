@@ -285,7 +285,6 @@ wire {
         rpcRole = "none"
     }
 }
-// This repository has no instrumented tests.
 androidComponents.beforeVariants { variant ->
     variant.enableAndroidTest = false
 }

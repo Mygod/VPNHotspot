@@ -1,14 +1,3 @@
-//! The engine's side of a DNS-over-TCP flow: what a transport may ask its owner for, and what a settled
-//! transaction becomes.
-//!
-//! It owns one cohesive decision made in four places: admit a length, accept the query it was admitted for,
-//! classify the answer against the config that query belongs to, and end the delivery when the client's stack
-//! has really taken it.
-//!
-//! Every entry point below validates the flow on *both* halves of its identity first, because smoltcp reuses
-//! handles: a request naming only a handle could be admitted against, published for, or released from
-//! whatever flow reused it.
-
 use std::io;
 
 use vpnhotspotd::shared::admission::Admission;
@@ -23,19 +12,6 @@ use vpnhotspotd::shared::workers::Held;
 
 impl Engine {
     /// Answers one thing a DNS-over-TCP transport asked its owner for.
-    ///
-    /// Three questions, and each of them is an accounting decision a worker cannot make for itself: may this
-    /// announced length be stored, may this exact query be published, and may this delivery end.
-    ///
-    /// `admitting` is the session's current admission state, and only the first two questions read it. An
-    /// admission-closed session may drain what it already owns and may create nothing: a reservation this
-    /// owner has not accepted yet allocates nothing, a query it accepted while admission was open is answered
-    /// from the capacity that reservation already holds rather than becoming platform work, and a delivery
-    /// already parked is acknowledged and released exactly as it would have been.
-    ///
-    /// `Err` is the one answer that is not this transport's: this daemon's own wrapper around the descriptor
-    /// Android returned failed, so the ingress task that owns this engine ends rather than publishing another
-    /// query into it.
     pub(crate) fn ask(
         &mut self,
         ask: tcp_dns::Ask,
@@ -83,15 +59,6 @@ impl Engine {
     }
 
     /// Admits one query at the length its client announced, before a byte of it has been stored.
-    ///
-    /// This is where the message a client can announce becomes an allocation the aggregate agreed to. What
-    /// comes back to the transport is either a buffer of exactly that length - which the framing may fill and
-    /// cannot grow - or a refusal, which the transport answers by skipping those bytes so the stream stays
-    /// framed for the next question.
-    ///
-    /// A stale transport is answered with nothing at all: it is on its way out, its own close settles what it
-    /// held, and reserving capacity for it would be capacity nothing will hand back. Its cancellation, not a
-    /// reply, is what ends the wait it is in.
     fn reserve_query(
         &mut self,
         flow: Event,
@@ -149,17 +116,6 @@ impl Engine {
     }
 
     /// Accepts one exact validated query from the transport that framed it, and publishes it.
-    ///
-    /// **This is the commit boundary the per-query handoff turns on.** The stamp and the selected network are
-    /// sampled here, together, from the config current at this moment - never inherited from whenever the flow
-    /// was opened, and never read again afterwards. A request still queued when a config wins is therefore
-    /// published under the successor, and one this owner has already accepted cannot be overtaken by that
-    /// config's acknowledgement: both run in this owner's own serial order, and the acknowledgement is sent
-    /// after the apply that preceded it returned.
-    ///
-    /// Nothing travels here but the identity. The query itself comes back on the depth-one channel this owner
-    /// kept when it granted the capacity, so a buffer waiting to be accepted is one the flow's close can end
-    /// before it refunds - rather than one sitting in a shared queue while its grant is given back.
     fn commit_query(
         &mut self,
         flow: Event,
@@ -186,10 +142,7 @@ impl Engine {
         // A query with no descriptor behind it never had a transaction to open, so it takes the same path as
         // one with no network to resolve on - which is also what a transport opened before any config had
         // selected a network gets, on a stream that then resolves normally once one arrives.
-        // `admitting` is read here rather than where the reservation was granted, because this is the commit
-        // boundary: a query accepted before the session stopped serving is already this owner's to answer,
-        // and one whose commit was still queued when the stop won must not become platform work a stopping
-        // session cannot observe the end of. Either way the reservation covers the answer built below.
+        // Read `admitting` at publication, the commit point for starting platform work.
         let published = self
             .upstream
             .filter(|_| admitting && reserved.submittable())
@@ -228,10 +181,6 @@ impl Engine {
     }
 
     /// Answers one query this daemon will not submit, and parks its delivery on the flow that asked.
-    ///
-    /// The same shape as a settled transaction's answer, deliberately: it is parked before the transport can
-    /// see it, acknowledged by the same identity, and released by the same path. What differs is only that no
-    /// descriptor was opened and the platform was never asked.
     fn answer_here(
         &mut self,
         flow: Event,
@@ -259,15 +208,6 @@ impl Engine {
     }
 
     /// Settles one finished resolver transaction, in the one order that does not lose an acknowledgment.
-    ///
-    /// Classify, park, *then* hand the answer over. The transport is awaiting an answer it cannot see until
-    /// this has run, so the "delivered" report it sends afterwards necessarily finds the delivery already
-    /// parked on its flow. [tcp_dns::Answering::hand_over] makes the order structural: the answer is inside
-    /// the settled delivery, classification happens before the park, and parking is the only way out of it.
-    ///
-    /// `Err` is this daemon's own wrapper around the transaction having failed while it was being watched.
-    /// The table has already given everything that transaction held back; what is left is that this engine's
-    /// owner may not publish another query, so the failure ends the ingress task rather than this one stream.
     pub(crate) fn settle(
         &mut self,
         settlement: tcp_dns::Settlement,

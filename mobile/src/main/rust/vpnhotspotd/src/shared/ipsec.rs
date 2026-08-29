@@ -40,51 +40,24 @@ enum SectionKind {
 pub struct UpstreamTracker {
     sessions: HashMap<u64, SessionUpstreams>,
     refcounts: HashMap<String, usize>,
-    /// The probe that owns the sole flight, named by the generation it was minted at; `None` when nothing is
-    /// in flight. One at a time, because a scan reads the whole system's policies and two of them would answer
-    /// the same question twice.
-    ///
-    /// Only the probe named here may end that flight or be handed its rescan. Any other belongs to a flight a
-    /// [UpstreamTracker::clear] ended, and letting one of those end or extend the current flight is what would
-    /// leave two scans running beside each other - or none at all, with the flight marked busy forever.
+    /// Generation of the sole in-flight probe; only that probe may complete or extend the flight.
     flight: Option<u64>,
-    /// An update that arrived while a probe was in flight. That probe may have read the kernel before the
-    /// interface it is about existed, so its answer cannot be taken for the new upstream - and dropping the
-    /// update would leave a tunnel unpolicied until something else happened to change. Kept here and handed
-    /// back by [UpstreamTracker::finish_probe] instead, which turns it into exactly one more scan: however many
-    /// updates pile up, the rescan is minted at the newest generation and there is only ever one.
+    /// Coalesces any updates during the flight into one successor scan.
     pending_rescan: bool,
-    /// Which set of sessions this tracker currently speaks for. Advanced by every replacement a scan has to
-    /// answer for and by [UpstreamTracker::clear], so a [Probe] minted at an older one saw a system that
-    /// predates them and is recognisable as stale by comparison.
+    /// Advances whenever the session set changes, fencing stale probe results.
     generation: u64,
     emitted_targets: HashSet<IpSecForwardPolicyTarget>,
 }
 
-/// One probe this tracker asked for, and the sessions it speaks for.
-///
-/// Handed back to [UpstreamTracker::finish_probe]. Not a token a caller can invent: the only way to have one
-/// is to have been told to probe.
+/// Opaque generation token issued by the tracker.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Probe(u64);
 
 /// What one probe's completion leaves behind.
 pub struct Finished {
-    /// Whether what the probe saw still speaks for this tracker's sessions.
-    ///
-    /// `false` for a probe the sessions moved out from under - a [UpstreamTracker::clear], or a replacement
-    /// this scan predates - and committing one of those would do real damage rather than merely be stale. The
-    /// targets it did not see include the ones a newer probe has already sent to the app, and forgetting those
-    /// is what makes them be sent again; the ones it did see it would attribute from a session set that has
-    /// since changed, which is how a policy ends up published for the wrong session and then marked as
-    /// already sent.
+    /// Whether the probe still matches the current session generation.
     pub current: bool,
-    /// The rescan owed to an update that arrived while this probe was running. `Some` at most once per probe,
-    /// because taking it here is what keeps the flight going rather than starting a second one beside it.
-    ///
-    /// Independent of [Finished::current]: a probe whose answer is discarded still owns the flight, and the
-    /// rescan is how the update that discarded it gets answered. Whoever gets one *must* run it - the flight
-    /// has been handed to it - or nothing will ever probe again short of a clear.
+    /// Successor probe owed to updates coalesced during this flight.
     pub rescan: Option<Probe>,
 }
 
@@ -175,13 +148,7 @@ impl UpstreamTracker {
             .retain(|target| self.refcounts.contains_key(&target.interface));
     }
 
-    /// Drops every session this tracker speaks for: a clean, or the process stopping.
-    ///
-    /// The generation moves with it, as it does for any other replacement, and the *flight* ends with it -
-    /// which no other replacement does. That is what makes this the one place two probes can overlap: the one
-    /// that was in flight, and the one the next update is free to start. Nothing is owed to the old one, so
-    /// the pending rescan goes too: it belonged to sessions that no longer exist, and replaying it would scan
-    /// for nothing.
+    /// Clears sessions, pending rescan, and the current flight while advancing the generation fence.
     pub fn clear(&mut self) {
         self.sessions.clear();
         self.refcounts.clear();
@@ -572,16 +539,14 @@ mUserResourceTracker:
             .contains("invalid tunnel resource id 999999999999"));
     }
 
-    /// The probe an update asks for, for a test that is about which updates ask for one.
     fn probed(probe: Option<Probe>) -> Probe {
         probe.expect("this update has to ask for a probe")
     }
 
-    /// Ends the flight of the probe an update asked for, which is what the owner does when a scan comes back.
     fn finish(tracker: &mut UpstreamTracker, probe: Probe) {
         let finished = tracker.finish_probe(probe);
-        assert!(finished.current, "this probe still speaks for its sessions");
-        assert!(finished.rescan.is_none(), "nothing asked for a rescan");
+        assert!(finished.current);
+        assert!(finished.rescan.is_none());
     }
 
     #[test]
@@ -590,8 +555,6 @@ mUserResourceTracker:
         let probe = probed(tracker.update_session(1, &session_config(["ipsec1"], ["ipsec1"])));
         finish(&mut tracker, probe);
         let probe = probed(tracker.update_session(2, &session_config(["wlan0"], ["ipsec1"])));
-        // Primary and fallback swapped, which is the same set of interfaces at the same generation: nothing a
-        // scan could answer differently, so nothing is asked for and nothing is owed.
         assert!(tracker
             .update_session(2, &session_config(["ipsec1"], ["wlan0"]))
             .is_none());
@@ -662,10 +625,6 @@ mUserResourceTracker:
             .is_some());
     }
 
-    /// An update that arrives while a probe is running cannot be answered by that probe: it may have read the
-    /// kernel's policies before the interface existed. So that probe's answer is *discarded* and the update is
-    /// replayed, exactly once, however many updates piled up - and the flight stays open in the meantime, so
-    /// nothing starts a second scan beside it.
     #[test]
     fn an_update_during_a_probe_discards_it_and_is_replayed_exactly_once() {
         let mut tracker = UpstreamTracker::default();
@@ -686,38 +645,27 @@ mUserResourceTracker:
         let rescan = finished
             .rescan
             .expect("the updates are owed exactly one rescan");
-        // Exactly one, and it speaks for the newest of those updates rather than for the one that opened the
-        // window: the rescan is current, so what *it* sees is what commits.
-        // The flight is still open, so an update arriving during the rescan is recorded rather than racing.
         assert!(tracker
             .update_session(3, &session_config(["ipsec5"], []))
             .is_none());
         let finished = tracker.finish_probe(rescan);
-        assert!(!finished.current, "and the same is true of the rescan");
+        assert!(!finished.current);
         let rescan = finished
             .rescan
             .expect("the update during the rescan is owed one of its own");
         finish(&mut tracker, rescan);
-        // And now that nothing is in flight, the next update starts a scan of its own again.
         assert!(tracker
             .update_session(3, &session_config(["ipsec6"], []))
             .is_some());
     }
 
-    /// The completion a replacement makes dangerous, which is the same damage a clean's does: a probe that
-    /// predates the replacement, coming back afterwards. Committing it would forget an emitted target - and
-    /// forgetting one is what makes it be sent twice - and publish what it did see from a session set that has
-    /// since changed.
     #[test]
     fn a_probe_from_before_a_replacement_commits_nothing() {
         let mut tracker = UpstreamTracker::default();
         let stale = probed(tracker.update_session(1, &session_config(["ipsec1"], [])));
         let target = expected_target();
-        // Sent to the app by an earlier scan of this same flight, and therefore not to be sent again.
         assert_eq!(tracker.session_for_new_target(&target), Some(1));
 
-        // The replacement this stale probe predates: session 1 keeps ipsec1 and gains one, so ipsec1 is still
-        // refcounted and the stale answer would still look committable.
         assert!(tracker
             .update_session(1, &session_config(["ipsec1", "ipsec2"], []))
             .is_none());
@@ -726,11 +674,8 @@ mUserResourceTracker:
             !finished.current,
             "a probe from before a replacement speaks for the session set it predates"
         );
-        // So the caller retains and publishes nothing from it, and the target the app already has stays
-        // emitted rather than being forgotten and sent a second time.
         assert_eq!(tracker.session_for_new_target(&target), None);
 
-        // One rescan, and it is the one that speaks for the replacement.
         let rescan = finished.rescan.expect("the replacement is owed a rescan");
         let finished = tracker.finish_probe(rescan);
         assert!(
@@ -745,24 +690,13 @@ mUserResourceTracker:
         assert_eq!(tracker.session_for_new_target(&target), None);
     }
 
-    /// A change a scan cannot answer - a session's upstreams going away - neither discards the scan in flight
-    /// nor asks for another. The one in flight still speaks for the sessions that are left, and a rescan that
-    /// nothing owes would be a scan for nothing.
     #[test]
     fn an_upstream_that_goes_away_neither_discards_nor_replays() {
-        // Session 1 opens the tracker and its probe is finished first, so the flight this test is about is
-        // the one session 2's arrival mints - and session 2 is then deliberately removed, and separately
-        // emptied, *before* that probe finishes. Finishing session 1's probe up front is what keeps the
-        // rescan its arrival would otherwise owe out of the way, so the only thing happening during the
-        // flight under test is the departure.
         let mut tracker = UpstreamTracker::default();
         let opening = probed(tracker.update_session(1, &session_config(["ipsec1"], [])));
         finish(&mut tracker, opening);
         let probe = probed(tracker.update_session(2, &session_config(["ipsec2"], [])));
 
-        // The departure, in flight. A session losing its last upstream takes its refcounts and emitted
-        // targets with it, and that is all: nothing a scan could answer has changed, so the answer already
-        // being fetched still speaks for the sessions that remain.
         tracker.remove_session(2);
         let finished = tracker.finish_probe(probe);
         assert!(
@@ -776,40 +710,31 @@ mUserResourceTracker:
         assert_eq!(tracker.session_for_interface("ipsec1"), Some(1));
         assert_eq!(tracker.session_for_interface("ipsec2"), None);
 
-        // The same departure spelled as an empty config rather than a removal, which is the other way a
-        // session's upstreams go away.
         let probe = probed(tracker.update_session(2, &session_config(["ipsec2"], [])));
         assert!(
             tracker.update_session(2, &session_config([], [])).is_none(),
             "losing every upstream asks for no probe"
         );
         let finished = tracker.finish_probe(probe);
-        assert!(finished.current, "and does not discard the one in flight");
-        assert!(finished.rescan.is_none(), "and does not replay it");
+        assert!(finished.current);
+        assert!(finished.rescan.is_none());
         assert_eq!(tracker.session_for_interface("ipsec1"), Some(1));
         assert_eq!(tracker.session_for_interface("ipsec2"), None);
     }
 
-    /// The completion that would do real damage: a probe started before a clean, coming back after the next
-    /// one has already told the app about a target. Committing it would forget that target, and forgetting it
-    /// is what makes it be sent twice.
     #[test]
     fn a_probe_from_before_a_clean_commits_nothing() {
         let mut tracker = UpstreamTracker::default();
         let stale = probed(tracker.update_session(1, &session_config(["ipsec1"], [])));
-        // The clean drops every session this tracker spoke for, so the probe in flight speaks for nothing.
         tracker.clear();
         let current = probed(tracker.update_session(2, &session_config(["ipsec1"], [])));
         let target = expected_target();
         assert_eq!(tracker.session_for_new_target(&target), Some(2));
 
-        // The stale probe saw the system before that tunnel existed. Its answer ends here.
         let finished = tracker.finish_probe(stale);
-        assert!(!finished.current, "a probe from before a clean is stale");
+        assert!(!finished.current);
         assert!(finished.rescan.is_none());
-        // Nothing it saw was committed, so the target the app already has is not sent again.
         assert_eq!(tracker.session_for_new_target(&target), None);
-        // And the current probe is still in flight: the stale one did not end its flight either.
         assert!(tracker
             .update_session(2, &session_config(["ipsec1", "ipsec2"], []))
             .is_none());
@@ -821,9 +746,6 @@ mUserResourceTracker:
         assert_eq!(tracker.session_for_new_target(&target), None);
     }
 
-    /// A rescan owed when a clean arrives is owed for sessions the clean drops, so it goes with them. The
-    /// flight the next update is then free to start must not inherit a replay for a session set that no longer
-    /// exists, and the stale completion must neither commit nor schedule anything.
     #[test]
     fn a_clean_drops_the_rescan_it_found_owed() {
         let mut tracker = UpstreamTracker::default();
@@ -834,13 +756,11 @@ mUserResourceTracker:
         tracker.clear();
         let current = probed(tracker.update_session(3, &session_config(["ipsec1"], [])));
         let finished = tracker.finish_probe(stale);
-        assert!(!finished.current, "a probe from before a clean is stale");
+        assert!(!finished.current);
         assert!(
             finished.rescan.is_none(),
             "and it schedules nothing: its flight ended with the sessions it spoke for"
         );
-        // Current, and owed nothing: the pre-clean update's replay went with the clean rather than being
-        // handed to the flight that replaced it.
         finish(&mut tracker, current);
     }
 

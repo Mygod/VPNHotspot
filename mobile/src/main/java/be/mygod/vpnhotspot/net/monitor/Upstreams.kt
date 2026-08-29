@@ -31,31 +31,12 @@ import java.util.regex.PatternSyntaxException
 
 data class Upstream(val network: Network, val properties: LinkProperties)
 
-/**
- * The ordered-callback state machine behind [Upstreams.appDefault], and the whole of its decision.
- *
- * Extracted rather than inlined in the callback because the decision is not about networks at all - it is
- * about which of three ordered facts have arrived for the *current* one - so it is testable without a device,
- * and every rule below is one that has been got wrong here before. It is generic in the two payload types for
- * exactly that reason and for no other.
- *
- * Three rules, in the order they matter:
- *
- * 1. **A new [available] retires the old value immediately.** The framework delivers availability first and
- *    the properties and blocked status after, so keeping the previous network published across that window
- *    would name a network Android has already replaced, and every consumer here treats an emission as a
- *    handover.
- * 2. **Nothing is published until both later facts arrive.** Properties are what an upstream *is*, and a
- *    blocked network is one this UID may not use, so publishing early would offer an egress that fails every
- *    send and retract it in the same breath.
- * 3. **It fails closed.** Blocked or lost is null, not the last good value.
- */
+/** Publishes only the current, fully described, unblocked default network. */
 internal class AppDefaultState<N : Any, P : Any> {
     private var current: N? = null
     private var properties: P? = null
     private var blocked: Boolean? = null
 
-    /** The value to publish: null unless the current network is fully described and usable. */
     val upstream get() = current?.let { network -> properties?.takeIf { blocked == false }?.let { network to it } }
 
     fun available(network: N) {
@@ -64,7 +45,6 @@ internal class AppDefaultState<N : Any, P : Any> {
         blocked = null
     }
 
-    /** False for a callback about a network that is no longer current, which is nothing to publish. */
     fun properties(network: N, properties: P): Boolean {
         if (network != current) return false
         this.properties = properties
@@ -154,35 +134,12 @@ object Upstreams {
     val fallback: StateFlow<Upstream?> = role(KEY_FALLBACK, default)
 
     /**
-     * The `Network` Android has made this app's own default: a VPN when one applies to this UID, and the
-     * ordinary per-UID default when none does.
-     *
-     * Deliberately not a [role] and deliberately not [default]. [KEY_PRIMARY] and [KEY_FALLBACK] choose where
-     * *root mode* sends its tethered clients, and root mode can send them anywhere because it writes the
-     * routes itself. Rootless mode makes a different promise: tethered clients share whatever egress Android
-     * has already applied to this app, so its egress is that selection and not a user preference. This is a
-     * product decision about what the mode is, not an inability to bind - an ordinary app UID can bind a
-     * socket to any accessible `Network` handle it names.
-     *
-     * `registerDefaultNetworkCallback` is per calling UID rather than the system default. `TRACK_DEFAULT`
-     * discards the capabilities the caller passed and rebuilds them for the calling UID: `NOT_VPN` removed
-     * so a VPN can satisfy it, and the UID pinned so only a VPN that applies to *this* app does. Identical
-     * on Android 13 and 17.
-     *
-     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/ConnectivityManager.java#5434
-     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#9455
-     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#10215
-     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/service/src/com/android/server/ConnectivityService.java#7143
+     * This app UID's default Network, including an applicable VPN. Root-mode upstream preferences do not
+     * apply. Callback order is available, properties, then blocked status.
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/ConnectivityManager.java#3770
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/ConnectivityManager.java#4182
      */
     val appDefault: StateFlow<Upstream?> = callbackFlow {
-        /**
-         * The order this relies on is the framework's: `onAvailable`, then the
-         * suspended/capabilities/link-properties callbacks, then `onBlockedStatusChanged`, all from one
-         * `CALLBACK_AVAILABLE` message, on Android 13 and 17 alike.
-         *
-         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/ConnectivityManager.java#4182
-         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/ConnectivityManager.java#3770
-         */
         val state = AppDefaultState<Network, LinkProperties>()
         val callback = object : ConnectivityManager.NetworkCallback() {
             private fun emit() = trySend(state.upstream?.let { Upstream(it.first, it.second) })
@@ -206,7 +163,6 @@ object Upstreams {
             Services.connectivity.registerDefaultNetworkCallback(callback, Services.mainHandler)
             registered = true
         } catch (e: RuntimeException) {
-            // the same outcome as no default network, which stateIn is already reporting
             Timber.w(e)
             SmartSnackbar.make(e).show()
         }

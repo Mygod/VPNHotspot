@@ -1,10 +1,3 @@
-//! Just enough of a TCP segment to route it: which flow it belongs to, and whether it opens one.
-//!
-//! Deliberately not a parse of the whole header. The terminating stack owns sequence numbers, windows, options
-//! and state; what the engine needs before handing a packet over is the four-tuple to key on, the hop limit to
-//! validate, and whether this is a SYN - because a SYN for an unknown destination is the one packet that has to
-//! create a listening socket *before* the stack sees it.
-
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
 
 use etherparse::{IpFragOffset, IpNumber};
@@ -26,14 +19,6 @@ pub struct Segment {
     pub hop_limit: u8,
     pub syn: bool,
     /// This segment *claims* to abort the connection.
-    ///
-    /// A candidate and nothing more. Nothing here validates a checksum, a sequence number or a window, and
-    /// the stack refuses a reset outright in `LISTEN`, so a segment carrying this bit is not yet a reset -
-    /// and acting on it as though it were poisoned flows named by packets `smoltcp` then threw away.
-    ///
-    /// The *cause* is the transition the stack makes when it accepts one, observed across the poll that
-    /// processed this exact packet - see `shizuku::tcp::ingress`. This flag is carried only so that owner
-    /// knows which packets are worth watching a socket across.
     pub rst: bool,
 }
 
@@ -101,7 +86,6 @@ fn endpoint(address: std::net::IpAddr, port: u16) -> SocketAddr {
 mod tests {
     use super::*;
 
-    /// An IPv4 TCP segment with the flags byte the caller asks for.
     fn ipv4(flags: u8) -> Vec<u8> {
         let mut packet = vec![0x45, 0, 0, 40, 0, 0, 0, 0, 64, IpNumber::TCP.0, 0, 0];
         packet.extend_from_slice(&[192, 0, 2, 1]);
@@ -123,27 +107,20 @@ mod tests {
         assert_eq!(segment.hop_limit, 64);
         assert!(segment.syn);
         assert!(!segment.rst);
-        // an ACK carrying data is the same flow and not a new one
         assert!(!peek(&ipv4(0x10)).unwrap().syn);
     }
 
     #[test]
     fn a_reset_bit_is_read_as_a_candidate_and_nothing_more() {
-        // What the flag is for: telling the owner which packets to watch a socket across. Whether any of
-        // these is a reset at all is the stack's answer, not this one's.
         let segment = peek(&ipv4(FLAG_RST)).unwrap();
         assert!(segment.rst);
-        assert!(!segment.syn, "a reset is not an opening");
+        assert!(!segment.syn);
         assert_eq!(segment.source, "192.0.2.1:40000".parse().unwrap());
-        // A reset acknowledging the peer's own FIN is the case that matters - it names a flow whose clean
-        // ending this daemon may already have extracted.
         let after_fin = peek(&ipv4(FLAG_RST | 0x10)).unwrap();
         assert!(after_fin.rst);
-        // And an ordinary segment carries neither.
         let plain = peek(&ipv4(0x10)).unwrap();
         assert!(!plain.rst);
         assert!(!plain.syn);
-        // FIN alone is an ending, never an abort.
         assert!(!peek(&ipv4(0x11)).unwrap().rst);
     }
 

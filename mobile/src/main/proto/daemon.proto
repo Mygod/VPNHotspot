@@ -7,35 +7,14 @@ option java_outer_classname = "DaemonProto";
 option optimize_for = LITE_RUNTIME;
 
 message ShizukuSessionConfig {
-  // Which Network upstream sockets are bound to. Incremented by the app on upstream property changes,
-  // and never the Network handle itself: a handle is derived from a netId, so it survives a
-  // LinkProperties change that invalidates pinned state and is eventually reused by an unrelated network.
+  // Retires sockets bound to an earlier upstream selection.
   uint64 upstream_generation = 1;
-  // Only the app knows the session is ACTIVE, and only the daemon owns the TUN, so admission travels in
-  // the config rather than being inferred. Level-triggered like everything else here, and it retires nothing
-  // in either direction: closing it makes the daemon drop what it reads from the TUN and create or refresh
-  // nothing, and reopening it takes up again with whatever is still there. Closed is not paused, though -
-  // deadlines keep running and protocols keep finishing throughout - so what a reopened session resumes with
-  // is what independently survived the interval rather than a guarantee about any particular connection.
+  // Closed admission drops new TUN input without pausing existing protocol state.
   bool admit = 2;
-  // Absent means no selectable Network right now, which is not a failure: upstream work fails per
-  // operation and the session resumes on the next config. There is no fallback network in this mode.
+  // Absent when this app UID has no selectable default Network.
   optional uint64 upstream_network = 3;
-  // The exact set every destination is compared against before attribution, reassembly, or transport
-  // dispatch, as packed 4- or 16-byte addresses. Traffic to one of these is platform_dns only on an exact
-  // TCP/UDP port-53 endpoint; anything else to a reserved address is dropped without a response.
-  repeated bytes virtual_addresses = 4;
-  // The interface's own addresses, one per family, as packed 4- or 16-byte values. An ICMP error the daemon
-  // originates comes from one of these, because that is the address a router in its position would speak from;
-  // without the matching family the error is not sent at all rather than sent from something else.
-  repeated bytes gateway_addresses = 5;
-  // Interface index of upstream_network, which every relayed reply must have arrived on. Absent together
-  // with upstream_network, and absent on its own when the app cannot resolve the name to an index.
-  //
-  // Not diagnostic. Inbound UDP and ICMP demultiplex on local address and port alone, and the mark that
-  // steers egress takes no part in it, so a late reply to a retired mapping can be delivered to whatever
-  // socket now holds that identity; requiring the arrival interface to match this is what rejects it.
-  optional uint32 upstream_interface_index = 6;
+  // Rejects replies that arrived through another interface; absent when unresolved.
+  optional uint32 upstream_interface_index = 4;
 }
 
 message ClientEnvelope {
@@ -49,33 +28,20 @@ message ClientEnvelope {
     CleanRoutingCommand clean_routing = 7;
     ReplaceStaticAddressesCommand replace_static_addresses = 8;
     StartShizukuSessionCommand start_shizuku_session = 9;
-    ApplyShizukuConfigCommand apply_shizuku_config = 10;
+    ShizukuSessionConfig apply_shizuku_config = 10;
   }
 }
 
 message CancelCommand {}
 
-// The app-UID session's start call, and an event-style call like StartSessionCommand: its call ID owns the
-// dataplane for as long as the session runs, and its ACK is the readiness the app waits for.
-//
-// Sent with exactly one SCM_RIGHTS descriptor, which must be the TUN the daemon will own. The sender cannot
-// prove what arrived, so every field here is something the receiver re-checks against the descriptor itself.
-// The descriptor rides on this one frame, so the app writes it with a single write and the daemon reads the
-// whole frame with recvmsg.
+// Starts one app-UID session with an attached TUN descriptor.
 message StartShizukuSessionCommand {
   string interface_name = 1;
-  // The session's whole packet-sizing contract, checked against the descriptor's own interface MTU before the
-  // dataplane is built. Sent once and never again: this is the TestNetwork's fixed MTU - the value its TUN was
-  // created with, the value its agent published, and the value tethering clamps the downstream MTU it derives
-  // from this upstream to - so no config can move it and none carries it.
   uint32 mtu = 2;
-}
-
-// One level-triggered config, keyed to the start call that owns the session. A one-shot call: its ACK is sent
-// only once whatever the config retires is really gone, and its error is the refusal that ends the session.
-message ApplyShizukuConfigCommand {
-  uint64 session_id = 1;
-  ShizukuSessionConfig config = 2;
+  // Reserved DNS destinations, as packed IPv4 or IPv6 addresses.
+  repeated bytes virtual_addresses = 3;
+  // TUN gateway addresses used as ICMP error sources.
+  repeated bytes gateway_addresses = 4;
 }
 
 message StartSessionCommand {

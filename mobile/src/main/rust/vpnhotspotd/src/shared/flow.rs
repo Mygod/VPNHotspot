@@ -1,48 +1,8 @@
-//! Which flow a signal is actually about, whose turn it is, and the transaction that admits one.
-//!
-//! # Identity, because handles are reused
-//!
-//! smoltcp hands back socket handles, so a handle alone names a slot rather than a flow: a terminal from a
-//! closed flow and a request belonging to the flow that reused its handle are indistinguishable by handle.
-//! Every owner-side operation therefore takes the flow's retained incarnation beside the handle and
-//! validates the pair. A stale identity is discarded on sight and - the part that matters - cannot suppress
-//! the successor that took its slot.
-//!
-//! # Admission is a transaction
-//!
-//! A flow is a socket in a real set, a charged grant, a bounded byte bridge and a running task, taken in an
-//! order where each step can undo the ones before it. [admit_flow] owns that order so it is production's
-//! rather than each caller's.
-//!
-//! # Turns are the fairness
-//!
-//! [Turns] is the one place a flow's place in the round-robin lives: admission puts it there, a pass takes
-//! every flow out of it exactly once, a refused candidate takes back exactly what it put in, and a reclaimed
-//! flow takes its own place with it. There is deliberately no second path - no bare deque beside it and no
-//! method that pushes or pops without saying which of those four things it is - because both bugs this type
-//! exists to prevent were invisible at the call site: a pass that rotated by popping and pushing every entry
-//! restored the order it started from, and a rollback that scanned for the candidate's handle deregistered a
-//! *predecessor* holding the same one.
-//!
-//! Nothing here is async, and nothing here moves a byte. What one flow's bytes cross on is an ordinary
-//! bounded Tokio stream - see [crate::shared::bridge] - whose readiness and backpressure are the library's
-//! own, so there is no payload to hold and no readiness marker to deduplicate.
-
+//! Flow identities pair reusable socket handles with monotonically assigned incarnations.
 use std::collections::VecDeque;
 use std::net::SocketAddr;
 
 /// One flow, named by the pair that actually identifies it.
-///
-/// The incarnation is the identity the owner's registry issued this flow. It is never reissued for as long
-/// as that registry lives - the counter only moves forward and refuses rather than wrapping - which is
-/// exactly the scope handle reuse happens in, because the slot table and the registry that names its rows
-/// are built and dropped together. It is not a process-global number: a new registry starts counting again,
-/// and no signal outlives the one it was issued by. It names *which* flow has held this handle and nothing
-/// about what is servicing it: a flow keeps the same incarnation after its transport task has completed and
-/// only its client-facing side is left.
-/// `H` is whatever the owner's transport names a slot by - a smoltcp `SocketHandle` for the TCP engine - and
-/// is a parameter rather than a number so that nothing here has to convert one, and so that this module stays
-/// free of the transport it serves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FlowId<H> {
     pub handle: H,
@@ -66,12 +26,6 @@ pub struct AtCapacity {
 
 /// The order one owner serves its flows in, and the rotation that keeps a pass from always starting at the
 /// same one.
-///
-/// Explicit rather than a walk of the owner's map: a `HashMap`'s iteration order is arbitrary and changes
-/// when it is resized, which is not fairness but a different unfairness each time.
-///
-/// Bounded by the `prepared` the owner's tables were charged for. Nothing here grows it: [admit_flow] refuses
-/// before it builds anything, and every other operation removes or reads.
 pub struct Turns<H> {
     order: VecDeque<H>,
     /// How many turns of the pass that is running have been handed out. Zero between passes, which is every
@@ -106,20 +60,12 @@ impl<H: Copy + Eq> Turns<H> {
 
     /// Every live flow, in the order they are served, for an owner that only needs to *find* them - a
     /// retirement, an expiry sweep, a walk for sockets the stack has finished with.
-    ///
-    /// Read-only, and it moves no cursor: a walk that also took turns would rotate the order behind whichever
-    /// pass was running.
     pub fn iter(&self) -> impl Iterator<Item = &H> {
         self.order.iter()
     }
 
     /// The next flow's turn in the pass that is running, or `None` once every live flow has had exactly one -
     /// which is also what ends the pass and moves the starting position on.
-    ///
-    /// One call rather than an index and a separate rotate, because the rotation *is* the fairness and a
-    /// caller that forgot it would still look like a round robin: every pass would simply start at the same
-    /// flow again, and the flow at the front would be first to the client's send buffer for ever. Ending the
-    /// pass is the only thing that rotates, so a pass abandoned part-way leaves the order where it was.
     pub fn turn(&mut self) -> Option<H> {
         match self.order.get(self.served) {
             Some(handle) => {
@@ -138,21 +84,11 @@ impl<H: Copy + Eq> Turns<H> {
     }
 
     /// Gives one flow the last place in the order.
-    ///
-    /// Infallible, and the bound is [admit_flow]'s: it refuses before it builds anything and the owner is
-    /// synchronous from that refusal to here, so there is no second moment at which this order could be full.
-    /// A capacity check here would be a branch nothing can reach and a test nothing can honestly write.
     fn admit(&mut self, handle: H) {
         self.order.push_back(handle);
     }
 
     /// Takes back exactly the place [Turns::admit] just gave out, and nothing else.
-    ///
-    /// `pop_back` against the handle rather than a scan for it. The append is the last thing that happened to
-    /// this order - the owner is synchronous from the build to the refusal - so the entry to take back is the
-    /// one at the back, and its position is known rather than searched for. A scan would match a
-    /// *predecessor* holding the same handle and deregister a live flow that is still being served, which is
-    /// a client whose bytes stop moving for no reason it or anyone else can see.
     fn undo(&mut self, handle: H) {
         if self.order.back() == Some(&handle) {
             self.order.pop_back();
@@ -160,9 +96,6 @@ impl<H: Copy + Eq> Turns<H> {
     }
 
     /// Forgets a flow that is being reclaimed, taking the one place it holds.
-    ///
-    /// One place rather than every place that names it: a flow leaving takes its own turn with it and nothing
-    /// else's, which is the same exactness [Turns::undo] keeps for the same reason.
     pub fn forget(&mut self, handle: H) {
         if let Some(index) = self.order.iter().position(|queued| *queued == handle) {
             self.order.remove(index);
@@ -171,17 +104,6 @@ impl<H: Copy + Eq> Turns<H> {
 }
 
 /// Which live flow a segment names, by the endpoint pair that identifies it.
-///
-/// Here rather than written out at each call site because both callers are decisions a wrong match makes
-/// *silently* wrong rather than broken: one decides whether a `SYN` opens a second flow for a connection that
-/// already has one, and the other decides which flow a client's reset aborts. Matching too loosely aborts a
-/// stranger's connection; matching on one endpoint aborts every flow to the same server. Neither shows up as
-/// a failure anywhere near where it was caused.
-///
-/// Both endpoints, and both in the direction the client's own segments carry them: `client` is the TUN-visible
-/// source - Android's inner NAT address on IPv4, which is why it is never treated as an identity on its own -
-/// and `destination` is where the flow is going. A segment travelling the other way is not this lookup's
-/// input and would find nothing.
 pub fn named_by<H>(
     flows: impl IntoIterator<Item = (H, SocketAddr, SocketAddr)>,
     client: SocketAddr,
@@ -194,11 +116,6 @@ pub fn named_by<H>(
 }
 
 /// Everything one flow admission needs to build, and everything it needs to undo.
-///
-/// A trait rather than a closure so the *sequence* below is production's rather than each caller's: the
-/// engine's implementation opens a smoltcp socket, takes a charged grant, builds the flow's byte bridge, and
-/// hands the record to the worker table. Which of those exists at each step is the property under test, and a
-/// caller that inlined the sequence would be a second copy of it.
 pub trait FlowOps {
     /// Names one flow's transport slot. smoltcp's `SocketHandle` in production.
     type Handle: Copy + Eq;
@@ -236,20 +153,6 @@ pub enum Refused<E> {
 }
 
 /// Admits one flow, or leaves nothing behind.
-///
-/// The order is the whole of it, and every step of it was wrong at some point:
-///
-/// 1. **capacity first**, in *both* tables, before a descriptor is opened or a byte is charged - a refusal
-///    that arrives after the socket is open is a socket to close and a grant to release, on a path that only
-///    runs when the daemon is already at its limit;
-/// 2. **build** the socket, the grant and the bridge;
-/// 3. **register** a turn, which is what gives this flow a place in every pass the owner makes over its
-///    table - a flow that has none is one whose bytes nothing would ever move;
-/// 4. **admit** to the worker table, which starts the task.
-///
-/// A failure at step 4 gives back exactly what steps 2 and 3 took, in reverse. There is deliberately no
-/// second capacity check between 2 and 3: the owner is synchronous across all four, so nothing can enter
-/// either table in between, and a branch that cannot be reached is one no test can honestly cover.
 pub fn admit_flow<O: FlowOps>(
     ops: &mut O,
     turns: &mut Turns<O::Handle>,
@@ -273,7 +176,6 @@ pub fn admit_flow<O: FlowOps>(
 #[cfg(test)]
 mod tests {
 
-    /// Two flows to the same server from different clients, and one client with two flows.
     fn wired() -> Vec<(u8, SocketAddr, SocketAddr)> {
         let server: SocketAddr = "198.51.100.7:443".parse().unwrap();
         let other: SocketAddr = "198.51.100.9:443".parse().unwrap();
@@ -296,8 +198,6 @@ mod tests {
             Some(2),
             "the exact pair, not the first flow to that server"
         );
-        // Same client, different destination - and the same destination, different client. Either half alone
-        // would abort a connection that is not this one.
         assert_eq!(
             named_by(
                 flows.clone(),
@@ -314,7 +214,6 @@ mod tests {
             ),
             None
         );
-        // A port is part of both endpoints.
         assert_eq!(
             named_by(
                 flows.clone(),
@@ -323,7 +222,6 @@ mod tests {
             ),
             Some(3)
         );
-        // And the reversed pair is a different lookup, not the same flow seen from the other side.
         assert_eq!(
             named_by(
                 flows,
@@ -347,7 +245,6 @@ mod tests {
     }
     use super::*;
 
-    /// Everything one admission builds, and what an unwind has to have given back.
     #[derive(Default)]
     struct Ledger {
         sockets: usize,
@@ -358,15 +255,11 @@ mod tests {
         next: u32,
     }
 
-    /// An owner that records every side effect, so "before any side effect" is observed rather than argued.
     struct Recorder<'a> {
         ledger: &'a mut Ledger,
         room: usize,
-        /// Refuse at `build`, at `admit`, or not at all - the three ways this can fail.
         refuse_build: bool,
         refuse_admit: bool,
-        /// The handle `build` hands back, when the test needs a particular one. `None` takes the next free
-        /// number, which is what a socket set does.
         handle: Option<u32>,
     }
 
@@ -382,8 +275,6 @@ mod tests {
         }
     }
 
-    /// The record: one socket, one bridge and one grant. Which handle it belongs to is read back on the
-    /// unwind path, so a record cannot be given back against the wrong one.
     struct Record {
         handle: u32,
     }
@@ -429,13 +320,10 @@ mod tests {
         }
     }
 
-    /// The order as it stands, without taking a turn - so a test can read it between passes without moving
-    /// the very cursor it is checking.
     fn order(turns: &Turns<u32>) -> Vec<u32> {
         turns.iter().copied().collect()
     }
 
-    /// One whole pass, answering which flows were served and in what order.
     fn pass(turns: &mut Turns<u32>) -> Vec<u32> {
         let mut served = Vec::new();
         while let Some(handle) = turns.turn() {
@@ -450,16 +338,11 @@ mod tests {
         for handle in [7u32, 8, 9] {
             turns.admit(handle);
         }
-        // Every flow exactly once, and in the order they hold.
         assert_eq!(pass(&mut turns), vec![7, 8, 9]);
-        // Ending the pass is what moves the starting position on. A pass that popped and pushed every entry
-        // instead would restore the order it started from and serve 7 first for ever - which still reads like
-        // a round robin at the call site, and is the bug this asserts against.
         assert_eq!(order(&turns), vec![8, 9, 7]);
         assert_eq!(pass(&mut turns), vec![8, 9, 7]);
         assert_eq!(order(&turns), vec![9, 7, 8]);
         assert_eq!(pass(&mut turns), vec![9, 7, 8]);
-        // Three flows, three passes, and every one of them has been first exactly once.
         assert_eq!(order(&turns), vec![7, 8, 9]);
     }
 
@@ -469,8 +352,6 @@ mod tests {
         for handle in [7u32, 8, 9] {
             turns.admit(handle);
         }
-        // Only ending a pass rotates, so a caller that stopped part-way cannot hand the front of the order to
-        // whichever flow it happened to stop at.
         assert_eq!(turns.turn(), Some(7));
         assert_eq!(order(&turns), vec![7, 8, 9]);
     }
@@ -480,7 +361,7 @@ mod tests {
         let mut turns: Turns<u32> = Turns::with_capacity(0);
         assert!(turns.is_empty());
         assert_eq!(pass(&mut turns), Vec::<u32>::new());
-        assert_eq!(turns.capacity(), 0, "and it allocated nothing");
+        assert_eq!(turns.capacity(), 0);
     }
 
     #[test]
@@ -492,7 +373,6 @@ mod tests {
         turns.forget(8);
         assert_eq!(order(&turns), vec![7, 9]);
         assert_eq!(pass(&mut turns), vec![7, 9]);
-        // Forgetting one nobody holds is not an error and takes nothing.
         turns.forget(8);
         assert_eq!(order(&turns), vec![9, 7]);
     }
@@ -501,9 +381,6 @@ mod tests {
     fn a_refused_duplicate_takes_back_only_its_own_place_in_the_order() {
         let prepared = 4usize;
         let mut turns = Turns::with_capacity(prepared);
-        // A live predecessor, already being served under handle 7. In production a socket set cannot hand out
-        // a handle a live flow holds; this is what happens if it ever does, and the answer has to be that the
-        // live flow is untouched rather than silently unscheduled.
         turns.admit(7);
         let mut ledger = Ledger::default();
         let mut ops = Recorder {
@@ -515,11 +392,8 @@ mod tests {
             admit_flow(&mut ops, &mut turns, prepared),
             Err(Refused::AtCapacity(_))
         ));
-        // The predecessor still has its turn. A rollback that scanned for the handle would have taken both
-        // entries and left a live flow in no pass at all.
         assert_eq!(order(&turns), vec![7]);
         assert_eq!(pass(&mut turns), vec![7]);
-        // And exactly the candidate's own resources went back.
         assert_eq!(ledger.sockets, 0);
         assert_eq!(ledger.bridges, 0);
         assert_eq!(ledger.leases, 0);
@@ -534,7 +408,6 @@ mod tests {
             let reserved = turns.capacity();
             let mut ledger = Ledger::default();
 
-            // The bound fills, and the order does not grow doing it.
             for admitted in 0..prepared {
                 let mut ops = Recorder::new(&mut ledger, prepared);
                 admit_flow(&mut ops, &mut turns, prepared)
@@ -544,9 +417,6 @@ mod tests {
             assert_eq!(ledger.tasks, prepared);
             assert_eq!(turns.capacity(), reserved, "prepared {prepared}");
 
-            // One past the bound is refused *before* any side effect: no socket, no bridge, no grant, no
-            // task. This is the check that has to come first, because a refusal after the socket is open is a
-            // socket to close on the one path that only runs when the daemon is already at its limit.
             let before = (
                 ledger.sockets,
                 ledger.bridges,
@@ -570,18 +440,14 @@ mod tests {
                 before,
                 "prepared {prepared}: a refusal built nothing"
             );
-            assert_eq!(turns.len(), prepared, "and registered nothing");
+            assert_eq!(turns.len(), prepared);
         }
     }
 
-    /// A build that fails leaves nothing registered, and an admission that refuses gives back the socket,
-    /// the bridge, the grant and the turn.
     #[test]
     fn a_refused_admission_unwinds_every_side_effect() {
         let prepared = 4usize;
 
-        // The build itself failed - the socket would not open, or the grant was denied. It cleans up after
-        // itself, so nothing is registered and nothing is left.
         let mut turns: Turns<u32> = Turns::with_capacity(prepared);
         let mut ledger = Ledger::default();
         let mut ops = Recorder {
@@ -592,13 +458,11 @@ mod tests {
             admit_flow(&mut ops, &mut turns, prepared),
             Err(Refused::Unbuildable("the socket could not be opened"))
         );
-        assert!(turns.is_empty(), "nothing was registered");
+        assert!(turns.is_empty());
         assert_eq!(ledger.sockets, 0);
         assert_eq!(ledger.leases, 0);
         assert_eq!(ledger.tasks, 0);
 
-        // The worker table refused after everything was built and the order had taken a turn for it. The
-        // socket, the bridge, the grant *and* the turn all go.
         let mut ops = Recorder {
             refuse_admit: true,
             ..Recorder::new(&mut ledger, prepared)
@@ -608,21 +472,18 @@ mod tests {
             matches!(refused, Err(Refused::AtCapacity(_))),
             "{refused:?}"
         );
-        assert_eq!(ledger.sockets, 0, "the socket went back");
-        assert_eq!(ledger.bridges, 0, "and the bridge");
-        assert_eq!(ledger.leases, 0, "and the grant");
-        assert_eq!(ledger.tasks, 0, "and no task was left running");
+        assert_eq!(ledger.sockets, 0);
+        assert_eq!(ledger.bridges, 0);
+        assert_eq!(ledger.leases, 0);
+        assert_eq!(ledger.tasks, 0);
         assert_eq!(ledger.records, 0);
-        assert!(turns.is_empty(), "and the order kept no turn for it");
+        assert!(turns.is_empty());
 
-        // And the owner still works afterwards: this refuses one flow, not the engine.
         let mut ops = Recorder::new(&mut ledger, prepared);
         assert!(admit_flow(&mut ops, &mut turns, prepared).is_ok());
         assert_eq!(turns.len(), 1);
     }
 
-    /// An engine that can carry no flows builds nothing at all: no socket, no lease, no task, and the order
-    /// allocating nothing.
     #[test]
     fn a_zero_bound_admission_builds_nothing() {
         let mut turns: Turns<u32> = Turns::with_capacity(0);
@@ -635,6 +496,6 @@ mod tests {
         assert_eq!(ledger.sockets, 0);
         assert_eq!(ledger.leases, 0);
         assert_eq!(ledger.tasks, 0);
-        assert_eq!(turns.capacity(), 0, "the order allocated nothing");
+        assert_eq!(turns.capacity(), 0);
     }
 }

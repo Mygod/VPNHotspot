@@ -1,5 +1,3 @@
-//! The app-UID control conversation, its session control and its TUN dataplane.
-
 mod app_config;
 mod app_session;
 mod budget;

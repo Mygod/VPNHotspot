@@ -1,40 +1,4 @@
-//! One terminated TCP flow's upstream half: the selected-network socket, and the copy between it and the
-//! client-side stack.
-//!
-//! There is nothing of this daemon's between the two. The engine hands this task an ordinary bounded Tokio
-//! stream - one half of the flow's bridge - and what runs against it is Tokio's own bidirectional copy, so
-//! every property this half needs is the library's:
-//!
-//! - **backpressure**, in both directions and lossless. Client to upstream: when this task cannot keep up,
-//!   the bridge fills, the engine stops draining the stack's receive buffer, and the client's advertised
-//!   window closes - and the engine learns that room is back because the bridge wakes it, rather than leaving
-//!   the window closed until something unrelated happens. Upstream to client: when the engine cannot keep up,
-//!   the bridge fills, the copy stops reading the upstream socket, and the *upstream's* window closes. Up to
-//!   [vpnhotspotd::shared::flow_budget::BRIDGE_BUFFER] bytes may be in the bridge ahead of the engine, which
-//!   is what lets this half read while the engine is writing what it read before rather than waiting to be
-//!   told each piece was consumed.
-//! - **half-close, both ways.** `copy_bidirectional` shuts down the *other* side when a reader reaches the
-//!   end of its stream and goes on copying the direction that is still open, which is exactly what a
-//!   request-then-response protocol needs: the client finishes asking, its FIN reaches the upstream, and the
-//!   response still comes back.
-//!
-//! Neither direction drops data to relieve pressure, which is what separates a terminated stream from the
-//! relayed datagrams next door: a datagram nobody promised to deliver may be dropped, a byte in an
-//! acknowledged stream may not. **An abortive ending is the exception.** A flow reset by a retirement, an
-//! idle expiry or an upstream that failed or vanished discards whatever the engine has not written into the
-//! client's send buffer yet, which is up to one bridge's worth. The client learns of it the one way a
-//! terminated flow can say it, a reset, and nothing about the clean path changes: an orderly end of stream
-//! reaches the engine only after every byte queued in front of it, and a clean completion leaves the flow
-//! closing client-side so the engine goes on delivering what this task left in the bridge.
-//!
-//! The copy therefore races the flow's token, and that is not defensive. It can block for as long as a peer
-//! chooses: a write into a full send buffer waits on a remote that stopped reading, a read waits on one that
-//! says nothing, and a write into the bridge waits on an engine that has stopped draining in order to retire
-//! this very flow. A retirement has to be abortive, so none of them may be what a retirement waits for - and
-//! this task *finishing* is what the engine joins. Finishing is not the same as the flow being removed: after
-//! a clean completion whose client is still closing, the flow keeps its client-facing socket and its charge
-//! until that close ends. See `shizuku/tcp/terminal.rs`.
-
+//! Splices an upstream TCP socket to a bounded bridge; retirement is abortive and cancellation-safe.
 use std::io;
 use std::time::Duration;
 
@@ -52,9 +16,6 @@ use vpnhotspotd::shared::flow_budget::READ_CHUNK;
 use crate::report;
 
 /// One flow, named on the requests its DNS-over-TCP transport makes of the ingress owner.
-///
-/// Not a wake: nothing travels between a flow's task and its owner to say payload is waiting, because the
-/// flow's own bridge is what wakes the owner - see [crate::shizuku::tcp::bridge].
 pub(crate) type Event = FlowId<SocketHandle>;
 
 /// `sweep` is the engine's own token rather than this flow's: it is cancelled only when the whole table is

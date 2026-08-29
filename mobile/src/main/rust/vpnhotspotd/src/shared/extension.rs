@@ -1,37 +1,9 @@
-//! The bounded walk over an IPv6 extension-header chain.
-//!
-//! The transport parsers each expect their header at a fixed offset, so a client that sends any extension header
-//! would otherwise have its traffic counted and dropped. This removes the chain and promotes the transport,
-//! which is the same trick reassembly uses: hand the strict parsers a shape they already understand rather than
-//! teach each of them a second one.
-//!
-//! Removing rather than preserving is forced, not chosen. Egress goes out through a datagram socket, so the
-//! kernel builds the IPv6 header and there is nowhere to put a chain even if it were kept - the same reason the
-//! source address changes. Hop-by-Hop and Routing options are for hops along the way and lose their meaning at
-//! a relay that re-originates; Destination Options are the real loss, and it is a documented one.
-//!
-//! Source-routing and misplaced Hop-by-Hop chains are refused rather than walked. A Routing header with
-//! segments left is source routing, which RFC 5095 deprecates outright and which a relay must not carry out on
-//! a client's behalf. A Hop-by-Hop header anywhere but first violates RFC 8200's ordering, and accepting it
-//! would mean accepting a chain whose meaning two readers could disagree about. AH, ESP, and extension types
-//! outside Hop-by-Hop, Destination Options, Routing, and Fragment are unsupported.
-//!
-//! A Fragment header ends the walk instead of being removed, and the chain before it is still stripped. What
-//! comes back is a packet whose next header is the Fragment header, which is exactly what reassembly expects -
-//! so a fragmented packet wrapped in extension headers is handled by both in turn rather than by either alone.
-
 use etherparse::{IpNumber, Ipv6HeaderSlice, Ipv6RawExtHeaderSlice};
 
 use crate::shared::packet_writer::IPV6_HEADER_LEN;
 use crate::shared::udp_wire::Reject;
 
 /// How many extension headers one chain may contain.
-///
-/// RFC 8200 requires Hop-by-Hop to appear first and gives no reason for a removable header to repeat. Six
-/// removable headers is already more than a conforming chain needs, so refusing past this bounds the work per
-/// packet without refusing one this relay can usefully carry.
-///
-/// https://www.rfc-editor.org/rfc/rfc8200#section-4.1
 const MAX_HEADERS: usize = 6;
 
 /// What walking a chain produced.
@@ -44,9 +16,6 @@ pub enum Walked {
 }
 
 /// Walks one IPv6 packet's extension chain and removes it.
-///
-/// Only ever called for a packet a transport parse has already refused as extended, so an IPv4 packet or one
-/// with no chain comes back [Walked::None] rather than being an error.
 pub fn walk(packet: &[u8]) -> Result<Walked, Reject> {
     let Ok(header) = Ipv6HeaderSlice::from_slice(packet) else {
         return Ok(Walked::None);
@@ -124,7 +93,6 @@ mod tests {
     use super::*;
     use crate::shared::udp_wire::{self, build_reply};
 
-    /// A whole UDP datagram, then `chain` spliced in between its IPv6 header and its transport.
     fn wrapped(chain: &[(u8, usize, u8)]) -> Vec<u8> {
         let packet = build_reply(
             "[2001:db8:1::2]:40000".parse().unwrap(),
@@ -135,7 +103,6 @@ mod tests {
         )
         .unwrap();
         let mut headers = Vec::new();
-        // each entry becomes one header pointing at whatever follows it
         for (index, (_, units, third)) in chain.iter().enumerate() {
             let next = chain.get(index + 1).map_or(packet[6], |(kind, _, _)| *kind);
             let mut header = vec![0u8; (units + 1) * 8];
@@ -169,12 +136,10 @@ mod tests {
             vec![(HOP_BY_HOP, 0, 0), (ROUTING, 0, 0), (DESTINATION, 0, 0)],
         ] {
             let packet = wrapped(&chain);
-            // the strict parse refuses it as extended before the walk
             assert_eq!(udp_wire::parse(&packet), Err(Reject::Extended), "{chain:?}");
             let Ok(Walked::Stripped(stripped)) = walk(&packet) else {
                 panic!("{chain:?} should strip");
             };
-            // and afterwards it parses as the ordinary datagram it always was
             let datagram = udp_wire::parse(&stripped).expect("stripped parses");
             assert_eq!(datagram.payload, b"payload", "{chain:?}");
             assert_eq!(datagram.hop_limit, 64, "{chain:?}");
@@ -192,22 +157,18 @@ mod tests {
         )
         .unwrap();
         assert_eq!(walk(&packet), Ok(Walked::None));
-        // and neither is an IPv4 one, which has no chain to walk at all
         assert_eq!(walk(&[0x45, 0, 0, 20]), Ok(Walked::None));
         assert_eq!(walk(&[]), Ok(Walked::None));
     }
 
     #[test]
     fn a_fragment_header_ends_the_walk_and_stays() {
-        // Reassembly owns the fragment header, so a chain in front of it is stripped and it is left in place.
         let packet = wrapped(&[(DESTINATION, 0, 0), (FRAGMENT, 0, 0)]);
         let Ok(Walked::Stripped(stripped)) = walk(&packet) else {
             panic!("should strip the part before the fragment header");
         };
         assert_eq!(stripped[6], FRAGMENT);
-        // which is exactly what the parses report as fragmented, handing it to reassembly
         assert_eq!(udp_wire::parse(&stripped), Err(Reject::Fragmented));
-        // and a bare fragment header is left untouched, so reassembly sees it as it arrived
         assert_eq!(walk(&wrapped(&[(FRAGMENT, 0, 0)])), Ok(Walked::None));
     }
 
@@ -225,8 +186,6 @@ mod tests {
         ] {
             let mut packet = wrapped(&[(DESTINATION, 0, 0)]);
             packet[6] = kind;
-            // Deliberately not a valid header body: the unsupported kind is rejected before bytes with a
-            // different or absent length format can be interpreted.
             packet.truncate(IPV6_HEADER_LEN + 1);
             assert_eq!(walk(&packet), Err(expected), "kind {kind}");
         }
@@ -245,12 +204,10 @@ mod tests {
 
     #[test]
     fn source_routing_is_refused_rather_than_performed() {
-        // segments left non-zero: the client is asking to be routed via somewhere of its choosing
         assert_eq!(
             walk(&wrapped(&[(ROUTING, 0, 1)])),
             Err(Reject::Malformed("IPv6 source routing is not carried"))
         );
-        // with none left it is spent and merely has to be stepped over
         assert!(matches!(
             walk(&wrapped(&[(ROUTING, 0, 0)])),
             Ok(Walked::Stripped(_))
@@ -272,7 +229,6 @@ mod tests {
             walk(&wrapped(&chain)),
             Err(Reject::Malformed("IPv6 extension chain is too long"))
         );
-        // exactly at the bound is still walked, so the limit refuses only what exceeds it
         let chain: Vec<_> = std::iter::repeat_n((DESTINATION, 0, 0), MAX_HEADERS).collect();
         assert!(matches!(walk(&wrapped(&chain)), Ok(Walked::Stripped(_))));
     }
@@ -280,7 +236,6 @@ mod tests {
     #[test]
     fn a_truncated_chain_is_refused() {
         let mut packet = wrapped(&[(DESTINATION, 0, 0)]);
-        // claim a length the packet cannot hold
         packet[IPV6_HEADER_LEN + 1] = 0xff;
         assert_eq!(
             walk(&packet),
@@ -296,8 +251,6 @@ mod tests {
 
     #[test]
     fn the_fragment_header_length_is_never_read() {
-        // A Fragment header has no length field: that byte is reserved. Ending the walk before reading one is
-        // what keeps a nonsense value there from being believed, which is what this leaves behind to check.
         let mut packet = wrapped(&[(DESTINATION, 0, 0), (FRAGMENT, 0, 0)]);
         packet[IPV6_HEADER_LEN + 8 + 1] = 0xff;
         let Ok(Walked::Stripped(stripped)) = walk(&packet) else {

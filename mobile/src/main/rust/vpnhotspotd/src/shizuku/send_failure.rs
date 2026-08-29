@@ -1,10 +1,3 @@
-//! What a refused egress send means.
-//!
-//! Shared by the UDP relay and Echo because both send on selected-network sockets and both see the same errnos,
-//! and the mapping from errno to meaning is the part worth having in one place. What each *does* about a meaning
-//! differs - a UDP mapping cancels itself when its network is gone, while Echo cancels every ping socket at once
-//! - so the actions stay with the relays and only the reading lives here.
-
 use std::io;
 
 use crate::socket::is_kernel_icmp_error;
@@ -30,10 +23,6 @@ pub(crate) enum Failure {
 }
 
 /// Reads one send error.
-///
-/// The order matters where the cases overlap: `EMSGSIZE` is also one of the errnos a kernel-reported ICMP error
-/// arrives as, so the local refusal has to be recognised first or a path-MTU failure would be mistaken for a
-/// remote's complaint and never reported to the client.
 pub(crate) fn classify(e: &io::Error) -> Failure {
     if e.kind() == io::ErrorKind::WouldBlock {
         Failure::Blocked

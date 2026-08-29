@@ -1,26 +1,4 @@
-//! What one mapping recently sent, kept only so an ICMP error can be shown to describe a real datagram.
-//!
-//! Two error types need this and two do not, and the difference is what a claim is *about*. A Packet Too Big
-//! or a hop-limit expiry describes the route to an address, so knowing the mapping sent to that address is
-//! already proof the error concerns its traffic. Destination Unreachable and Parameter Problem describe one
-//! specific datagram, and there the address proves nothing: a remote could name a datagram that never existed
-//! and have the daemon tell a client its flow had failed. So those are repeated only against a record of the
-//! send itself.
-//!
-//! Nothing here holds a payload. A record keeps the destination, the length, a digest, and the hop limit the
-//! client actually used - and the error queue delivers the offending bytes back, so the digest is enough to
-//! recognise them without storing them. That is what keeps a record fixed-size, and a fixed-size record is why
-//! a byte bound and a count bound are the same bound.
-//!
-//! Translation ends at the first resolution, whatever that resolution was. A match, a miss, an ambiguity, an
-//! expiry, an eviction: any of them retires the history and turns further correlated translation off for this
-//! mapping generation. That is deliberately blunt. It bounds what a remote can extract to one answer per
-//! mapping, it makes the resource cost of the history self-limiting, and it costs nothing real - a UDP
-//! traceroute uses a fresh source port per probe, so each hop's error lands on a mapping of its own.
-//!
-//! Losing the history never affects payload. It is optional state in the Resource Policy's sense: pressure
-//! evicts records before it refuses anything a client can observe.
-
+//! Bounded send metadata used to authenticate remote ICMP errors without retaining payloads.
 use std::collections::VecDeque;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::net::SocketAddr;
@@ -29,20 +7,9 @@ use std::time::{Duration, Instant};
 use crate::shared::admission::linear_footprint;
 
 /// How long a send stays describable by an error.
-///
-/// Bounded by how long any hop may legitimately hold the datagram before complaining about it, which is the
-/// 60 seconds RFC 8200 sets for reassembly - a router holding fragments that long can emit its error at the
-/// end of it. Absolute and never refreshed: later traffic on the same mapping says nothing about whether an
-/// error for *this* datagram can still arrive.
-///
-/// https://www.rfc-editor.org/rfc/rfc8200#section-4.5
 const RECORD_LIFETIME: Duration = Duration::from_secs(60);
 
 /// The payload bytes a record keeps a digest of.
-///
-/// Eight, because that is what RFC 792 guarantees a quote carries beyond the transport header, so a longer
-/// prefix would be one a conforming router need never return. Comparing only what every quote can contain is
-/// what keeps the match usable rather than theoretically stronger.
 const DIGEST_PREFIX: usize = 8;
 
 /// One recorded send. Fixed-size on purpose - see the module note.
@@ -90,10 +57,6 @@ impl History {
     }
 
     /// Prepares for `depth` records, so that recording a send inside that depth allocates nothing.
-    ///
-    /// The caller charges [History::footprint] for the same depth once, when the mapping is admitted, and
-    /// keeps it charged: the deque does not shrink when records expire, so the capacity - and the charge -
-    /// outlive whatever was in it.
     pub fn with_capacity(depth: usize) -> Self {
         Self {
             records: VecDeque::with_capacity(depth),
@@ -102,23 +65,11 @@ impl History {
     }
 
     /// What a history prepared for `depth` records *allocates*: the deque's own backing, conservatively.
-    ///
-    /// The `History` value itself is deliberately not here. One of these lives inline inside the record its
-    /// owner already charges a logical row for - a UDP mapping, today - so counting the struct here would
-    /// charge those bytes twice, once inside the row and once beside it. What is not inside the row is the
-    /// deque's heap backing, which is a `VecDeque` and so is byte-charged in full through [linear_footprint].
     pub fn footprint(depth: usize) -> Option<u64> {
         linear_footprint(depth, std::mem::size_of::<Record>() as u64)
     }
 
     /// Records one send, dropping the oldest if `depth` is reached.
-    ///
-    /// Returns the change in record count so the caller can keep its own accounting exact - this holds no
-    /// budget of its own, because the budget is one owner's job and there is one history per mapping.
-    ///
-    /// Eviction retires the history rather than silently forgetting one datagram. A history with a hole in it
-    /// cannot distinguish "never sent" from "no longer remembered", and the whole value of correlating is
-    /// telling those apart.
     pub fn record(
         &mut self,
         destination: SocketAddr,
@@ -148,8 +99,6 @@ impl History {
     }
 
     /// Asks whether one error's offending datagram was really sent, and ends correlation either way.
-    ///
-    /// Returns the count of records released, alongside the answer, so the caller's accounting stays exact.
     pub fn resolve(
         &mut self,
         destination: SocketAddr,
@@ -245,13 +194,6 @@ mod tests {
         which.parse().unwrap()
     }
 
-    /// The charge is the deque's backing and nothing else - the inline header belongs to the row its owner
-    /// already charges for.
-    ///
-    /// An equation on both ends, because the defect this closes was on the second one: a history sits inside a
-    /// record its owner charges a logical row for, so counting `size_of::<History>()` here charged those bytes
-    /// twice. At depth zero there is nothing to allocate and so nothing to charge, which is only true while
-    /// the header stays out of it.
     #[test]
     fn the_charge_is_the_deque_backing_and_not_the_header_in_its_owners_row() {
         let record = std::mem::size_of::<Record>() as u64;
@@ -298,14 +240,12 @@ mod tests {
             history.resolve(destination(DESTINATION), b"query", now),
             (Resolution::Matched { .. }, 2)
         ));
-        // spent, and the records are gone rather than waiting to be asked again
         assert!(!history.correlating());
         assert!(history.is_empty());
         assert_eq!(
             history.resolve(destination(DESTINATION), b"second", now),
             (Resolution::Spent, 0)
         );
-        // and it does not start recording again
         assert_eq!(
             history.record(destination(DESTINATION), b"third", 57, DEPTH, now),
             0
@@ -329,9 +269,6 @@ mod tests {
 
     #[test]
     fn a_quote_carrying_no_payload_still_matches_its_endpoint() {
-        // What a conforming router's minimum quote leaves once the kernel has stripped the UDP header. Matching
-        // the endpoint is still real proof, because only a record says this client sent to that address *and
-        // port* - the address filter cannot speak for the port.
         let mut history = History::new();
         let now = Instant::now();
         history.record(destination(DESTINATION), b"query", 57, DEPTH, now);
@@ -346,7 +283,6 @@ mod tests {
         let mut history = History::new();
         let now = Instant::now();
         history.record(destination(DESTINATION), b"query", 57, DEPTH, now);
-        // the same address on a different port, which a forged error is free to claim
         assert_eq!(
             history.resolve("93.184.216.34:9".parse().unwrap(), b"", now),
             (Resolution::Untracked, 1)
@@ -355,8 +291,6 @@ mod tests {
 
     #[test]
     fn only_the_quotable_prefix_decides_a_payload_match() {
-        // Two datagrams sharing their first eight bytes cannot be told apart by a minimum-length quote, so they
-        // are ambiguous rather than falsely distinguished by bytes no router promised to return.
         let mut history = History::new();
         let now = Instant::now();
         history.record(destination(DESTINATION), b"12345678aaaa", 57, DEPTH, now);
@@ -369,8 +303,6 @@ mod tests {
 
     #[test]
     fn two_identical_sends_cannot_be_told_apart_and_say_so() {
-        // A client that retransmits the same datagram - a DNS query, typically - makes the error ambiguous, and
-        // guessing which one it was about would be inventing the answer.
         let mut history = History::new();
         let now = Instant::now();
         history.record(destination(DESTINATION), b"query", 57, DEPTH, now);
@@ -392,7 +324,6 @@ mod tests {
         }
         assert_eq!(charged, DEPTH as isize);
         assert!(history.correlating());
-        // the one that does not fit takes the whole history with it, and gives back everything charged
         assert_eq!(
             history.record(destination(DESTINATION), b"overflow", 57, DEPTH, now),
             -(DEPTH as isize)
@@ -411,12 +342,10 @@ mod tests {
         let now = Instant::now();
         history.record(destination(DESTINATION), b"old", 57, DEPTH, now);
         let later = now + RECORD_LIFETIME;
-        // the old one ages out on this very call, so the new one is refused and the charge is returned
         assert_eq!(
             history.record(destination(DESTINATION), b"new", 57, DEPTH, later),
             -1
         );
-        // forgetting a send is what makes "never sent" unprovable, so correlation is over
         assert!(!history.correlating());
         assert!(history.is_empty());
         assert_eq!(
@@ -430,7 +359,6 @@ mod tests {
         let mut history = History::new();
         let now = Instant::now();
         history.record(destination(DESTINATION), b"first", 57, DEPTH, now);
-        // a send one second later must not carry the first record past its own deadline
         history.record(
             destination(DESTINATION),
             b"second",
@@ -440,8 +368,6 @@ mod tests {
         );
         assert_eq!(history.len(), 2);
         assert!(history.correlating());
-        // at the first record's deadline it goes, and correlation goes with it - reported as spent rather
-        // than untracked, because forgetting is not evidence the datagram was never sent
         assert_eq!(
             history.resolve(destination(DESTINATION), b"second", now + RECORD_LIFETIME),
             (Resolution::Spent, 2)

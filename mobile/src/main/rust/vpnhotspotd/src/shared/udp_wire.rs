@@ -1,14 +1,3 @@
-//! Wire format for relayed UDP: the strict parse of a client datagram read from the TUN, and the
-//! construction of the reply that goes back out through the common writer.
-//!
-//! Platform-neutral and unit tested, because every byte here is chosen by whoever put the packet on the
-//! interface - which, per the security posture, is any local app and not only a tethered client.
-//!
-//! The parse is strict rather than forgiving on purpose. A relay that guesses at a self-inconsistent
-//! datagram re-originates it from a different source address, and the guess then arrives at the remote
-//! looking authoritative. Every field the daemon repeats is therefore one it verified, and everything
-//! else is a rejection with a reason the caller can count.
-
 #[cfg(test)]
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::net::{SocketAddr, SocketAddrV4, SocketAddrV6};
@@ -18,36 +7,20 @@ use etherparse::{IpFragOffset, IpNumber, Ipv4Header, Ipv6Header, UdpHeader};
 use crate::shared::ip_wire::{ipv6_payload, Ipv6Payload, Packet};
 use crate::shared::packet_writer::WriterError;
 
-/// One client datagram, in the terms the relay keys and forwards on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Relayed<'a> {
-    /// The TUN-visible source, which is the mapping key. Never an identity: nothing distinguishes a
-    /// tethered client's address from one a local app chose.
     pub source: SocketAddr,
     pub destination: SocketAddr,
-    /// As it arrived, not yet decremented. The forwarding decision belongs to the caller, which is also
-    /// the only thing that can answer an expired one.
     pub hop_limit: u8,
-    /// IPv4 DF, which the mapping owner reapplies to the shared upstream socket before each send.
-    ///
-    /// True for IPv6, where it is not a bit at all: no router may fragment an IPv6 packet, so the
-    /// permission the IPv4 bit withholds is withheld unconditionally there.
     pub dont_fragment: bool,
     pub payload: &'a [u8],
 }
 
-/// Why a datagram is not relayed. Each variant is counted rather than logged, since the caller sees
-/// attacker-influenced input and one report per packet would be a flood by construction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Reject {
-    /// Some other transport. TCP and ICMP have their own paths; anything else has none.
     NotUdp,
-    /// A fragment. Reassembly is its own bounded context, so this parse never sees a whole datagram it
-    /// could relay.
     Fragmented,
-    /// An IPv6 extension-header chain. The bounded walk over one belongs with reassembly too.
     Extended,
-    /// Truncated, self-inconsistent, or carrying a checksum that does not match what it covers.
     Malformed(&'static str),
 }
 
@@ -57,16 +30,12 @@ pub fn parse(packet: &[u8]) -> Result<Relayed<'_>, Reject> {
             if header.protocol() != IpNumber::UDP {
                 return Err(Reject::NotUdp);
             }
-            // more-fragments, or a non-zero offset
             if header.more_fragments() || header.fragments_offset() != IpFragOffset::ZERO {
                 return Err(Reject::Fragmented);
             }
             let source = header.source_addr();
             let destination = header.destination_addr();
             let (udp, payload) = transport(payload)?;
-            // Zero means the sender declined to compute one, which IPv4 permits. Any other value is
-            // verified, because the datagram leaves on a different source address and so acquires a
-            // fresh valid checksum: this is the only place corruption can still be seen.
             if udp.checksum != 0
                 && udp
                     .calc_checksum_ipv4_raw(source.octets(), destination.octets(), payload)
@@ -84,8 +53,6 @@ pub fn parse(packet: &[u8]) -> Result<Relayed<'_>, Reject> {
             })
         }
         Packet::Ipv6 { header, payload } => {
-            // the extension-header set comes from the library rather than a list repeated here, so a
-            // chain this parse cannot walk is never mistaken for an unsupported transport
             match ipv6_payload(header.next_header(), IpNumber::UDP) {
                 Ipv6Payload::Transport => {}
                 Ipv6Payload::Fragment => return Err(Reject::Fragmented),
@@ -95,8 +62,6 @@ pub fn parse(packet: &[u8]) -> Result<Relayed<'_>, Reject> {
             let source = header.source_addr();
             let destination = header.destination_addr();
             let (udp, payload) = transport(payload)?;
-            // Mandatory over IPv6, so zero is not "omitted" but wrong, and 0xffff is what a true zero
-            // is transmitted as.
             if udp.checksum == 0 {
                 return Err(Reject::Malformed("IPv6 UDP checksum absent"));
             }
@@ -123,32 +88,18 @@ pub fn parse(packet: &[u8]) -> Result<Relayed<'_>, Reject> {
     }
 }
 
-/// The UDP header and exactly the bytes it declares. Trailing bytes are a rejection rather than padding:
-/// the IP layer already said how long the datagram is, so a disagreement means one of the two is lying
-/// and there is no way to tell which.
 fn transport(slice: &[u8]) -> Result<(UdpHeader, &[u8]), Reject> {
     let (header, rest) =
         UdpHeader::from_slice(slice).map_err(|_| Reject::Malformed("UDP header does not fit"))?;
     if header.length as usize != slice.len() {
         return Err(Reject::Malformed("UDP length disagrees"));
     }
-    // port 0 is reserved and never a real endpoint, so a mapping keyed on it could never be replied to
     if header.source_port == 0 || header.destination_port == 0 {
         return Err(Reject::Malformed("UDP port 0"));
     }
     Ok((header, rest))
 }
 
-/// Builds the TUN-side packet for one reply, from the remote that sent it to the client that asked.
-///
-/// `identification` decides the IPv4 fragmentation permission and is the whole DF policy in one
-/// argument: `None` sets DF, which is what every packet within the session MTU gets, and `Some` clears it
-/// and carries the guarded value the caller's own source fragmentation then repeats into every fragment.
-/// Passing `Some` for a packet that fits would hand out an Identification for nothing; passing `None` for
-/// one that does not would leave a datagram too large for the interface that may not be split.
-///
-/// IPv6 ignores it: the reply is either within the limit or source-fragmented by the caller, and its
-/// Identification is 32 bits wide rather than 16.
 pub fn build_reply(
     remote: SocketAddr,
     client: SocketAddr,
@@ -171,7 +122,6 @@ pub fn build_reply(
                 .map_err(|_| WriterError::Malformed("reply exceeds an IPv4 datagram"))?;
             let udp = UdpHeader::with_ipv4_checksum(remote.port(), client.port(), &ip, payload)
                 .map_err(|_| WriterError::Malformed("reply exceeds a UDP datagram"))?;
-            // last, because to_bytes serializes the stored value rather than recomputing it
             ip.header_checksum = ip.calc_header_checksum();
             Ok(assemble(&ip.to_bytes(), &udp, payload))
         }
@@ -219,8 +169,6 @@ mod tests {
         53,
     );
 
-    /// A client datagram as it would arrive on the TUN, built through the same builder the reply path
-    /// uses so that the test exercises the parse rather than a hand-rolled encoder.
     fn client_datagram(client: SocketAddr, remote: SocketAddr, payload: &[u8]) -> Vec<u8> {
         build_reply(client, remote, 64, None, payload).unwrap()
     }
@@ -277,7 +225,6 @@ mod tests {
     #[test]
     fn fragments_and_other_transports_are_separated_from_malformed_input() {
         let mut packet = client_datagram(CLIENT4, REMOTE4, b"query");
-        // more-fragments, which makes this a first fragment rather than a whole datagram
         packet[6] |= 0x20;
         assert_eq!(parse(&packet), Err(Reject::Fragmented));
 
@@ -305,7 +252,6 @@ mod tests {
             packet.pop();
             assert!(matches!(parse(&packet), Err(Reject::Malformed(_))));
         }
-        // a UDP length shorter than the IP layer says, which would leave trailing bytes to guess about
         let mut packet = client_datagram(CLIENT4, REMOTE4, b"query");
         let length = IPV4_HEADER_LEN + 4;
         packet[length..length + 2].copy_from_slice(&(UdpHeader::LEN as u16).to_be_bytes());

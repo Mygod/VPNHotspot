@@ -1,16 +1,3 @@
-//! Packetization for the common TUN writer: final size validation, source fragmentation for both
-//! families, and the size policy that decides which datagrams may clear DF.
-//!
-//! Platform-neutral on purpose. The writer task that owns the descriptor, its bounded queue, and the
-//! `EAGAIN` wait live next to the TUN; everything here is a pure transformation of bytes and is unit
-//! tested as such. The Identification allocator this consults lives beside it in
-//! [crate::shared::ipv4_identification], because what an Identification may be reused for is a question
-//! about wire time rather than about bytes.
-//!
-//! Only daemon-originated packets pass through this module, which is why the unfragmentable part is
-//! always the fixed IPv6 header: nothing here emits Hop-by-Hop, Routing, or leading Destination
-//! Options, and a packet that carries one is rejected rather than fragmented incorrectly.
-
 use std::net::IpAddr;
 #[cfg(test)]
 use std::net::Ipv6Addr;
@@ -27,26 +14,18 @@ pub const IPV4_HEADER_LEN: usize = 20;
 pub const IPV6_HEADER_LEN: usize = 40;
 pub const IPV6_FRAGMENT_HEADER_LEN: usize = 8;
 
-/// Extension headers that belong to the unfragmentable part, so a datagram carrying one cannot be
-/// fragmented by the simple split below: Hop-by-Hop, Routing, and Destination Options.
 const UNFRAGMENTABLE_NEXT_HEADERS: [u8; 3] = [0, 43, 60];
 const IPV6_FRAGMENT_NEXT_HEADER: u8 = 44;
 
-/// Fragment offsets count 8-byte units, so every fragment except the last carries a multiple of 8.
 const FRAGMENT_ALIGNMENT: usize = 8;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum WriterError {
-    /// The caller built something that is not a well-formed packet of the family it claims.
     Malformed(&'static str),
-    /// Would exceed the link MTU and the caller forbade fragmenting it.
     TooLarge { size: usize, mtu: usize },
-    /// Correct behaviour is to drop and let path-MTU signalling handle it, not to fragment.
     Unfragmentable(&'static str),
 }
 
-/// Rejects anything whose declared length disagrees with its actual length, which is the last chance to
-/// catch a packetization bug before it reaches a client, and anything larger than the link.
 pub fn validate(packet: &[u8], mtu: usize) -> Result<(), WriterError> {
     Packet::parse(packet).map_err(|error| {
         WriterError::Malformed(match error {
@@ -66,10 +45,6 @@ pub fn validate(packet: &[u8], mtu: usize) -> Result<(), WriterError> {
     Ok(())
 }
 
-/// Splits one oversized IPv6 datagram into fragments that each fit `mtu`.
-///
-/// The caller decides whether fragmenting is allowed at all: ICMPv6 errors truncate their quote instead,
-/// and TCP segments to fit, so only relayed UDP, Echo Reply, and UDP virtual-DNS responses arrive here.
 pub fn fragment_ipv6(
     packet: &[u8],
     mtu: usize,
@@ -88,7 +63,6 @@ pub fn fragment_ipv6(
     if next_header == IPV6_FRAGMENT_NEXT_HEADER {
         return Err(WriterError::Unfragmentable("already fragmented"));
     }
-    // every fragment carries the original header plus a fragment header, so that is the fixed overhead
     let overhead = IPV6_HEADER_LEN + IPV6_FRAGMENT_HEADER_LEN;
     let per_fragment = mtu
         .checked_sub(overhead)
@@ -112,14 +86,9 @@ pub fn fragment_ipv6(
         fragment[6] = IPV6_FRAGMENT_NEXT_HEADER;
         fragment.push(next_header);
         fragment.push(0);
-        // 13-bit offset in 8-byte units, two reserved bits, then the More Fragments flag
         fragment.extend_from_slice(&(((offset as u16) & !7) | u16::from(more)).to_be_bytes());
         fragment.extend_from_slice(&identification.to_be_bytes());
         fragment.extend_from_slice(&payload[offset..end]);
-        // Handed over as it is built, so exactly one fragment exists beside the source packet at any moment.
-        // The batch this replaces held every fragment of an oversized datagram at once, which for a 64 KiB
-        // datagram at a 1280-byte MTU is a second copy of the whole thing in fifty-odd allocations - and how
-        // large the datagram is, is a remote's choice.
         emit(fragment);
         emitted += 1;
         offset = end;
@@ -130,16 +99,6 @@ pub fn fragment_ipv6(
     Ok(emitted)
 }
 
-/// Splits one oversized IPv4 datagram into fragments that each fit `mtu`.
-///
-/// The interface is what the daemon writes through, so a datagram larger than it is one nothing downstream
-/// can rescue: it is split here, under the Identification that let its DF bit be cleared in the first place.
-/// A narrower downstream link beyond the TUN is not this daemon's to guess at - Android's forwarding path
-/// answers ICMP Fragmentation Needed at the TUN for one.
-///
-/// The Identification is whatever the caller already put in the header, so
-/// [crate::shared::ipv4_identification::Ipv4Identifications] is consulted once per datagram rather than once
-/// per fragment - which is also what makes the fragments reassemble into one datagram instead of several.
 pub fn fragment_ipv4(
     packet: &[u8],
     mtu: usize,
@@ -147,8 +106,6 @@ pub fn fragment_ipv4(
 ) -> Result<usize, WriterError> {
     let (mut header, payload) =
         Ipv4Header::from_slice(packet).map_err(|_| WriterError::Malformed("not an IPv4 packet"))?;
-    // Only daemon-originated packets reach here and none of them carries options, so rather than copy an
-    // option chain correctly - which depends on each option's copied flag - this refuses one.
     if !header.options.is_empty() {
         return Err(WriterError::Unfragmentable(
             "IPv4 options are not copied into fragments",
@@ -182,12 +139,10 @@ pub fn fragment_ipv4(
         header
             .set_payload_len(end - offset)
             .map_err(|_| WriterError::Malformed("IPv4 fragment payload does not fit"))?;
-        // covers the length, flags, and offset just rewritten, and to_bytes serializes what is stored
         header.header_checksum = header.calc_header_checksum();
         let mut fragment = Vec::with_capacity(IPV4_HEADER_LEN + end - offset);
         fragment.extend_from_slice(&header.to_bytes());
         fragment.extend_from_slice(&payload[offset..end]);
-        // One at a time - see the note in [fragment_ipv6].
         emit(fragment);
         emitted += 1;
         offset = end;
@@ -198,33 +153,13 @@ pub fn fragment_ipv4(
     Ok(emitted)
 }
 
-/// What the size policy decides for one outbound datagram, before any header is built.
-///
-/// A type rather than an `Option<u16>`, because the three answers are genuinely different and collapsing two
-/// of them is the defect this replaces: "no Identification" and "an Identification could not be issued" were
-/// both `None`, so a datagram the allocator refused went out atomic with DF set as though it had been within
-/// the MTU all along. That is a fragment set a receiver must refuse, and the refusal is not a fact about
-/// the client's path - it is this table being full, which the client cannot act on and would cache as though
-/// it could.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sizing {
-    /// Within the session MTU, or not IPv4: atomic with DF set, and no Identification is needed.
     Atomic,
-    /// Above the MTU, with the Identification every fragment of it will share.
     Fragmentable(Guarded),
-    /// Above the MTU, and no Identification could be issued. The datagram is dropped, quietly and counted.
     Denied(Denial),
 }
 
-/// What deciding one datagram's size policy needs to know about it.
-///
-/// One value rather than three parameters because the three are one question - may this datagram clear DF,
-/// and under what Identification - and because the two functions that ask it must ask it the same way.
-///
-/// `oversized` is the caller's own comparison against the session MTU, and `tuple` is `None` for
-/// anything that is not IPv4-to-IPv4 - neither is this module's to work out, and both are what make the
-/// policy testable without a socket. `now` is likewise the caller's: whether an Identification may be issued
-/// is a question about elapsed wire time, and a clock read in here could not be injected.
 #[derive(Debug, Clone, Copy)]
 pub struct Guarding {
     pub tuple: Option<Tuple>,
@@ -232,7 +167,6 @@ pub struct Guarding {
     pub now: Instant,
 }
 
-/// Decides one datagram's size policy, which is the one place the three answers are told apart.
 pub fn size_policy(identifications: &mut Ipv4Identifications, guarding: Guarding) -> Sizing {
     let Guarding {
         tuple,
@@ -248,52 +182,17 @@ pub fn size_policy(identifications: &mut Ipv4Identifications, guarding: Guarding
     }
 }
 
-/// Where a finished packet goes. One trait so the emit sequence below can be driven without a TUN, and so
-/// that a test can count exactly what reached the wire.
 pub trait Sink {
-    /// Answers whether it was accepted. A refusal is the daemon's own queue being full, which is a drop
-    /// rather than a retry.
-    ///
-    /// `guarded` travels with the packet because the writer is the only owner that learns whether it reached
-    /// the wire, and the allocator is the only owner that can act on that - see
-    /// [crate::shared::ipv4_identification::Terminal]. Every packet of one guarded datagram carries the same
-    /// identity, and an unguarded packet carries none.
     fn packet(&mut self, packet: Vec<u8>, guarded: Option<Guarded>) -> bool;
 }
 
-/// What one datagram's emission came to.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Emitted {
-    /// Written, whole or in fragments. Answers how many reached the sink and how many the sink refused.
     Written { written: usize, blocked: usize },
-    /// Above the session MTU, IPv4, and no Identification could be issued. Nothing was built, nothing
-    /// was fragmented, nothing reached the sink - and nothing is reported, because which tuples arrive is
-    /// traffic. See [Sizing::Denied].
     Denied(Denial),
-    /// The daemon could not build or split what it was asked for. Its own failure, and the caller's to
-    /// report: distinct from a denial, which is a bounded table doing exactly what it is for.
     Unbuildable(WriterError),
 }
 
-/// The whole size policy and emission of one datagram, in the order the decisions have to happen.
-///
-/// One function because the ordering is the correctness property, and because the denial has to short-circuit
-/// *before* the header is built. `build` is not called at all on the denied path - not with `None`, which is
-/// what "no Identification, so set DF" used to mean and is a fragment set a receiver must refuse.
-///
-/// The other ordering it owns is the registration. A guarded packet is taken onto the allocator's books
-/// *before* the sink can have it and given back if the sink refuses it, because from the moment the writer
-/// owns a packet its terminal may arrive at any time - and a count incremented after the handover could be
-/// decremented before it existed. A packet the sink refused was never the writer's, so it is rolled back
-/// rather than settled: nothing reached the wire and nothing claims to have.
-///
-/// And the issuance itself is a transaction, which is the third ordering. The value has to be decided before
-/// the header exists, because it goes inside the header - but a datagram that then failed to build, or whose
-/// every packet the sink refused, has put nothing carrying that value anywhere. Spending the sequence
-/// position anyway is safe for a receiver and bad for the sender: 65,536 attempts that never reached the
-/// writer would deny a tuple its oversized output, and a client that keeps the queue full can arrange
-/// exactly that. So the position is given back when, and only when, the sink accepted nothing at all. A
-/// fragmented datagram of which even one fragment was accepted keeps it.
 pub fn emit<S: Sink>(
     identifications: &mut Ipv4Identifications,
     guarding: Guarding,
@@ -305,7 +204,6 @@ pub fn emit<S: Sink>(
     let guarded = match size_policy(identifications, guarding) {
         Sizing::Atomic => None,
         Sizing::Fragmentable(guarded) => Some(guarded),
-        // Before `build`, so no header exists and no allocation was made for one.
         Sizing::Denied(denial) => return Emitted::Denied(denial),
     };
     let (emitted, accepted) = emitting(
@@ -316,10 +214,6 @@ pub fn emit<S: Sink>(
         build,
         sink,
     );
-    // The one place the transaction closes, so no exit above can forget it. `accepted` rather than the
-    // outcome, because a fragmentation that failed *after* the sink took a fragment is still a value that
-    // packets carry: what decides this is whether anything with that Identification exists, not which answer
-    // the emission came to.
     if let Some(guarded) = guarded {
         if accepted == 0 {
             identifications.unissued(guarded);
@@ -328,11 +222,6 @@ pub fn emit<S: Sink>(
     emitted
 }
 
-/// Builds one datagram and hands whatever it becomes to the sink, answering with what crossed and how many
-/// packets the sink actually took.
-///
-/// Split from [emit] only so that every way out of it - a build failure, a refused fragmentation, a sink
-/// that took nothing - passes through the one place that closes the issuance transaction.
 fn emitting<S: Sink>(
     identifications: &mut Ipv4Identifications,
     guarded: Option<Guarded>,
@@ -349,9 +238,6 @@ fn emitting<S: Sink>(
     let mut blocked = 0usize;
     let mut hand = |packet: Vec<u8>| {
         if let Some(guarded) = guarded {
-            // A guarded packet the allocator cannot promise to hear the ending of is dropped exactly as a
-            // full writer queue would drop it. Sending it untracked would leave a value on the wire whose age
-            // this daemon could never know.
             if identifications.register(guarded).is_err() {
                 blocked += 1;
                 return;
@@ -370,8 +256,6 @@ fn emitting<S: Sink>(
         hand(packet);
         return (Emitted::Written { written, blocked }, written);
     }
-    // Larger than the interface itself, so nothing downstream can rescue it and the split happens here. Each
-    // fragment goes to the sink as it is built, so at most one exists beside the source packet.
     let fragmented = if packet.first().map(|byte| byte >> 4) == Some(6) {
         *fragment_identification = fragment_identification.wrapping_add(1);
         fragment_ipv6(&packet, mtu, *fragment_identification, &mut hand)
@@ -384,11 +268,6 @@ fn emitting<S: Sink>(
     }
 }
 
-/// One datagram's addressing and length, as the owner needs them.
-///
-/// Grouped so the emission reads as one step: what is being sent, to whom, under which protocol, and how big
-/// it is. The size is the datagram's own, and the MTU comparison is the owner's - a caller that passed its
-/// own "oversized" would be deciding the thing the owner exists to decide.
 #[derive(Debug, Clone, Copy)]
 pub struct Addressed {
     pub source: IpAddr,
@@ -397,27 +276,13 @@ pub struct Addressed {
     pub size: usize,
 }
 
-/// Where a structured report goes. Injected so the owner's classification can be observed without a
-/// reporting backend, and so a test can assert that a quiet path really is quiet.
 pub trait Reporter {
-    /// One packetization failure worth raising. Called for nothing else.
     fn unbuildable(&mut self, source: IpAddr, destination: IpAddr, error: &WriterError);
 }
 
-/// The one place a TUN-side datagram becomes packets, with the counters that say what happened to them.
-///
-/// The owner rather than a free function, because the decisions and the counters have to be one thing: the
-/// MTU comparison decides whether an Identification is needed at all, the identification table decides
-/// whether one can be issued, and which counter moves - and whether anything is reported - follows from
-/// both. Splitting them let a caller pass its own idea of "oversized" and increment its own idea of a
-/// counter, which is exactly how a denial came to look like a report.
 pub struct Emitter {
-    /// The largest TUN-side packet the interface will carry, and so the largest one that may keep DF set.
-    /// The session's own immutable contract: it is checked against the interface when the descriptor is
-    /// handed over and never moves, so there is no second, narrower limit to keep beside it.
     mtu: usize,
     identifications: Ipv4Identifications,
-    /// A single 32-bit sequence for IPv6 fragmentation, unlike IPv4's per-tuple one.
     fragment_identification: u32,
     written: u64,
     blocked: u64,
@@ -454,45 +319,26 @@ impl Emitter {
         self.unwritable
     }
 
-    /// Oversized IPv4 output dropped because no Identification could be issued for it, whichever of the three
-    /// reasons it was - see [Denial], and [Emitter::identifications] for the breakdown.
     pub fn identification_denied(&self) -> u64 {
         self.identification_denied
     }
 
-    /// The allocator itself, for the session's own reporting and for tests that assert about its state.
     pub fn identifications(&self) -> &Ipv4Identifications {
         &self.identifications
     }
 
-    /// Applies one ending the TUN writer sent back for a guarded packet it owned.
-    ///
-    /// The only path by which a wire time enters this owner. Everything else here happens before a packet is
-    /// handed over, and none of it knows whether the handover ended on the wire.
     pub fn terminal(&mut self, terminal: Terminal) {
         self.identifications.terminal(terminal);
     }
 
-    /// Records one already-formed packet handed straight to the writer - a terminating TCP segment, or a
-    /// locally originated ICMP error - whose size was settled by whoever built it, so there is no size
-    /// decision to make and no Identification to issue.
     pub fn wrote(&mut self, accepted: bool) {
         if accepted {
             self.written += 1;
         } else {
-            // The daemon's own queue was full, which is an admission decision: the packet is dropped rather
-            // than retried.
             self.blocked += 1;
         }
     }
 
-    /// Emits one datagram: decides its size policy against the MTU, builds it, writes or splits it, and
-    /// moves exactly one counter.
-    ///
-    /// `size` is the datagram's own length, and the comparison against the MTU happens *here* - a caller
-    /// that passed its own "oversized" would be deciding the thing this owner exists to decide. `protocol`
-    /// keys the Identification allocator and so is only read on the IPv4 path. `now` is read on that path
-    /// too, and only there: whether a value may be issued depends on when its tuple last reached the wire.
     pub fn emit<S: Sink, R: Reporter>(
         &mut self,
         now: Instant,
@@ -515,7 +361,6 @@ impl Emitter {
             &mut self.identifications,
             Guarding {
                 tuple,
-                // The size comparison, made once and here.
                 oversized: size > self.mtu,
                 now,
             },
@@ -524,20 +369,11 @@ impl Emitter {
             build,
             sink,
         );
-        // Which counter moves, and whether anything is reported, follows from what the emission came to.
-        // Collapsing the two is how a bounded table doing exactly its job becomes a report per datagram.
         match outcome(emitted) {
             Outcome::Wrote { written, blocked } => {
                 self.written += written as u64;
-                // The daemon's own queue was full, which is an admission decision: the packet is dropped
-                // rather than retried, and nothing was charged for it that needs refunding.
                 self.blocked += blocked as u64;
             }
-            // Counted rather than reported. Which tuples arrive is traffic, so a report per refused datagram
-            // is a flood a client drives; repeated attempts coalesce into this counter and nothing else. Its
-            // own counter rather than [Emitter::unwritable], because the two mean different things: that one
-            // is the daemon unable to build something it should have been able to build, and this is a
-            // bounded table doing exactly what it is for.
             Outcome::Counted => self.identification_denied += 1,
             Outcome::Reported(e) => {
                 self.unwritable += 1;
@@ -547,23 +383,13 @@ impl Emitter {
     }
 }
 
-/// What the *owner* does with an emission: which counter it moves, and whether anything is reported.
-///
-/// Separate from [Emitted] because the two decisions are different, and collapsing them is how a bounded
-/// table doing its job becomes a structured report per datagram. A denial is traffic - which tuples arrive is
-/// a client's choice - so it is counted and nothing else; a packetization failure is the daemon unable to
-/// build something it should have been able to build, so it is reported.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Outcome {
-    /// Written, whole or in fragments, with however many the writer refused.
     Wrote { written: usize, blocked: usize },
-    /// Counted quietly. No report, no allocation, nothing on the wire.
     Counted,
-    /// Reported, because the daemon failed at something it asked for.
     Reported(WriterError),
 }
 
-/// Maps one emission onto what the owner does about it.
 pub fn outcome(emitted: Emitted) -> Outcome {
     match emitted {
         Emitted::Written { written, blocked } => Outcome::Wrote { written, blocked },
@@ -572,7 +398,6 @@ pub fn outcome(emitted: Emitted) -> Outcome {
     }
 }
 
-/// Builds a minimal IPv6 header for this module's packetization tests.
 #[cfg(test)]
 pub fn ipv6_header(
     source: Ipv6Addr,
@@ -600,8 +425,6 @@ mod tests {
 
     use crate::shared::ipv4_identification::NONREUSE_WINDOW;
 
-    /// Collects a streamed fragmentation, so a test can assert about the whole sequence while production
-    /// still owns one fragment at a time.
     fn collect_ipv6(packet: &[u8], mtu: usize, id: u32) -> Result<Vec<Vec<u8>>, WriterError> {
         let mut fragments = Vec::new();
         let emitted = fragment_ipv6(packet, mtu, id, |fragment| fragments.push(fragment))?;
@@ -671,7 +494,6 @@ mod tests {
         for (index, fragment) in fragments.iter().enumerate() {
             assert_eq!(validate(fragment, MTU), Ok(()));
             assert_eq!(fragment[6], IPV6_FRAGMENT_NEXT_HEADER);
-            // the fragment header repeats the original upper-layer protocol
             assert_eq!(fragment[IPV6_HEADER_LEN], 17);
             let control =
                 u16::from_be_bytes([fragment[IPV6_HEADER_LEN + 2], fragment[IPV6_HEADER_LEN + 3]]);
@@ -728,8 +550,6 @@ mod tests {
         ));
     }
 
-    /// One oversized IPv4 datagram with DF already cleared, which is the only shape that reaches
-    /// [fragment_ipv4].
     fn ipv4_datagram(payload_length: usize) -> Vec<u8> {
         let mut header = Ipv4Header {
             identification: 0x1234,
@@ -756,7 +576,6 @@ mod tests {
         for (index, fragment) in fragments.iter().enumerate() {
             assert_eq!(validate(fragment, MTU), Ok(()));
             let (header, payload) = Ipv4Header::from_slice(fragment).unwrap();
-            // every fragment repeats the datagram's Identification, which is what splices them back
             assert_eq!(header.identification, 0x1234);
             assert!(!header.dont_fragment);
             assert_eq!(header.more_fragments, index + 1 < fragments.len());
@@ -781,7 +600,6 @@ mod tests {
     #[test]
     fn ipv4_fragmenting_refuses_what_it_must_not_split() {
         let mut packet = ipv4_datagram(4000);
-        // DF set: the correct behaviour is to drop and let path-MTU signalling handle it
         packet[6] |= 0x40;
         assert!(matches!(
             collect_ipv4(&packet, MTU),
@@ -793,7 +611,6 @@ mod tests {
             collect_ipv4(&packet, MTU),
             Err(WriterError::Unfragmentable(_))
         ));
-        // an option chain, whose per-option copied flag this deliberately does not implement
         let mut packet = ipv4_datagram(4000);
         packet[0] = 0x46;
         assert!(matches!(
@@ -810,9 +627,6 @@ mod tests {
         ));
     }
 
-    /// A table whose opening window has already passed, prepared for `tuples` and tracking `tracked`
-    /// unsettled packets. The allocator's own behaviour is proved in [crate::shared::ipv4_identification];
-    /// what these tests are about is the emit sequence around it.
     fn table(tuples: usize, tracked: usize) -> (Ipv4Identifications, Instant) {
         let opened = Instant::now();
         let table = Ipv4Identifications::new(Prepared {
@@ -823,8 +637,6 @@ mod tests {
         (table, opened + NONREUSE_WINDOW)
     }
 
-    /// The common size-policy input: an IPv4 tuple whose datagram is oversized, which is the only case that
-    /// asks the allocator for anything.
     fn guarding(tuple: Tuple, now: Instant) -> Guarding {
         Guarding {
             tuple: Some(tuple),
@@ -833,8 +645,6 @@ mod tests {
         }
     }
 
-    /// An emitter whose opening window has already passed, so a test that is not about the window does not
-    /// have to step over it.
     fn opened_emitter(mtu: usize, tuples: usize) -> (Emitter, Instant) {
         let opened = Instant::now();
         let emitter = Emitter::new(
@@ -848,16 +658,11 @@ mod tests {
         (emitter, opened + NONREUSE_WINDOW)
     }
 
-    /// Counts exactly what crossed each boundary the emit sequence has: the builder, the sink, and the
-    /// caller's own report.
     #[derive(Default)]
     struct Observed {
         packets: Vec<usize>,
-        /// The identity each accepted or refused packet carried, so a test can prove that every fragment of
-        /// one datagram is one datagram.
         guarded: Vec<Option<Guarded>>,
         refuse: bool,
-        /// Accept this many and refuse the rest, which is a queue that fills part-way through a datagram.
         accept: Option<usize>,
     }
 
@@ -871,12 +676,6 @@ mod tests {
         }
     }
 
-    /// A table-full denial is quiet and complete: nothing is built, nothing is fragmented, nothing reaches
-    /// the writer, and the caller gets exactly one countable answer with no report in it.
-    ///
-    /// Both sizes, because the two used to differ: a datagram larger than the interface fell through to
-    /// fragmentation with no Identification, and a smaller one the caller had classified as oversized went
-    /// out atomic as though it had never been.
     #[test]
     fn a_denied_identification_builds_nothing_and_writes_nothing() {
         for size in [800usize, 4_000] {
@@ -884,8 +683,6 @@ mod tests {
             let held = Ipv4Addr::new(192, 0, 2, 1);
             let newcomer = Ipv4Addr::new(192, 0, 2, 2);
             let remote = Ipv4Addr::new(198, 51, 100, 1);
-            // The one slot goes to a tuple that is already sending, and it writes, so its bucket cannot be
-            // reclaimed from under it.
             let guarded = match size_policy(&mut identifications, guarding((held, remote, 17), now))
             {
                 Sizing::Fragmentable(guarded) => guarded,
@@ -894,14 +691,9 @@ mod tests {
             identifications.register(guarded).expect("tracked");
             identifications.terminal(Terminal::wrote(guarded, now));
 
-            // One sink, and it is *the* sink production was given. An earlier version of this test asserted
-            // about a second `Observed` that was never passed in, so it would have passed however many
-            // packets the real one received. The builder's count lives in a `Cell` beside it so both can be
-            // read while the sink is borrowed mutably.
             let built = std::cell::Cell::new(0usize);
             let mut sink = Observed::default();
             let mut fragment_id = 0u32;
-            // Classified oversized either way, which is the only case that asks for one.
             let emitted = emit(
                 &mut identifications,
                 guarding((newcomer, remote, 17), now),
@@ -928,18 +720,10 @@ mod tests {
                 0,
                 "size {size}: and nothing was taken onto the books"
             );
-            // And the owner counts it rather than reporting it, which is the other half of "quiet".
             assert_eq!(outcome(emitted), Outcome::Counted, "size {size}");
         }
     }
 
-    /// The opening window is the same quiet denial as a full table, and it is answered before the table is
-    /// even consulted.
-    ///
-    /// This is the one thing per-tuple state cannot see: a session that started a second after its
-    /// predecessor stopped would hand out values the predecessor had just written, and a receiver holding
-    /// those fragments would splice the two together. Sixty seconds of denial is exactly as long as it can
-    /// still be holding them.
     #[test]
     fn the_opening_window_denies_before_anything_is_built() {
         let opened = Instant::now();
@@ -976,13 +760,12 @@ mod tests {
             );
             assert_eq!(outcome(emitted), Outcome::Counted);
         }
-        assert_eq!(built.get(), 0, "nothing was built");
-        assert!(sink.packets.is_empty(), "nothing reached the writer");
-        assert_eq!(fragment_id, 0, "no fragment identity was spent");
-        assert!(identifications.is_empty(), "and no tuple was recorded");
+        assert_eq!(built.get(), 0);
+        assert!(sink.packets.is_empty());
+        assert_eq!(fragment_id, 0);
+        assert!(identifications.is_empty());
         assert_eq!(identifications.quarantined(), 3);
 
-        // At exactly the window it opens, and the sequence starts where a fresh sequence starts.
         let emitted = emit(
             &mut identifications,
             guarding((source, remote, 17), opened + NONREUSE_WINDOW),
@@ -1003,8 +786,6 @@ mod tests {
         );
     }
 
-    /// The window is about *guarded* output and nothing else: within the MTU, IPv6, and the already-formed
-    /// packets a terminating TCP stack produces are all unaffected by it.
     #[test]
     fn the_opening_window_leaves_everything_it_does_not_guard_alone() {
         let opened = Instant::now();
@@ -1020,7 +801,6 @@ mod tests {
         let mut reports = Reports::default();
         let remote: IpAddr = Ipv4Addr::new(198, 51, 100, 1).into();
 
-        // Within the MTU: atomic with DF set, which needs no Identification and so asks for none.
         emitter.emit(
             opened,
             Addressed {
@@ -1036,7 +816,6 @@ mod tests {
             &mut sink,
             &mut reports,
         );
-        // IPv6, oversized: source-fragmented here, under its own 32-bit sequence.
         emitter.emit(
             opened,
             Addressed {
@@ -1052,18 +831,15 @@ mod tests {
             &mut sink,
             &mut reports,
         );
-        // And the TCP path, which hands over a packet it segmented itself.
         emitter.wrote(true);
 
-        assert_eq!(emitter.identification_denied(), 0, "none of it was guarded");
+        assert_eq!(emitter.identification_denied(), 0);
         assert_eq!(emitter.identifications().quarantined(), 0);
         assert!(reports.raised.is_empty());
-        assert!(sink.packets.len() > 2, "the IPv6 datagram was fragmented");
+        assert!(sink.packets.len() > 2);
         assert!(emitter.written() >= 3);
     }
 
-    /// Repeated denials stay quiet: one countable answer each, no allocation, and the tuples that were
-    /// already here keep their monotone sequences throughout.
     #[test]
     fn repeated_denials_coalesce_into_the_count_and_leave_old_tuples_alone() {
         let (mut identifications, now) = table(2, 64);
@@ -1077,7 +853,6 @@ mod tests {
             else {
                 panic!("the held tuples should each have one");
             };
-            // Written, so neither bucket can be reclaimed from under it while the newcomers arrive.
             identifications.register(guarded).expect("tracked");
             identifications.terminal(Terminal::wrote(guarded, now));
         }
@@ -1106,20 +881,19 @@ mod tests {
                 Outcome::Wrote { .. } => panic!("attempt {attempt} should have been refused"),
             }
         }
-        assert_eq!(denied, 5_000, "every newcomer, quietly");
-        assert_eq!(reports, 0, "and not one of them was reported");
-        assert_eq!(built.get(), 0, "nor built a header");
-        assert!(sink.packets.is_empty(), "nor reached the writer");
-        assert_eq!(identifications.len(), 2, "nothing was displaced");
+        assert_eq!(denied, 5_000);
+        assert_eq!(reports, 0);
+        assert_eq!(built.get(), 0);
+        assert!(sink.packets.is_empty());
+        assert_eq!(identifications.len(), 2);
         assert_eq!(
             identifications.reclaimed(),
             0,
             "and nothing was taken from anyone"
         );
         assert_eq!(identifications.refused(), 5_000);
-        assert_eq!(identifications.sweeps(), 1, "one scan, five thousand tries");
+        assert_eq!(identifications.sweeps(), 1);
 
-        // The tuples that were already here carry straight on from where they were.
         for expected in 2..=6u16 {
             for source in &held {
                 let Sizing::Fragmentable(guarded) =
@@ -1132,8 +906,6 @@ mod tests {
         }
     }
 
-    /// A datagram the table *can* identify is built, split and written - which is what makes the denial above
-    /// a distinct answer rather than the only one this path has.
     #[test]
     fn an_identified_oversized_datagram_is_built_and_fragmented() {
         let (mut identifications, now) = table(4, 64);
@@ -1150,7 +922,7 @@ mod tests {
             1_280,
             &mut fragment_id,
             |identification| {
-                assert_eq!(identification, Some(1), "the builder is given the sequence");
+                assert_eq!(identification, Some(1));
                 Ok(ipv4_datagram(4_000))
             },
             &mut sink,
@@ -1165,8 +937,6 @@ mod tests {
             }
         );
         assert!(sink.packets.iter().all(|length| *length <= 1_280));
-        // Every fragment of one datagram is one datagram: one identity, one Identification, and one
-        // registration each - which is what a receiver reassembles them by.
         let first = sink.guarded[0].expect("guarded");
         assert_eq!(first.identification(), 1);
         assert_eq!(first.tuple(), tuple);
@@ -1177,8 +947,6 @@ mod tests {
             "each accepted fragment is one packet the writer owes an ending for"
         );
 
-        // A writer that refuses counts as blocked rather than as a failure, and the rest of the datagram
-        // still goes - and none of the refused ones is on the books, because the writer never had them.
         let mut full = Observed {
             refuse: true,
             ..Observed::default()
@@ -1207,8 +975,6 @@ mod tests {
         );
     }
 
-    /// A queue that fills part-way through a datagram leaves exactly the accepted fragments on the books, and
-    /// settling them in any order neither underflows the count nor lets the sequence restart early.
     #[test]
     fn a_partly_admitted_datagram_owes_an_ending_for_exactly_what_was_accepted() {
         let (mut identifications, now) = table(4, 64);
@@ -1241,22 +1007,15 @@ mod tests {
         );
         assert_eq!(identifications.outstanding(), 2);
 
-        // The two accepted ones settle, the later write last in time but first to arrive.
         let guarded = sink.guarded[0].expect("guarded");
         let later = now + Duration::from_secs(10);
         identifications.terminal(Terminal::wrote(guarded, later));
         identifications.terminal(Terminal::wrote(guarded, now));
         assert_eq!(identifications.outstanding(), 0);
-        assert_eq!(identifications.stale(), 0, "neither was stale");
+        assert_eq!(identifications.stale(), 0);
         assert_eq!(identifications.settled(), (2, 0));
     }
 
-    /// A datagram the sink took nothing of gives its Identification back; one it took part of keeps it.
-    ///
-    /// Both halves matter and they are the same test because the boundary between them is the whole rule.
-    /// Keeping a value nothing carries is what let a full queue spend a tuple's cycle without one packet
-    /// reaching the wire; giving back a value some fragment already carries would hand it out again while
-    /// the writer still had the first one.
     #[test]
     fn only_a_datagram_that_reached_nothing_gives_its_identification_back() {
         let (mut identifications, now) = table(4, 64);
@@ -1267,7 +1026,6 @@ mod tests {
         );
         let mut fragment_id = 0u32;
 
-        // Refused outright: the value never left this table.
         let mut refused = Observed {
             refuse: true,
             ..Observed::default()
@@ -1285,16 +1043,15 @@ mod tests {
         );
         assert!(matches!(emitted, Emitted::Written { written: 0, .. }));
         assert_eq!(identifications.unissued_count(), 1);
-        assert_eq!(identifications.outstanding(), 0, "nothing on the books");
+        assert_eq!(identifications.outstanding(), 0);
 
-        // A build that fails is the same: no header exists, so nothing carries the value.
         let emitted = emit(
             &mut identifications,
             guarding(tuple, now),
             1_280,
             &mut fragment_id,
             |identification| {
-                assert_eq!(identification, Some(1), "the very same value");
+                assert_eq!(identification, Some(1));
                 Err(WriterError::Malformed("nothing was built"))
             },
             &mut refused,
@@ -1302,7 +1059,6 @@ mod tests {
         assert!(matches!(emitted, Emitted::Unbuildable(_)));
         assert_eq!(identifications.unissued_count(), 2);
 
-        // And one the sink takes part of keeps it, so the next datagram moves on.
         let mut partial = Observed {
             accept: Some(1),
             ..Observed::default()
@@ -1313,34 +1069,30 @@ mod tests {
             1_280,
             &mut fragment_id,
             |identification| {
-                assert_eq!(identification, Some(1), "still the first value");
+                assert_eq!(identification, Some(1));
                 Ok(ipv4_datagram(4_000))
             },
             &mut partial,
         );
-        assert_eq!(identifications.unissued_count(), 2, "this one was carried");
+        assert_eq!(identifications.unissued_count(), 2);
         emit(
             &mut identifications,
             guarding(tuple, now),
             1_280,
             &mut fragment_id,
             |identification| {
-                assert_eq!(identification, Some(2), "so the sequence moved on");
+                assert_eq!(identification, Some(2));
                 Ok(ipv4_datagram(800))
             },
             &mut partial,
         );
     }
 
-    /// A caller-requested DF that cannot be honoured is the daemon's own failure, and stays on its own
-    /// answer - never collapsed into the quiet denial above.
     #[test]
     fn a_df_too_large_packet_is_unbuildable_rather_than_denied() {
         let (mut identifications, now) = table(4, 64);
         let mut sink = Observed::default();
         let mut fragment_id = 0u32;
-        // Built with DF set and larger than the interface: nothing downstream can rescue it, and this daemon
-        // may not split it either.
         let emitted = emit(
             &mut identifications,
             guarding(
@@ -1360,16 +1112,13 @@ mod tests {
             },
             &mut sink,
         );
-        assert!(sink.packets.is_empty(), "and nothing partial was written");
-        // A different answer from a denial, and the owner does a different thing with it: this one is
-        // reported, where a denial is only counted.
+        assert!(sink.packets.is_empty());
         assert_eq!(
             outcome(emitted),
             Outcome::Reported(WriterError::Unfragmentable("DF is set"))
         );
     }
 
-    /// Everything the owner's report path was asked to raise.
     #[derive(Default)]
     struct Reports {
         raised: Vec<String>,
@@ -1381,15 +1130,8 @@ mod tests {
         }
     }
 
-    /// The quiet denial, through the owner method production calls, at both sizes that ask for an
-    /// Identification.
-    ///
-    /// The size comparison is the owner's - the test passes a *size*, not an `oversized` flag - and the
-    /// counter asserted is the owner's own, not a stand-in. Both matter: the earlier shape let the caller
-    /// decide the thing this exists to decide, and count the thing this exists to count.
     #[test]
     fn the_owner_denies_quietly_at_both_sizes_that_need_an_identification() {
-        // Interface 1500: one size just over it, splitting in two, and one that splits into several.
         for size in [1_600usize, 4_000] {
             let (mut emitter, now) = opened_emitter(1_500, 1);
             assert_eq!(emitter.mtu(), 1_500);
@@ -1397,7 +1139,6 @@ mod tests {
             let newcomer: IpAddr = Ipv4Addr::new(192, 0, 2, 2).into();
             let remote: IpAddr = Ipv4Addr::new(198, 51, 100, 1).into();
 
-            // The one slot goes to a tuple that is already sending oversized output.
             let mut sink = Observed::default();
             let mut reports = Reports::default();
             emitter.emit(
@@ -1409,7 +1150,7 @@ mod tests {
                     size,
                 },
                 |identification| {
-                    assert_eq!(identification, Some(1), "the held tuple gets its sequence");
+                    assert_eq!(identification, Some(1));
                     Ok(ipv4_datagram(size))
                 },
                 &mut sink,
@@ -1418,12 +1159,10 @@ mod tests {
             assert_eq!(emitter.identification_denied(), 0);
             let wrote = emitter.written();
             assert!(wrote > 0, "size {size}: the held tuple's output went");
-            // Its packets reached the wire, so its bucket cannot be given away under the newcomers below.
             for guarded in sink.guarded.iter().flatten() {
                 emitter.terminal(Terminal::wrote(*guarded, now));
             }
 
-            // A newcomer at the same size: denied, quietly.
             let built = std::cell::Cell::new(0usize);
             let mut sink = Observed::default();
             let mut reports = Reports::default();
@@ -1459,8 +1198,6 @@ mod tests {
         }
     }
 
-    /// A datagram that does not need an Identification is unaffected by a full table - the owner's size
-    /// comparison is what decides, and it decides before the table is asked.
     #[test]
     fn the_owner_does_not_ask_for_an_identification_within_its_mtu() {
         let (mut emitter, now) = opened_emitter(1_500, 1);
@@ -1469,7 +1206,6 @@ mod tests {
         let remote: IpAddr = Ipv4Addr::new(198, 51, 100, 1).into();
         let mut sink = Observed::default();
         let mut reports = Reports::default();
-        // Fill the one slot.
         emitter.emit(
             now,
             Addressed {
@@ -1483,7 +1219,6 @@ mod tests {
             &mut reports,
         );
 
-        // A newcomer *within* the MTU never asks, so a full table cannot deny it.
         let built = std::cell::Cell::new(0usize);
         emitter.emit(
             now,
@@ -1495,13 +1230,13 @@ mod tests {
             },
             |identification| {
                 built.set(built.get() + 1);
-                assert_eq!(identification, None, "atomic, so none is needed");
+                assert_eq!(identification, None);
                 Ok(ipv4_datagram(800))
             },
             &mut sink,
             &mut reports,
         );
-        assert_eq!(built.get(), 1, "it was built and sent");
+        assert_eq!(built.get(), 1);
         assert_eq!(emitter.identification_denied(), 0);
         assert_eq!(
             emitter.identifications().refused(),
@@ -1511,9 +1246,6 @@ mod tests {
         assert!(reports.raised.is_empty());
     }
 
-    /// A caller-requested DF that cannot be honoured is the owner's own failure and stays on its own
-    /// counter, with a report - which is what makes the denial above a different thing rather than the only
-    /// thing this path has.
     #[test]
     fn the_owner_reports_a_df_too_large_packet_and_counts_it_separately() {
         let (mut emitter, now) = opened_emitter(1_280, 8);
@@ -1538,18 +1270,17 @@ mod tests {
             &mut reports,
         );
 
-        assert_eq!(emitter.unwritable(), 1, "the daemon's own failure");
-        assert_eq!(emitter.identification_denied(), 0, "and not a denial");
-        assert_eq!(reports.raised.len(), 1, "reported exactly once");
+        assert_eq!(emitter.unwritable(), 1);
+        assert_eq!(emitter.identification_denied(), 0);
+        assert_eq!(reports.raised.len(), 1);
         assert!(
             reports.raised[0].contains("DF is set"),
             "{:?}",
             reports.raised
         );
-        assert!(sink.packets.is_empty(), "and nothing partial was written");
+        assert!(sink.packets.is_empty());
     }
 
-    /// Repeated denials stay quiet through the owner, and the tuples already there keep their sequences.
     #[test]
     fn the_owner_stays_quiet_under_repeated_denial() {
         let (mut emitter, now) = opened_emitter(1_500, 2);
@@ -1576,7 +1307,6 @@ mod tests {
                 &mut reports,
             );
         }
-        // Both reached the wire, so neither bucket may be given to a newcomer.
         for guarded in sink.guarded.iter().flatten() {
             emitter.terminal(Terminal::wrote(*guarded, now));
         }
@@ -1601,13 +1331,12 @@ mod tests {
                 &mut reports,
             );
         }
-        assert_eq!(emitter.identification_denied(), 5_000, "every one, counted");
-        assert_eq!(built.get(), 0, "and none of them built a header");
-        assert!(reports.raised.is_empty(), "nor raised a report");
-        assert_eq!(emitter.written(), written, "nor reached the writer");
-        assert_eq!(emitter.identifications().sweeps(), 1, "one scan, not 5,000");
+        assert_eq!(emitter.identification_denied(), 5_000);
+        assert_eq!(built.get(), 0);
+        assert!(reports.raised.is_empty());
+        assert_eq!(emitter.written(), written);
+        assert_eq!(emitter.identifications().sweeps(), 1);
 
-        // And the tuples that were already here carry straight on, monotonically.
         for expected in 2..=6u16 {
             for source in &held {
                 emitter.emit(
@@ -1619,7 +1348,7 @@ mod tests {
                         size: 1_600,
                     },
                     |identification| {
-                        assert_eq!(identification, Some(expected), "monotone");
+                        assert_eq!(identification, Some(expected));
                         Ok(ipv4_datagram(1_600))
                     },
                     &mut sink,
@@ -1634,9 +1363,6 @@ mod tests {
         );
     }
 
-    /// A tuple that has spent its whole sequence is denied through the owner exactly as a full table is:
-    /// quietly, counted, and with nothing built - and it opens again only once its window has passed with
-    /// every accepted packet settled.
     #[test]
     fn the_owner_denies_a_spent_sequence_until_its_window_has_passed() {
         let (mut emitter, now) = opened_emitter(1_500, 4);
@@ -1658,16 +1384,13 @@ mod tests {
                 &mut sink,
                 &mut reports,
             );
-            // Settled as it goes, so the tracking bound is never the thing under test here. Every fragment
-            // of one datagram carries that datagram's one identity, so each of them is settled in turn and
-            // the sequence position is spent exactly once.
-            assert!(!sink.guarded.is_empty(), "something was written");
+            assert!(!sink.guarded.is_empty());
             for guarded in sink.guarded.drain(..).flatten() {
                 emitter.terminal(Terminal::wrote(guarded, now));
             }
             sink.packets.clear();
         }
-        assert_eq!(emitter.identification_denied(), 0, "all 65,536 went");
+        assert_eq!(emitter.identification_denied(), 0);
 
         let built = std::cell::Cell::new(0usize);
         emitter.emit(
@@ -1680,32 +1403,24 @@ mod tests {
             &mut sink,
             &mut reports,
         );
-        assert_eq!(emitter.identification_denied(), 1, "the 65,537th, counted");
+        assert_eq!(emitter.identification_denied(), 1);
         assert_eq!(emitter.identifications().exhausted(), 1);
-        assert_eq!(built.get(), 0, "and nothing built for it");
-        assert!(reports.raised.is_empty(), "nor reported");
+        assert_eq!(built.get(), 0);
+        assert!(reports.raised.is_empty());
 
-        // At exactly the window, with nothing outstanding, the sequence may start again.
         emitter.emit(
             now + NONREUSE_WINDOW,
             addressed,
             |identification| {
-                assert_eq!(identification, Some(1), "a fresh sequence");
+                assert_eq!(identification, Some(1));
                 Ok(ipv4_datagram(1_600))
             },
             &mut sink,
             &mut reports,
         );
-        assert_eq!(emitter.identification_denied(), 1, "still exactly the one");
+        assert_eq!(emitter.identification_denied(), 1);
     }
 
-    /// A full table denies the datagram outright, whatever its size, and never falls back to sending it
-    /// without an Identification.
-    ///
-    /// The two answers this keeps apart used to be one `None`: a datagram the allocator refused went out
-    /// atomic with DF set as though it had been within the MTU, so a receiver that was expected to
-    /// reassemble it had to refuse it instead - and that refusal is not a fact about the client's path, it
-    /// is this table being full.
     #[test]
     fn a_full_table_denies_the_datagram_rather_than_clearing_its_identification() {
         let (mut identifications, now) = table(1, 64);
@@ -1713,7 +1428,6 @@ mod tests {
         let newcomer = Ipv4Addr::new(192, 0, 2, 2);
         let remote = Ipv4Addr::new(198, 51, 100, 1);
 
-        // The one tuple the table can hold takes its slot, and writes, so the slot is not reclaimable.
         let Sizing::Fragmentable(guarded) =
             size_policy(&mut identifications, guarding((held, remote, 17), now))
         else {
@@ -1723,13 +1437,10 @@ mod tests {
         identifications.register(guarded).expect("tracked");
         identifications.terminal(Terminal::wrote(guarded, now));
 
-        // A newcomer, oversized: denied, not made atomic.
         assert_eq!(
             size_policy(&mut identifications, guarding((newcomer, remote, 17), now)),
             Sizing::Denied(Denial::AtCapacity)
         );
-        // The same newcomer, *not* oversized: atomic, because it never needed one - and this must not consume
-        // a slot or count as a refusal either.
         let refused = identifications.refused();
         assert_eq!(
             size_policy(
@@ -1746,7 +1457,6 @@ mod tests {
             refused,
             "a datagram that needs no Identification does not ask for one"
         );
-        // IPv6 likewise never asks.
         assert_eq!(
             size_policy(
                 &mut identifications,
@@ -1759,8 +1469,6 @@ mod tests {
             Sizing::Atomic
         );
 
-        // Repeated attempts from the same refused tuple coalesce into the counter and nothing else: no tuple
-        // is displaced and no sequence restarts.
         for _ in 0..10_000 {
             assert_eq!(
                 size_policy(&mut identifications, guarding((newcomer, remote, 17), now)),
@@ -1770,7 +1478,6 @@ mod tests {
         assert_eq!(identifications.len(), 1);
         assert_eq!(identifications.refused(), refused + 10_000);
 
-        // And the tuple that was already here carries straight on, monotonically, throughout.
         for expected in 2..=6u16 {
             let Sizing::Fragmentable(guarded) =
                 size_policy(&mut identifications, guarding((held, remote, 17), now))
@@ -1781,27 +1488,20 @@ mod tests {
         }
     }
 
-    /// A genuine packetization failure is a different answer from a denied Identification, and stays on its
-    /// own path.
     #[test]
     fn a_denied_identification_is_not_a_packetization_failure() {
-        // DF set on something too large is the caller's own request being impossible, which is an error the
-        // builder returns - not a size-policy answer at all.
         let mut packet = ipv4_datagram(4000);
         packet[6] = 0x40;
         assert!(matches!(
             fragment_ipv4(&packet, 1280, |_| panic!("nothing may be emitted")),
             Err(WriterError::Unfragmentable("DF is set"))
         ));
-        // An MTU with no room is likewise its own classified failure.
         assert!(matches!(
             fragment_ipv4(&ipv4_datagram(4000), IPV4_HEADER_LEN, |_| panic!(
                 "nothing may be emitted"
             )),
             Err(WriterError::TooLarge { .. })
         ));
-        // Neither of those is reachable from a denial, because a denial never reaches the builder: it is
-        // answered before a header exists.
         let (mut identifications, now) = table(0, 64);
         assert_eq!(
             size_policy(
@@ -1819,11 +1519,9 @@ mod tests {
         );
     }
 
-    /// Fragmentation hands each fragment over as it is built, so only one exists beside the source packet.
     #[test]
     fn fragmentation_owns_one_fragment_at_a_time() {
         for ipv6 in [false, true] {
-            // The largest datagram there is, at the smallest MTU either family allows.
             let packet = if ipv6 {
                 datagram(u16::MAX as usize - IPV6_HEADER_LEN - IPV6_FRAGMENT_HEADER_LEN)
             } else {
@@ -1838,7 +1536,6 @@ mod tests {
                 peak = peak.max(live);
                 count += 1;
                 widest = widest.max(fragment.len());
-                // The caller consumes it - here, by dropping it - before the next is built.
                 drop(fragment);
                 live -= 1;
             };
@@ -1857,7 +1554,6 @@ mod tests {
         }
     }
 
-    /// A fragmentation that cannot happen emits nothing at all, so there is no partial datagram to unwind.
     #[test]
     fn a_refused_fragmentation_emits_nothing() {
         let mut emitted = 0usize;
@@ -1871,7 +1567,6 @@ mod tests {
             Err(WriterError::TooLarge { .. })
         ));
         assert_eq!(emitted, 0);
-        // An already-fragmented IPv4 packet is refused before anything is built too.
         let mut packet = ipv4_datagram(4000);
         packet[6] = 0x20;
         assert!(matches!(

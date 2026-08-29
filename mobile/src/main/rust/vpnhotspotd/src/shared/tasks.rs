@@ -1,24 +1,3 @@
-//! Task ownership for a conversation: the ones it has to watch, and the ones it must not lose track of.
-//!
-//! Work runs in tasks whose descriptors and state outlive the statement that spawned them, and a handle that
-//! is dropped rather than owned turns two different situations into one: a task that failed looks exactly
-//! like a task that is still running, and a session can then return - or hand its dataplane over - while
-//! something it started is still mutating state or writing frames.
-//!
-//! So a handle is owned in one of two ways here and never in a third.
-//!
-//! [Tasks] is for work the session's own life depends on: its result is part of the session's result, and its
-//! *completion* is an event the session selects on, because a dataplane that died must not wait for a quiet
-//! control socket to notice. Each handle leaves the set exactly once, whether it completed on its own or was
-//! joined by the shutdown, which is what makes double-awaiting one impossible rather than merely unlikely.
-//! The app-UID TestNetwork session is its only user.
-//!
-//! [Background] is for work a session starts but does not wait on until it stops: one token cancels all of it,
-//! and closing joins it and refuses anything later - so a probe cannot mutate retired state or report into a
-//! conversation that has already finished. Retained is not the same as accumulated, though: a handle whose
-//! task has already finished is joined at the next admission, so what is held is what is *running* rather than
-//! everything that ever ran. Root's IPsec probes are its only user.
-
 use std::future::Future;
 use std::io;
 
@@ -28,10 +7,6 @@ use tokio::task::{JoinHandle, JoinSet};
 use tokio_util::sync::CancellationToken;
 
 /// Folds two results without losing either failure.
-///
-/// A session that failed *and* could not shut down cleanly is not the same thing as either on its own, and an
-/// `io::Result` can only carry one error - so the second is folded into the first's message rather than
-/// discarded by an `and`. The kind stays the first one's, because that is the failure the session is about.
 pub fn combine(first: io::Result<()>, second: io::Result<()>) -> io::Result<()> {
     match (first, second) {
         (Ok(()), second) => second,
@@ -76,13 +51,6 @@ impl Tasks {
     }
 
     /// Whatever happens first: this conversation being cancelled, or one of its tasks finishing.
-    ///
-    /// Selected on by the session loop beside its control socket, which is the point. A control socket can be
-    /// quiet for as long as the peer has nothing to say, so a dataplane task that failed or exited would
-    /// otherwise not be noticed until the peer spoke again - the session would keep acknowledging configs
-    /// against tasks that are gone.
-    ///
-    /// Cancel-safe: an abandoned wait leaves every handle where it was, so the owner may come back to it.
     pub async fn watch(&mut self) -> Watched {
         let cancel = self.cancel.clone();
         if self.running.is_empty() {
@@ -111,15 +79,6 @@ impl Tasks {
     }
 
     /// Cancels the conversation and joins every task still running, in the order they were admitted.
-    ///
-    /// The one cleanup path: whatever ended the session - a setup step that failed after the first spawn, a
-    /// task that died, the peer going away - arrives here, so there is one place that owns "nothing this
-    /// conversation started is still running" rather than one per exit.
-    /// Cancels and joins everything still running, one result per task.
-    ///
-    /// Per task rather than folded, because folding is lossy in the one way that matters here: [combine]
-    /// builds a fresh error from two messages, which drops both errnos and any structured report already
-    /// attached to them. The owner has to describe these before it folds them, so it needs them apart.
     pub async fn shutdown(&mut self) -> Vec<(&'static str, io::Result<()>)> {
         self.cancel.cancel();
         // Taken out first, so a handle is never awaited twice even if this future is itself abandoned: what
@@ -142,11 +101,6 @@ fn joined(name: &str, result: Result<io::Result<()>, tokio::task::JoinError>) ->
 }
 
 /// Background tasks a process owns: started from anywhere, cancelled and joined together.
-///
-/// For work whose result nothing waits on while it runs but whose *end* has to precede the owner's own -
-/// a probe that mutates shared state and sends frames, most of all. A detached handle would let one of those
-/// run past the point its state was retired, its reports could still be carried, or its conversation's writer
-/// was closed.
 pub struct Background {
     /// Names this owner in the report a task that did not complete produces.
     context: &'static str,
@@ -161,10 +115,7 @@ pub struct Admitted {
     /// Whether the task was started. `false` means this owner is closed - the process is stopping - and
     /// nothing was constructed, let alone spawned.
     pub started: bool,
-    /// What joining the already-finished tasks found, named as this owner's context. Reaped at every
-    /// admission rather than at the close, because a task that has finished still occupies its handle: a
-    /// long-lived conversation that started thousands of probes would otherwise hold every one of them until
-    /// the process exited, and would learn only then that one of them did not run to completion.
+    /// Result of reaping finished tasks before this admission.
     pub reaped: io::Result<()>,
 }
 
@@ -179,9 +130,6 @@ impl Background {
 
     /// Admits one task, built from the token that [Background::close] cancels, and joins whatever had already
     /// finished. See [Admitted].
-    ///
-    /// The task is built here rather than passed in already-built so that its cancellation cannot be
-    /// forgotten by a caller, and so that a refused admission never constructs it at all.
     pub async fn admit<M, F>(&self, task: M) -> Admitted
     where
         M: FnOnce(CancellationToken) -> F,
@@ -242,9 +190,6 @@ impl Background {
     }
 
     /// Cancels every task, joins all of them, and refuses anything afterwards.
-    ///
-    /// Holding the lock across the joins is deliberate: an admission racing this waits for it and is then
-    /// refused, rather than slipping a task in behind the last join.
     pub async fn close(&self) -> io::Result<()> {
         self.cancel.cancel();
         let mut tasks = self.tasks.lock().await;
@@ -268,11 +213,7 @@ mod tests {
     use super::*;
     use crate::shared::protocol::{reported_io_error_report, IoErrorReportExt};
 
-    /// What an owner does with [Tasks::shutdown]'s per-task results once it has described each: fold them
-    /// into the one error the session returns.
     fn folded(results: Vec<(&'static str, io::Result<()>)>) -> io::Result<()> {
-        // A loop rather than `fold`, and never `try_fold`: short-circuiting on the first error is exactly
-        // what [combine] exists to avoid, since both failures have to survive into the message.
         let mut all = Ok(());
         for (_, result) in results {
             all = combine(all, result);
@@ -299,8 +240,6 @@ mod tests {
         assert_eq!(finished.load(Ordering::SeqCst), 4);
     }
 
-    /// The race the owner exists for: a call that decided to probe just as the process is stopping. The
-    /// admission has to be refused rather than started, or nothing would join it.
     #[tokio::test]
     async fn a_task_admitted_after_close_never_starts() {
         let probes = Background::new("control.ipsec_probe");
@@ -317,14 +256,9 @@ mod tests {
         );
         tokio::task::yield_now().await;
         assert_eq!(started.load(Ordering::SeqCst), 0);
-        // Idempotent, because a process may close on a path that already did.
         probes.close().await.expect("a closed owner closes quietly");
     }
 
-    /// A conversation lasts as long as a hotspot does and starts a probe for every upstream change in it, so
-    /// what this owner holds has to be what is *running*. A handle whose task finished is joined at the next
-    /// admission - and if that task did not run to completion, that is where its owner finds out, rather than
-    /// at a process exit that may be hours away.
     #[tokio::test]
     async fn finished_background_tasks_are_reaped_rather_than_accumulated() {
         let probes = Background::new("control.ipsec_probe");
@@ -338,20 +272,15 @@ mod tests {
                 .await;
             assert!(admitted.started);
             admitted.reaped.expect("a probe that ran is quiet");
-            // Each one has finished before the next is admitted, so every admission but the first has one to
-            // reap: what is held never grows past the one in flight.
             tokio::task::yield_now().await;
             assert!(probes.running().await <= 1);
         }
         assert_eq!(ran.load(Ordering::SeqCst), 64);
         probes.close().await.expect("nothing was left running");
 
-        // And a task that did not run to completion is surfaced at the admission that reaps it, named as this
-        // owner's context rather than lost with the handle.
         let probes = Background::new("control.ipsec_probe");
         assert!(probes.admit(|_| pending()).await.started);
         probes.abort_all().await;
-        // One turn for the runtime to drop what it was told to end, so the handle has an outcome to reap.
         tokio::task::yield_now().await;
         let failure = probes
             .admit(|_| async {})
@@ -364,9 +293,6 @@ mod tests {
         probes.close().await.expect("the rest ran to completion");
     }
 
-    /// A task shaped like every real one: it runs until its owner's token says otherwise. Nothing here
-    /// aborts, because [Tasks::shutdown] joins rather than aborting - a task that ignored its token would
-    /// hang the shutdown, which is the honest consequence of owning descriptors.
     fn cancellable(cancel: &CancellationToken) -> JoinHandle<io::Result<()>> {
         let cancel = cancel.clone();
         tokio::spawn(async move {
@@ -395,15 +321,9 @@ mod tests {
             Err(io::Error::other("the writer stopped")),
         )
         .unwrap_err();
-        // Both accounts survive, and the kind is the one the session actually failed on.
         assert_eq!(both.kind(), io::ErrorKind::InvalidData);
         assert_eq!(both.to_string(), "ingress; the writer stopped");
 
-        // What survives is the *messages*, and nothing else: a fresh error carries neither input's attached
-        // report, so the errno, the details and the source location of both are gone. That is why every owner
-        // that folds with this routes its failures to a destination first - see
-        // [crate::shared::app_terminal::Terminal::claim] and the app-UID session's teardown - rather than
-        // folding and describing what comes out.
         let described = combine(
             Err(io::Error::from_raw_os_error(libc::ENFILE).with_report_context("ingress")),
             Err(io::Error::from_raw_os_error(libc::EMFILE).with_report_context("writer")),
@@ -415,8 +335,6 @@ mod tests {
         );
     }
 
-    /// The failure this exists for: one half of the dataplane dies while the control socket is quiet. The
-    /// session has to see it, cancel the other half, and join both.
     #[tokio::test]
     async fn a_task_that_fails_on_its_own_is_seen_and_its_sibling_joined() {
         let cancel = CancellationToken::new();
@@ -445,14 +363,11 @@ mod tests {
             result.as_ref().unwrap_err().to_string(),
             "the TUN read failed"
         );
-        // Nothing has stopped the sibling yet: that is the owner's next move, not the watch's.
         assert_eq!(stopped.load(Ordering::SeqCst), 0);
         let shutdown = folded(tasks.shutdown().await);
         assert!(shutdown.is_ok());
         assert_eq!(stopped.load(Ordering::SeqCst), 1);
         assert!(cancel.is_cancelled());
-        // Collected exactly once: the handle left the set with its result, so the shutdown had nothing of it
-        // left to await - a second await of the same handle would have panicked here.
         assert_eq!(
             combine(result, shutdown).unwrap_err().to_string(),
             "the TUN read failed"
@@ -475,15 +390,11 @@ mod tests {
         assert!(folded(tasks.shutdown().await).is_ok());
     }
 
-    /// A task that did not run to completion is gone either way, so the session's result is the only place
-    /// left that can name it.
     #[tokio::test]
     async fn a_task_that_did_not_complete_is_named_in_the_result() {
         let cancel = CancellationToken::new();
         let mut tasks = Tasks::new(cancel);
         let lost = tokio::spawn(async { pending::<io::Result<()>>().await });
-        // Aborted rather than panicked, because the daemon aborts the process on panic: either way the task
-        // is gone without a result of its own, which is what the owner has to account for.
         lost.abort();
         tasks.admit("tun egress", lost);
         match tasks.watch().await {
@@ -507,12 +418,9 @@ mod tests {
         tasks.admit("tun egress", cancellable(&cancel));
         cancel.cancel();
         assert!(matches!(tasks.watch().await, Watched::Cancelled));
-        // Both are still owned and both are joined, in admission order, by the one cleanup path.
         assert!(folded(tasks.shutdown().await).is_ok());
     }
 
-    /// The early-failure path: a setup step fails after the first task was spawned, so the session never
-    /// starts and the cleanup still has to leave nothing running.
     #[tokio::test]
     async fn a_failure_before_the_loop_still_joins_what_was_started() {
         let cancel = CancellationToken::new();

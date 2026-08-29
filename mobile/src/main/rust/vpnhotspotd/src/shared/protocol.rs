@@ -72,12 +72,7 @@ where
     describe_io_error(context, &error, details)
 }
 
-/// The same report, from an error the caller still needs afterwards.
-///
-/// Nothing here ever consumed the error - it reads the message, the errno and the kind and puts them in a
-/// message of its own - so taking it by value was only ever a convenience for the callers that were throwing
-/// it away. A failure that both ends a task *and* has to be described to the app cannot throw it away, and
-/// rebuilding an equivalent error to hand back would drop exactly the errno this exists to carry.
+/// Describes a borrowed error so its owner can still propagate the original errno.
 #[track_caller]
 pub fn describe_io_error<I, K, V>(
     context: impl Into<String>,
@@ -481,23 +476,17 @@ mod tests {
         }
     }
 
-    /// The property single delivery rests on: an owner attaches its report at the failing site, and whoever
-    /// later puts that failure on the wire - the start call's terminal frame, or the nonfatal fallback -
-    /// hands over that same report rather than building a new one from the describing site. Without this,
-    /// removing the owner's own emission would trade a duplicate for a loss of errno, details and location.
     #[test]
     fn describing_a_reported_error_hands_back_the_owner_s_report() {
         let attached = io::Error::from_raw_os_error(libc::ENOBUFS)
             .with_report_context_details("shizuku.tun_egress", [("written", 7), ("stale", 1)]);
         let owner = reported_io_error_report(&attached).expect("the owner attached a report");
 
-        // Described by a teardown that knows neither the errno nor the counters, and names itself.
         let delivered = describe_io_error(
             "shizuku.app_session",
             &attached,
             std::iter::empty::<(&str, &str)>(),
         );
-        // The same call site, on an error carrying nothing.
         let rebuilt = describe_io_error(
             "shizuku.app_session",
             &io::Error::from_raw_os_error(libc::ENOBUFS),
@@ -508,7 +497,6 @@ mod tests {
         assert_eq!(delivered.context, "shizuku.tun_egress");
         assert_eq!(delivered.errno, Some(libc::ENOBUFS));
         assert_eq!(delivered.details.len(), 2);
-        // The contrast is the point: the describing site names itself only when there is nothing to reuse.
         assert_eq!(rebuilt.context, "shizuku.app_session");
         assert_ne!(rebuilt.line, delivered.line);
     }

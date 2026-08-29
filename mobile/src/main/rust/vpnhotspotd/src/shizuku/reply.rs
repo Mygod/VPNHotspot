@@ -1,28 +1,4 @@
-//! One egress socket's replies, and the events it reports.
-//!
-//! Kept apart from the tables it serves because it shares no state with them: the task below owns nothing
-//! but a reference to the socket and a channel, and every check, every allocator, and every write lives with
-//! the table instead. That split is what lets a table stay lock-free in the ingress task while its sockets
-//! wait on readiness of their own.
-//!
-//! One loop serves both relays even though what they own differs - a UDP socket per mapping, a ping socket
-//! per family - because none of the subtlety here is about which transport it is. Sizing a read from the
-//! queued datagram, distinguishing stale readiness from a real error, draining the error queue, and saying
-//! which kind of ending this was are the same problem either way, and a second copy would be a second place
-//! for them to drift.
-//!
-//! It waits on [ERROR_OR_READABLE] rather than on readability, and that is load-bearing rather than
-//! defensive. A pending ICMP error raises `EPOLLERR` and nothing else - `datagram_poll` only adds `EPOLLIN`
-//! when there is data in the receive queue - while tokio maps `Interest::READABLE` to
-//! `Ready::READABLE | Ready::READ_CLOSED`, which does not include `Ready::ERROR`. Waiting on readability
-//! alone therefore never wakes for an error at all: it would sit in the queue until unrelated traffic
-//! happened to arrive, which is indistinguishable from the remote never having sent it.
-//!
-//! Nothing terminal travels on the channel below. The close is this task *finishing*, which is what
-//! [vpnhotspotd::shared::workers] joins, because a message saying "closed" would still be sent while this
-//! task held its `Arc` of the descriptor. Every send here therefore races the token as well: a payload
-//! handed to a saturated owner must not be what keeps a retirement waiting.
-
+//! Reads socket replies and exceptional readiness without delaying retirement.
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -43,9 +19,6 @@ use crate::shizuku::egress;
 use crate::socket::is_kernel_icmp_error;
 
 /// What a receive task reports while it runs.
-///
-/// `K` is whatever the owning table keys its sockets by, which is the mapping's TUN-visible source for UDP
-/// and the family for Echo. The task never interprets it and only carries it back.
 pub(crate) enum Event<K> {
     Reply {
         key: K,
@@ -58,10 +31,6 @@ pub(crate) enum Event<K> {
     /// One ICMP error a router sent about traffic this socket relayed. Reported rather than drained away,
     /// because only the owner knows which client the socket serves and therefore whether the error describes
     /// state it can vouch for.
-    ///
-    /// Singular rather than a batch of them: how many errors are queued at once is a remote's choice, so an
-    /// event carrying a vector of them would let a sender size an allocation. The queue is drained one message
-    /// at a time and each is handed over on its own, through the same bounded channel as every other event.
     Error { key: K, id: u64, error: Reported },
 }
 
@@ -69,9 +38,6 @@ pub(crate) enum Event<K> {
 const MAX_DATAGRAM: usize = u16::MAX as usize;
 
 /// One socket's error queue, as the shared turn sees it.
-///
-/// The adapter lets the shared turn borrow the scratch: a source that built its own would give this worker a
-/// second ancillary buffer beside the one it already owns for its life.
 struct Bound<'a> {
     queue: &'a mut egress::ErrorQueue,
     socket: &'a Socket,
@@ -100,17 +66,6 @@ impl ErrorSource for Bound<'_> {
 pub(crate) type ReplyChannel<K> = (mpsc::Sender<Event<K>>, mpsc::Receiver<Event<K>>);
 
 /// What one reply channel costs, before one exists.
-///
-/// Split from the construction below so an owner can fold this into the single reserve it takes for all its
-/// fixed state and *then* build - reserve-before-allocate structurally, rather than by comment. What kept the
-/// two together before was the worry that a depth spelled twice is a queue deeper than its charge; that is
-/// answered by the assertion in [reply_channel] instead, which compares the built channel against this very
-/// figure.
-///
-/// What is charged is the channel's whole retained allocation - its shared state, its value blocks and their
-/// headers - plus every payload its slots may carry, because a worker takes a slot before it sizes or
-/// allocates a datagram, and one payload more: the datagram the owner has already received out of a slot and
-/// is still holding while that slot is refilled. See [vpnhotspotd::shared::reply_bound].
 pub(crate) fn reply_channel_bytes<K>() -> Option<u64> {
     // One sender per worker, because this owner clones it into every one it starts - so the grow-race term
     // is whatever the permits allow rather than one. See [vpnhotspotd::shared::reply_bound::blocks_for].
@@ -118,9 +73,6 @@ pub(crate) fn reply_channel_bytes<K>() -> Option<u64> {
 }
 
 /// Builds one reply channel, at the depth [reply_channel_bytes] was charged for.
-///
-/// Called only after that charge has been granted. The assertion checks the channel against the figure the
-/// owner reserved, so a depth changed in one place cannot silently become a queue nobody paid for.
 pub(crate) fn reply_channel<K>() -> ReplyChannel<K> {
     let (sender, receiver) = mpsc::channel(REPLY_QUEUE_DEPTH);
     debug_assert_eq!(
@@ -143,28 +95,11 @@ pub(crate) enum Sizing {
     /// under `MSG_TRUNC`, which UDP does.
     Peek,
     /// Hold one buffer big enough for any datagram, for the whole life of the task.
-    ///
-    /// Required for ping sockets. `ping_recvmsg` is its own implementation and returns `min(skb->len, len)`,
-    /// treating `MSG_TRUNC` as an output flag only - so a one-byte peek reports one byte rather than the
-    /// datagram's length, and sizing a read from it truncates every reply to nothing.
-    ///
-    /// https://android.googlesource.com/kernel/common/+/refs/heads/android16-6.12/net/ipv4/ping.c
     Fixed,
 }
 
 /// One socket's replies. Deliberately does no packetization: it hands the owner exactly the datagram it
 /// received, and every check, allocator and write lives with the owner.
-///
-/// Takes the socket by value so that returning drops this task's share of it. The owner holds the other, and
-/// dropping that one after this task has been joined is what closes the descriptor.
-/// What a worker waits on before it may act, so its owner can retain it before the operation it serves has
-/// committed to happening.
-///
-/// The point is the ordering: a task that is spawned only *after* a send succeeded is a fallible step after
-/// the commit point, and one that is spawned before it and left running would receive for a mapping that was
-/// never published. Retained-but-gated is neither - the owner already holds the task, so the ordinary
-/// join-then-release fence settles it whichever way the operation goes, and cancellation reaches it while it
-/// has done nothing.
 pub(crate) enum Gate {
     /// Nothing to wait for; the record was already published.
     Open,
@@ -226,8 +161,7 @@ pub(crate) async fn receive<K: Copy>(
             |inner| match sizing {
                 Sizing::Peek => {
                     let length = egress::peek_length(inner)?;
-                    // at least one byte, because a zero-length UDP payload is legal and still has to be
-                    // consumed
+                    // A zero-length UDP payload still requires one receive operation.
                     let mut payload = vec![0u8; length.max(1)];
                     let received = egress::receive(inner, &mut payload)?;
                     payload.truncate(received.bytes);

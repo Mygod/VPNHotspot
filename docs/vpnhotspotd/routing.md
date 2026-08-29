@@ -752,68 +752,34 @@ it.
 
 ## Rootless Shizuku Mode
 
-This mode makes **none** of the mutations above, and it cannot: every one of them needs
-root, while the daemon and the app both run at the app UID. It is catalogued here so this
-document stays complete about what the app does to the system, not because routing owns
-any of it. Nothing here is reachable from `root/routing/`, and `CleanRoutingCommand` neither
-creates nor removes any of it, so **Clean applies to no row below**. The feature-level
-invariants are in [`shizuku.md`](shizuku.md#external-state-and-cleanup).
-
-Most app-owned state is tied to a descriptor, a process or a Binder token rather than to a
-private table, so no bookkeeping has to survive for cleanup to work; the global preference at
-the end of the table is the exception. Being tied to a token does not by itself guarantee
-release when the app process dies - a wedged child keeps both itself and its own TUN
-descriptor, as the rows below say. Everything except the dataplane child is a control-plane
-operation issued through Shizuku's shell/root identity, while the child itself is launched at
-the app UID with no Shizuku identity involved.
+This mode makes no root routing mutation. `CleanRoutingCommand` applies to none
+of the rows below. Android control calls use Shizuku identity; the dataplane
+child runs at the app UID. See [`shizuku.md`](shizuku.md#external-state-and-cleanup).
 
 | State | Trigger and shape | Normal stop or rollback | Process death, force stop, uninstall |
 | --- | --- | --- | --- |
-| A `testtunN` TUN interface | `TestNetworkManager.createTunInterface`, never `setupTestNetwork` | closing the last open descriptor for it: the app's `ParcelFileDescriptor` and the independent raw descriptor the child received both count | the app's descriptor closes with the process; the child's closes when the child exits, which control-socket EOF normally causes but cannot guarantee for a wedged child |
+| `testtunN` TUN | `TestNetworkManager.createTunInterface`, never `setupTestNetwork` | close both the app descriptor and the child's duplicate | app descriptor closes; child descriptor closes on child exit, but a wedged child may survive |
 | `192.0.2.1/30` and `2001:db8:1::1/64` on it | assigned by `createTunInterface` | with the interface | with the interface |
-| A restricted native network over it | `NetworkAgent.register` with `TRANSPORT_TEST`, without `NOT_RESTRICTED` or `INTERNET`, and an empty allowed-UID set from a fresh builder | `NetworkAgent.unregister`, awaiting `onNetworkUnwanted` always, `onNetworkDestroyed` where `onNetworkCreated` had arrived, and the request callback's `onLost` where `onAvailable` had arrived, before the request is released | agent Binder death removes it |
+| Restricted native network | `NetworkAgent.register`: `TRANSPORT_TEST`, no `NOT_RESTRICTED` or `INTERNET`, empty allowed-UID set | unregister agent; await `onNetworkUnwanted`, plus `onNetworkDestroyed` after creation and request `onLost` after availability, before releasing the request | agent Binder death removes it |
 | Its routes and DNS servers | the agent's immutable `LinkProperties`: one connected route per address, an IPv4 and an IPv6 default route, and `192.0.2.2`/`fd00::53` as resolvers | with the network | with the network |
-| An exact foreground `NetworkRequest` | `requestNetwork` through the privileged manager | `IConnectivityManager.releaseNetworkRequest(handle)` on the retained handle, under an identity whose effective UID matches the issuing one | callback Binder death |
-| The dataplane child | `ProcessBuilder` at the app UID, holding a duplicate of the TUN descriptor received on the session's start call; no Shizuku identity is involved | close the control socket, wait 10s for exit, `destroy()` for SIGTERM, wait 5s more, then SIGKILL the launched child PID and wait up to 5s for observed exit, failing the withdrawal if exit is never observed: EOF is the daemon's cancellation and the signals are only the cleanup budget of a process the app launched | control-socket EOF makes a healthy child exit; nothing signals a wedged one, because the escalation that would do so belongs to the ordered stop, which did not run |
-| The global `preferTestNetworks` flag | `ITetheringConnector.setPreferTestNetworks(true)` | `setPreferTestNetworks(false)`, issued only from an owned retirement | **not cleared**; tethering-service death and a reboot reset it, and see the residue below |
+| Exact foreground request | privileged `requestNetwork` | `IConnectivityManager.releaseNetworkRequest(handle)` under the issuing effective UID | callback Binder death |
+| App-UID child | `ProcessBuilder`; start call transfers a duplicate TUN descriptor | close control; wait 10 s; SIGTERM; wait 5 s; SIGKILL; wait up to 5 s, failing withdrawal if exit is unconfirmed | EOF ends a healthy child; no ordered escalation runs for a wedged child |
+| Global preference | `ITetheringConnector.setPreferTestNetworks(true)` | owned retirement calls `setPreferTestNetworks(false)` | not cleared; tethering-service death or reboot resets it |
 
-Framework-owned state, which this app neither requests nor configures, and never cycles
-tethering to obtain or release:
+Framework-owned consequences:
 
 | State | Trigger and shape | Owner | How it goes away |
 | --- | --- | --- | --- |
-| The system server's `TestNetworkService` singleton, with its handler and provider infrastructure | the first `startOrGetTestNetworkService` in a boot, whoever makes it | system server | it has no per-session or app-death teardown and is bounded to one per boot, so it ends with the system server or a reboot. Not app-owned residue - any TestNetwork user triggers the same singleton |
-| Downstream forwarding, IPv4 MASQUERADE, and the delegated `/64` toward the oldest active downstream | Android tethering selecting the test network as its upstream | tethering | Android reselecting another upstream, which is triggered when the test network is lost, or tethering stopping |
-| Counter rules naming the `testtunN` in netd's `tetherctrl_counters` chain | the same selection, in netd | netd | not observed to go away for a dead interface on Android 17 - see the residue below |
+| `TestNetworkService` singleton | first `startOrGetTestNetworkService` per boot | system server | system-server death or reboot |
+| Downstream forwarding, IPv4 MASQUERADE and delegated `/64` | tethering selects the TestNetwork | tethering | another upstream is selected or tethering stops |
+| `testtunN` rules in netd `tetherctrl_counters` | same selection | netd | observed to persist on Android 17 until reboot |
 
-The addresses are documentation prefixes on purpose. Every address the interface holds is
-an address clients cannot reach, because the default route delivers their traffic to the
-TUN while the connected prefix is delivered locally; TEST-NET-1 and the IPv6 documentation
-prefix are guaranteed never to be assigned, so that hole cannot collide with a destination
-a client wants.
-
-Two additional platform-state residues can outlive a session, beside the unfenced child and
-its TUN descriptor already in the table above:
-
-- **The global preference**, if the app died before clearing it. It is removable at this
-  privilege level - a normal owned retirement removes it - and what is missing is a safe
-  automatic recovery: after process death a fresh start has no record saying the flag is
-  its own, so it adopts the flag rather than clearing it during preparation, and that
-  adopted session's own stop, or a reboot, is what clears it. It does not strand the
-  hotspot, since with no test network present Android reselects an ordinary upstream, but
-  it does mean the next test network to appear is preferred, including a foreign one.
-- **Counter rules in netd's own `tetherctrl_counters` chain** naming dead `testtunN`
-  interfaces, **observed on the qualified Android 17 device** and cleared there by a reboot.
-  Ordinary tethering reuses one downstream name and so reuses its rules; a fresh test
-  interface per session does not. They live in a chain netd owns, alongside rules for live
-  interfaces, so removing them from the app side is exactly the delete-by-shared-family the
-  guardrails below forbid, which makes this the one residue that is not safely removable
-  here. Whether other Android releases, OEM builds or Mainline versions behave the same way
-  is unproven.
-
-Losing the network never stops tethering. Android reselects an ordinary upstream and
-clients keep working unprotected, which the root [`README.md`](../../README.md) states
-plainly because nothing on the client side changes to say so.
+The documentation prefixes cannot collide with a real client destination. If the
+app dies, the global preference may select the next test network, including a
+foreign one, until a later owned session clears it or tethering/reboot resets it.
+Stale Android 17 counter rules must not be removed from the shared netd chain.
+Losing the network makes tethering select an ordinary upstream, so clients
+continue unprotected.
 
 ## Guardrails
 

@@ -28,8 +28,6 @@ tokio = { version = "1.53.1", features = ["fs", "io-util", "macros", "net", "pro
 tokio-util = "0.7.19"
 
 [dev-dependencies]
-# Paused time, so the reporter's window task can be tested without a real sleep in a test. Not unified into
-# the binary: dev-dependency features are only enabled when a test target is built.
 tokio = { version = "1.53.1", features = ["test-util"] }
 
 [build-dependencies]

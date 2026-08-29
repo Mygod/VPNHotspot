@@ -1,17 +1,3 @@
-//! Whose failure it was: this daemon's own local setup, or what the peer, the path or the platform answered.
-//!
-//! The distinction is not cosmetic and it cannot be recovered from an errno. An `EINVAL` from `setsockopt` on
-//! a socket this process just created is a bug or a platform difference worth a structured report; an
-//! `ECONNREFUSED` from a connect is the ordinary answer to asking. Both arrive as an `io::Error`, so whichever
-//! step produced it is the only place that knows which one it is - and that is why classification happens at
-//! the `map_err`, not at the report.
-//!
-//! What rides on it is flood resistance. Every one of these operations is reachable from packet input by an
-//! unknown local principal: a client chooses how many connections it opens and how many names it looks up. A
-//! structured report per expected outcome would therefore be a report flood the client drives, so an expected
-//! outcome is at most one line per record. A local setup failure is not client-driven and is reported in full,
-//! with the coalescer bounding a repeat.
-
 use std::fmt;
 use std::io;
 
@@ -35,18 +21,11 @@ pub enum Failure {
 
 impl Failure {
     /// The classifier for a setup step, shaped for `map_err`.
-    ///
-    /// `Fn` rather than `FnOnce` so one context can classify several steps of the same operation.
     pub fn local(context: &'static str) -> impl Fn(io::Error) -> Self {
         move |error| Self::Local { context, error }
     }
 
     /// What the platform answered, which is never this daemon's own failure.
-    ///
-    /// Named for the resolver, where every outcome comes back as an errno and the temptation to report them is
-    /// strongest: `EBUSY` is the per-UID limiter being full, `ETIMEDOUT` is a resolver that did not answer in
-    /// time, and the rest is whatever the remote said. None of it is the daemon's doing, all of it is
-    /// reachable from a client's own queries, and all of it reaches that client as SERVFAIL.
     pub fn platform(error: io::Error) -> Self {
         Self::Expected(error)
     }
@@ -68,17 +47,6 @@ impl Failure {
 
     /// Splits one failure by whose it was: the error the owner meeting it has to end on, or the failure
     /// itself for the per-operation answer that owns it.
-    ///
-    /// One call because the classification *is* the whole decision, and spelling it out per site is how the
-    /// two halves drift apart. An operation a client drives - a name that does not resolve, a full per-UID
-    /// limiter, a peer that refused - is that one operation's outcome and its owner answers it and carries
-    /// on. This daemon's own setup failing is not any one operation's outcome: the owner that met it cannot
-    /// be trusted to do the same work again, so it ends and the conversation that owns it is what says so.
-    ///
-    /// `Err` carries the structured report built here, where the context, the errno, the details and - via
-    /// `#[track_caller]` - the source location are the failing owner's rather than the teardown's. That is
-    /// what makes it exactly one report: the owner returns it rather than emitting one, and the conversation
-    /// delivers it once. See [crate::shared::protocol::describe_io_error].
     #[track_caller]
     pub fn ending<I, K, V>(self, details: I) -> Result<Self, io::Error>
     where
@@ -122,8 +90,6 @@ mod tests {
         io::Error::from_raw_os_error(errno)
     }
 
-    /// The whole table, in the two directions that matter: a local setup failure has to arrive as a
-    /// structured report naming its step, and everything a client can drive has to arrive as one line.
     #[test]
     fn a_local_setup_failure_is_structured_and_an_answer_is_not() {
         let local = Failure::local("shizuku.tcp_connect_bind")(errno(libc::EINVAL));
@@ -138,7 +104,6 @@ mod tests {
             }
             _ => panic!("the daemon's own setup failure must not be a per-record line"),
         }
-        // Every one of these is something a client's own traffic produces at will.
         for code in [
             libc::ECONNREFUSED,
             libc::EHOSTUNREACH,
@@ -158,8 +123,6 @@ mod tests {
         }
     }
 
-    /// The resolver's own table. `EBUSY` is the platform's per-UID limiter, which a burst of client queries
-    /// reaches on its own, so it must stay as expected as a timeout does.
     #[test]
     fn every_platform_resolver_outcome_stays_expected() {
         for code in [
@@ -177,7 +140,6 @@ mod tests {
                 "{code}"
             );
         }
-        // And the wrapper around it is the daemon's own, so that one is reported.
         let wrapper = Failure::local("resolver.register")(errno(libc::EMFILE));
         assert_eq!(
             wrapper.reportable().map(|(context, _)| context),
@@ -185,14 +147,6 @@ mod tests {
         );
     }
 
-    /// The resolver's two halves, split by the one question an owner asks of an outcome: may this owner
-    /// carry on?
-    ///
-    /// Everything the platform answers - including the `EBUSY` of its own per-UID limiter, which a burst of
-    /// client queries reaches on its own - is one query's own outcome, comes back to be answered per query,
-    /// and never ends anything. The wrapper steps around the descriptor this daemon opened are its own, so
-    /// each comes back as the error its owner ends on, carrying one structured report that already names the
-    /// step, the errno and the transaction rather than whatever teardown finds it.
     #[test]
     fn only_the_daemons_own_resolver_failure_ends_the_owner_that_met_it() {
         for code in [
@@ -211,8 +165,6 @@ mod tests {
             let ending = Failure::local(context)(errno(libc::EMFILE))
                 .ending([("transaction", 7u64)])
                 .expect_err("the daemon's own wrapper step ends its owner");
-            // The errno rides in the report rather than on the error, which is what carries it through a
-            // session teardown that folds messages together.
             assert_eq!(ending.kind(), errno(libc::EMFILE).kind());
             let report = reported_io_error_report(&ending)
                 .expect("exactly one report, built where it failed");
@@ -226,8 +178,6 @@ mod tests {
                     .collect::<Vec<_>>(),
                 vec![("transaction", "7")]
             );
-            // Attached rather than emitted, and attaching it twice is what a second owner describing the
-            // same failure would do: the report the failing step built is what survives.
             assert_eq!(
                 reported_io_error_report(&ending.with_report_context("teardown"))
                     .expect("still the first one")

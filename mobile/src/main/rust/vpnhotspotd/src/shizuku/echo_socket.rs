@@ -1,19 +1,3 @@
-//! The ping sockets relayed Echo sends through, and their lifetime.
-//!
-//! Apart from the session table because the two are scoped differently and retired differently. A socket
-//! belongs to a family and a selected-network generation and holds a descriptor, so its budget charge is
-//! refunded when its receive task has been joined - the same protocol a UDP mapping follows. A session
-//! belongs to one outstanding ping, holds nothing but records, and is refunded the moment it is dropped.
-//!
-//! One socket per family rather than one per session, because the kernel demultiplexes Echo Replies on the
-//! identifier alone: a socket per session would buy no separation and spend a descriptor each.
-//!
-//! Opened on first use and then held for the whole generation, including while no session exists. There is no
-//! idle timer, unlike a UDP mapping's, and the difference is what the descriptor stands for: a mapping's is a
-//! client's identity and expires with it, while this one holds no client state at all. Closing it when the
-//! last ping is answered would only buy back one descriptor out of tens of thousands, at the cost of a
-//! close-and-reopen cycle per burst of pings.
-
 use std::fmt::{self, Display, Formatter};
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -38,9 +22,6 @@ use crate::shizuku::reply::{
 const FAMILIES: usize = 2;
 
 /// Which family's ping socket something belongs to.
-///
-/// Not a bool. It is the key the sockets are held under and the name that appears in a close report, and at
-/// both of those a bare `true` reads as a puzzle.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum Family {
     V4,
@@ -123,12 +104,6 @@ impl Sockets {
 
     /// Releases the table's own capacity, after every socket in it has been settled.
     /// Gives this owner's retained capacity back, once everything it covers is physically gone.
-    ///
-    /// `echoes` is the ingress task's half of the reply channel, and it has to be dropped here rather than
-    /// after this returns: the lease below covers that channel's whole allocation *and* every payload its
-    /// slots may hold, so releasing while the receiver still owned a queued reply would be capacity given
-    /// back for memory this process was still holding. Dropping it destroys whatever it had buffered - no
-    /// drain, which could only wait on senders that are already gone.
     pub(crate) fn release(self, echoes: mpsc::Receiver<Event<Family>>, admission: &mut Admission) {
         drop(self.sockets);
         drop(self.events);
@@ -237,8 +212,6 @@ impl Sockets {
     /// One ping socket with its identity bound up front. The kernel picks a free non-zero identifier for a
     /// bind to port zero, and that identifier is what it demultiplexes replies on - so binding here is what
     /// makes the socket able to receive at all, not merely tidy.
-    ///
-    /// https://android.googlesource.com/kernel/common/+/refs/heads/android16-6.12/net/ipv4/ping.c
     fn bind(&self, network: Network, family: Family) -> io::Result<AsyncFd<Socket>> {
         let socket = egress::open_ping(network, family.ipv6())?;
         socket.bind(&SockAddr::from(SocketAddr::new(

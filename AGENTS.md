@@ -30,7 +30,7 @@ Prefer resource-owner concurrency over broad locks or global serialization.
 - For ordered command or state transitions, prefer a single owner worker, channel, or pending-state loop over launching independent jobs that can interleave.
 - Use `Dispatchers.Default.limitedParallelism(1, "...")` for non-UI owner-local mutable state confinement when multiple coroutine entry points need a shared lane, but do not rely on it for run-to-completion ordering across suspensions.
 - Use `Mutex` for narrow, local critical sections where the protected invariant is clear. Do not use a daemon/global mutex to hide caller-owned lifecycle races.
-- For a user-toggled service, let that service own the whole lifespan with one cancellable `Job` on its own Main-confined scope - one job, one liveness source, no second root owner or liveness scope (a supervisor child scope for that job's own observers is fine): start installs it and returns, stop cancels it and returns, its `finally` is the sole teardown and runs in the background under `NonCancellable`, and a successor joins its predecessor before authorizing or acquiring anything. Publish stable user intent rather than transitions - a cancellable startup is what removes the need for a starting, stopping, or busy state.
+- A user-toggled service owns its lifespan with one cancellable Main-confined `Job`: start installs it, stop cancels it, `finally` performs the only teardown under `NonCancellable`, and a successor joins its predecessor before side effects. Publish stable intent, not transition states.
 - Do not run blocking work on Main. Main-confined owners may call suspending/nonblocking APIs, but blocking I/O, sleeps, or CPU-heavy work must stay off Main.
 
 ## Rust Daemon Code Hygiene
@@ -64,9 +64,7 @@ Rust daemon code should be event-driven and async-first. Prefer Tokio readiness,
 - Run `cargo fmt`, `cargo check`, and preferably `cargo clippy --all-targets -- -D warnings` for Rust changes. Also run the Gradle native build task when the Android build integration could be affected.
 
 ## Testing Guidelines
-Add or update unit tests in `mobile/src/test/java` for parser, routing, and compatibility logic. Name tests after the target type, for example `IpSecForwardPolicyCommandTest`. Prefer the smallest test that proves the behavior change.
-
-This repository has no instrumented tests and disables AndroidTest variants. Do not add `mobile/src/androidTest`, an instrumentation runner or `androidTestImplementation` dependencies, and do not run instrumentation tests on the maintainer's device. Use JVM tests or separately authorized manual device qualification instead.
+Add or update JVM tests in `mobile/src/test/java` for parser, routing, and compatibility logic. AndroidTest variants are disabled; use separately authorized device qualification for framework behavior. Name tests after the target type, for example `IpSecForwardPolicyCommandTest`. Prefer the smallest test that proves the behavior change.
 
 ## Commit & Pull Request Guidelines
 Keep commit messages short, imperative, and specific, matching recent history such as `Fixes` or `Update dependencies`. PRs should explain user-visible impact, compatibility risk, and validation performed. Link the issue when relevant and include screenshots only for UI changes.

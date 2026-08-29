@@ -71,9 +71,6 @@ object DaemonController {
      */
     val daemonCommand by lazy {
         val path = (app.classLoader as BaseDexClassLoader).findLibrary(BINARY_NAME) ?: error("Daemon binary missing")
-        // Validated once here rather than at each launch site: [be.mygod.vpnhotspot.shizuku.AppUidDaemon]
-        // execs the same binary the same way, and an ABI mismatch is a property of the binary rather than of
-        // who launched it.
         DaemonAbi.check(path)
         listOf(if (Process.is64Bit()) "/system/bin/linker64" else "/system/bin/linker", path)
     }

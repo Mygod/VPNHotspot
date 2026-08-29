@@ -1,5 +1,3 @@
-//! Byte buffers whose granted capacity is fixed for their whole lifetime.
-
 /// One owned byte buffer that never reallocates beyond the capacity its owner was granted.
 pub(crate) struct Owned {
     bytes: Vec<u8>,
@@ -11,20 +9,11 @@ impl Owned {
     }
 
     /// An empty buffer at a capacity its owner has already been granted.
-    ///
-    /// The counterpart of [Owned::new] for a buffer that is filled after it is admitted rather than copied
-    /// out of something that already exists - a DNS-over-TCP query, which is accumulated off the client's
-    /// stream only once the owner has reserved the exchange it belongs to. Counted at its capacity from here,
-    /// because that is what the reservation covers and what this process really holds.
     pub(crate) fn with_capacity(bytes: usize) -> Self {
         Self::new(Vec::with_capacity(bytes))
     }
 
     /// Appends as much of `bytes` as the granted capacity still has room for, and answers how much that was.
-    ///
-    /// Never reallocates, which is the point: growing would be an allocation past what was charged, and the
-    /// caller has already been told how large this buffer may be. A short answer means the peer sent more
-    /// than the length it announced, which its caller treats as the framing error it is.
     pub(crate) fn extend_within_capacity(&mut self, bytes: &[u8]) -> usize {
         let room = self.bytes.capacity() - self.bytes.len();
         let taken = room.min(bytes.len());

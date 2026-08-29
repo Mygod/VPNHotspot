@@ -15,11 +15,8 @@ public interface ITetheringConnector extends IInterface {
             throws RemoteException;
 
     /**
-     * Requires {@code NETWORK_SETTINGS}, which the service reports through the listener as
-     * {@code TETHER_ERROR_NO_CHANGE_TETHERING_PERMISSION} instead of throwing, so the result code must
-     * be consumed. Declared {@code oneway}, so the transact does not wait on the service. Only sets a
-     * global preference; it does not force upstream reselection.
-     *
+     * The oneway call reports permission denial through the listener and does not force reselection.
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/Tethering/src/com/android/networkstack/tethering/TetheringService.java#208
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/Tethering/src/com/android/networkstack/tethering/TetheringService.java#286
      */
     @RequiresApi(33)

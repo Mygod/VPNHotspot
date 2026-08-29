@@ -1,15 +1,3 @@
-//! The outstanding pings, and the substituted sequence each is known by upstream.
-//!
-//! Apart from the relay for the same reason [crate::shizuku::echo_socket] is: this holds records and no descriptor, so it
-//! is refunded the moment an entry is dropped rather than after a task reports a close. Keeping the two apart
-//! means neither has to carry the other's retirement rules.
-//!
-//! Two lookups, and they are not interchangeable. A reply names the remote it came from, so it finds its session
-//! by `(remote, sequence)` - which makes the address filter structural, because a reply from somewhere the daemon
-//! never sent to looks up a key that does not exist. An *error* about a request names no remote at all, since a
-//! ping socket has no ports for the kernel to report, so it can only be found by the sequence - and that lookup
-//! answers "exactly one" or "more than one" rather than picking, because picking would be inventing.
-
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
@@ -63,11 +51,7 @@ pub(crate) struct Sessions {
 }
 
 impl Sessions {
-    /// Prepares for `sessions` outstanding pings: the logical maximum, which is what the charge covers and the
-    /// one thing [Sessions::admits] refuses on. `with_capacity` requests it up front so the common case
-    /// allocates nothing, but the container is free to reorganise its own backing from there - what the
-    /// ordering needs is that a send already committed always has a *slot* to record its session in, which is
-    /// the bound's job.
+    /// Prepares the charged logical maximum; the map's rounded capacity never raises that limit.
     pub(crate) fn with_capacity(sessions: usize) -> Self {
         Self {
             sessions: HashMap::with_capacity(sessions),
@@ -86,28 +70,11 @@ impl Sessions {
 
     /// Whether one more session may be inserted: inside the prepared bound, which is the logical maximum this
     /// table was charged row state for.
-    ///
-    /// Asked before the request goes on the wire, because a session recorded after a successful send must have
-    /// a slot to go in - see [crate::shizuku::echo::Relay]. An expiry frees one for the next ping. The map's own
-    /// `capacity()` is not consulted; its backing is opaque count-bounded overhead rather than accounted
-    /// state.
     pub(crate) fn admits(&self) -> bool {
         self.sessions.len() < self.prepared
     }
 
     /// Finds a sequence this remote has no live session under, without creating one.
-    ///
-    /// Separate from [Sessions::insert] so the caller can put the sequence on the wire before committing to a
-    /// session: a send that fails should leave nothing behind.
-    ///
-    /// Monotonic rather than random, so a reused sequence is as far from its predecessor as the space allows. The
-    /// walk is bounded by the space itself and stops at the first gap, so `None` means the space really is
-    /// exhausted for this one remote rather than that the search gave up.
-    ///
-    /// Whether `None` is reachable depends on the device: the budget's ceiling is measured from
-    /// `RLIMIT_NOFILE`, so on a host whose limit is below 65536 the aggregate charge runs out first and this
-    /// cannot fail. It is not written as an invariant for that reason - the limit is read at runtime, and a host
-    /// generous enough to allow more sessions than there are sequences would reach it.
     pub(crate) fn allocate(&mut self, remote: IpAddr) -> Option<u16> {
         for _ in 0..=u16::MAX {
             let sequence = self.next_sequence;

@@ -1,14 +1,3 @@
-//! ICMP errors this daemon originates toward a client.
-//!
-//! Originates, not translates. These say something about the daemon's own forwarding decision - a hop limit
-//! that ran out here, a datagram the upstream path will not carry - so the source address is the interface's
-//! own, exactly as a router's would be, and the hop limit is a local origin value rather than anything
-//! preserved. Translating an error the *remote* sent is a different problem with a different correctness
-//! argument, and is not this module.
-//!
-//! The quote is truncated and never fragmented. An error large enough to need fragmenting would be one the
-//! client might not reassemble, which defeats the point of sending it.
-
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use etherparse::{
@@ -40,9 +29,6 @@ pub enum Reason {
     /// costs throughput for that whole window and too large keeps the black hole open while looking fixed.
     TooBig { mtu: u32 },
     /// A remote said the destination could not be reached, and the code is repeated exactly as it arrived.
-    ///
-    /// Never translated across families: the code spaces differ, so 3 means "port unreachable" over IPv4 and
-    /// "address unreachable" over IPv6. This is only ever built for the family it arrived on.
     Unreachable { code: u8 },
     /// Fragments of one datagram were held until the reassembly timer ran out. Owed only when fragment zero
     /// arrived, because the error has to quote a header the client actually sent, and never for a context the
@@ -51,9 +37,6 @@ pub enum Reason {
 }
 
 /// Builds one ICMP error about `invoking`, addressed from `source` back to whoever sent it.
-///
-/// `invoking` is the packet as it arrived, so its own header is what gets quoted - which is what lets the
-/// client match the error to the socket that caused it.
 pub fn build(source: IpAddr, invoking: &[u8], reason: Reason) -> Result<Vec<u8>, WriterError> {
     match (source, invoking.first().map(|byte| byte >> 4)) {
         (IpAddr::V4(source), Some(4)) => {
@@ -167,7 +150,6 @@ mod tests {
     const GATEWAY4: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 1));
     const GATEWAY6: IpAddr = IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 1, 0, 0, 0, 0, 1));
 
-    /// A client datagram of `payload` bytes, which is what an error would be about.
     fn invoking(ipv6: bool, payload: usize) -> Vec<u8> {
         let (client, remote): (SocketAddr, SocketAddr) = if ipv6 {
             (
@@ -199,7 +181,6 @@ mod tests {
                 } else {
                     (&packet[12..16], &packet[16..20])
                 };
-                // from the interface, to whoever sent the invoking packet
                 assert_eq!(source, gateway_octets(gateway).as_slice());
                 assert_eq!(destination, client_octets(ipv6).as_slice());
             }
@@ -225,15 +206,11 @@ mod tests {
 
     #[test]
     fn a_huge_invoking_packet_is_truncated_rather_than_fragmented() {
-        // 576 and 1280 are the sizes every host of each family must reassemble, so an error that needs
-        // fragmenting to arrive would defeat its own purpose
         let packet = build(GATEWAY4, &invoking(false, 4000), Reason::Expired).unwrap();
         assert!(packet.len() <= ICMPV4_MAX_PACKET, "{}", packet.len());
         let invoking = invoking(true, 4000);
         let packet = build(GATEWAY6, &invoking, Reason::Expired).unwrap();
         assert!(packet.len() <= ICMPV6_MAX_PACKET, "{}", packet.len());
-        // and the quote still starts with the invoking header, which is what lets the client match the error
-        // to the socket that caused it
         let quote = IPV6_HEADER_LEN + 8;
         assert_eq!(
             &packet[quote..quote + IPV6_HEADER_LEN],
@@ -244,7 +221,6 @@ mod tests {
     #[test]
     fn the_reported_mtu_reaches_the_wire() {
         let packet = build(GATEWAY4, &invoking(false, 64), Reason::TooBig { mtu: 1400 }).unwrap();
-        // type 3 code 4, then two unused bytes and the next-hop MTU
         assert_eq!(packet[IPV4_HEADER_LEN], 3);
         assert_eq!(packet[IPV4_HEADER_LEN + 1], 4);
         assert_eq!(
@@ -252,7 +228,6 @@ mod tests {
             1400
         );
         let packet = build(GATEWAY6, &invoking(true, 64), Reason::TooBig { mtu: 1400 }).unwrap();
-        // type 2, and the MTU occupies the whole four-byte field
         assert_eq!(packet[IPV6_HEADER_LEN], 2);
         assert_eq!(
             u32::from_be_bytes(

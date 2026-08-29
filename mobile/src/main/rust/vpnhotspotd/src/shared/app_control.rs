@@ -1,16 +1,5 @@
-//! What the app-UID control conversation accepts, and what refusing a frame looks like.
-//!
-//! Pure decoding, and deliberately apart from the loop that reads the socket: every rule below is a
-//! comparison over one already-decoded envelope, which is what makes the whole vocabulary - including the
-//! two refusals that keep the root and app-UID command families apart - testable without a device, a TUN or
-//! a controller.
-//!
-//! The distinction this module exists to make is between a frame that names a call and one that does not. A
-//! refusal naming a call is answered on it as an `ErrorFrame`, which is how a Rust failure reaches the app
-//! as itself rather than as a closed socket; a refusal that cannot name one has nowhere to go, and ends the
-//! conversation as the transport failure it is.
-
 use std::io;
+use std::net::IpAddr;
 
 use crate::shared::proto::daemon::{self, client_envelope::Command};
 use crate::shared::protocol::IoErrorReportExt;
@@ -25,14 +14,13 @@ pub struct Rejected {
 }
 
 /// The session start carried by the first frame of an app-UID connection.
-///
-/// Its call ID owns the dataplane for as long as the session runs: the readiness ACK, every terminal error
-/// and the completion all name it, and the configs below are keyed to it.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Start {
     pub call_id: u64,
     pub interface_name: String,
     pub mtu: u32,
+    pub virtual_addresses: Vec<IpAddr>,
+    pub gateway_addresses: Vec<IpAddr>,
 }
 
 /// What one frame on an established app-UID session asks for.
@@ -45,10 +33,7 @@ pub enum Request {
     },
     /// A cancel naming the start call, which is the app asking for the session itself to end.
     CancelSession,
-    /// A cancel naming a call that is no longer active. That is what an app whose caller was cancelled while
-    /// a config was in flight leaves behind, and it asks for nothing: this conversation is serial, so the
-    /// cancel is read strictly after the config it names was applied and replied to, and there is no longer
-    /// anything to abandon.
+    /// A cancel for an already-answered config call; the serial conversation has nothing left to cancel.
     CancelStale,
 }
 
@@ -60,6 +45,10 @@ pub fn read_start_call(envelope: daemon::ClientEnvelope) -> Result<Start, Reject
             call_id,
             interface_name: command.interface_name,
             mtu: command.mtu,
+            virtual_addresses: addresses("virtual", &command.virtual_addresses)
+                .map_err(|message| refused(call_id, message))?,
+            gateway_addresses: addresses("gateway", &command.gateway_addresses)
+                .map_err(|message| refused(call_id, message))?,
         }),
         other => Err(refused(
             call_id,
@@ -69,9 +58,6 @@ pub fn read_start_call(envelope: daemon::ClientEnvelope) -> Result<Start, Reject
 }
 
 /// One frame on the established session, checked against the start call that owns it.
-///
-/// A second start is refused here rather than served, because the descriptor and the dataplane belong to the
-/// call that already has them: one connection is one session.
 pub fn read_request(envelope: daemon::ClientEnvelope, session: u64) -> Result<Request, Rejected> {
     let call_id = read_call_id(&envelope)?;
     match envelope.command {
@@ -80,7 +66,7 @@ pub fn read_request(envelope: daemon::ClientEnvelope, session: u64) -> Result<Re
         } else {
             Request::CancelStale
         }),
-        Some(Command::ApplyShizukuConfig(command)) => {
+        Some(Command::ApplyShizukuConfig(config)) => {
             // The start call is answered with an ACK, terminal errors and a completion for the session's
             // whole life, so a config sharing its ID would make a reply ambiguous between the two.
             if call_id == session {
@@ -89,19 +75,7 @@ pub fn read_request(envelope: daemon::ClientEnvelope, session: u64) -> Result<Re
                     "a config cannot reuse the session's own call id".to_owned(),
                 ));
             }
-            if command.session_id != session {
-                return Err(refused(
-                    call_id,
-                    format!(
-                        "config names session {} but this connection is session {session}",
-                        command.session_id
-                    ),
-                ));
-            }
-            match command.config {
-                Some(config) => Ok(Request::Config { call_id, config }),
-                None => Err(refused(call_id, "config call carries no config".to_owned())),
-            }
+            Ok(Request::Config { call_id, config })
         }
         other => Err(refused(
             call_id,
@@ -130,9 +104,18 @@ fn refused(call_id: u64, message: String) -> Rejected {
     }
 }
 
-/// Names the command a refusal is about without printing it. A root command carries a whole `SessionConfig`
-/// and a config call a whole address set, neither of which belongs in an error message - what the reader
-/// needs is which family the sender used, since that is the boundary being enforced.
+fn addresses(field: &str, packed: &[Vec<u8>]) -> Result<Vec<IpAddr>, String> {
+    packed
+        .iter()
+        .map(|address| match address.len() {
+            4 => Ok(IpAddr::from(<[u8; 4]>::try_from(&address[..]).unwrap())),
+            16 => Ok(IpAddr::from(<[u8; 16]>::try_from(&address[..]).unwrap())),
+            size => Err(format!("{field} address has {size} bytes")),
+        })
+        .collect()
+}
+
+/// Names the command family without dumping its payload into an error.
 fn describe(command: &Option<Command>) -> &'static str {
     match command {
         None => "no command",
@@ -163,16 +146,15 @@ mod tests {
             daemon::StartShizukuSessionCommand {
                 interface_name: interface_name.to_owned(),
                 mtu,
+                virtual_addresses: vec![vec![192, 0, 2, 5]],
+                gateway_addresses: vec![vec![192, 0, 2, 1]],
             },
         ))
     }
 
-    fn config(session_id: u64) -> Option<Command> {
+    fn config() -> Option<Command> {
         Some(Command::ApplyShizukuConfig(
-            daemon::ApplyShizukuConfigCommand {
-                session_id,
-                config: Some(daemon::ShizukuSessionConfig::default()),
-            },
+            daemon::ShizukuSessionConfig::default(),
         ))
     }
 
@@ -184,6 +166,8 @@ mod tests {
                 call_id: 3,
                 interface_name: "testtun0".to_owned(),
                 mtu: 1500,
+                virtual_addresses: vec!["192.0.2.5".parse().unwrap()],
+                gateway_addresses: vec!["192.0.2.1".parse().unwrap()],
             }
         );
     }
@@ -195,7 +179,7 @@ mod tests {
         assert_eq!(rejected.call_id, None);
         assert_eq!(rejected.error.kind(), io::ErrorKind::InvalidData);
         assert_eq!(
-            read_request(envelope(0, config(SESSION)), SESSION)
+            read_request(envelope(0, config()), SESSION)
                 .unwrap_err()
                 .call_id,
             None
@@ -241,7 +225,7 @@ mod tests {
     #[test]
     fn a_config_is_read_under_the_call_that_must_answer_it() {
         assert_eq!(
-            read_request(envelope(9, config(SESSION)), SESSION).unwrap(),
+            read_request(envelope(9, config()), SESSION).unwrap(),
             Request::Config {
                 call_id: 9,
                 config: daemon::ShizukuSessionConfig::default(),
@@ -250,42 +234,12 @@ mod tests {
     }
 
     #[test]
-    fn a_config_for_another_session_is_refused() {
-        let rejected = read_request(envelope(9, config(SESSION + 1)), SESSION).unwrap_err();
-
-        assert_eq!(rejected.call_id, Some(9));
-        assert!(
-            rejected.error.to_string().contains("names session 8"),
-            "{}",
-            rejected.error
-        );
-    }
-
-    #[test]
     fn a_config_may_not_reuse_the_session_call() {
-        let rejected = read_request(envelope(SESSION, config(SESSION)), SESSION).unwrap_err();
+        let rejected = read_request(envelope(SESSION, config()), SESSION).unwrap_err();
 
         assert_eq!(rejected.call_id, Some(SESSION));
         assert!(
             rejected.error.to_string().contains("own call id"),
-            "{}",
-            rejected.error
-        );
-    }
-
-    #[test]
-    fn a_config_call_without_a_config_is_refused() {
-        let empty = Some(Command::ApplyShizukuConfig(
-            daemon::ApplyShizukuConfigCommand {
-                session_id: SESSION,
-                config: None,
-            },
-        ));
-        let rejected = read_request(envelope(9, empty), SESSION).unwrap_err();
-
-        assert_eq!(rejected.call_id, Some(9));
-        assert!(
-            rejected.error.to_string().contains("carries no config"),
             "{}",
             rejected.error
         );
