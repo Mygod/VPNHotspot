@@ -16,6 +16,7 @@ use crate::shizuku::budget::MAX_DATAGRAM;
 use vpnhotspotd::shared::admission::{
     largest_fitting, Admission, Class, Denied, Headroom, Lease, Request,
 };
+use vpnhotspotd::shared::dns_debt;
 
 use crate::report;
 use crate::shizuku::budget::Measured;
@@ -371,8 +372,12 @@ pub(crate) async fn run(
     };
     relay.shutdown(&mut admission).await;
     echo.shutdown(&mut admission).await;
-    tcp.shutdown(&mut admission, &mut output).await;
-    // Shutdown joins traffic workers before any owner or fixed lease is released.
+    // Drain owners before releasing their leases; keep the first failure and report later ones.
+    result = report::keep_first(
+        "shizuku.tun_ingress.tcp_shutdown",
+        result,
+        tcp.shutdown(&mut admission, &mut output).await,
+    );
     result = report::keep_first(
         "shizuku.tun_ingress.dns_shutdown",
         result,
@@ -437,12 +442,13 @@ impl Fixed {
 }
 
 fn reserve_fixed(admission: &mut Admission, mtu: usize) -> Result<Fixed, Denied> {
-    let writer_queue = tun_writer::footprint(mtu).ok_or(Denied::Arithmetic)?;
-    let writer_queue = admission.reserve(Request::bytes(writer_queue, Class::General))?;
-    let scratch = (mtu as u64)
-        .checked_add(2 * MAX_DATAGRAM as u64)
+    // Charge the TUN writer queue and input buffer in one fixed-I/O lease, avoiding another byte-only owner.
+    let io = tun_writer::footprint(mtu)
+        .and_then(|queue| dns_debt::fixed_io(queue, mtu as u64))
         .ok_or(Denied::Arithmetic)?;
-    let scratch = admission.reserve(Request::bytes(scratch, Class::Reserved))?;
+    let writer_queue = admission.reserve(io)?;
+    // Reserve one datagram plus one output fragment for packetization.
+    let scratch = admission.reserve(Request::bytes(2 * MAX_DATAGRAM as u64, Class::Reserved))?;
     let fragments = reassembly::Table::footprint(FRAGMENT_CONTEXTS)
         .ok_or(Denied::Arithmetic)
         .and_then(|bytes| admission.reserve(Request::bytes(bytes, Class::General)))?;

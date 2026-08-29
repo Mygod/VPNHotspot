@@ -29,9 +29,6 @@ pub struct Request {
     /// [Request::bytes], and naming them here is what makes the fragment cap a *nested* check rather than a
     /// second pool.
     pub fragment_bytes: u64,
-    /// Logical DNS transaction tokens, a dimension of their own because what bounds them is the platform's
-    /// per-UID resolver limiter rather than anything this process owns.
-    pub dns_tokens: u32,
 }
 
 impl Request {
@@ -74,7 +71,6 @@ impl Request {
                 self.byte_class
             },
             fragment_bytes: self.fragment_bytes.checked_add(other.fragment_bytes)?,
-            dns_tokens: self.dns_tokens.checked_add(other.dns_tokens)?,
         })
     }
 
@@ -92,7 +88,6 @@ impl Request {
             bytes: self.bytes.checked_sub(other.bytes)?,
             byte_class: self.byte_class,
             fragment_bytes: self.fragment_bytes.checked_sub(other.fragment_bytes)?,
-            dns_tokens: self.dns_tokens.checked_sub(other.dns_tokens)?,
         })
     }
 }
@@ -103,17 +98,25 @@ pub enum Denied {
     Records,
     Bytes,
     FragmentBytes,
-    DnsTokens,
     /// The ledger itself is full. Pre-sized from a derived bound, so this means the derivation was wrong
     /// rather than that an attacker grew it - see [Admission::new].
     Ledger,
     /// Owner identities exhausted. Fails closed rather than wrapping onto a live identity.
     Identities,
-    /// Two ends of a move named the same grant. Refused rather than applied, because the second write would
-    /// land on the first and leave the entry claiming more than the totals ever charged.
-    Aliased,
     /// The request's own arithmetic would wrap, or it mixed two classes in one dimension.
     Arithmetic,
+    /// The grant is absent or belongs to another admission: an invariant, not capacity exhaustion.
+    Unknown,
+}
+
+impl Denied {
+    /// Whether a failed [Admission::split] leaves its source lease usable.
+    ///
+    /// Ledger or identity exhaustion occurs before changing the source. Other denials mean the request did
+    /// not describe that source, so its buffers must not be delivered under the grant.
+    pub fn leaves_source_intact(self) -> bool {
+        matches!(self, Self::Ledger | Self::Identities)
+    }
 }
 
 /// An accounting identity. Not `Clone`, inert, and meaningless outside the [Admission] that issued it.
@@ -139,7 +142,7 @@ pub struct Admission {
     /// Every record this process may hold, derived from `RLIMIT_NOFILE` less what is already open. The DNS
     /// floor is part of this, not subtracted from it.
     record_total: u32,
-    /// Records only DNS-class work may reach. Inside [Admission::record_total].
+    /// Records reserved for DNS-class work, within [Admission::record_total].
     dns_record_floor: u32,
     general_records: u32,
     reserved_records: u32,
@@ -156,11 +159,6 @@ pub struct Admission {
     fragment_cap: u64,
     fragment_bytes: u64,
 
-    /// Logical resolver transactions in flight, bounded by the platform's per-UID limiter rather than by
-    /// anything here.
-    dns_token_cap: u32,
-    dns_tokens: u32,
-
     /// Bounded by [Admission::ledger_slots] rows, which is the figure its own charge was computed from.
     /// Never grown: exhaustion is [Denied::Ledger].
     ledger: HashMap<u64, Entry>,
@@ -169,10 +167,9 @@ pub struct Admission {
     peak_records: u32,
     peak_bytes: u64,
     peak_fragment_bytes: u64,
-    peak_dns_tokens: u32,
     denied: u64,
-    /// Releases and transfers naming an entry this admission does not hold. Counted rather than trusted, and
-    /// never turned into capacity.
+    /// Releases, growths, shrinks and splits naming an entry this admission does not hold. Counted rather
+    /// than trusted, and never turned into capacity.
     invariant_violations: u64,
 }
 
@@ -234,8 +231,6 @@ impl Admission {
             reserved_bytes: 0,
             fragment_cap: totals.fragment_cap,
             fragment_bytes: 0,
-            dns_token_cap: totals.dns_token_cap,
-            dns_tokens: 0,
             // Requested at its logical maximum, the same number [Admission::ledger_bytes] charged rows for,
             // so the common case allocates nothing. An initial reservation rather than a bound the container
             // owes anything to: it may allocate or reorganise its own backing whenever it likes, which is
@@ -245,7 +240,6 @@ impl Admission {
             peak_records: 0,
             peak_bytes: 0,
             peak_fragment_bytes: 0,
-            peak_dns_tokens: 0,
             denied: 0,
             invariant_violations: 0,
         };
@@ -256,9 +250,13 @@ impl Admission {
         Ok(admission)
     }
 
-    /// Includes record owners, fixed byte-only owners, and one owner-confined split in flight.
+    /// Includes every record owner, at most one byte-only successor per record, fixed byte-only owners, and
+    /// one in-flight split. This prevents the ledger becoming an independent count cap.
     pub fn ledger_slots(record_total: u32, byte_only_owners: u32) -> Option<u32> {
-        record_total.checked_add(byte_only_owners)?.checked_add(1)
+        record_total
+            .checked_mul(2)?
+            .checked_add(byte_only_owners)?
+            .checked_add(1)
     }
 
     /// What a ledger of that many rows costs, so the caller sizing the reserved floor charges the same number
@@ -312,16 +310,6 @@ impl Admission {
 
     pub fn fragment_bytes_charged(&self) -> u64 {
         self.fragment_bytes
-    }
-
-    /// How many logical resolver transactions may be in flight, which is also how many a table sized against
-    /// it needs room for.
-    pub fn dns_token_cap(&self) -> u32 {
-        self.dns_token_cap
-    }
-
-    pub fn dns_tokens_charged(&self) -> u32 {
-        self.dns_tokens
     }
 
     pub fn outstanding_leases(&self) -> usize {
@@ -410,12 +398,6 @@ impl Admission {
         if fragment > self.fragment_cap {
             return refuse(self, Denied::FragmentBytes);
         }
-        let Some(tokens) = self.dns_tokens.checked_add(request.dns_tokens) else {
-            return refuse(self, Denied::Arithmetic);
-        };
-        if tokens > self.dns_token_cap {
-            return refuse(self, Denied::DnsTokens);
-        }
         Ok(())
     }
 
@@ -430,11 +412,9 @@ impl Admission {
             Class::Reserved => self.reserved_bytes += request.bytes,
         }
         self.fragment_bytes += request.fragment_bytes;
-        self.dns_tokens += request.dns_tokens;
         self.peak_records = self.peak_records.max(self.records_charged());
         self.peak_bytes = self.peak_bytes.max(self.bytes_charged());
         self.peak_fragment_bytes = self.peak_fragment_bytes.max(self.fragment_bytes);
-        self.peak_dns_tokens = self.peak_dns_tokens.max(self.dns_tokens);
     }
 
     /// Uncharges a request the ledger says is outstanding.
@@ -454,14 +434,13 @@ impl Admission {
             }
         }
         self.fragment_bytes = self.fragment_bytes.saturating_sub(request.fragment_bytes);
-        self.dns_tokens = self.dns_tokens.saturating_sub(request.dns_tokens);
     }
 
     /// Adds to an existing grant, atomically and checked. Usage is unchanged if it does not fit.
     pub fn grow(&mut self, lease: &Lease, more: Request) -> Result<(), Denied> {
         let Some(entry) = self.entry(lease) else {
             self.invariant_violations += 1;
-            return Err(Denied::Ledger);
+            return Err(Denied::Unknown);
         };
         // Class agreement first: a growth in a class the row was not charged in would leave the category
         // ledgers describing something the row does not.
@@ -491,39 +470,11 @@ impl Admission {
         self.ledger.insert(lease.id, Entry { granted: remaining });
     }
 
-    /// Moves accounting from one live grant to another. Totals are unchanged; only who owes what moves.
-    pub fn transfer(&mut self, from: &Lease, to: &Lease, moved: Request) -> Result<(), Denied> {
-        // Both ends the same row is refused before anything is read, not merely before anything is written.
-        // The two writes below would otherwise land on one key, the second overwriting the first, and the row
-        // would end up claiming the moved amount twice while the totals were charged once - so releasing it
-        // later would hand back capacity that was never taken. Nothing about a grant moving to itself is a
-        // real ownership move, so there is no correct amount to apply.
-        if from.id == to.id {
-            self.invariant_violations += 1;
-            return Err(Denied::Aliased);
-        }
-        let (Some(source), Some(target)) = (self.entry(from), self.entry(to)) else {
-            self.invariant_violations += 1;
-            return Err(Denied::Ledger);
-        };
-        let Some(remaining) = source.granted.checked_sub(moved) else {
-            self.invariant_violations += 1;
-            return Err(Denied::Arithmetic);
-        };
-        let Some(grown) = target.granted.checked_add(moved) else {
-            self.invariant_violations += 1;
-            return Err(Denied::Arithmetic);
-        };
-        self.ledger.insert(from.id, Entry { granted: remaining });
-        self.ledger.insert(to.id, Entry { granted: grown });
-        Ok(())
-    }
-
     /// Splits part of a grant into a lease of its own, consuming one pre-reserved ledger slot.
     pub fn split(&mut self, from: &Lease, taken: Request) -> Result<Lease, Denied> {
         let Some(source) = self.entry(from) else {
             self.invariant_violations += 1;
-            return Err(Denied::Ledger);
+            return Err(Denied::Unknown);
         };
         let Some(remaining) = source.granted.checked_sub(taken) else {
             self.invariant_violations += 1;
@@ -573,7 +524,7 @@ impl Admission {
         format!(
             "{} of {} records ({} general of {}, {} reserved, floor {}), peak {}; \
              {} of {} bytes ({} general of {}, {} reserved), peak {}; \
-             {} of {} fragment bytes, peak {}; {} of {} dns tokens, peak {}; \
+             {} of {} fragment bytes, peak {}; \
              {} leases outstanding of {} slots; {} denied; {} invariant violations",
             self.records_charged(),
             self.record_total,
@@ -591,9 +542,6 @@ impl Admission {
             self.fragment_bytes,
             self.fragment_cap,
             self.peak_fragment_bytes,
-            self.dns_tokens,
-            self.dns_token_cap,
-            self.peak_dns_tokens,
             self.ledger.len(),
             self.ledger_slots,
             self.denied,
@@ -611,7 +559,7 @@ pub struct Totals {
     /// `RLIMIT_NOFILE` less already-open descriptors, less whatever cleanup provably needs. The DNS floor is
     /// inside this.
     pub record_total: u32,
-    /// Records only DNS-class work may reach, inside [Totals::record_total].
+    /// Reserved DNS record floor within [Totals::record_total]; not a DNS ceiling.
     pub dns_record_floor: u32,
     /// The conservative session share of measurably available memory.
     pub byte_total: u64,
@@ -619,7 +567,6 @@ pub struct Totals {
     pub reserved_byte_floor: u64,
     /// Nested inside [Totals::byte_total].
     pub fragment_cap: u64,
-    pub dns_token_cap: u32,
     /// Owners that hold bytes and no record: retained tables, fixed queues, engine scratch. Used only to
     /// derive the ledger's own size.
     pub byte_only_owners: u32,
@@ -774,7 +721,6 @@ mod tests {
             byte_total: 1_000_000,
             reserved_byte_floor: 200_000,
             fragment_cap: 4_000,
-            dns_token_cap: 32,
             byte_only_owners: 8,
         }
     }
@@ -800,7 +746,6 @@ mod tests {
             admission.records_charged(),
             admission.bytes_charged(),
             admission.fragment_bytes_charged(),
-            admission.dns_tokens_charged(),
         );
         let denied = admission
             .reserve(general(1_000, 10))
@@ -811,8 +756,7 @@ mod tests {
             (
                 admission.records_charged(),
                 admission.bytes_charged(),
-                admission.fragment_bytes_charged(),
-                admission.dns_tokens_charged()
+                admission.fragment_bytes_charged()
             )
         );
         assert_eq!(
@@ -824,8 +768,7 @@ mod tests {
             (
                 admission.records_charged(),
                 admission.bytes_charged(),
-                admission.fragment_bytes_charged(),
-                admission.dns_tokens_charged()
+                admission.fragment_bytes_charged()
             )
         );
         let lease = admission
@@ -835,13 +778,11 @@ mod tests {
                 bytes: 500,
                 byte_class: Class::General,
                 fragment_bytes: 100,
-                dns_tokens: 1,
             })
             .expect("a request within every dimension is granted");
         assert_eq!(admission.records_charged(), before.0 + 2);
         assert_eq!(admission.bytes_charged(), before.1 + 500);
         assert_eq!(admission.fragment_bytes_charged(), 100);
-        assert_eq!(admission.dns_tokens_charged(), 1);
         admission.release(lease);
     }
 
@@ -1009,7 +950,6 @@ mod tests {
                         bytes: 100,
                         byte_class: Class::General,
                         fragment_bytes: 10,
-                        dns_tokens: 0,
                     })
                     .expect("granted"),
             );
@@ -1022,7 +962,6 @@ mod tests {
                     bytes: 50,
                     byte_class: Class::Reserved,
                     fragment_bytes: 0,
-                    dns_tokens: 3,
                 })
                 .expect("granted"),
         );
@@ -1035,7 +974,6 @@ mod tests {
             admission.bytes_charged()
         );
         assert_eq!(admission.records_charged(), 7);
-        assert_eq!(admission.dns_tokens_charged(), 3);
         assert_eq!(admission.fragment_bytes_charged(), 50);
 
         for lease in leases {
@@ -1046,75 +984,8 @@ mod tests {
         assert_eq!(admission.reserved_records, 0);
         assert_eq!(admission.bytes_charged(), ledger_self_charge);
         assert_eq!(admission.fragment_bytes_charged(), 0);
-        assert_eq!(admission.dns_tokens_charged(), 0);
         assert_eq!(admission.outstanding_leases(), 0);
         assert_eq!(admission.invariant_violations(), 0);
-    }
-
-    #[test]
-    fn dns_tokens_are_their_own_dimension() {
-        let mut admission = admission();
-        let mut held = Vec::new();
-        for _ in 0..32 {
-            held.push(
-                admission
-                    .reserve(Request {
-                        dns_tokens: 1,
-                        ..Request::default()
-                    })
-                    .expect("granted"),
-            );
-        }
-        assert_eq!(
-            admission.reserve(Request {
-                dns_tokens: 1,
-                ..Request::default()
-            }),
-            Err(Denied::DnsTokens)
-        );
-        let ordinary = admission.reserve(general(1, 10)).expect("granted");
-        admission.release(ordinary);
-        for lease in held {
-            admission.release(lease);
-        }
-        assert_eq!(admission.dns_tokens_charged(), 0);
-    }
-
-    #[test]
-    fn a_transfer_moves_ownership_without_changing_totals() {
-        let mut admission = admission();
-        let transport = admission
-            .reserve(Request {
-                records: 1,
-                record_class: Class::General,
-                dns_tokens: 1,
-                ..Request::default()
-            })
-            .expect("granted");
-        let debt = admission
-            .reserve(Request::records(1, Class::Reserved))
-            .expect("granted");
-        let before = (admission.records_charged(), admission.dns_tokens_charged());
-        admission
-            .transfer(
-                &transport,
-                &debt,
-                Request {
-                    dns_tokens: 1,
-                    ..Request::default()
-                },
-            )
-            .expect("the token moves");
-        assert_eq!(
-            (admission.records_charged(), admission.dns_tokens_charged()),
-            before
-        );
-        assert_eq!(admission.granted(&transport).expect("held").dns_tokens, 0);
-        assert_eq!(admission.granted(&debt).expect("held").dns_tokens, 1);
-        admission.release(transport);
-        assert_eq!(admission.dns_tokens_charged(), 1);
-        admission.release(debt);
-        assert_eq!(admission.dns_tokens_charged(), 0);
     }
 
     #[test]
@@ -1126,8 +997,10 @@ mod tests {
             ..totals()
         })
         .expect("granted");
+        // Use the derived bound so the test tracks ledger resizing.
+        let slots = Admission::ledger_slots(2, 0).expect("fits") as usize;
         let mut held = Vec::new();
-        for _ in 0..3 {
+        while admission.outstanding_leases() < slots {
             held.push(
                 admission
                     .reserve(Request::bytes(1, Class::General))
@@ -1159,59 +1032,9 @@ mod tests {
     }
 
     #[test]
-    fn a_grant_cannot_be_transferred_to_itself() {
-        let mut admission = admission();
-        let lease = admission
-            .reserve(Request {
-                records: 1,
-                record_class: Class::General,
-                bytes: 100,
-                byte_class: Class::General,
-                dns_tokens: 1,
-                ..Request::default()
-            })
-            .expect("granted");
-        let before = (
-            admission.records_charged(),
-            admission.bytes_charged(),
-            admission.dns_tokens_charged(),
-            admission.granted(&lease).expect("held"),
-        );
-        assert_eq!(
-            admission.transfer(
-                &lease,
-                &lease,
-                Request {
-                    dns_tokens: 1,
-                    ..Request::default()
-                }
-            ),
-            Err(Denied::Aliased)
-        );
-        assert_eq!(admission.invariant_violations(), 1);
-        assert_eq!(
-            (
-                admission.records_charged(),
-                admission.bytes_charged(),
-                admission.dns_tokens_charged(),
-                admission.granted(&lease).expect("held"),
-            ),
-            before
-        );
-        let charged = admission.bytes_charged();
-        admission.release(lease);
-        assert_eq!(admission.records_charged(), 0);
-        assert_eq!(admission.dns_tokens_charged(), 0);
-        assert_eq!(admission.bytes_charged(), charged - 100);
-    }
-
-    #[test]
     fn a_differently_classified_subtraction_is_refused() {
         let mut admission = admission();
         let general_lease = admission.reserve(general(1, 1_000)).expect("granted");
-        let reserved = admission
-            .reserve(Request::records(1, Class::Reserved))
-            .expect("granted");
         let sums = (
             admission.general_records,
             admission.reserved_records,
@@ -1229,14 +1052,6 @@ mod tests {
                 admission.reserved_bytes
             ),
             sums
-        );
-        assert_eq!(
-            admission.transfer(
-                &general_lease,
-                &reserved,
-                Request::records(1, Class::Reserved)
-            ),
-            Err(Denied::Arithmetic)
         );
         assert_eq!(
             admission.split(&general_lease, Request::bytes(100, Class::Reserved)),
@@ -1257,7 +1072,6 @@ mod tests {
             admission.bytes_charged()
         );
         admission.release(general_lease);
-        admission.release(reserved);
     }
 
     #[test]
@@ -1269,8 +1083,9 @@ mod tests {
             ..totals()
         })
         .expect("granted");
+        let slots = Admission::ledger_slots(2, 0).expect("fits") as usize;
         let mut held = Vec::new();
-        for _ in 0..3 {
+        while admission.outstanding_leases() < slots {
             held.push(
                 admission
                     .reserve(Request::bytes(10, Class::General))
@@ -1304,6 +1119,37 @@ mod tests {
         for lease in held {
             admission.release(lease);
         }
+    }
+
+    #[test]
+    fn growing_a_grant_this_admission_does_not_hold_is_an_invariant_not_capacity() {
+        let mut admission = admission();
+        let mut other = Admission::new(Totals {
+            admission_id: 99,
+            ..totals()
+        })
+        .expect("granted");
+        let foreign = other.reserve(general(1, 10)).expect("granted");
+        let charged = (admission.records_charged(), admission.bytes_charged());
+
+        assert_eq!(
+            admission.grow(&foreign, Request::bytes(1, Class::General)),
+            Err(Denied::Unknown)
+        );
+        assert!(
+            !Denied::Unknown.leaves_source_intact(),
+            "there is no source grant here to leave intact"
+        );
+        assert_eq!(
+            (admission.records_charged(), admission.bytes_charged()),
+            charged,
+            "a growth against a row this admission does not hold charges nothing"
+        );
+        assert_eq!(admission.invariant_violations(), 1);
+
+        other.release(foreign);
+        assert_eq!(other.records_charged(), 0);
+        assert_eq!(other.invariant_violations(), 0);
     }
 
     #[test]
@@ -1711,13 +1557,11 @@ mod tests {
                 record_class: Class::Reserved,
                 bytes: query + result,
                 byte_class: Class::Reserved,
-                dns_tokens: 1,
                 ..Request::default()
             })
             .expect("granted");
         let bytes = admission.bytes_charged();
         assert_eq!(admission.records_charged(), 1);
-        assert_eq!(admission.dns_tokens_charged(), 1);
 
         let delivery = admission
             .split(&debt, Request::bytes(query + result, Class::Reserved))
@@ -1728,7 +1572,6 @@ mod tests {
             0,
             "the descriptor went at once"
         );
-        assert_eq!(admission.dns_tokens_charged(), 0);
         assert_eq!(
             admission.bytes_charged(),
             bytes,
@@ -1760,78 +1603,6 @@ mod tests {
         assert_eq!(admission.bytes_charged(), charged - (reserved - actual));
         assert_eq!(admission.granted(&debt).expect("held").bytes, actual);
         admission.release(debt);
-        assert_eq!(admission.invariant_violations(), 0);
-    }
-
-    #[test]
-    fn a_query_costs_a_descriptor_and_no_second_token() {
-        let mut admission = Admission::new(Totals {
-            record_total: 200,
-            dns_record_floor: 64,
-            dns_token_cap: 32,
-            ..totals()
-        })
-        .expect("granted");
-
-        let mut connections = Vec::new();
-        for _ in 0..32 {
-            connections.push(
-                admission
-                    .reserve(Request {
-                        records: 1,
-                        record_class: Class::General,
-                        dns_tokens: 1,
-                        ..Request::default()
-                    })
-                    .expect("a connection and its token"),
-            );
-        }
-        assert_eq!(
-            admission.reserve(Request {
-                records: 1,
-                record_class: Class::General,
-                dns_tokens: 1,
-                ..Request::default()
-            }),
-            Err(Denied::DnsTokens)
-        );
-
-        let mut queries = Vec::new();
-        for _ in 0..32 {
-            queries.push(
-                admission
-                    .reserve(Request::records(1, Class::Reserved))
-                    .expect("a query needs no second token"),
-            );
-        }
-        assert_eq!(admission.dns_tokens_charged(), 32);
-        assert_eq!(admission.records_charged(), 64);
-
-        admission
-            .transfer(
-                &connections[0],
-                &queries[0],
-                Request {
-                    dns_tokens: 1,
-                    ..Request::default()
-                },
-            )
-            .expect("the token moves");
-        assert_eq!(admission.dns_tokens_charged(), 32);
-        admission.release(connections.remove(0));
-        assert_eq!(
-            admission.dns_tokens_charged(),
-            32,
-            "and the closed transport did not take it"
-        );
-        admission.release(queries.remove(0));
-        assert_eq!(admission.dns_tokens_charged(), 31);
-
-        for lease in connections.into_iter().chain(queries) {
-            admission.release(lease);
-        }
-        assert_eq!(admission.dns_tokens_charged(), 0);
-        assert_eq!(admission.records_charged(), 0);
         assert_eq!(admission.invariant_violations(), 0);
     }
 

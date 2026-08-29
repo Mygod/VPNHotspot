@@ -1,10 +1,14 @@
-//! DNS-over-TCP transport whose submitted resolver transactions outlive transport retirement.
+//! DNS-over-TCP transport.
+//!
+//! Submitted transactions are table-owned and may outlive their flow; results go only to the exact
+//! originating flow identity. Admission refusals return SERVFAIL, while invalid messages and transport
+//! failures end the stream.
 use std::io;
 
 use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use vpnhotspotd::shared::dns_wire::{self, frame, Body, DnsStream, Framed};
+use vpnhotspotd::shared::dns_wire::{self, frame, Body, DnsStream, Framed, Refused};
 use vpnhotspotd::shared::failure::Failure;
 use vpnhotspotd::shared::preempt::{hand_over, shutdown, write_all, Written};
 
@@ -152,12 +156,13 @@ pub(crate) const fn delivery_bytes(answer: usize) -> u64 {
 
 pub(crate) const DELIVERY_BYTES: u64 = delivery_bytes(MAX_DATAGRAM);
 
+// Keep transaction-row sizing and the essential DNS floor aligned with this charge.
+const _: () = assert!(DELIVERY_BYTES >= dns_debt::MINIMUM_SUBMITTED_BYTES);
+
+const _: () = assert!(MAX_DATAGRAM as u64 + DELIVERY_BYTES == dns_debt::MAXIMUM_SUBMITTED_BYTES);
+
 pub(crate) fn exchange_bytes(length: usize) -> Option<u64> {
     (length as u64).checked_add(DELIVERY_BYTES)
-}
-
-pub(crate) fn answered_here_bytes(length: usize) -> Option<u64> {
-    (length as u64).checked_add(delivery_bytes(length))
 }
 
 pub(crate) struct Serving {
@@ -165,7 +170,6 @@ pub(crate) struct Serving {
     filled: mpsc::Receiver<Owned>,
     reserved: Option<Reserved>,
     delivery: Parked,
-    transaction: Option<u64>,
     unreachable: u64,
 }
 
@@ -176,7 +180,6 @@ impl Serving {
             filled,
             reserved: None,
             delivery: Parked::default(),
-            transaction: None,
             unreachable: 0,
         }
     }
@@ -208,14 +211,6 @@ impl Serving {
         self.send(Control::Answered(answered));
     }
 
-    pub(crate) fn transaction(&self) -> Option<u64> {
-        self.transaction
-    }
-
-    pub(crate) fn asking(&mut self, transaction: Option<u64>) {
-        self.transaction = transaction;
-    }
-
     pub(crate) fn acknowledge(
         &mut self,
         admission: &mut Admission,
@@ -224,13 +219,13 @@ impl Serving {
         self.delivery.acknowledge(admission, acked)
     }
 
-    pub(crate) fn close(self, admission: &mut Admission) -> Option<u64> {
+    /// Releases only DNS state still owned by this flow; submitted transactions remain table-owned.
+    pub(crate) fn close(self, admission: &mut Admission) {
         let Self {
             control,
             mut filled,
             reserved,
             mut delivery,
-            transaction,
             ..
         } = self;
         delivery.close(admission);
@@ -241,27 +236,40 @@ impl Serving {
         if let Some(reserved) = reserved {
             reserved.end(admission);
         }
-        transaction
     }
 }
 
+/// Builds SERVFAIL for an unsubmitted query. Invalid input returns `None`; an uncovered delivery grant is an
+/// error.
 pub(crate) fn answered_here(
     reserved: Reserved,
     query: Owned,
     serving: &mut Serving,
     admission: &mut Admission,
-) -> Option<Answering> {
+) -> io::Result<Option<Answering>> {
     let servfail = dns_wire::servfail_response(&query).map(Owned::new);
     drop(query);
     let Some(servfail) = servfail else {
         serving.answer(Answered::Refused(Failure::Expected(io::Error::other(
-            "a DNS-over-TCP query too malformed to answer",
+            "a DNS-over-TCP message that is not an answerable query",
         ))));
         reserved.end(admission);
-        return None;
+        return Ok(None);
     };
-    let delivery = reserved.settle(admission, delivery_bytes(servfail.capacity()));
-    Some(Answering {
+    let transaction = reserved.id();
+    let delivery = match reserved.settle(admission, delivery_bytes(servfail.capacity())) {
+        dns_debt::Split::Covered(delivery, denied) => {
+            transactions::report_split(transaction, denied);
+            delivery
+        }
+        dns_debt::Split::Uncovered(debt, denied) => {
+            // Drop the answer before abandoning the grant that should cover it.
+            drop(servfail);
+            dns_debt::abandon(admission, debt);
+            return Err(transactions::uncovered(transaction, denied));
+        }
+    };
+    Ok(Some(Answering {
         settled: dns_debt::Settled::delivering(
             delivery,
             Resolved {
@@ -269,7 +277,7 @@ pub(crate) fn answered_here(
                 message: None,
             },
         ),
-    })
+    }))
 }
 
 pub(crate) enum Ask {
@@ -283,6 +291,14 @@ pub(crate) enum Granted {
     Denied,
 }
 
+/// Storage for the current framed body.
+enum Filling {
+    /// Fully admitted body buffer.
+    Admitted(Owned),
+    /// Header-only sink used to drain a refused body and build SERVFAIL.
+    Refused(Refused),
+}
+
 pub(crate) async fn serve(
     flow: Event,
     mut bridge: Worker,
@@ -292,7 +308,7 @@ pub(crate) async fn serve(
     cancel: CancellationToken,
 ) -> Ended {
     let mut stream = DnsStream::default();
-    let mut filling: Option<Owned> = None;
+    let mut filling: Option<Filling> = None;
     let mut scratch = vec![0u8; READ_CHUNK];
     loop {
         let read = tokio::select! {
@@ -321,7 +337,10 @@ pub(crate) async fn serve(
         loop {
             match stream.advance(
                 &mut rest,
-                filling.as_mut().map(|query| query as &mut dyn Body),
+                filling.as_mut().map(|filling| match filling {
+                    Filling::Admitted(query) => query as &mut dyn Body,
+                    Filling::Refused(refused) => refused as &mut dyn Body,
+                }),
             ) {
                 Framed::Hungry => break,
                 Framed::Broken => {
@@ -340,15 +359,48 @@ pub(crate) async fn serve(
                         admitted = control.recv() => admitted,
                     };
                     filling = match admitted {
-                        Some(Control::Granted(Granted::Admitted(query))) => Some(query),
-                        Some(Control::Granted(Granted::Denied)) => None,
+                        Some(Control::Granted(Granted::Admitted(query))) => {
+                            Some(Filling::Admitted(query))
+                        }
+                        // Drain the refused body while retaining enough header state to return SERVFAIL.
+                        Some(Control::Granted(Granted::Denied)) => {
+                            Some(Filling::Refused(Refused::default()))
+                        }
                         Some(Control::Answered(_)) | None => return Ended::Expected,
                     };
                 }
                 Framed::Message => {
-                    let Some(query) = filling.take() else {
-                        continue;
-                    };
+                    let query =
+                        match filling.take() {
+                            Some(Filling::Admitted(query)) => query,
+                            Some(Filling::Refused(refused)) => {
+                                // Build SERVFAIL from the fixed header sink without allocating or echoing the
+                                // query.
+                                let Some(framed) = refused.framed_servfail() else {
+                                    // Invalid DNS input cannot be refused with SERVFAIL.
+                                    return Ended::Reported(
+                                        "a DNS-over-TCP message that is not an answerable query"
+                                            .to_owned(),
+                                    );
+                                };
+                                match write_all(&mut bridge, &framed, &cancel).await {
+                                    Written::Done => continue,
+                                    Written::Cancelled => return Ended::Expected,
+                                    Written::Failed(error) => {
+                                        return Ended::Failed {
+                                            context: "shizuku.tcp_dns_refuse",
+                                            error,
+                                        }
+                                    }
+                                }
+                            }
+                            // Every reservation must install a sink; otherwise consuming it silently drops the
+                            // query.
+                            None => return Ended::Reported(
+                                "a DNS-over-TCP message was framed with no sink admitted for it"
+                                    .to_owned(),
+                            ),
+                        };
                     if filled.try_send(query).is_err() {
                         return Ended::Expected;
                     }

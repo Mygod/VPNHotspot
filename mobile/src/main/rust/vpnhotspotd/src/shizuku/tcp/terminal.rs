@@ -1,7 +1,6 @@
 use smoltcp::iface::SocketHandle;
 use smoltcp::socket::tcp::{Socket, State};
 use vpnhotspotd::shared::admission::Admission;
-use vpnhotspotd::shared::dns_debt;
 
 use super::bridge::Attention;
 use super::{lifetime, Engine, Flow};
@@ -110,29 +109,24 @@ impl Engine {
             return;
         };
         self.sockets.remove(key);
+        // Submitted resolver transactions outlive their flow.
+        let submitted = self.queries.len();
         let Flow {
-            connection,
+            lease,
             bridge,
             serving,
             ..
         } = flow;
         // Drop bridge bytes before refunding the DNS delivery they may contain.
         drop(bridge);
-        let transaction = serving.close(admission);
-        // An outstanding query inherits the transport's logical token; an idle close releases it.
-        let mut connection = connection;
-        connection.asking(transaction);
-        let debt = transaction.and_then(|transaction| self.queries.debt(transaction));
-        if !dns_debt::close(admission, connection, debt) {
-            // The owner records a question only after its row exists and clears it before removing that row.
-            self.counters.unsettled += 1;
-            report::message_with_details(
-                "shizuku.tcp_dns.close",
-                "a closing DNS-over-TCP transport could not hand its logical token to the question it names",
-                "InvalidData",
-                [("transaction", format!("{transaction:?}"))],
-            );
-        }
+        // Release flow-owned DNS state before its flow lease; submitted transactions remain table-owned.
+        serving.close(admission);
+        admission.release(lease);
+        debug_assert_eq!(
+            self.queries.len(),
+            submitted,
+            "reclaiming a flow ends nothing a submitted query owns"
+        );
         self.counters.closed += 1;
     }
 

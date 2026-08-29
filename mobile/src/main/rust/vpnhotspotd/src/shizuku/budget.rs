@@ -3,15 +3,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use nix::sys::resource::{getrlimit, Resource};
 use vpnhotspotd::shared::admission::{Admission, Totals};
+use vpnhotspotd::shared::dns_debt::MAXIMUM_SUBMITTED_BYTES;
 
 use crate::report;
-
-/// The resolver's own per-UID limit on concurrent queries, held across `resolv_res_nsend`.
-const MAX_QUERIES_PER_UID: u32 = 256;
-
-/// The nested ceiling on the daemon's own concurrent resolver transactions, an eighth of the platform's
-/// per-UID limit.
-pub(crate) const CONCURRENT_QUERIES: u32 = MAX_QUERIES_PER_UID / 8;
 
 /// The largest IP datagram there is, which is what a UDP or Echo reply may be.
 pub(crate) const MAX_DATAGRAM: usize = u16::MAX as usize;
@@ -31,12 +25,14 @@ const BYTE_ONLY_OWNERS: u32 = 16 + 9;
 
 static NEXT_ADMISSION_ID: AtomicU64 = AtomicU64::new(1);
 
-/// What one maximum resolver exchange needs at once: the query as it arrived, the answer as the platform
-/// returns it, and the framing copy in between.
-const ESSENTIAL_DNS_BYTES: u64 = 3 * MAX_DATAGRAM as u64;
+/// Bytes reserved for one maximum resolver exchange, matching its full debt charge.
+const ESSENTIAL_DNS_BYTES: u64 = MAXIMUM_SUBMITTED_BYTES;
 
 /// What one output packetization peak needs: the datagram being split and the fragment being built from it.
 const ESSENTIAL_OUTPUT_BYTES: u64 = 2 * MAX_DATAGRAM as u64;
+
+/// One resolver descriptor reserved for essential DNS; this floor is not a concurrency cap.
+const ESSENTIAL_DNS_RECORDS: u32 = 1;
 
 /// What the device says, alongside the totals derived from it.
 pub(crate) struct Measured {
@@ -51,7 +47,7 @@ impl Measured {
         format!(
             "RLIMIT_NOFILE {} less {} already open leaves {} records, {} of them a floor only DNS may \
              enter; {} bytes available gives a {} byte share, {} of it a floor only essential work may \
-             enter, with at most {} in incomplete reassembly and at most {} logical resolver transactions",
+             enter, with at most {} in incomplete reassembly",
             self.soft_limit,
             self.open,
             self.totals.record_total,
@@ -60,7 +56,6 @@ impl Measured {
             self.totals.byte_total,
             self.totals.reserved_byte_floor,
             self.totals.fragment_cap,
-            self.totals.dns_token_cap,
         )
     }
 }
@@ -91,10 +86,10 @@ pub(crate) async fn measure() -> io::Result<Measured> {
     // for, and admitting against a silently truncated one would over-admit for the whole session.
     let record_total = u32::try_from(record_total)
         .map_err(|e| io::Error::other(format!("implausible RLIMIT_NOFILE {soft_limit}: {e}")))?;
-    if record_total <= CONCURRENT_QUERIES {
+    if record_total <= ESSENTIAL_DNS_RECORDS {
         return Err(io::Error::other(format!(
             "RLIMIT_NOFILE {soft_limit} less {open} open descriptors leaves {record_total} records, which \
-             is not more than the {CONCURRENT_QUERIES} the resolver floor holds"
+             is not more than the {ESSENTIAL_DNS_RECORDS} the resolver floor holds"
         )));
     }
     // MemAvailable rather than MemTotal or a cgroup limit: it is the kernel's own estimate of what can be
@@ -128,13 +123,12 @@ pub(crate) async fn measure() -> io::Result<Measured> {
             // session is recognisably foreign rather than plausibly current.
             admission_id: NEXT_ADMISSION_ID.fetch_add(1, Ordering::Relaxed),
             record_total,
-            dns_record_floor: CONCURRENT_QUERIES,
+            dns_record_floor: ESSENTIAL_DNS_RECORDS,
             byte_total,
             reserved_byte_floor,
             // Nested inside the same measured share rather than added on top of it, so reassembly and
             // everything else cannot between them promise more than the share the dataplane was granted.
             fragment_cap: FRAGMENT_BYTES.min(byte_total),
-            dns_token_cap: CONCURRENT_QUERIES,
             byte_only_owners: BYTE_ONLY_OWNERS,
         },
         soft_limit,

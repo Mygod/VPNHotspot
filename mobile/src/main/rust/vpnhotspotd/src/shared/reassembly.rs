@@ -601,7 +601,6 @@ mod tests {
                 byte_total: 8 << 20,
                 reserved_byte_floor: 1 << 20,
                 fragment_cap,
-                dns_token_cap: 0,
                 byte_only_owners: 4,
             })
             .expect("the fixture totals hold their own accounting");

@@ -1,4 +1,5 @@
 //! Client-side TCP termination backed by independently connected upstream sockets or virtual DNS.
+use std::io;
 use std::net::SocketAddr;
 use std::time::Instant;
 
@@ -17,7 +18,6 @@ use vpnhotspotd::shared::admission::{
     largest_fitting, linear_footprint, Admission, Class, Denied, Lease, Request,
 };
 use vpnhotspotd::shared::bridge::{Bridge, Worker};
-use vpnhotspotd::shared::dns_debt::Connection;
 use vpnhotspotd::shared::flow::{self, FlowId, Turns};
 use vpnhotspotd::shared::flow_budget;
 use vpnhotspotd::shared::ingress as boundary;
@@ -64,10 +64,6 @@ impl Source {
             Self::Upstream(_) => Kind::Upstream,
         }
     }
-
-    fn resolver(self) -> bool {
-        matches!(self, Self::Resolver)
-    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,7 +86,7 @@ struct Flow {
     client: SocketAddr,
     destination: SocketAddr,
     kind: Kind,
-    connection: Connection,
+    lease: Lease,
     bridge: Bridge,
     refresh: bool,
     serving: Serving,
@@ -187,23 +183,28 @@ impl Engine {
             }
         });
         let per_flow = flow_footprint().ok_or(Denied::Arithmetic)?;
+        // Transactions has no implicit lease refund: reserve it before sizing flows, and every failure before
+        // Engine takes ownership must call release.
+        let queries = Transactions::new(admission)?;
         // Solve from general headroom so TCP cannot consume the reserved DNS and packet-completion floors.
         let prepared = largest_fitting(admission.general_headroom(), per_flow, |flows| {
-            tables_footprint(flows, mtu, admission.dns_token_cap())
+            tables_footprint(flows, mtu)
         });
-        let bytes =
-            tables_footprint(prepared, mtu, admission.dns_token_cap()).ok_or(Denied::Arithmetic)?;
-        let tables = admission.reserve(Request::bytes(bytes, Class::General))?;
-        let (asks, asking) = mpsc::channel(submission_depth(admission.dns_token_cap()));
-        let queries = match Transactions::new(admission) {
-            Ok(queries) => queries,
+        let bytes = match tables_footprint(prepared, mtu) {
+            Some(bytes) => bytes,
+            None => {
+                queries.release(admission);
+                return Err(Denied::Arithmetic);
+            }
+        };
+        let tables = match admission.reserve(Request::bytes(bytes, Class::General)) {
+            Ok(tables) => tables,
             Err(why) => {
-                drop(asks);
-                drop(asking);
-                admission.release(tables);
+                queries.release(admission);
                 return Err(why);
             }
         };
+        let (asks, asking) = mpsc::channel(submission_depth(prepared));
         Ok((
             Self {
                 interface,
@@ -258,9 +259,15 @@ impl Engine {
         }
     }
 
-    pub(crate) async fn shutdown(&mut self, admission: &mut Admission, output: &mut Output) {
+    /// Retires all flows, then drains transactions, returning the first local failure.
+    pub(crate) async fn shutdown(
+        &mut self,
+        admission: &mut Admission,
+        output: &mut Output,
+    ) -> io::Result<()> {
         self.retire(Retirement::Everything, admission, output).await;
-        self.queries.shutdown(admission);
+        // Flows may still settle deliveries, so drain transactions last.
+        self.queries.shutdown(admission)
     }
 
     async fn retire(&mut self, scope: Retirement, admission: &mut Admission, output: &mut Output) {
@@ -490,7 +497,6 @@ impl Admit<'_> {
                 bytes,
                 flow: flow_budget::SIZING,
                 hop_limit: self.hop_limit,
-                resolver: self.source.resolver(),
             },
             IpListenEndpoint::from(endpoint(self.destination)),
         )
@@ -498,7 +504,7 @@ impl Admit<'_> {
 
     fn assemble(&self, prepared: flow_setup::Prepared) -> (SocketHandle, u64, Built) {
         let flow_setup::Prepared {
-            connection,
+            lease,
             handle,
             identity,
             bridge,
@@ -516,7 +522,7 @@ impl Admit<'_> {
                     client: self.client,
                     destination: self.destination,
                     kind: self.source.kind(),
-                    connection,
+                    lease,
                     bridge,
                     refresh: false,
                     serving,
@@ -573,18 +579,18 @@ impl flow::FlowOps for Admit<'_> {
             ..
         } = record;
         let Flow {
-            connection,
+            lease,
             bridge,
             serving,
             ..
         } = flow;
-        let _ = serving.close(self.admission);
+        serving.close(self.admission);
         flow_setup::release(
             self.admission,
             self.sockets,
             handle,
             flow_setup::Leftovers {
-                connection,
+                lease,
                 bridge,
                 stream,
                 control,
@@ -662,22 +668,23 @@ impl Admit<'_> {
     }
 }
 
-fn tables_footprint(flows: usize, mtu: usize, tokens: u32) -> Option<u64> {
+fn tables_footprint(flows: usize, mtu: usize) -> Option<u64> {
     Workers::<SocketHandle, Flow>::footprint(flows)?
         .checked_add(linear_footprint(
             flows,
             std::mem::size_of::<SocketHandle>() as u64,
         )?)?
         .checked_add(channel_footprint::<tcp_dns::Ask>(
-            submission_depth(tokens),
+            submission_depth(flows),
             flows,
         )?)?
         .checked_add(linear_footprint(flows, SOCKET_SLOT_BYTES)?)?
         .checked_add(mtu as u64)
 }
 
-fn submission_depth(tokens: u32) -> usize {
-    built_depth(tokens as usize)
+/// At most one pending ask per prepared sequential transport.
+fn submission_depth(flows: usize) -> usize {
+    built_depth(flows)
 }
 
 fn endpoint(address: SocketAddr) -> IpEndpoint {

@@ -70,16 +70,14 @@ impl Engine {
             self.counters.ingress.stale += 1;
             return;
         }
-        // A session that has stopped serving admits no new exchange. Refused rather than ignored, which is
-        // the difference between a stream that stays framed - the transport skips the announced bytes and the
-        // client may ask again - and one left waiting on a question nobody took.
+        // Refuse new queries while admission is disabled so the transport drains the body and returns
+        // SERVFAIL.
         if !admitting {
             self.counters.denied += 1;
             self.grant(flow, tcp_dns::Granted::Denied);
             return;
         }
-        // One query at a time per transport, which is what its single logical token means. A second
-        // reservation while one is outstanding would be a second exchange this connection never paid for.
+        // DNS-over-TCP is sequential, so a flow can consume only one reservation at a time.
         if self
             .flows
             .get(&flow.handle)
@@ -138,43 +136,27 @@ impl Engine {
             reserved.end(admission);
             return Ok(());
         };
-        // Sampled together and now: which selection this query goes out on, and which config it belongs to.
-        // A query with no descriptor behind it never had a transaction to open, so it takes the same path as
-        // one with no network to resolve on - which is also what a transport opened before any config had
-        // selected a network gets, on a stream that then resolves normally once one arrives.
-        // Read `admitting` at publication, the commit point for starting platform work.
+        // Sample the network and stamp at the submission commit point.
         let published = self
             .upstream
-            .filter(|_| admitting && reserved.submittable())
+            .filter(|_| admitting)
             .map(|network| (network, self.stamp));
         let Some((network, stamp)) = published else {
-            // No selected network, or no descriptor: the client is answered here rather than left waiting on
-            // a question nobody took, and its stream carries on.
-            self.answer_here(flow, reserved, query, admission);
-            return Ok(());
+            // Keep the stream alive and answer this reserved query locally.
+            return self.answer_here(flow, reserved, query, admission);
         };
-        // `?` is the one outcome that is not this transport's: this daemon's own wrapper around the
-        // descriptor Android returned failed, so everything the row held has already gone back - including
-        // the token, since the flow's close now finds no question to hand one to - and the failure ends the
-        // ingress task. Nothing is recorded on the flow for it, because there is no question to record.
+        // Only local wrapper failures escape via `?`; platform outcomes, including `EBUSY`, settle as query
+        // failures.
         match self
             .queries
             .submit(network, stamp, flow, reserved, query, admission)?
         {
-            Submitted::Outstanding(transaction) => {
-                // Remembered so that a transport closing over a question still in flight can hand that
-                // question its own token rather than charging a second.
-                if let Some(held) = self.flows.get_mut(&flow.handle) {
-                    held.record.serving.asking(Some(transaction));
-                }
-                self.counters.resolved += 1;
-            }
-            // The table would have had to grow, which the room check at reservation makes unreachable. The
-            // reservation and its query come back whole, the platform was never asked, and the client gets
-            // that query's own SERVFAIL on a stream that carries on.
+            // Ownership transferred to the table; flow closure will not cancel it.
+            Submitted::Outstanding => self.counters.resolved += 1,
+            // No platform work started; return the reservation and answer locally.
             Submitted::Refused(reserved, query) => {
                 self.counters.unprepared += 1;
-                self.answer_here(flow, reserved, query, admission);
+                self.answer_here(flow, reserved, query, admission)?;
             }
         }
         Ok(())
@@ -187,50 +169,40 @@ impl Engine {
         reserved: tcp_dns::Reserved,
         query: Owned,
         admission: &mut Admission,
-    ) {
+    ) -> io::Result<()> {
         self.counters.answered_here += 1;
         let Some(held) = self.flows.get_mut(&flow.handle) else {
             // Unreachable: validated by the caller with nothing awaited since. The query goes before the
             // grant that covered it, like every other buffer on this path.
             self.counters.ingress.stale += 1;
             drop(query);
-            return reserved.end(admission);
+            reserved.end(admission);
+            return Ok(());
         };
         let serving = &mut held.record.serving;
-        let Some(answering) = tcp_dns::answered_here(reserved, query, serving, admission) else {
-            // Too malformed for anything to be echoed back. The transport has been told, and it ends the
-            // stream rather than leaving a client waiting on a question nothing can answer.
-            return;
+        let Some(answering) = tcp_dns::answered_here(reserved, query, serving, admission)? else {
+            // The transport was notified and will terminate the invalid message.
+            return Ok(());
         };
         if answering.hand_over(admission, serving) {
             self.counters.unsettled += 1;
         }
+        Ok(())
     }
 
-    /// Settles one finished resolver transaction, in the one order that does not lose an acknowledgment.
+    /// Settles one completed transaction; table-invariant failures end the session.
     pub(crate) fn settle(
         &mut self,
-        settlement: tcp_dns::Settlement,
+        settlement: io::Result<tcp_dns::Settlement>,
         admission: &mut Admission,
     ) -> io::Result<()> {
-        let transaction = settlement.key();
+        let settlement = settlement?;
         // Exact identity, both halves, rather than a scan for whichever flow claims this transaction id.
         // smoltcp reuses handles, so a predecessor's answer must never reach the flow that took its place -
         // and the incarnation is what tells those two apart. Read off the settlement rather than off the
         // delivery below, because the delivery does not exist for a settlement that ends the session.
         let asked = settlement.flow();
         let live = self.flows.current(&asked.handle, asked.incarnation);
-        // The flow that asked has no question outstanding any more, whatever this settlement turns out to be:
-        // its row leaves the table either way. So a close from here on releases its own token rather than
-        // trying to hand it to a transaction that has already settled. Only when it is *this* transaction: a
-        // flow whose question was replaced still owes the one it has now.
-        if live {
-            if let Some(flow) = self.flows.get_mut(&asked.handle) {
-                if flow.record.serving.transaction() == Some(transaction) {
-                    flow.record.serving.asking(None);
-                }
-            }
-        }
         let mut delivered = self.queries.settle(settlement, admission)?;
         let stamp = delivered.stamp();
         // A flow that is absent, closed or reused is one there is nobody left to answer: the transport that

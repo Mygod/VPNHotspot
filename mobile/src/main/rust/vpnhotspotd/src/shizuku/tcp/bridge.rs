@@ -1,4 +1,5 @@
 use std::future::poll_fn;
+use std::io;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
@@ -19,9 +20,9 @@ pub(crate) enum Attention {
         handle: SocketHandle,
         incarnation: u64,
     },
-    /// A resolver transaction that outlived the flow which asked for it. A value rather than a terminal
-    /// message, because this owner polls its rows itself - see [crate::shizuku::tcp_dns].
-    Transaction(tcp_dns::Settlement),
+    /// A resolver transaction settlement independent of flow lifetime, or a terminal table-invariant
+    /// failure.
+    Transaction(io::Result<tcp_dns::Settlement>),
     /// Bytes crossed a bridge in one direction or the other, or a half-close did, so the stack has something
     /// to do about it. Payload-free and flow-free on purpose: the pass has already moved everything it could,
     /// and what is left is to run the stack and refresh the lifetimes that saw traffic.
@@ -37,18 +38,17 @@ impl Engine {
 
     /// Every source, in one poll and in the order they matter.
     pub(crate) fn poll_attention(&mut self, cx: &mut Context<'_>) -> Poll<Attention> {
-        // Answered before anything is polled, and it is not a wait: what it looks at is state this owner
-        // already holds, and the only thing that can change it is work this owner just did - every
-        // transition to `Closed` comes from a packet or a poll this loop performed, and the loop re-enters
-        // here immediately afterwards, so there is no waker to register.
-        if let Some(closed) = self.next_client_closed() {
-            return Poll::Ready(closed);
-        }
+        // Drain readiness queues before scanning flows; otherwise each completion triggers a full scan.
         if let Poll::Ready(terminal) = self.flows.poll_finished(cx) {
             return Poll::Ready(Attention::Flow(terminal));
         }
         if let Poll::Ready(settlement) = self.queries.poll_finished(cx) {
             return Poll::Ready(Attention::Transaction(settlement));
+        }
+        // Client closure is owner-local state with no waker. Check it after finite readiness batches and
+        // before pumping bridges.
+        if let Some(closed) = self.next_client_closed() {
+            return Poll::Ready(closed);
         }
         if self.pump(cx) {
             return Poll::Ready(Attention::Traffic);

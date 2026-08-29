@@ -161,7 +161,8 @@ Advancing `upstream_generation` fences queued output and retires TCP, UDP and
 Echo state bound to the old `Network`. Workers are cancelled and joined before
 their descriptors and reservations are released. Reassembly and DNS-over-TCP
 transports remain; a resolver answer from the old generation becomes SERVFAIL
-for that query. Android resolver work itself cannot be cancelled or joined.
+for that query. A submitted query remains transaction-owned until settlement even
+if its transport closes; Android resolver work cannot be cancelled or joined.
 There is no fallback network.
 
 ## App-UID Dataplane
@@ -173,7 +174,7 @@ destinations are classified before reassembly or transport dispatch.
 | --- | --- | --- |
 | TCP | terminated by smoltcp and reconnected upstream | socket, bounded bridge, worker and upstream descriptor |
 | UDP | endpoint-independent, address-filtered mapping per TUN-visible source | mapping, remotes and bounded send history |
-| Virtual DNS | terminated into Android's resolver over UDP or TCP | transaction and logical resolver token |
+| Virtual DNS | terminated into Android's resolver over UDP or TCP | submitted transaction, resolver descriptor and precharged exchange buffers |
 | ICMP Echo | relayed through ping sockets | Echo session and socket |
 | Supported ICMP errors | translated only when the quoted flow is proven | no persistent row |
 | Other traffic | dropped | none |
@@ -186,8 +187,11 @@ window.
 
 Admission measures descriptor headroom from `RLIMIT_NOFILE` and byte headroom
 from `MemAvailable` at session start. General traffic cannot consume the DNS
-reserve. New work is denied rather than evicting live work, and each reservation
-is acquired before the resource and released only after cancel, join and close.
+reserve for one maximum resolver exchange. DNS has no fixed query-count cap:
+concurrency is bounded by measured descriptor and memory headroom, with table
+capacities derived so they cannot fail first. Resources are charged before
+acquisition; reservations release only after covered resources are closed or
+dropped and any owning worker is joined. See [`dns.md`](dns.md).
 
 Outer idle floors are:
 

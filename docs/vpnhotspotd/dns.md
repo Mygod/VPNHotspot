@@ -34,9 +34,23 @@ Both paths use bionic:
 - `android_res_nresult` reads and closes the result;
 - dropping an unfinished query calls `android_res_cancel`.
 
-`android_res_cancel` closes this process's descriptor; it does not cancel or join
-Android's resolver work. Android releases its own query-limiter slot when that
-work returns, on a lifetime the daemon cannot observe.
+`android_res_cancel` closes only this process's descriptor; it neither cancels
+nor joins Android's resolver work. The per-UID limiter runs asynchronously after
+descriptor handoff, so refusal arrives as `-EBUSY` through that descriptor. The
+daemon neither mirrors the platform limit nor derives admission or storage
+bounds from it. Accepted queries still consume the app UID's Android slots;
+enforcement and release remain platform-owned.
+
+This lifecycle was verified on Android 17 and Android 13:
+
+- Android 17: [descriptor handoff](https://android.googlesource.com/platform/system/netd/+/refs/tags/android-17.0.0_r1/client/NetdClient.cpp#519),
+  [handler](https://android.googlesource.com/platform/packages/modules/DnsResolver/+/refs/tags/android-17.0.0_r1/DnsProxyListener.cpp#1061),
+  [limiter](https://android.googlesource.com/platform/packages/modules/DnsResolver/+/refs/tags/android-17.0.0_r1/DnsProxyListener.cpp#1110),
+  [cancel closes the descriptor](https://android.googlesource.com/platform/system/netd/+/refs/tags/android-17.0.0_r1/client/NetdClient.cpp#586);
+- Android 13: [descriptor handoff](https://android.googlesource.com/platform/system/netd/+/refs/tags/android-13.0.0_r1/client/NetdClient.cpp#536),
+  [handler](https://android.googlesource.com/platform/packages/modules/DnsResolver/+/refs/tags/android-13.0.0_r1/DnsProxyListener.cpp#896),
+  [limiter](https://android.googlesource.com/platform/packages/modules/DnsResolver/+/refs/tags/android-13.0.0_r1/DnsProxyListener.cpp#943),
+  [cancel closes the descriptor](https://android.googlesource.com/platform/system/netd/+/refs/tags/android-13.0.0_r1/client/NetdClient.cpp#603).
 
 The descriptor is nonblocking and registered with Tokio. The daemon waits for
 peer closure before calling the synchronous `android_res_nresult`, relying on the
@@ -66,10 +80,11 @@ Each framed query/response is one accounting unit. Unexpected EOF between frames
 is clean. Host/network-unreachable response writes are logged as downstream
 churn; other I/O failures return to the connection owner.
 
-On the app-UID path, the resolver transaction is independent of its TCP
-transport. Closing the transport discards a late answer rather than cancelling
-Android's query or delivering it to a reused flow. Clean transport completion may
-retain client-facing TCP state as described in
+On the app-UID path, the transaction table—not the TCP transport—owns each
+submitted query, its buffers and its charge until settlement. Closing a
+transport does not cancel or recharge the query; exact flow identity prevents a
+late answer reaching a reused flow. Reservations release exactly once. Clean
+transport completion may retain client-facing TCP state as described in
 [`shizuku.md`](shizuku.md#app-uid-dataplane).
 
 ## UDP DNS
@@ -85,17 +100,42 @@ Platform outcomes such as no selected network, timeout, `EBUSY`, unresolvable
 name or remote failure return SERVFAIL when possible and are otherwise silent.
 They are traffic-controlled outcomes, not structured reports.
 
-Failures in the daemon's wrapper -- making the returned descriptor nonblocking,
-registering it with Tokio, or polling that registration -- are local failures.
-On the app-UID path they end the session because subsequent queries depend on the
-same facility. Once ingress observes one, it commits no further query. The
-descriptor, buffers and local reservation are released during joined teardown;
-the Android operation finishes independently.
+Daemon-wrapper failures are local and session-fatal on the app-UID path. Before
+transaction-table insertion, unwinding releases the descriptor, buffers and
+reservation; afterward, the table retains ownership until settlement or
+shutdown. Android's operation remains independent.
 
-The app-UID daemon reserves at most 32 logical resolver tokens, below Android's
-256-query per-UID limit. A UDP query owns one token. DNS-over-TCP owns one per
-transport and transfers it to an outstanding query if the transport closes; it
-does not charge a second token per query.
+App-UID DNS admission uses measured descriptor and memory budgets only. Each
+submitted query precharges one DNS descriptor record plus worst-case exchange
+bytes. UDP reserves a maximum question and answer; TCP reserves the announced
+question, maximum answer and framed copy. TCP processes one query at a time, and
+an idle stream uses no resolver capacity.
+
+The DNS floors reserve one descriptor and enough bytes for one maximum TCP
+exchange. Resolver-table capacities derive from the same record and byte bounds,
+and the TCP request channel derives from the flow bound. Their storage is charged
+to general headroom, so none imposes an independent query cap.
+
+TCP completion is readiness-driven, with one transaction-table-owned wait per
+query. A refused delivery split is always reported. `Split::Covered` retains the
+unchanged source lease and continues delivery; `Split::Uncovered` drops buffers
+before releasing their debt, then ends the TCP session or makes virtual UDP
+discard only the affected answer. A completion without its row also ends the
+session while preserving any wrapper failure as the terminal cause and reporting
+the mismatch separately.
+
+A syntactically answerable TCP query denied by local admission is drained and
+receives a framed header-only SERVFAIL with `QDCOUNT=0`; the stream remains
+usable. Malformed or non-query input, or a message with neither a query buffer
+nor an admitted refusal sink, closes the stream. Closing the transport does not
+release an already-submitted transaction.
+
+On stop, TCP retires its flows and directly polls each stored resolver wait once,
+reporting observable wrapper failures and wait/row mismatches before dropping
+pending waits. Descriptors close before their buffers and charges are released.
+Virtual UDP cancels and joins every worker before releasing its lease. Neither
+path waits for Android. Process death closes the descriptors, and app-UID DNS
+leaves no external state to clean up.
 
 Root listener setup failure does not stop the session. Routing omits the missing
 redirect so ordinary traffic and manually configured downstream DNS may continue.

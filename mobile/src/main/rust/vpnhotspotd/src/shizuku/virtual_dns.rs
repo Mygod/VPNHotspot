@@ -17,11 +17,15 @@ use crate::shizuku::owned::Owned;
 use crate::shizuku::resolver;
 use crate::shizuku::tun_writer::Stamp;
 use vpnhotspotd::shared::admission::{Admission, Class, Denied, Lease, Request as Grant};
+use vpnhotspotd::shared::dns_debt;
 use vpnhotspotd::shared::reply_bound::channel_footprint;
 
 const QUERY_BYTES: u64 = MAX_DATAGRAM as u64;
 
 const ANSWER_BYTES: u64 = MAX_DATAGRAM as u64;
+
+// Keep the row-bound divisor no larger than this exchange's charge.
+const _: () = assert!(QUERY_BYTES + ANSWER_BYTES >= dns_debt::MINIMUM_SUBMITTED_BYTES);
 
 const UNROUTED: &str = "shizuku.virtual_dns.unrouted";
 
@@ -93,12 +97,13 @@ struct Debt {
 
 impl Handoff {
     pub(crate) fn new(admission: &mut Admission) -> Result<Self, Denied> {
-        let prepared = admission.dns_token_cap() as usize;
+        // Size both to the maximum admission can charge, giving every admitted worker a completion slot.
+        let prepared = dns_debt::rows(admission);
         let depth = prepared.max(1);
         let bytes = Workers::<u64, Debt>::footprint(prepared)
             .and_then(|table| table.checked_add(channel_footprint::<Arrival>(depth, depth)?))
             .ok_or(Denied::Arithmetic)?;
-        let tables = admission.reserve(Grant::bytes(bytes, Class::Reserved))?;
+        let tables = dns_debt::tables(admission, bytes)?;
         let (answers, arrivals) = mpsc::channel(depth);
         debug_assert_eq!(
             answers.max_capacity(),
@@ -149,7 +154,6 @@ impl Handoff {
             record_class: Class::Reserved,
             bytes: QUERY_BYTES + ANSWER_BYTES,
             byte_class: Class::Reserved,
-            dns_tokens: 1,
             ..Grant::default()
         }) else {
             self.counters.denied += 1;
@@ -238,7 +242,7 @@ impl Handoff {
             self.refuse(datagram, output);
             return Ok(());
         }
-        // Install the debt owner before synchronous submission: accepted platform work must never be orphaned.
+        // Install the debt owner before synchronous submission so no returned descriptor is orphaned.
         let submission = match resolver::submit(network, &query) {
             Err(failure) => match failure.ending([("client", client), ("endpoint", endpoint)]) {
                 Err(ending) => {
@@ -322,7 +326,34 @@ impl Handoff {
                 admission.release(lease);
                 delivery
             }
-            Err(_) => lease,
+            // The original lease still covers both buffers; report the invariant failure and retain it.
+            Err(denied) if denied.leaves_source_intact() => {
+                report::message_with_details(
+                    UNROUTED,
+                    "a settled virtual DNS answer kept the whole grant its delivery split was refused from",
+                    "InvalidData",
+                    [("query", key.to_string()), ("denied", format!("{denied:?}"))],
+                );
+                lease
+            }
+            // Nothing covers these buffers: drop them before releasing the lease and discard only this
+            // datagram.
+            Err(denied) => {
+                report::message_with_details(
+                    UNROUTED,
+                    "a settled virtual DNS answer has no grant known to cover its buffers",
+                    "InvalidData",
+                    [
+                        ("query", key.to_string()),
+                        ("denied", format!("{denied:?}")),
+                    ],
+                );
+                self.counters.discarded += 1;
+                drop(response);
+                drop(query);
+                admission.release(lease);
+                return drained;
+            }
         };
         let stamp = self.stamp;
         output.datagram(stamp, endpoint, client, LOCAL_ORIGIN_HOP_LIMIT, &response);

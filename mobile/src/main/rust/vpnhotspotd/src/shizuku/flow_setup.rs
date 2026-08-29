@@ -3,12 +3,10 @@ use smoltcp::socket::tcp::{ListenError, Socket, SocketBuffer};
 use smoltcp::wire::IpListenEndpoint;
 use tokio::sync::mpsc;
 
-use crate::report;
 use crate::shizuku::owned::Owned;
 use crate::shizuku::tcp_dns::{Control, Serving};
-use vpnhotspotd::shared::admission::Admission;
+use vpnhotspotd::shared::admission::{Admission, Class, Lease, Request};
 use vpnhotspotd::shared::bridge::{self, Bridge, Worker};
-use vpnhotspotd::shared::dns_debt::{self, Connection};
 use vpnhotspotd::shared::flow_budget;
 use vpnhotspotd::shared::reply_bound::built_depth;
 use vpnhotspotd::shared::workers::{Identity, Workers};
@@ -59,8 +57,6 @@ pub(crate) struct Sizing {
     pub(crate) flow: flow_budget::Sizing,
     /// The hop limit replies inherit, decided by the NAT66 rules rather than here.
     pub(crate) hop_limit: u8,
-    /// Whether this flow's transport holds one logical resolver token for its whole life.
-    pub(crate) resolver: bool,
 }
 
 /// Why a flow could not be prepared. Reported by the caller, which owns the vocabulary for it.
@@ -76,9 +72,9 @@ pub(crate) enum Denied {
 
 /// One prepared flow, before the record that will hold it exists.
 pub(crate) struct Prepared {
-    /// The composite grant: this flow's record slot, every byte of its buffers and channels, and - for a
-    /// DNS-over-TCP transport - the one logical resolver token.
-    pub(crate) connection: Connection,
+    /// Covers this flow's record, buffers and channels; submitted DNS queries have separate leases and may
+    /// outlive it.
+    pub(crate) lease: Lease,
     /// The client-side socket's slot in the engine's set.
     pub(crate) handle: SocketHandle,
     /// The identity this flow's record and its transport task share, which is also the incarnation that goes
@@ -101,7 +97,7 @@ pub(crate) struct Prepared {
 
 /// What is left of a flow that will not exist, in whatever state its registration reached.
 pub(crate) struct Leftovers {
-    pub(crate) connection: Connection,
+    pub(crate) lease: Lease,
     pub(crate) bridge: Bridge,
     /// The worker's side of the bridge, absent once a worker future has taken it.
     pub(crate) stream: Option<Worker>,
@@ -119,7 +115,13 @@ pub(crate) fn prepare<R>(
     endpoint: IpListenEndpoint,
 ) -> Result<Prepared, Denied> {
     // Take the composite grant before allocating buffers, channels, an identity, or a worker.
-    let Ok(connection) = dns_debt::open(admission, sizing.bytes, sizing.resolver) else {
+    let Ok(lease) = admission.reserve(Request {
+        records: 1,
+        record_class: Class::General,
+        bytes: sizing.bytes,
+        byte_class: Class::General,
+        ..Request::default()
+    }) else {
         return Err(Denied::Grant);
     };
     let mut socket = Socket::new(
@@ -134,7 +136,7 @@ pub(crate) fn prepare<R>(
     if let Err(e) = socket.listen(endpoint) {
         // Never added to the set, so dropping it here is the whole of its cleanup.
         drop(socket);
-        close_idle(admission, connection);
+        admission.release(lease);
         return Err(Denied::Listen(e));
     }
     let handle = sockets.add(socket);
@@ -142,7 +144,7 @@ pub(crate) fn prepare<R>(
     // in hand, so this unwinds them here rather than leaving the transaction to do it.
     let Ok(identity) = workers.identity() else {
         sockets.remove(handle);
-        close_idle(admission, connection);
+        admission.release(lease);
         return Err(Denied::Identity);
     };
     // The depths that were *charged*, not the ones requested. A derived bound of zero is still a channel that
@@ -161,7 +163,7 @@ pub(crate) fn prepare<R>(
     let (answers, control_end) = mpsc::channel(control);
     let (filled, accepted) = mpsc::channel(control);
     Ok(Prepared {
-        connection,
+        lease,
         handle,
         identity,
         bridge,
@@ -170,17 +172,6 @@ pub(crate) fn prepare<R>(
         control: control_end,
         filled,
     })
-}
-
-/// Closes a connection that never had a question outstanding.
-fn close_idle(admission: &mut Admission, connection: Connection) {
-    if !dns_debt::close(admission, connection, None) {
-        report::message(
-            "shizuku.tcp_flow_setup",
-            "a flow that never asked anything reported an outstanding question",
-            "InvalidData",
-        );
-    }
 }
 
 /// The reverse of [prepare], explicitly and in reverse order.
@@ -192,7 +183,7 @@ pub(crate) fn release(
 ) {
     sockets.remove(handle);
     let Leftovers {
-        connection,
+        lease,
         bridge,
         stream,
         control,
@@ -204,5 +195,5 @@ pub(crate) fn release(
     drop(stream);
     drop(control);
     drop(filled);
-    close_idle(admission, connection);
+    admission.release(lease);
 }

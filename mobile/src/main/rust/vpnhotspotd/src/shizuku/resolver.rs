@@ -22,8 +22,8 @@ const REGISTER: &str = "resolver.register";
 /// android/multinetwork.h: `ResNsendFlags::ANDROID_RESOLV_NO_RETRY`.
 const ANDROID_RESOLV_NO_RETRY: u32 = 1 << 0;
 
-/// Owns the descriptor `android_res_nsend` returned, so that dropping it before the answer is read
-/// cancels the transaction rather than leaking the descriptor.
+/// Owns an `android_res_nsend` descriptor. Dropping closes this process's handle but does not cancel or join
+/// Android's resolver work.
 struct ResolverQuery {
     fd: Option<RawFd>,
 }
@@ -75,7 +75,8 @@ unsafe extern "C" {
     fn android_res_cancel(nsend_fd: c_int);
 }
 
-/// A transaction the platform has accepted, waiting only to be read.
+/// Holds a submitted transaction's dnsproxyd descriptor. Platform acceptance or refusal, including `EBUSY`,
+/// arrives through it.
 pub(crate) struct Resolving {
     /// Taken at the terminal, which is what hands the descriptor to `android_res_nresult` to read and close.
     /// Absent afterwards, so a second poll cannot read a descriptor this transaction has already given up.
@@ -83,7 +84,7 @@ pub(crate) struct Resolving {
 }
 
 impl Resolving {
-    /// Polls this transaction to its terminal, on the owner's own task rather than in one of its own.
+    /// Polls the transaction to completion.
     pub(crate) fn poll_result(&mut self, cx: &mut Context<'_>) -> Poll<Result<Vec<u8>, Failure>> {
         let Some(fd) = self.fd.as_ref() else {
             // Unreachable: an owner removes a transaction the moment it produces a result, so nothing polls
@@ -152,10 +153,8 @@ pub(crate) fn submit(network: Network, message: &[u8]) -> Result<Resolving, Fail
         return Err(Failure::platform(io::Error::from_raw_os_error(-fd)));
     }
     let fd = ResolverQuery { fd: Some(fd) };
-    // Past this point the query is Android's, and the two steps below are this process's own wrapper around
-    // the descriptor it was handed - so each is classified as local, and each ends the owner that asked
-    // rather than answering one query. Returning either way drops the descriptor, which cancels and closes
-    // it; Android's own operation ends when its resolver work does, which nothing here waits for.
+    // The remaining wrapper failures are local. Returning drops our descriptor without cancelling or joining
+    // Android's work.
     if let Err(e) = set_nonblocking(fd.as_raw_fd()) {
         return Err(Failure::local(NONBLOCK)(e));
     }

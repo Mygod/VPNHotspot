@@ -30,8 +30,14 @@ owning document.
   handshake finishes, or until expiry, retirement or session shutdown.
 - Flow retirement and reservation release happen exactly once. Accepted resets
   are determined by the TCP stack, not by inspecting a header bit alone.
-- Android resolver work cannot be joined. The daemon owns only its descriptor,
-  local token and buffers; see [`dns.md`](dns.md).
+- Android resolver work cannot be joined. Each submitted DNS-over-TCP
+  transaction, not its transport, owns its precharged descriptor record and
+  buffers until settlement; transport closure neither cancels nor recharges it.
+  Daemon admission is independent of Android's per-UID query limit.
+- DNS-over-TCP resolver waits are readiness-driven and transaction-table-owned.
+  Every wait has one accounting row while the table is live; ownership and
+  accounting failures are reported, and buffers never outlive their charge. See
+  [`dns.md`](dns.md).
 - Each conversation owns one nonfatal reporter, and a successor cannot install
   it while its predecessor is finishing.
 
