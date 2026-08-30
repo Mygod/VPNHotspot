@@ -62,18 +62,16 @@
 
     <string name="tethering_watch_reconnect">Watch for reconnect</string>
 
-    <string name="shizuku_tethering">VPN tethering without root</string>
+    <string name="shizuku_tethering">Use VPN for system tethering (userspace)</string>
     <string name="shizuku_state_armed">Ready</string>
     <string name="shizuku_state_active">Active</string>
     <string name="shizuku_state_restart_required">System tethering is not using this connection</string>
     <string name="shizuku_failure_tethering_died">The system tethering service died. Restart this app before trying
-        VPN tethering without root again</string>
-    <string name="shizuku_failure_daemon">VPN tethering without root lost its packet daemon and stopped</string>
-    <string name="shizuku_failure_network">VPN tethering without root lost its test network and stopped</string>
-    <string name="shizuku_failure_cleanup_unconfirmed">The previous session could not finish releasing what it asked
-        Android for, so a new one cannot start. Try again, or restart this app</string>
-    <string name="shizuku_failure_unfenced">VPN tethering without root could not prove Android released its test
-        network (%s). Restart this app</string>
+        again</string>
+    <string name="shizuku_failure_daemon">Packet daemon stopped</string>
+    <string name="shizuku_failure_network">Tethering network lost</string>
+    <string name="shizuku_failure_cleanup_unconfirmed">The previous session could not clean up so a new one cannot start. Try again or restart this app</string>
+    <string name="shizuku_failure_unfenced">Network setup failed (%s). Restart this app</string>
 
     <string name="tethering_manage">Manage system tethering…</string>
     <string name="tethering_manage_offload_enabled">Please disable Tethering hardware acceleration in Developer options

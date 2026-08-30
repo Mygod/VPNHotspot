@@ -55,10 +55,6 @@ This app only indirectly write persistent changes through system APIs thus it sh
 2. If you edited the system Wi-Fi hotspot configuration through this app, those changes will persist.
 3. If you toggle tethering hardware offload through this app, the Android global `tether_offload_disabled` setting will persist.
    Toggle it back in this app or the matching Developer options setting to revert it.
-4. Rootless Shizuku mode sets Android's global test-network preference. A normal
-   stop clears it; process death may leave it until another owned session stops,
-   the tethering service restarts, or the device reboots. Meanwhile tethering can
-   select another app's test network.
 
 Routing, firewall, addresses, and daemon/service state managed by this app are cleaned up when stopped, by Clean, or upon reboot.
 
