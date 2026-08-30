@@ -215,7 +215,15 @@ separately permits explicit selection of other networks
 ## App-UID Dataplane
 
 All TUN input is untrusted and has no physical-client identity. Exact virtual
-destinations are classified before reassembly or transport dispatch.
+destinations are classified before reassembly or transport dispatch. IPv6
+extension chains and non-initial fragments addressed to virtual DNS are admitted
+only for bounded unwrapping or reassembly, then classified again. A read allows
+three rewrites (outer chain, reassembly, inner chain) followed by one
+delivery-only attempt; another wrapper is rejected before extension walking or
+reassembly state changes. Only TCP or UDP port 53 is accepted. Unsupported
+headers (including AH and ESP), source routing, chains longer than six headers,
+other transports and other ports are dropped rather than relayed from the
+reserved address.
 
 | Traffic | Handling | Owned state |
 | --- | --- | --- |
@@ -225,6 +233,26 @@ destinations are classified before reassembly or transport dispatch.
 | ICMP Echo | relayed through ping sockets | Echo session and socket |
 | Supported ICMP errors | translated only when the quoted flow is proven | no persistent row |
 | Other traffic | dropped | none |
+
+One task owns TUN ingress and selects on every dataplane source at once, biased:
+
+| Arm | Metering |
+| --- | --- |
+| Cancellation | first and unmetered |
+| Configuration | prioritized and unmetered |
+| TUN writer settlements, UDP/Echo completions, virtual DNS settlement | unmetered; bounded by metered producers |
+| TCP attention: traffic, terminals, DNS transactions and client closes | one turn per pass |
+| UDP/Echo replies, TCP DNS handoffs, deadlines and TUN readability | one turn per pass |
+
+A metered source takes at most one turn per pass. When all remaining sources are
+pending, the pass resets without rescanning owner deadlines. If the pending set
+included TCP attention (the only O(N) poll), a carried retry first offers only
+the sources already served and keeps attention disabled; otherwise all sources
+reopen immediately. Configuration is deliberately unmetered because it is
+authenticated, limited to one in-flight call and updates state used by later
+arms. Settlement and completion arms are unmetered because their work is bounded
+by metered producers. An indefinitely ready configuration stream can still delay
+ordinary work; fairness is a bound among metered turns, not wall-clock time.
 
 Android applies the app UID's routing and access policy to every unbound egress
 socket; the daemon adds no network or ingress-interface authorization of its
@@ -238,7 +266,22 @@ provides no identity-quarantine or ingress-interface-provenance guarantee.
 
 MTU 1500 is checked once and drives stack sizing and output fragmentation. Path
 MTU errors come from socket error queues and `EMSGSIZE`, not a cached upstream
-MTU. Reassembly, fragment identifiers, queues and all traffic-driven tables are
+MTU. Egress socket state is what keeps that true per family:
+
+| Family | Fragmentation state | Installed |
+| --- | --- | --- |
+| IPv4 UDP mapping and ping | `IP_MTU_DISCOVER` = `IP_PMTUDISC_DO` or `IP_PMTUDISC_OMIT`, from the relayed packet's own DF bit | before each send |
+| IPv6 UDP mapping and ping | `IPV6_DONTFRAG` = 1 | at socket creation |
+
+`IPV6_DONTFRAG` makes oversized IPv6 sends fail with `EMSGSIZE`, allowing the
+existing error-queue path to return ICMPv6 Packet Too Big instead of emitting
+source fragments. Failure to set descriptor-lifetime options aborts socket
+creation; failure to apply IPv4's per-send policy reports and drops that packet.
+The state is descriptor-local: normal stop or daemon exit removes it by closing
+the socket; a surviving child retains it until exit. `CleanRoutingCommand` has no
+persistent state to remove and cannot close that child's descriptors.
+
+Reassembly, fragment identifiers, queues and all traffic-driven tables are
 bounded; incomplete fragments and IPv4 fragment-identity reuse use a 60-second
 window.
 

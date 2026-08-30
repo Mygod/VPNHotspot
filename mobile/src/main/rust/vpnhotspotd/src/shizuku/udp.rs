@@ -15,6 +15,7 @@ use vpnhotspotd::shared::udp_wire::Relayed;
 use vpnhotspotd::shared::workers::{Ended, Terminal, Workers};
 
 use vpnhotspotd::shared::admission::{logical_footprint, Admission, Class, Denied, Lease, Request};
+use vpnhotspotd::shared::egress_socket;
 
 use crate::report;
 use crate::shizuku::egress::{self, Fragmentation};
@@ -249,6 +250,7 @@ impl Relay {
             return;
         }
         let socket = mapping.socket.get_ref();
+        // IPv6 sockets prohibit source fragmentation when opened.
         if !datagram.destination.is_ipv6() {
             if let Err(e) = egress::set_fragmentation(
                 socket,
@@ -579,7 +581,7 @@ impl Relay {
     }
 
     fn bind(&self, ipv6: bool) -> io::Result<AsyncFd<Socket>> {
-        let socket = egress::open_udp(ipv6)?;
+        let socket = egress_socket::open_udp(ipv6)?;
         socket.bind(&SockAddr::from(SocketAddr::new(
             if ipv6 {
                 IpAddr::V6(Ipv6Addr::UNSPECIFIED)

@@ -6,6 +6,26 @@ use crate::shared::udp_wire::Reject;
 /// How many extension headers one chain may contain.
 const MAX_HEADERS: usize = 6;
 
+/// Maximum rewrites per read: outer extension chain, reassembly, then inner extension chain.
+pub const REWRITES: usize = 3;
+
+/// Runs at most [REWRITES] actions, charging before invoking each action.
+pub struct Budget(usize);
+
+impl Default for Budget {
+    fn default() -> Self {
+        Self(REWRITES)
+    }
+}
+
+impl Budget {
+    /// Runs `rewrite` only when budget remains.
+    pub fn spend<T>(&mut self, rewrite: impl FnOnce() -> T) -> Option<T> {
+        self.0 = self.0.checked_sub(1)?;
+        Some(rewrite())
+    }
+}
+
 /// What walking a chain produced.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Walked {
@@ -90,7 +110,13 @@ pub fn walk(packet: &[u8]) -> Result<Walked, Reject> {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{IpAddr, SocketAddr};
+    use std::time::Instant;
+
     use super::*;
+    use crate::shared::admission::{Admission, Class, Lease, Request, Totals};
+    use crate::shared::classify::{classify, Classified, Drop, Principal};
+    use crate::shared::reassembly;
     use crate::shared::udp_wire::{self, build_reply};
 
     fn wrapped(chain: &[(u8, usize, u8)]) -> Vec<u8> {
@@ -126,6 +152,210 @@ mod tests {
     const DESTINATION: u8 = 60;
     const AH: u8 = 51;
     const ESP: u8 = 50;
+
+    fn options(next: u8) -> [u8; 8] {
+        [next, 0, 0, 0, 0, 0, 0, 0]
+    }
+
+    /// Builds outer options, a Fragment header, and inner options. `nested` adds a fourth wrapper.
+    fn doubly_wrapped(destination: SocketAddr, payload: &[u8], nested: bool) -> Vec<Vec<u8>> {
+        let datagram = build_reply(
+            "[2001:db8:1::2]:40000".parse().unwrap(),
+            destination,
+            64,
+            None,
+            payload,
+        )
+        .unwrap();
+        let mut fragmentable = options(if nested { FRAGMENT } else { datagram[6] }).to_vec();
+        if nested {
+            // Offset zero with more fragments set creates a retained reassembly context.
+            fragmentable.extend_from_slice(&[datagram[6], 0, 0, 1, 0x9a, 0xbc, 0xde, 0xf1]);
+        }
+        fragmentable.extend_from_slice(&datagram[IPV6_HEADER_LEN..]);
+        let split = 16;
+        assert!(
+            split < fragmentable.len(),
+            "the split has to leave two real fragments"
+        );
+        [(0usize, split, true), (split, fragmentable.len(), false)]
+            .into_iter()
+            .map(|(offset, end, more)| {
+                let mut body = options(FRAGMENT).to_vec();
+                body.push(DESTINATION);
+                body.push(0);
+                body.extend_from_slice(&(((offset as u16) & !7) | u16::from(more)).to_be_bytes());
+                body.extend_from_slice(&0x9abc_def0u32.to_be_bytes());
+                body.extend_from_slice(&fragmentable[offset..end]);
+                let mut fragment = datagram[..IPV6_HEADER_LEN].to_vec();
+                fragment[6] = DESTINATION;
+                fragment[4..6].copy_from_slice(&(body.len() as u16).to_be_bytes());
+                fragment.extend_from_slice(&body);
+                fragment
+            })
+            .collect()
+    }
+
+    fn table() -> (reassembly::Table, Admission, Lease) {
+        let mut admission = Admission::new(Totals {
+            admission_id: 1,
+            record_total: 64,
+            dns_record_floor: 0,
+            byte_total: 8 << 20,
+            reserved_byte_floor: 1 << 20,
+            fragment_cap: 1 << 20,
+            byte_only_owners: 4,
+        })
+        .expect("the fixture totals hold their own accounting");
+        let lease = admission
+            .reserve(Request::bytes(
+                reassembly::Table::footprint(4).expect("fits"),
+                Class::General,
+            ))
+            .expect("granted");
+        (reassembly::Table::with_capacity(4), admission, lease)
+    }
+
+    /// Applies the same gated rewrite sequence as `Dispatch::accept`.
+    fn rewritten(
+        fragments: &[Vec<u8>],
+        virtual_addresses: &[IpAddr],
+        table: &mut reassembly::Table,
+        admission: &mut Admission,
+        lease: &Lease,
+        now: Instant,
+    ) -> (Vec<u8>, Budget) {
+        let provisional = Classified::Accepted {
+            principal: Principal::Dns,
+            provisional: true,
+        };
+        let mut whole = None;
+        // Each fragment is a separate read; only the completing fragment continues the lineage.
+        let mut rewrites = Budget::default();
+        for fragment in fragments {
+            rewrites = Budget::default();
+            assert_eq!(classify(fragment, virtual_addresses), provisional);
+            assert_eq!(udp_wire::parse(fragment), Err(Reject::Extended));
+            let Some(walked) = rewrites.spend(|| walk(fragment)) else {
+                panic!("stripping that chain is the first rewrite a read is owed");
+            };
+            let Ok(Walked::Stripped(unwrapped)) = walked else {
+                panic!("the chain in front of the Fragment header strips");
+            };
+            assert_eq!(classify(&unwrapped, virtual_addresses), provisional);
+            assert_eq!(udp_wire::parse(&unwrapped), Err(Reject::Fragmented));
+            let Some(held) = rewrites.spend(|| table.accept(&unwrapped, now, admission, lease))
+            else {
+                panic!("holding the fragment is the second rewrite a read is owed");
+            };
+            match held {
+                Ok(reassembly::Accepted::Pending) => {}
+                Ok(reassembly::Accepted::Complete(assembled)) => whole = Some(assembled),
+                refused => panic!("reassembly refused a conforming fragment: {refused:?}"),
+            }
+        }
+        let whole = whole.expect("the last fragment completes the datagram");
+        assert_eq!(classify(&whole, virtual_addresses), provisional);
+        assert_eq!(udp_wire::parse(&whole), Err(Reject::Extended));
+        let Some(walked) = rewrites.spend(|| walk(&whole)) else {
+            panic!("stripping that chain is the third rewrite a read is owed");
+        };
+        let Ok(Walked::Stripped(bare)) = walked else {
+            panic!("the chain behind the Fragment header strips");
+        };
+        (bare, rewrites)
+    }
+
+    #[test]
+    fn a_chain_on_both_sides_of_a_fragment_header_still_delivers() {
+        let destination: SocketAddr = "[fd00::53]:53".parse().unwrap();
+        let (mut table, mut admission, lease) = table();
+        let (bare, mut rewrites) = rewritten(
+            &doubly_wrapped(destination, b"a query for the resolver", false),
+            &[destination.ip()],
+            &mut table,
+            &mut admission,
+            &lease,
+            Instant::now(),
+        );
+        assert!(
+            rewrites.spend(|| ()).is_none(),
+            "three rewrites is all a read is owed"
+        );
+        assert_eq!(
+            classify(&bare, &[destination.ip()]),
+            Classified::Accepted {
+                principal: Principal::Dns,
+                provisional: false
+            }
+        );
+        assert_eq!(
+            udp_wire::parse(&bare).expect("the datagram parses").payload,
+            b"a query for the resolver"
+        );
+    }
+
+    #[test]
+    fn a_chain_on_both_sides_of_a_fragment_header_is_still_no_route_past_the_resolver() {
+        let destination: SocketAddr = "[fd00::53]:443".parse().unwrap();
+        let (mut table, mut admission, lease) = table();
+        let (bare, mut rewrites) = rewritten(
+            &doubly_wrapped(destination, b"not a query", false),
+            &[destination.ip()],
+            &mut table,
+            &mut admission,
+            &lease,
+            Instant::now(),
+        );
+        assert!(
+            rewrites.spend(|| ()).is_none(),
+            "three rewrites is all a read is owed"
+        );
+        assert_eq!(
+            classify(&bare, &[destination.ip()]),
+            Classified::Dropped(Drop::Reserved)
+        );
+    }
+
+    #[test]
+    fn a_fragment_header_behind_every_rewrite_buys_no_reassembly_context() {
+        let destination: SocketAddr = "[fd00::53]:53".parse().unwrap();
+        let now = Instant::now();
+        let (mut probe, mut charged, probe_lease) = table();
+        let (mut table, mut admission, lease) = table();
+        let (bare, mut rewrites) = rewritten(
+            &doubly_wrapped(destination, b"a query for the resolver", true),
+            &[destination.ip()],
+            &mut table,
+            &mut admission,
+            &lease,
+            now,
+        );
+        assert_eq!(
+            classify(&bare, &[destination.ip()]),
+            Classified::Accepted {
+                principal: Principal::Dns,
+                provisional: false
+            }
+        );
+        assert_eq!(udp_wire::parse(&bare), Err(Reject::Fragmented));
+        let mut asked = false;
+        let held = rewrites.spend(|| {
+            asked = true;
+            table.accept(&bare, now, &mut admission, &lease)
+        });
+        assert!(held.is_none(), "a fourth rewrite is not owed");
+        assert!(!asked, "so the reassembly table was never asked for one");
+        assert_eq!(table.next_deadline(), None);
+        assert_eq!(admission.fragment_bytes_charged(), 0);
+        // Without the budget gate, the same fragment would retain a charged context.
+        assert_eq!(
+            probe.accept(&bare, now, &mut charged, &probe_lease),
+            Ok(reassembly::Accepted::Pending)
+        );
+        assert!(probe.next_deadline().is_some());
+        assert_ne!(charged.fragment_bytes_charged(), 0);
+    }
 
     #[test]
     fn a_chain_is_removed_and_the_transport_promoted() {

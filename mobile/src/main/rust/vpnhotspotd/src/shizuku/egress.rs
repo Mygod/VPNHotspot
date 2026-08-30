@@ -5,8 +5,8 @@ use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
 
 use libc::{c_int, c_void};
 use nix::sys::socket::{
-    recvmsg, sendmsg, setsockopt, sockopt, ControlMessage, ControlMessageOwned, MsgFlags,
-    SockaddrIn, SockaddrIn6, SockaddrStorage,
+    recvmsg, sendmsg, ControlMessage, ControlMessageOwned, MsgFlags, SockaddrIn, SockaddrIn6,
+    SockaddrStorage,
 };
 use socket2::{Domain, Protocol, Socket, Type};
 use tokio::io::unix::AsyncFd;
@@ -53,57 +53,13 @@ fn set_ipv4_mtu_discover(fd: BorrowedFd<'_>, value: c_int) -> io::Result<()> {
     Ok(())
 }
 
-/// Enables the error queue and received hop-limit metadata every relayed datagram needs.
-pub(crate) fn configure_metadata(socket: &Socket, ipv6: bool) -> io::Result<()> {
-    if ipv6 {
-        setsockopt(socket, sockopt::Ipv6RecvErr, &true).map_err(io::Error::from)?;
-        setsockopt(socket, sockopt::Ipv6RecvHopLimit, &true).map_err(io::Error::from)?;
-    } else {
-        setsockopt(socket, sockopt::Ipv4RecvErr, &true).map_err(io::Error::from)?;
-        setsockopt(socket, sockopt::Ipv4RecvTtl, &true).map_err(io::Error::from)?;
-    }
-    Ok(())
-}
-
-/// Applied immediately before each IPv4 send and never left to another task to interleave, because one
-/// unconnected socket carries datagrams whose DF bits differ.
+/// Applies each packet's IPv4 DF policy before sending. IPv6 source-fragmentation policy is fixed at open.
 pub(crate) fn set_fragmentation(socket: &Socket, fragmentation: Fragmentation) -> io::Result<()> {
     set_ipv4_mtu_discover(
         socket.as_fd(),
         match fragmentation {
             Fragmentation::Prohibited => libc::IP_PMTUDISC_DO,
             Fragmentation::Permitted => IP_PMTUDISC_OMIT,
-        },
-    )
-}
-
-/// One unconnected socket per UDP mapping, so a client can reach many destinations through one pinned
-/// local identity, which is what makes the outer mapping endpoint-independent.
-pub(crate) fn open_udp(ipv6: bool) -> io::Result<Socket> {
-    open_socket(ipv6, Protocol::UDP)
-}
-
-fn open_socket(ipv6: bool, protocol: Protocol) -> io::Result<Socket> {
-    let socket = Socket::new(
-        if ipv6 { Domain::IPV6 } else { Domain::IPV4 },
-        Type::DGRAM,
-        Some(protocol),
-    )?;
-    socket.set_nonblocking(true)?;
-    configure_metadata(&socket, ipv6)?;
-    Ok(socket)
-}
-
-/// One ping socket per family. Unprivileged ping sockets are ordinary datagram sockets
-/// whose identifier the kernel assigns, so Echo identifiers seen on the wire are the kernel's and must be
-/// translated back to the client's rather than passed through.
-pub(crate) fn open_ping(ipv6: bool) -> io::Result<Socket> {
-    open_socket(
-        ipv6,
-        if ipv6 {
-            Protocol::ICMPV6
-        } else {
-            Protocol::ICMPV4
         },
     )
 }

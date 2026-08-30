@@ -37,6 +37,8 @@ struct Parsed {
     destination: IpAddr,
     protocol: u8,
     destination_port: Option<u16>,
+    /// The IPv6 base header points directly to an extension chain.
+    extended: bool,
     fragment: bool,
 }
 
@@ -45,7 +47,8 @@ pub fn classify(packet: &[u8], virtual_addresses: &[IpAddr]) -> Classified {
         return Classified::Dropped(Drop::Malformed);
     };
     if virtual_addresses.contains(&parsed.destination) {
-        if parsed.fragment && parsed.destination_port.is_none() {
+        // Admit hidden transports only for bounded inspection; the result is classified again.
+        if parsed.extended || (parsed.fragment && parsed.destination_port.is_none()) {
             return Classified::Accepted {
                 principal: Principal::Dns,
                 provisional: true,
@@ -107,6 +110,7 @@ fn parse(packet: &[u8]) -> Option<Parsed> {
                 } else {
                     None
                 },
+                extended: false,
                 fragment,
             })
         }
@@ -117,6 +121,7 @@ fn parse(packet: &[u8]) -> Option<Parsed> {
                     destination,
                     protocol: header.next_header().0,
                     destination_port: destination_port(payload, header.next_header().0),
+                    extended: header.next_header().is_ipv6_ext_header_value(),
                     fragment: false,
                 });
             }
@@ -125,6 +130,7 @@ fn parse(packet: &[u8]) -> Option<Parsed> {
             Some(Parsed {
                 destination,
                 protocol,
+                extended: false,
                 destination_port: if fragment.fragment_offset() == IpFragOffset::ZERO {
                     destination_port(&payload[fragment.slice().len()..], protocol)
                 } else {
@@ -146,6 +152,7 @@ fn destination_port(transport: &[u8], protocol: u8) -> Option<u16> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::shared::extension;
     use std::net::{Ipv4Addr, Ipv6Addr};
 
     const DNS4: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 5));
@@ -177,6 +184,40 @@ mod tests {
         packet.extend_from_slice(&[0, 0, 0, 0]);
         let payload = (packet.len() - Ipv6Header::LEN) as u16;
         packet[4..6].copy_from_slice(&payload.to_be_bytes());
+        packet
+    }
+
+    const HOP_BY_HOP: u8 = 0;
+    const ROUTING: u8 = 43;
+    const DESTINATION: u8 = 60;
+    const AUTHENTICATION: u8 = 51;
+
+    /// Wraps an IPv6 packet in `(kind, length units, third byte)` headers; Routing uses the third byte for
+    /// Segments Left.
+    fn wrapped(
+        destination: Ipv6Addr,
+        chain: &[(u8, usize, u8)],
+        next_header: u8,
+        port: u16,
+    ) -> Vec<u8> {
+        let inner = ipv6(destination, next_header, port);
+        let mut headers = Vec::new();
+        for (index, (_, units, third)) in chain.iter().enumerate() {
+            let next = chain
+                .get(index + 1)
+                .map_or(next_header, |(kind, _, _)| *kind);
+            let mut header = vec![0u8; (units + 1) * 8];
+            header[0] = next;
+            header[1] = *units as u8;
+            header[3] = *third;
+            headers.extend_from_slice(&header);
+        }
+        let mut packet = inner[..Ipv6Header::LEN].to_vec();
+        packet[6] = chain[0].0;
+        let payload = headers.len() + inner.len() - Ipv6Header::LEN;
+        packet[4..6].copy_from_slice(&(payload as u16).to_be_bytes());
+        packet.extend_from_slice(&headers);
+        packet.extend_from_slice(&inner[Ipv6Header::LEN..]);
         packet
     }
 
@@ -278,6 +319,96 @@ mod tests {
                 provisional: false
             }
         );
+    }
+
+    #[test]
+    fn an_extension_chain_to_a_virtual_address_is_inspected_and_then_reclassified() {
+        for chain in [
+            vec![(DESTINATION, 0, 0)],
+            vec![(HOP_BY_HOP, 0, 0)],
+            vec![(HOP_BY_HOP, 0, 0), (ROUTING, 0, 0), (DESTINATION, 1, 0)],
+        ] {
+            for protocol in [PROTOCOL_UDP, PROTOCOL_TCP] {
+                let packet = wrapped(
+                    Ipv6Addr::new(0xfd00, 0, 0, 0, 0, 0, 0, 0x53),
+                    &chain,
+                    protocol,
+                    DNS_PORT,
+                );
+                assert_eq!(
+                    classify(&packet, &virtual_addresses()),
+                    Classified::Accepted {
+                        principal: Principal::Dns,
+                        provisional: true
+                    },
+                    "{chain:?} {protocol}"
+                );
+                let Ok(extension::Walked::Stripped(stripped)) = extension::walk(&packet) else {
+                    panic!("{chain:?} should strip");
+                };
+                assert_eq!(
+                    classify(&stripped, &virtual_addresses()),
+                    Classified::Accepted {
+                        principal: Principal::Dns,
+                        provisional: false
+                    },
+                    "{chain:?} {protocol}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_chain_is_no_route_to_a_virtual_address_for_anything_but_the_dns_port() {
+        for (protocol, port) in [(PROTOCOL_UDP, 443), (PROTOCOL_TCP, 443), (PROTOCOL_UDP, 0)] {
+            let packet = wrapped(
+                Ipv6Addr::new(0xfd00, 0, 0, 0, 0, 0, 0, 0x53),
+                &[(DESTINATION, 0, 0)],
+                protocol,
+                port,
+            );
+            assert_eq!(
+                classify(&packet, &virtual_addresses()),
+                Classified::Accepted {
+                    principal: Principal::Dns,
+                    provisional: true
+                },
+                "{protocol} {port}"
+            );
+            let Ok(extension::Walked::Stripped(stripped)) = extension::walk(&packet) else {
+                panic!("{protocol} {port} should strip");
+            };
+            assert_eq!(
+                classify(&stripped, &virtual_addresses()),
+                Classified::Dropped(Drop::Reserved),
+                "{protocol} {port}"
+            );
+        }
+    }
+
+    #[test]
+    fn inspecting_a_chain_to_a_virtual_address_does_not_relax_what_the_walk_refuses() {
+        for chain in [
+            vec![(ROUTING, 0, 1)],
+            vec![(AUTHENTICATION, 0, 0)],
+            std::iter::repeat_n((DESTINATION, 0, 0), 7).collect(),
+        ] {
+            let packet = wrapped(
+                Ipv6Addr::new(0xfd00, 0, 0, 0, 0, 0, 0, 0x53),
+                &chain,
+                PROTOCOL_UDP,
+                DNS_PORT,
+            );
+            assert_eq!(
+                classify(&packet, &virtual_addresses()),
+                Classified::Accepted {
+                    principal: Principal::Dns,
+                    provisional: true
+                },
+                "{chain:?}"
+            );
+            assert!(extension::walk(&packet).is_err(), "{chain:?}");
+        }
     }
 
     #[test]

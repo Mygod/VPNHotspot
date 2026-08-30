@@ -191,10 +191,8 @@ impl Relay {
         if !family.ipv6() {
             if let Err(e) = egress::set_fragmentation(
                 socket.get_ref(),
-                // Reapplied immediately before each send and never left to another task to interleave, because
-                // this one socket carries requests from every client and their DF bits differ. Nothing is
-                // awaited between here and the send, which is what makes that safe. IPv6 has no such bit: no
-                // router may fragment an IPv6 packet, so there is nothing per-packet to reapply.
+                // Apply this request's IPv4 DF policy; no await can interleave another client before send.
+                // IPv6 policy is fixed when the socket opens.
                 if request.dont_fragment {
                     Fragmentation::Prohibited
                 } else {

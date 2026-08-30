@@ -30,6 +30,7 @@ use vpnhotspotd::shared::ipv4_identification::{Ipv4Identifications, Prepared, Te
 use crate::shizuku::tun_writer::{self, TERMINAL_DEPTH};
 use crate::shizuku::udp;
 use crate::shizuku::virtual_dns;
+use vpnhotspotd::shared::turn::{Pass, Source};
 
 pub(crate) struct Applied {
     pub(crate) admitting: bool,
@@ -187,123 +188,144 @@ pub(crate) async fn run(
     let mut counters = Counters::default();
     let mut admitting = false;
     let gateways = Gateways::new(gateway_addresses);
-    let mut result = loop {
+    // Meter ordinary dataplane sources. Cancellation stays first; configuration is intentionally prioritized,
+    // while settlement/completion arms are bounded by work produced by metered sources. See `shared::turn`.
+    let mut pass = Pass::default();
+    let mut result = 'owner: loop {
+        // Cache owner deadlines across the inner pass-reset retry.
         let mapping_deadline = relay.next_deadline();
         let echo_deadline = echo.next_deadline();
         let fragment_deadline = fragments.next_deadline();
         let tcp_deadline = tcp.next_deadline();
-        let readable = tokio::select! {
-            biased;
-            () = cancel.cancelled() => break Ok(()),
-            config = configs.recv() => {
-                let Some(config) = config else {
-                    break Ok(());
-                };
-                admitting = config.admitting;
-                if config.applied.send(()).is_err() {
-                    break Err(io::Error::other("the session abandoned a config it sent")
-                        .with_report_context("shizuku.tun_ingress.acknowledge"));
-                }
-                continue;
-            }
-            terminal = terminals.recv() => {
-                match terminal {
-                    Some(terminal) => output.terminal(terminal),
-                    None => break Ok(()),
-                }
-                continue;
-            }
-            terminal = relay.finished() => {
-                relay.close(terminal, &mut admission);
-                continue;
-            }
-            terminal = echo.finished() => {
-                echo.closed(terminal, &mut admission);
-                continue;
-            }
-            attention = tcp.attention() => {
-                match attention {
-                    tcp::Attention::Flow(terminal) => tcp.close(terminal, &mut admission, &mut output),
-                    tcp::Attention::Transaction(terminal) => {
-                        if let Err(e) = tcp.settle(terminal, &mut admission) {
-                            break Err(e);
-                        }
+        let readable = loop {
+            tokio::select! {
+                biased;
+                () = cancel.cancelled() => break 'owner Ok(()),
+                config = configs.recv() => {
+                    let Some(config) = config else {
+                        break 'owner Ok(());
+                    };
+                    admitting = config.admitting;
+                    if config.applied.send(()).is_err() {
+                        break 'owner Err(io::Error::other("the session abandoned a config it sent")
+                            .with_report_context("shizuku.tun_ingress.acknowledge"));
                     }
-                    tcp::Attention::ClientClosed {
-                        handle,
-                        incarnation,
-                    } => tcp.finish_client_close(handle, incarnation, &mut admission),
-                    tcp::Attention::Traffic => tcp.traffic(admitting, now(), &mut output),
+                    continue 'owner;
                 }
-                continue;
-            }
-            settled = dns.settled() => {
-                match settled {
-                    virtual_dns::Settled::Terminal(terminal) => {
-                        if let Err(e) = dns.settle(terminal, &mut output, &mut admission) {
-                            break Err(e);
-                        }
+                terminal = terminals.recv() => {
+                    match terminal {
+                        Some(terminal) => output.terminal(terminal),
+                        None => break 'owner Ok(()),
                     }
-                    virtual_dns::Settled::Ending(e) => break Err(e),
+                    continue 'owner;
                 }
-                continue;
-            }
-            event = events.recv() => {
-                match event {
-                    Some(event) => relay.handle(event, &mut output),
-                    None => break Ok(()),
+                terminal = relay.finished() => {
+                    relay.close(terminal, &mut admission);
+                    continue 'owner;
                 }
-                continue;
-            }
-            event = echoes.recv() => {
-                match event {
-                    Some(event) => echo.handle(event, &mut output, &mut admission),
-                    None => break Ok(()),
+                terminal = echo.finished() => {
+                    echo.closed(terminal, &mut admission);
+                    continue 'owner;
                 }
-                continue;
-            }
-            ask = asking.recv() => {
-                match ask {
-                    Some(ask) => {
-                        if let Err(e) = tcp.ask(ask, admitting, &mut admission) {
-                            break Err(e);
+                // Bridge traffic can keep this combined attention source continuously ready.
+                attention = tcp.attention(), if pass.owed(Source::TcpAttention) => {
+                    pass.take(Source::TcpAttention);
+                    match attention {
+                        tcp::Attention::Flow(terminal) => tcp.close(terminal, &mut admission, &mut output),
+                        tcp::Attention::Transaction(terminal) => {
+                            if let Err(e) = tcp.settle(terminal, &mut admission) {
+                                break 'owner Err(e);
+                            }
                         }
+                        tcp::Attention::ClientClosed {
+                            handle,
+                            incarnation,
+                        } => tcp.finish_client_close(handle, incarnation, &mut admission),
+                        tcp::Attention::Traffic => tcp.traffic(admitting, now(), &mut output),
                     }
-                    None => break Ok(()),
+                    continue 'owner;
                 }
-                continue;
+                settled = dns.settled() => {
+                    match settled {
+                        virtual_dns::Settled::Terminal(terminal) => {
+                            if let Err(e) = dns.settle(terminal, &mut output, &mut admission) {
+                                break 'owner Err(e);
+                            }
+                        }
+                        virtual_dns::Settled::Ending(e) => break 'owner Err(e),
+                    }
+                    continue 'owner;
+                }
+                event = events.recv(), if pass.owed(Source::UdpReply) => {
+                    pass.take(Source::UdpReply);
+                    match event {
+                        Some(event) => relay.handle(event, &mut output),
+                        None => break 'owner Ok(()),
+                    }
+                    continue 'owner;
+                }
+                event = echoes.recv(), if pass.owed(Source::EchoReply) => {
+                    pass.take(Source::EchoReply);
+                    match event {
+                        Some(event) => echo.handle(event, &mut output, &mut admission),
+                        None => break 'owner Ok(()),
+                    }
+                    continue 'owner;
+                }
+                ask = asking.recv(), if pass.owed(Source::TcpDnsAsk) => {
+                    pass.take(Source::TcpDnsAsk);
+                    match ask {
+                        Some(ask) => {
+                            if let Err(e) = tcp.ask(ask, admitting, &mut admission) {
+                                break 'owner Err(e);
+                            }
+                        }
+                        None => break 'owner Ok(()),
+                    }
+                    continue 'owner;
+                }
+                () = sleep_until_deadline(mapping_deadline), if pass.owed(Source::MappingDeadline) => {
+                    pass.take(Source::MappingDeadline);
+                    relay.sweep(&mut admission);
+                    continue 'owner;
+                }
+                () = sleep_until_deadline(echo_deadline), if pass.owed(Source::EchoDeadline) => {
+                    pass.take(Source::EchoDeadline);
+                    echo.sweep(&mut admission);
+                    continue 'owner;
+                }
+                () = sleep_until_deadline(fragment_deadline), if pass.owed(Source::FragmentDeadline) => {
+                    pass.take(Source::FragmentDeadline);
+                    Dispatch {
+                        counters: &mut counters,
+                        relay: &mut relay,
+                        echo: &mut echo,
+                        dns: &mut dns,
+                        tcp: &mut tcp,
+                        fragments: &mut fragments,
+                        output: &mut output,
+                        admission: &mut admission,
+                        fragment_lease: &fixed.fragments,
+                        gateways: &gateways,
+                        virtual_addresses: &virtual_addresses,
+                    }.expire(now());
+                    continue 'owner;
+                }
+                () = sleep_until_deadline(tcp_deadline), if pass.owed(Source::TcpDeadline) => {
+                    pass.take(Source::TcpDeadline);
+                    let now = now();
+                    tcp.poll(&mut output);
+                    tcp.expire(now, &mut output);
+                    continue 'owner;
+                }
+                readable = fd.readable(), if pass.owed(Source::TunIngress) => {
+                    pass.take(Source::TunIngress);
+                    break readable;
+                }
+                // Ready only while a pass is partially served. Reset in place so cached deadlines survive;
+                // `Pass` suppresses a redundant TCP flow scan during the carried retry.
+                () = std::future::ready(()), if pass.started() => pass.end(),
             }
-            () = sleep_until_deadline(mapping_deadline) => {
-                relay.sweep(&mut admission);
-                continue;
-            }
-            () = sleep_until_deadline(echo_deadline) => {
-                echo.sweep(&mut admission);
-                continue;
-            }
-            () = sleep_until_deadline(fragment_deadline) => {
-                Dispatch {
-                    counters: &mut counters,
-                    relay: &mut relay,
-                    echo: &mut echo,
-                    dns: &mut dns,
-                    tcp: &mut tcp,
-                    fragments: &mut fragments,
-                    output: &mut output,
-                    admission: &mut admission,
-                    fragment_lease: &fixed.fragments,
-                    gateways: &gateways,
-                    virtual_addresses: &virtual_addresses,
-                }.expire(now());
-                continue;
-            }
-            () = sleep_until_deadline(tcp_deadline) => {
-                let now = now();
-                tcp.poll(&mut output);
-                tcp.expire(now, &mut output);
-                continue;
-            }
-            readable = fd.readable() => readable,
         };
         let mut guard = match readable {
             Ok(guard) => guard,

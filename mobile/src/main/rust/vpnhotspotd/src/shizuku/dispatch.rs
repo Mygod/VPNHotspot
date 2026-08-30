@@ -15,9 +15,6 @@ use crate::shizuku::udp;
 use crate::shizuku::virtual_dns;
 use vpnhotspotd::shared::admission::{Admission, Lease};
 
-/// How many times one read may be unwrapped before it is refused. See [Dispatch::accept].
-const PASSES: usize = 3;
-
 /// Session counters avoid attacker-controlled per-packet reporting.
 #[derive(Default)]
 pub(crate) struct Counters {
@@ -90,30 +87,31 @@ pub(crate) struct Dispatch<'a> {
 impl Dispatch<'_> {
     /// Only daemon-owned resolver-wrapper failures escape as `Err`; packet failures are handled locally.
     pub(crate) fn accept(&mut self, packet: &[u8], now: Instant) -> io::Result<()> {
-        // Up to three passes, and the bound is the number of wrappings one packet can carry rather than a
-        // guess: an extension chain in front of a Fragment header is stripped first, reassembly then completes
-        // the datagram, and whatever chain sat *behind* the Fragment header - in the fragmentable part, where
-        // RFC 8200 allows one - is stripped from the result. Each pass strictly unwraps, so nothing loops.
+        // Allow three gated rewrites plus delivery of their final result. A fourth wrapper is rejected before
+        // extension walking or reassembly state changes.
+        let mut rewrites = extension::Budget::default();
         let mut rewritten: Option<Vec<u8>> = None;
-        for _ in 0..PASSES {
+        loop {
             let produced = match rewritten.as_deref() {
-                Some(current) => self.deliver(current, now)?,
-                None => self.deliver(packet, now)?,
+                Some(current) => self.deliver(current, now, &mut rewrites)?,
+                None => self.deliver(packet, now, &mut rewrites)?,
             };
             match produced {
                 Some(produced) => rewritten = Some(produced),
                 None => return Ok(()),
             }
         }
-        // A packet still asking to be unwrapped after three passes is one no conforming sender produces.
-        self.counters.unparseable += 1;
-        Ok(())
     }
 
     /// Dispatches one whole datagram, or holds one fragment, or unwraps one extension chain. Returns a packet
     /// that still has to be dispatched, which is either the datagram a fragment completed or one with its
     /// extension headers removed.
-    fn deliver(&mut self, packet: &[u8], now: Instant) -> io::Result<Option<Vec<u8>>> {
+    fn deliver(
+        &mut self,
+        packet: &[u8],
+        now: Instant,
+        rewrites: &mut extension::Budget,
+    ) -> io::Result<Option<Vec<u8>>> {
         match classify(packet, self.virtual_addresses) {
             // Answered rather than relayed, and it must never reach the relay: the destination is an
             // address the daemon occupies.
@@ -128,8 +126,8 @@ impl Dispatch<'_> {
                     }
                     // A provisional fragment carries no ports yet, so it is not known to be DNS at all and goes
                     // to reassembly to find out.
-                    Err(Reject::Fragmented) => return Ok(self.fragment(packet, now)),
-                    Err(Reject::Extended) => return Ok(self.unwrap(packet)),
+                    Err(Reject::Fragmented) => return Ok(self.fragment(packet, now, rewrites)),
+                    Err(Reject::Extended) => return Ok(self.unwrap(packet, rewrites)),
                     // TCP port 53 to a virtual address is the same principal over the terminating engine, which
                     // answers it from the resolver rather than from an upstream connection.
                     Err(Reject::NotUdp) => match tcp_wire::peek(packet) {
@@ -182,13 +180,13 @@ impl Dispatch<'_> {
                         // handles the packet: an ICMP type Android's own downstream link control owns, or a
                         // protocol this mode does not carry.
                         Err(Reject::NotUdp) => self.counters.unsupported += 1,
-                        Err(Reject::Fragmented) => return Ok(self.fragment(packet, now)),
-                        Err(Reject::Extended) => return Ok(self.unwrap(packet)),
+                        Err(Reject::Fragmented) => return Ok(self.fragment(packet, now, rewrites)),
+                        Err(Reject::Extended) => return Ok(self.unwrap(packet, rewrites)),
                         Err(Reject::Malformed(_)) => self.counters.unparseable += 1,
                     },
                 },
-                Err(Reject::Fragmented) => return Ok(self.fragment(packet, now)),
-                Err(Reject::Extended) => return Ok(self.unwrap(packet)),
+                Err(Reject::Fragmented) => return Ok(self.fragment(packet, now, rewrites)),
+                Err(Reject::Extended) => return Ok(self.unwrap(packet, rewrites)),
                 Err(Reject::Malformed(_)) => self.counters.unparseable += 1,
             },
             Classified::Dropped(Drop::Reserved) => self.counters.reserved += 1,
@@ -199,9 +197,14 @@ impl Dispatch<'_> {
     }
 
     /// Removes one packet's IPv6 extension chain, and hands back what is left for the transports to parse.
-    fn unwrap(&mut self, packet: &[u8]) -> Option<Vec<u8>> {
+    fn unwrap(&mut self, packet: &[u8], rewrites: &mut extension::Budget) -> Option<Vec<u8>> {
+        let Some(walked) = rewrites.spend(|| extension::walk(packet)) else {
+            // Refuse before walking or copying another chain.
+            self.counters.unparseable += 1;
+            return None;
+        };
         self.counters.extended += 1;
-        match extension::walk(packet) {
+        match walked {
             Ok(extension::Walked::Stripped(stripped)) => Some(stripped),
             // Nothing to remove after a transport already refused it as extended, which means the chain is one
             // the walk does not recognise as one.
@@ -219,12 +222,22 @@ impl Dispatch<'_> {
     }
 
     /// Holds one fragment, and hands back the datagram if that was the last one missing.
-    fn fragment(&mut self, packet: &[u8], now: Instant) -> Option<Vec<u8>> {
+    fn fragment(
+        &mut self,
+        packet: &[u8],
+        now: Instant,
+        rewrites: &mut extension::Budget,
+    ) -> Option<Vec<u8>> {
+        let Some(held) = rewrites.spend(|| {
+            self.fragments
+                .accept(packet, now, self.admission, self.fragment_lease)
+        }) else {
+            // Refuse before creating or charging another reassembly context.
+            self.counters.unparseable += 1;
+            return None;
+        };
         self.counters.fragmented += 1;
-        match self
-            .fragments
-            .accept(packet, now, self.admission, self.fragment_lease)
-        {
+        match held {
             Ok(reassembly::Accepted::Pending) => None,
             Ok(reassembly::Accepted::Complete(whole)) => Some(whole),
             // Counted with the reason it was refused rather than as one drop: a ceiling that is full and a

@@ -9,6 +9,7 @@ use tokio::sync::mpsc;
 use vpnhotspotd::shared::workers::{Terminal, Workers};
 
 use vpnhotspotd::shared::admission::{Admission, Class, Denied, Lease, Request};
+use vpnhotspotd::shared::egress_socket;
 
 use crate::report;
 use crate::shizuku::budget::MAX_DATAGRAM;
@@ -211,7 +212,7 @@ impl Sockets {
     /// bind to port zero, and that identifier is what it demultiplexes replies on - so binding here is what
     /// makes the socket able to receive at all, not merely tidy.
     fn bind(&self, family: Family) -> io::Result<AsyncFd<Socket>> {
-        let socket = egress::open_ping(family.ipv6())?;
+        let socket = egress_socket::open_ping(family.ipv6())?;
         socket.bind(&SockAddr::from(SocketAddr::new(
             if family.ipv6() {
                 IpAddr::V6(Ipv6Addr::UNSPECIFIED)
