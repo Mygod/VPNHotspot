@@ -10,7 +10,7 @@ use vpnhotspotd::shared::packet_writer::{
 use vpnhotspotd::shared::udp_wire::build_reply;
 
 use crate::report;
-use crate::shizuku::tun_writer::{Stamp, Writer};
+use crate::shizuku::tun_writer::Writer;
 
 pub(crate) struct Output {
     /// The size policy, the identification table and every counter that says what happened to a datagram.
@@ -21,13 +21,6 @@ pub(crate) struct Output {
 }
 
 impl Output {
-    /// The writer this output enqueues through, for the one caller that has to talk to it directly: the
-    /// ingress task's handover fence, which retires the writer before it publishes a new stamp. Handed out
-    /// rather than duplicated so there is still exactly one writer per session.
-    pub(crate) fn writer(&self) -> &Writer {
-        &self.writer
-    }
-
     pub(crate) fn new(mtu: usize, prepared: Prepared, writer: Writer) -> Self {
         Self {
             emitter: Emitter::new(mtu, prepared),
@@ -43,7 +36,6 @@ impl Output {
     /// Emits one UDP datagram toward a client, splitting it only if the interface cannot carry it whole.
     pub(crate) fn datagram(
         &mut self,
-        stamp: Stamp,
         source: SocketAddr,
         destination: SocketAddr,
         hop_limit: u8,
@@ -51,7 +43,6 @@ impl Output {
     ) {
         let size = header_len(source.is_ipv6()) + UdpHeader::LEN + payload.len();
         self.emit(
-            stamp,
             source.ip(),
             destination.ip(),
             IpNumber::UDP.0,
@@ -63,7 +54,6 @@ impl Output {
     /// Emits one Echo Reply toward a client, under the identifier and sequence it originally chose.
     pub(crate) fn echo(
         &mut self,
-        stamp: Stamp,
         remote: IpAddr,
         client: IpAddr,
         hop_limit: u8,
@@ -71,7 +61,7 @@ impl Output {
         payload: &[u8],
     ) {
         let size = header_len(remote.is_ipv6()) + ECHO_HEADER_LEN + payload.len();
-        self.emit(stamp, remote, client, IpNumber::ICMP.0, size, |id| {
+        self.emit(remote, client, IpNumber::ICMP.0, size, |id| {
             echo_wire::build_reply(remote, client, hop_limit, id, identity, payload)
         });
     }
@@ -80,7 +70,6 @@ impl Output {
     /// places: the DF decision, then the source fragmentation it authorizes.
     fn emit(
         &mut self,
-        stamp: Stamp,
         source: IpAddr,
         destination: IpAddr,
         protocol: u8,
@@ -101,7 +90,6 @@ impl Output {
             build,
             &mut Queue {
                 writer: &self.writer,
-                stamp,
             },
             &mut Structured,
         );
@@ -109,14 +97,14 @@ impl Output {
 
     /// Emits one already-formed IP packet: bytes whose size was settled by whoever built them, so there is no
     /// size decision left to make and no fragmentation to consider.
-    pub(crate) fn packet(&mut self, stamp: Stamp, packet: Vec<u8>) {
-        self.enqueue(stamp, packet);
+    pub(crate) fn packet(&mut self, packet: Vec<u8>) {
+        self.enqueue(packet);
     }
 
     /// A refusal here is the daemon's own queue being full, which is an admission decision: the packet is
     /// dropped rather than retried, and nothing was charged for it that needs refunding.
-    fn enqueue(&mut self, stamp: Stamp, packet: Vec<u8>) {
-        let accepted = self.writer.enqueue(stamp, packet, None).is_ok();
+    fn enqueue(&mut self, packet: Vec<u8>) {
+        let accepted = self.writer.enqueue(packet, None).is_ok();
         self.emitter.wrote(accepted);
     }
 
@@ -133,11 +121,9 @@ impl Output {
     }
 }
 
-/// The TUN writer, as the shared emit sequence sees it. One stamp for every packet of one datagram, because
-/// they all belong to the retirement it was produced under.
+/// The TUN writer, as the shared emit sequence sees it.
 struct Queue<'a> {
     writer: &'a Writer,
-    stamp: Stamp,
 }
 
 /// The daemon's own reporting path, as the emitter sees it.
@@ -156,7 +142,7 @@ impl Reporter for Structured {
 
 impl Sink for Queue<'_> {
     fn packet(&mut self, packet: Vec<u8>, guarded: Option<Guarded>) -> bool {
-        self.writer.enqueue(self.stamp, packet, guarded).is_ok()
+        self.writer.enqueue(packet, guarded).is_ok()
     }
 }
 

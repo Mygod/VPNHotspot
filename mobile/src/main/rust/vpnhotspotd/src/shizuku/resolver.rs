@@ -9,7 +9,6 @@ use tokio::io::unix::AsyncFd;
 use tokio::io::Ready;
 use vpnhotspotd::shared::dns_wire::MAX_MESSAGE;
 use vpnhotspotd::shared::failure::Failure;
-use vpnhotspotd::shared::model::Network;
 
 use crate::socket::set_nonblocking;
 
@@ -21,6 +20,10 @@ const REGISTER: &str = "resolver.register";
 
 /// android/multinetwork.h: `ResNsendFlags::ANDROID_RESOLV_NO_RETRY`.
 const ANDROID_RESOLV_NO_RETRY: u32 = 1 << 0;
+
+/// android/multinetwork.h: `NETWORK_UNSPECIFIED`; leaves selection unset so dnsproxyd chooses using the
+/// caller's peer UID.
+const NETWORK_UNSPECIFIED: u64 = 0;
 
 /// Owns an `android_res_nsend` descriptor. Dropping closes this process's handle but does not cancel or join
 /// Android's resolver work.
@@ -138,12 +141,12 @@ impl Resolving {
     }
 }
 
-/// Submits one query on `network`, synchronously, and hands back what there is to wait on.
-pub(crate) fn submit(network: Network, message: &[u8]) -> Result<Resolving, Failure> {
+/// Submits one query with network selection unset, synchronously, and hands back what there is to wait on.
+pub(crate) fn submit(message: &[u8]) -> Result<Resolving, Failure> {
     // SAFETY: message outlives the call and its length is what the resolver is told to read.
     let fd = unsafe {
         android_res_nsend(
-            network,
+            NETWORK_UNSPECIFIED,
             message.as_ptr(),
             message.len(),
             ANDROID_RESOLV_NO_RETRY,

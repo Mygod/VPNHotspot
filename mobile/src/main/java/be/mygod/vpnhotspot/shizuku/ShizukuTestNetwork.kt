@@ -12,14 +12,10 @@ import android.net.RouteInfo
 import android.net.TestNetworkManager
 import android.os.Build
 import android.os.ParcelFileDescriptor
-import android.system.Os
 import androidx.annotation.StringRes
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.net.TetheringManagerCompat
-import be.mygod.vpnhotspot.net.monitor.Upstream
-import be.mygod.vpnhotspot.net.monitor.Upstreams
-import be.mygod.vpnhotspot.root.daemon.ShizukuSessionConfig
 import be.mygod.vpnhotspot.root.daemon.StartShizukuSessionCommand
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
@@ -142,10 +138,8 @@ object ShizukuTestNetwork {
 
         var daemon: AppUidDaemon? = null
         var cleanup: ShizukuEpoch? = null
-        val publication = SessionPublication()
         var network: Network? = null
         var upstream: Network? = null
-        var selected: Upstream? = null
 
         private val resources get() = arrayOf<SessionResource>(
             descriptor, child, request, connector, preference, agent)
@@ -267,7 +261,7 @@ object ShizukuTestNetwork {
                             gateway_addresses = listOf(TUN_IPV4_ADDRESS, TUN_IPV6_ADDRESS).map {
                                 InetAddress.getByName(it).address.toByteString()
                             },
-                        ), current.publication).also { current.daemon = it }
+                        )).also { current.daemon = it }
                 },
                 async<Unit>(start = CoroutineStart.UNDISPATCHED) {
                     select<Unit> {
@@ -292,27 +286,18 @@ object ShizukuTestNetwork {
                         current.state = next
                         stateFlow.value = OwnedState(current.lifespan, next)
                         Timber.i("Shizuku session is $next, upstream ${current.upstream}")
-                        current.push()
+                        val daemon = current.daemon ?: return@collect
+                        try {
+                            daemon.apply(next == State.ACTIVE)
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            Timber.w(e, "Shizuku session lost control of its daemon")
+                            current.failed.complete(e)
+                        }
                     }
                 } catch (e: Throwable) {
                     if (e is CancellationException) throw e
                     if (!snapshot.completeExceptionally(e)) throw e
-                }
-            }
-            current.scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                Upstreams.appDefault.collect { upstream ->
-                    val next = upstream?.takeUnless {
-                        it.properties.interfaceName == current.interfaceName
-                    }
-                    if (next == null && upstream != null) {
-                        Timber.w("Refusing this session's own TUN as its upstream")
-                    }
-                    if (next == current.selected) return@collect
-                    current.selected = next
-                    Timber.i("Shizuku session egress is " +
-                            "${next?.properties?.interfaceName}, generation " +
-                            current.publication.advanceUpstream())
-                    if (current.network != null) current.push()
                 }
             }
             @Suppress("DEPRECATION")
@@ -452,7 +437,7 @@ object ShizukuTestNetwork {
         current.state = committed
         stateFlow.value = OwnedState(current.lifespan, committed)
         val daemon = checkNotNull(current.daemon) { "The session lost its daemon" }
-        daemon.apply(current.config())
+        daemon.apply(committed == State.ACTIVE)
         Timber.i("Published restricted test network $network on ${current.interfaceName} as " +
                 "$committed, upstream ${current.upstream}: $published $readback")
         current.scope.launch {
@@ -494,11 +479,11 @@ object ShizukuTestNetwork {
         stateFlow.value = null
         try {
             session.scope.coroutineContext.job.cancelAndJoin()
-            // Observers are joined first, so no later config can name retiring resources. If the
-            // admission update fails, the child fence below remains the barrier.
+            // Join observers first so none can reopen admission. If the update fails, the child
+            // fence below remains the barrier.
             session.daemon?.let { daemon ->
                 try {
-                    daemon.apply(session.config())
+                    daemon.apply(false)
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
                     Timber.w(e, "Shizuku session could not close admission")
@@ -688,25 +673,6 @@ object ShizukuTestNetwork {
         check(!session.outstanding) { "Shizuku session still owes $session" }
         session.privileged = null
         if (current === session) current = null
-    }
-
-    private fun Session.config(): ShizukuSessionConfig {
-        val index = selected?.properties?.interfaceName?.let { Os.if_nametoindex(it) }
-        if (index == 0) Timber.w("Cannot resolve the upstream interface index of " +
-                selected?.properties?.interfaceName)
-        return publication.build(state == State.ACTIVE, selected?.network?.networkHandle,
-            index?.takeIf { it != 0 })
-    }
-
-    private suspend fun Session.push() {
-        val daemon = daemon ?: return
-        try {
-            daemon.apply(config())
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-            Timber.w(e, "Shizuku session lost control of its daemon")
-            failed.complete(e)
-        }
     }
 
     private fun Session.commit() = when {

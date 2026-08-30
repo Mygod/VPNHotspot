@@ -7,14 +7,8 @@ option java_outer_classname = "DaemonProto";
 option optimize_for = LITE_RUNTIME;
 
 message ShizukuSessionConfig {
-  // Retires sockets bound to an earlier upstream selection.
-  uint64 upstream_generation = 1;
   // Closed admission drops new TUN input without pausing existing protocol state.
-  bool admit = 2;
-  // Absent when this app UID has no selectable default Network.
-  optional uint64 upstream_network = 3;
-  // Rejects replies that arrived through another interface; absent when unresolved.
-  optional uint32 upstream_interface_index = 4;
+  bool admit = 1;
 }
 
 message ClientEnvelope {

@@ -4,7 +4,6 @@ use vpnhotspotd::shared::admission::Admission;
 use vpnhotspotd::shared::dns_debt;
 
 use super::{Engine, Flow};
-use crate::report;
 use crate::shizuku::owned::Owned;
 use crate::shizuku::tcp_dns::{self, Submitted};
 use crate::shizuku::tcp_flow::Event;
@@ -136,21 +135,13 @@ impl Engine {
             reserved.end(admission);
             return Ok(());
         };
-        // Sample the network and stamp at the submission commit point.
-        let published = self
-            .upstream
-            .filter(|_| admitting)
-            .map(|network| (network, self.stamp));
-        let Some((network, stamp)) = published else {
+        if !admitting {
             // Keep the stream alive and answer this reserved query locally.
             return self.answer_here(flow, reserved, query, admission);
-        };
+        }
         // Only local wrapper failures escape via `?`; platform outcomes, including `EBUSY`, settle as query
         // failures.
-        match self
-            .queries
-            .submit(network, stamp, flow, reserved, query, admission)?
-        {
+        match self.queries.submit(flow, reserved, query, admission)? {
             // Ownership transferred to the table; flow closure will not cancel it.
             Submitted::Outstanding => self.counters.resolved += 1,
             // No platform work started; return the reservation and answer locally.
@@ -203,8 +194,7 @@ impl Engine {
         // delivery below, because the delivery does not exist for a settlement that ends the session.
         let asked = settlement.flow();
         let live = self.flows.current(&asked.handle, asked.incarnation);
-        let mut delivered = self.queries.settle(settlement, admission)?;
-        let stamp = delivered.stamp();
+        let delivered = self.queries.settle(settlement, admission)?;
         // A flow that is absent, closed or reused is one there is nobody left to answer: the transport that
         // asked is gone, and a handle that has been handed to a successor belongs to a different client. Not
         // reported: an answer nobody is waiting for says nothing about this daemon, and what would have been
@@ -213,23 +203,6 @@ impl Engine {
             self.counters.ingress.stale += 1;
             delivered.discard(admission);
             return Ok(());
-        }
-        // Resolved on a selection this session has stopped claiming. The transport itself survived the
-        // handover untouched, so the client is told to try again rather than left waiting - but the answer
-        // that came back over the retired network is dropped before that refusal is built. See
-        // [tcp_dns::Delivered::stale].
-        if stamp.generation != self.stamp.generation {
-            report::stdout!(
-                "discarding a DNS-over-TCP answer resolved on network {} at generation {}",
-                delivered.network(),
-                stamp.generation
-            );
-            if !delivered.stale() {
-                // No SERVFAIL could be formed from that query, so there is nothing to send and nothing left
-                // to park; this is the last owner that can end these bytes.
-                delivered.discard(admission);
-                return Ok(());
-            }
         }
         if !delivered.has_answer() {
             // Nothing was produced at all, so nobody will ever acknowledge these bytes.

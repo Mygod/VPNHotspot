@@ -6,7 +6,6 @@ use std::sync::Arc;
 use socket2::{SockAddr, Socket};
 use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc;
-use vpnhotspotd::shared::model::Network;
 use vpnhotspotd::shared::workers::{Terminal, Workers};
 
 use vpnhotspotd::shared::admission::{Admission, Class, Denied, Lease, Request};
@@ -114,7 +113,6 @@ impl Sockets {
     /// The socket to send this family's requests on, opening it if this is the first.
     pub(crate) fn acquire(
         &mut self,
-        network: Network,
         family: Family,
         admission: &mut Admission,
     ) -> Result<Arc<AsyncFd<Socket>>, Refused> {
@@ -143,11 +141,11 @@ impl Sockets {
         }) else {
             return Err(Refused::Denied);
         };
-        let socket = match self.bind(network, family) {
+        let socket = match self.bind(family) {
             Ok(socket) => Arc::new(socket),
             Err(e) => {
-                // Printed because it is once per generation at most, and because this is the shape the mode's
-                // one remaining unprivileged-capability question would arrive in.
+                // Reported because this is the shape the mode's one remaining unprivileged-capability
+                // question would arrive in.
                 report::io_with_details("shizuku.echo_socket", e, [("family", family.to_string())]);
                 admission.release(lease);
                 return Err(Refused::OpenFailed);
@@ -180,7 +178,7 @@ impl Sockets {
                 identity.id,
                 // A ping socket will not report a datagram's length, so the read cannot be sized from a peek.
                 Sizing::Fixed,
-                // Already published: a ping socket is admitted for a whole generation rather than for one
+                // Already published: a ping socket is admitted for the whole session rather than for one
                 // exchange, so there is no commit for its worker to wait on.
                 Gate::Open,
                 self.events.clone(),
@@ -212,8 +210,8 @@ impl Sockets {
     /// One ping socket with its identity bound up front. The kernel picks a free non-zero identifier for a
     /// bind to port zero, and that identifier is what it demultiplexes replies on - so binding here is what
     /// makes the socket able to receive at all, not merely tidy.
-    fn bind(&self, network: Network, family: Family) -> io::Result<AsyncFd<Socket>> {
-        let socket = egress::open_ping(network, family.ipv6())?;
+    fn bind(&self, family: Family) -> io::Result<AsyncFd<Socket>> {
+        let socket = egress::open_ping(family.ipv6())?;
         socket.bind(&SockAddr::from(SocketAddr::new(
             if family.ipv6() {
                 IpAddr::V6(Ipv6Addr::UNSPECIFIED)
@@ -228,7 +226,7 @@ impl Sockets {
     }
 
     /// Whether an event came from the socket this family currently holds, rather than from one already
-    /// retired whose event was still in flight.
+    /// replaced whose event was still in flight.
     pub(crate) fn current(&self, family: Family, id: u64) -> bool {
         self.sockets.current(&family, id)
     }
@@ -239,7 +237,7 @@ impl Sockets {
         self.sockets.cancel_all();
     }
 
-    /// Whether any receive task is still running, which is what a retirement drains on.
+    /// Whether any receive task is still running, which is what shutdown drains on.
     pub(crate) fn working(&self) -> bool {
         self.sockets.working()
     }

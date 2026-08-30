@@ -1,4 +1,4 @@
-//! Splices an upstream TCP socket to a bounded bridge; retirement is abortive and cancellation-safe.
+//! Splices an upstream TCP socket to a bounded bridge; session shutdown is abortive and cancellation-safe.
 use std::io;
 use std::time::Duration;
 
@@ -19,7 +19,7 @@ use crate::report;
 pub(crate) type Event = FlowId<SocketHandle>;
 
 /// `sweep` is the engine's own token rather than this flow's: it is cancelled only when the whole table is
-/// being retired, which is the one case where this socket must be torn down abortively rather than closed.
+/// shutting down, which is the one case where this socket must be torn down abortively rather than closed.
 pub(crate) async fn splice(
     mut upstream: TcpStream,
     mut bridge: Worker,
@@ -39,18 +39,17 @@ pub(crate) async fn splice(
                 Ok(_) => None,
                 // Named for the upstream because that is what it is. The bridge's own halves cannot fail
                 // while this task runs - the engine drops its half only after joining this one - so every
-                // error this copy can produce came from the selected-network socket.
+                // error this copy can produce came from the upstream socket.
                 Err(e) => Some(("shizuku.tcp_upstream_relay", e)),
             }
         }
     };
-    // Abortive only on a sweep, and that distinction is the whole point: an ordinary close is a stream that
-    // ended, while a swept one must not keep transmitting queued bytes, retransmissions and the FIN over the
-    // `Network` the session is leaving. Set before the socket is dropped, because dropping it is the close.
+    // Abortive only on whole-session shutdown: an ordinary close is a stream that ended, while shutdown must
+    // not leave queued bytes, retransmissions and the FIN behind. Set before the socket is dropped, because
+    // dropping it is the close.
     if sweep.is_cancelled() {
         if let Err(e) = SockRef::from(&upstream).set_linger(Some(Duration::ZERO)) {
-            // Reported and closed anyway: the residue is a drained send queue on a network the session is
-            // leaving, which is not worth ending a working session over.
+            // Reported and closed anyway: failing to drain this send queue is not worth masking shutdown.
             report::io("shizuku.tcp_sweep", e);
         }
     }
@@ -64,16 +63,17 @@ pub(crate) async fn splice(
     drop(bridge);
     match failure {
         Some((context, error)) if !expected(&error) => Ended::Failed { context, error },
-        // A peer that resets, times out or vanishes is the network being the network, and every flow's client
-        // learns of it the one way a terminated flow can say it: a reset. One line names it, and the engine
-        // prints that rather than raising a report per hostile peer.
+        // A peer or the current UID network policy ending the flow is the network being the network, and the
+        // client learns of it the one way a terminated flow can say it: a reset. One line names it, and the
+        // engine prints that rather than raising a report per hostile peer or policy transition.
         Some((_, error)) => Ended::Reported(error.to_string()),
         None => Ended::Expected,
     }
 }
 
-/// Whether a failure is the peer ending the exchange rather than the daemon failing at it. Only these are
-/// classified as expected: anything else is the daemon's own I/O going wrong and is raised as a report.
+/// Whether the peer, path or current UID policy ended the exchange rather than the daemon failing at it. Only
+/// these are classified as expected: anything else is the daemon's own I/O going wrong and is raised as a
+/// report.
 fn expected(error: &io::Error) -> bool {
     matches!(
         error.kind(),
@@ -86,5 +86,6 @@ fn expected(error: &io::Error) -> bool {
             | io::ErrorKind::HostUnreachable
             | io::ErrorKind::NetworkUnreachable
             | io::ErrorKind::NetworkDown
+            | io::ErrorKind::PermissionDenied
     )
 }

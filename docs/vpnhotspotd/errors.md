@@ -105,8 +105,8 @@ messages.
 
 Cancellation and `Interrupted` during cancellation are not errors. Tasks tied to
 a stop token exit quietly. Report only unexpected cleanup/channel failures that
-affect daemon-owned state or break an invariant. App-UID retirement releases a
-worker's record and reservation only after it completes and is joined; clean TCP
+affect daemon-owned state or break an invariant. App-UID worker teardown releases
+its record and reservation only after it completes and is joined; clean TCP
 completion may retain client-facing state as documented in
 [`shizuku.md`](shizuku.md#app-uid-dataplane).
 

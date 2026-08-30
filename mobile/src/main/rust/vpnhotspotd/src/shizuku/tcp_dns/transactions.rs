@@ -17,14 +17,12 @@ use vpnhotspotd::shared::admission::{logical_footprint, Admission, Denied, Lease
 use vpnhotspotd::shared::dns_debt::{self, QueryDebt};
 use vpnhotspotd::shared::dns_wire::resolved;
 use vpnhotspotd::shared::failure::Failure;
-use vpnhotspotd::shared::model::Network;
 use vpnhotspotd::shared::protocol::IoErrorReportExt;
 
 use crate::report;
 use crate::shizuku::owned::Owned;
 use crate::shizuku::resolver::Resolving;
 use crate::shizuku::tcp_flow::Event;
-use crate::shizuku::tun_writer::Stamp;
 
 use super::{exchange_bytes, Delivered, Resolved, DELIVERY_BYTES};
 
@@ -85,10 +83,8 @@ struct Pending {
     debt: QueryDebt,
     // Retained because settlement may need the original question to build SERVFAIL.
     message: Owned,
-    stamp: Stamp,
     // Includes both flow halves; a reused handle alone cannot identify the requester.
     flow: Event,
-    network: Network,
 }
 
 impl Pending {
@@ -205,7 +201,7 @@ impl Transactions {
         self.waiting() == self.rows.len() && self.rows.len() <= self.prepared
     }
 
-    /// Outstanding queries, used to verify flow retirement leaves them untouched.
+    /// Outstanding queries, used to verify flow closure leaves them untouched.
     pub(crate) fn len(&self) -> usize {
         self.rows.len()
     }
@@ -265,8 +261,6 @@ impl Transactions {
 
     pub(crate) fn submit(
         &mut self,
-        network: Network,
-        stamp: Stamp,
         flow: Event,
         reserved: Reserved,
         query: Owned,
@@ -282,7 +276,7 @@ impl Transactions {
         };
         let Reserved { id, debt, .. } = reserved;
         // Install any returned descriptor in its future before returning to the owner loop.
-        let awaiting = match crate::shizuku::resolver::submit(network, &query) {
+        let awaiting = match crate::shizuku::resolver::submit(&query) {
             Ok(resolving) => Awaiting::Resolver(resolving),
             Err(failure) => match failure.ending([("transaction", id)]) {
                 Ok(expected) => Awaiting::Refused(Some(expected)),
@@ -299,9 +293,7 @@ impl Transactions {
             Pending {
                 debt,
                 message: query,
-                stamp,
                 flow,
-                network,
             },
         );
         debug_assert!(
@@ -358,13 +350,7 @@ impl Transactions {
             pending,
             result,
         } = settlement;
-        let Pending {
-            debt,
-            message,
-            stamp,
-            network,
-            ..
-        } = pending;
+        let Pending { debt, message, .. } = pending;
         // Removing the completion closes its descriptor before debt is released.
         let result = match result {
             Ok(answer) => Ok(answer),
@@ -390,11 +376,10 @@ impl Transactions {
                 return Err(uncovered(key, denied));
             }
         };
-        Ok(Delivered::new(
-            dns_debt::Settled::delivering(delivery, Resolved::new(result, Some(message))),
-            stamp,
-            network,
-        ))
+        Ok(Delivered::new(dns_debt::Settled::delivering(
+            delivery,
+            Resolved::new(result, Some(message)),
+        )))
     }
 
     /// Ends every transaction without waiting, returning the first observable local failure.

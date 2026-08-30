@@ -5,7 +5,6 @@ import be.mygod.vpnhotspot.root.daemon.DaemonErrorReport
 import be.mygod.vpnhotspot.root.daemon.DaemonException
 import be.mygod.vpnhotspot.root.daemon.DaemonIpc
 import be.mygod.vpnhotspot.root.daemon.ErrorFrame
-import be.mygod.vpnhotspot.root.daemon.ShizukuSessionConfig
 import io.ktor.utils.io.ByteChannel
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
@@ -20,11 +19,10 @@ class AppUidDaemonTest {
     fun configWriteFailureAwaitsStructuredDaemonError() = runBlocking {
         val input = ByteChannel()
         val output = ByteChannel().apply { cancel(IOException("EPIPE")) }
-        val publication = SessionPublication()
-        val daemon = AppUidDaemon.create(input, output, publication, this)
+        val daemon = AppUidDaemon.create(input, output, this)
         val failure = async(start = CoroutineStart.UNDISPATCHED) {
             try {
-                daemon.apply(ShizukuSessionConfig(upstream_generation = 1, admit = true))
+                daemon.apply(true)
                 null
             } catch (e: Exception) {
                 e

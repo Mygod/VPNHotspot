@@ -30,7 +30,9 @@ upstream interface.
 
 Both paths use bionic:
 
-- `android_res_nsend` submits one query on an Android `Network`;
+- `android_res_nsend` submits one query with a network selection. Root passes
+  the configured `Network`; the app-UID path passes `NETWORK_UNSPECIFIED`, so
+  dnsproxyd chooses from the peer UID's policy for that submission;
 - `android_res_nresult` reads and closes the result;
 - dropping an unfinished query calls `android_res_cancel`.
 
@@ -96,7 +98,7 @@ unit.
 
 ## Failure Semantics
 
-Platform outcomes such as no selected network, timeout, `EBUSY`, unresolvable
+Platform outcomes such as no usable network, timeout, `EBUSY`, unresolvable
 name or remote failure return SERVFAIL when possible and are otherwise silent.
 They are traffic-controlled outcomes, not structured reports.
 

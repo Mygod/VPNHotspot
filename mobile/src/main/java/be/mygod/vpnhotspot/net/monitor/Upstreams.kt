@@ -31,41 +31,6 @@ import java.util.regex.PatternSyntaxException
 
 data class Upstream(val network: Network, val properties: LinkProperties)
 
-/** Publishes only the current, fully described, unblocked default network. */
-internal class AppDefaultState<N : Any, P : Any> {
-    private var current: N? = null
-    private var properties: P? = null
-    private var blocked: Boolean? = null
-
-    val upstream get() = current?.let { network -> properties?.takeIf { blocked == false }?.let { network to it } }
-
-    fun available(network: N) {
-        current = network
-        properties = null
-        blocked = null
-    }
-
-    fun properties(network: N, properties: P): Boolean {
-        if (network != current) return false
-        this.properties = properties
-        return true
-    }
-
-    fun blocked(network: N, blocked: Boolean): Boolean {
-        if (network != current) return false
-        this.blocked = blocked
-        return true
-    }
-
-    fun lost(network: N): Boolean {
-        if (network != current) return false
-        current = null
-        properties = null
-        blocked = null
-        return true
-    }
-}
-
 object Upstreams {
     const val KEY_PRIMARY = "service.upstream"
     const val KEY_FALLBACK = "service.upstream.fallback"
@@ -132,42 +97,6 @@ object Upstreams {
 
     val primary: StateFlow<Upstream?> = role(KEY_PRIMARY, vpn)
     val fallback: StateFlow<Upstream?> = role(KEY_FALLBACK, default)
-
-    /**
-     * This app UID's default Network, including an applicable VPN. Root-mode upstream preferences do not
-     * apply. Callback order is available, properties, then blocked status.
-     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/ConnectivityManager.java#3770
-     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/ConnectivityManager.java#4182
-     */
-    val appDefault: StateFlow<Upstream?> = callbackFlow {
-        val state = AppDefaultState<Network, LinkProperties>()
-        val callback = object : ConnectivityManager.NetworkCallback() {
-            private fun emit() = trySend(state.upstream?.let { Upstream(it.first, it.second) })
-
-            override fun onAvailable(network: Network) {
-                state.available(network)
-                emit()
-            }
-            override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
-                if (state.properties(network, properties)) emit()
-            }
-            override fun onBlockedStatusChanged(network: Network, blocked: Boolean) {
-                if (state.blocked(network, blocked)) emit()
-            }
-            override fun onLost(network: Network) {
-                if (state.lost(network)) emit()
-            }
-        }
-        var registered = false
-        try {
-            Services.connectivity.registerDefaultNetworkCallback(callback, Services.mainHandler)
-            registered = true
-        } catch (e: RuntimeException) {
-            Timber.w(e)
-            SmartSnackbar.make(e).show()
-        }
-        awaitClose { if (registered) Services.connectivity.unregisterNetworkCallback(callback) }
-    }.buffer(Channel.CONFLATED).stateIn(scope, SharingStarted.WhileSubscribed(replayExpirationMillis = 0), null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun role(preferenceKey: String, defaultSource: Flow<Upstream?>) = preferenceFlow(preferenceKey)

@@ -12,9 +12,6 @@ use socket2::{Domain, Protocol, Socket, Type};
 use tokio::io::unix::AsyncFd;
 use vpnhotspotd::shared::failure::Failure;
 use vpnhotspotd::shared::icmp_translate::{Quote, Reported, QUOTE_BYTES};
-use vpnhotspotd::shared::model::Network;
-
-use crate::android_network::set_socket_network;
 
 /// `IP_PMTUDISC_OMIT`, which the `libc` crate does not export for Android. Clears DF and skips the
 /// path-MTU cache, which is what lets Android's downstream fragment an oversized relayed datagram.
@@ -37,7 +34,6 @@ pub(crate) struct Received {
     pub(crate) bytes: usize,
     pub(crate) source: SocketAddr,
     pub(crate) hop_limit: u8,
-    pub(crate) interface: u32,
 }
 
 fn set_ipv4_mtu_discover(fd: BorrowedFd<'_>, value: c_int) -> io::Result<()> {
@@ -57,17 +53,14 @@ fn set_ipv4_mtu_discover(fd: BorrowedFd<'_>, value: c_int) -> io::Result<()> {
     Ok(())
 }
 
-/// Enables the metadata every relayed datagram needs before it can be trusted: the error queue, the
-/// received hop limit, and the receiving interface index.
+/// Enables the error queue and received hop-limit metadata every relayed datagram needs.
 pub(crate) fn configure_metadata(socket: &Socket, ipv6: bool) -> io::Result<()> {
     if ipv6 {
         setsockopt(socket, sockopt::Ipv6RecvErr, &true).map_err(io::Error::from)?;
         setsockopt(socket, sockopt::Ipv6RecvHopLimit, &true).map_err(io::Error::from)?;
-        setsockopt(socket, sockopt::Ipv6RecvPacketInfo, &true).map_err(io::Error::from)?;
     } else {
         setsockopt(socket, sockopt::Ipv4RecvErr, &true).map_err(io::Error::from)?;
         setsockopt(socket, sockopt::Ipv4RecvTtl, &true).map_err(io::Error::from)?;
-        setsockopt(socket, sockopt::Ipv4PacketInfo, &true).map_err(io::Error::from)?;
     }
     Ok(())
 }
@@ -86,28 +79,26 @@ pub(crate) fn set_fragmentation(socket: &Socket, fragmentation: Fragmentation) -
 
 /// One unconnected socket per UDP mapping, so a client can reach many destinations through one pinned
 /// local identity, which is what makes the outer mapping endpoint-independent.
-pub(crate) fn open_udp(network: Network, ipv6: bool) -> io::Result<Socket> {
-    open_socket(network, ipv6, Protocol::UDP)
+pub(crate) fn open_udp(ipv6: bool) -> io::Result<Socket> {
+    open_socket(ipv6, Protocol::UDP)
 }
 
-fn open_socket(network: Network, ipv6: bool, protocol: Protocol) -> io::Result<Socket> {
+fn open_socket(ipv6: bool, protocol: Protocol) -> io::Result<Socket> {
     let socket = Socket::new(
         if ipv6 { Domain::IPV6 } else { Domain::IPV4 },
         Type::DGRAM,
         Some(protocol),
     )?;
-    set_socket_network(network, socket.as_raw_fd())?;
     socket.set_nonblocking(true)?;
     configure_metadata(&socket, ipv6)?;
     Ok(socket)
 }
 
-/// One ping socket per family and generation. Unprivileged ping sockets are ordinary datagram sockets
+/// One ping socket per family. Unprivileged ping sockets are ordinary datagram sockets
 /// whose identifier the kernel assigns, so Echo identifiers seen on the wire are the kernel's and must be
 /// translated back to the client's rather than passed through.
-pub(crate) fn open_ping(network: Network, ipv6: bool) -> io::Result<Socket> {
+pub(crate) fn open_ping(ipv6: bool) -> io::Result<Socket> {
     open_socket(
-        network,
         ipv6,
         if ipv6 {
             Protocol::ICMPV6
@@ -168,11 +159,10 @@ pub(crate) fn peek_length(socket: &Socket) -> io::Result<usize> {
 }
 
 /// Receives one datagram and its hop metadata. Missing metadata is an error rather than a default: a
-/// relayed reply whose hop limit is unknown cannot be re-originated truthfully, and one whose arrival
-/// interface is unknown cannot be attributed to the current generation.
+/// relayed reply whose hop limit is unknown cannot be re-originated truthfully.
 pub(crate) fn receive(socket: &Socket, buffer: &mut [u8]) -> io::Result<Received> {
     let mut slices = [io::IoSliceMut::new(buffer)];
-    let mut space = nix::cmsg_space!(libc::in6_pktinfo, c_int);
+    let mut space = nix::cmsg_space!(c_int);
     let message = recvmsg::<SockaddrStorage>(
         socket.as_raw_fd(),
         &mut slices,
@@ -181,7 +171,6 @@ pub(crate) fn receive(socket: &Socket, buffer: &mut [u8]) -> io::Result<Received
     )
     .map_err(io::Error::from)?;
     let mut hop_limit = None;
-    let mut interface = None;
     for control in message
         .cmsgs()
         .map_err(|e| io::Error::other(format!("failed to read ancillary data: {e}")))?
@@ -189,13 +178,6 @@ pub(crate) fn receive(socket: &Socket, buffer: &mut [u8]) -> io::Result<Received
         match control {
             ControlMessageOwned::Ipv4Ttl(value) => hop_limit = u8::try_from(value).ok(),
             ControlMessageOwned::Ipv6HopLimit(value) => hop_limit = u8::try_from(value).ok(),
-            ControlMessageOwned::Ipv4PacketInfo(info) => {
-                interface = u32::try_from(info.ipi_ifindex).ok()
-            }
-            // bionic signs ipi6_ifindex while glibc does not; widening makes the conversion portable.
-            ControlMessageOwned::Ipv6PacketInfo(info) => {
-                interface = u32::try_from(i64::from(info.ipi6_ifindex)).ok()
-            }
             _ => {}
         }
     }
@@ -208,23 +190,18 @@ pub(crate) fn receive(socket: &Socket, buffer: &mut [u8]) -> io::Result<Received
         bytes: message.bytes,
         source,
         hop_limit: hop_limit.ok_or_else(|| io::Error::other("reply carried no hop metadata"))?,
-        interface: interface.ok_or_else(|| io::Error::other("reply carried no interface index"))?,
     })
 }
 
 /// The steps of a TCP connect that are this process's own, named so a failure at one of them is reported as
 /// itself. Everything else this function can return is what the path answered.
 const CONNECT_SOCKET: &str = "shizuku.tcp_connect_socket";
-const CONNECT_BIND: &str = "shizuku.tcp_connect_bind";
 const CONNECT_NONBLOCK: &str = "shizuku.tcp_connect_nonblock";
 const CONNECT_REGISTER: &str = "shizuku.tcp_connect_register";
 
-/// Connects one TCP socket on the selected network. Dual-family, unlike the NAT66 path's IPv6-only
-/// connect, because terminated TCP has to reach both families.
-pub(crate) async fn connect_tcp(
-    network: Network,
-    destination: SocketAddr,
-) -> Result<Socket, Failure> {
+/// Connects one TCP socket through the app UID's routing policy. Dual-family, unlike the NAT66 path's
+/// IPv6-only connect, because terminated TCP has to reach both families.
+pub(crate) async fn connect_tcp(destination: SocketAddr) -> Result<Socket, Failure> {
     let socket = Socket::new(
         if destination.is_ipv6() {
             Domain::IPV6
@@ -235,10 +212,6 @@ pub(crate) async fn connect_tcp(
         Some(Protocol::TCP),
     )
     .map_err(Failure::local(CONNECT_SOCKET))?;
-    // A selected network that has gone away is `ENONET` here, which is an ordinary consequence of the upstream
-    // changing under a flow rather than a local fault - but it arrives from a call only this process makes, so
-    // it is named as one and stays reportable. The generation the flow belonged to is being retired anyway.
-    set_socket_network(network, socket.as_raw_fd()).map_err(Failure::local(CONNECT_BIND))?;
     socket
         .set_nonblocking(true)
         .map_err(Failure::local(CONNECT_NONBLOCK))?;
@@ -277,7 +250,7 @@ pub(crate) struct ErrorQueue {
     /// Where the offending bytes land. Exactly the prefix a correlation reads, because the rest was never
     /// looked at: the kernel copies what fits and truncates the remainder, which is the intent.
     quote: [u8; QUOTE_BYTES],
-    /// Ancillary room for RECVERR, hop limit, and packet info.
+    /// Ancillary room for RECVERR and hop limit.
     space: Vec<u8>,
 }
 
@@ -299,24 +272,13 @@ impl ErrorQueue {
     pub(crate) fn new() -> Self {
         ErrorQueue {
             quote: [0u8; QUOTE_BYTES],
-            space: nix::cmsg_space!(
-                libc::sock_extended_err,
-                libc::sockaddr_in6,
-                libc::in6_pktinfo,
-                c_int
-            ),
+            space: nix::cmsg_space!(libc::sock_extended_err, libc::sockaddr_in6, c_int),
         }
     }
 
     /// Takes the next message off the queue, or answers `None` once it is empty.
     pub(crate) fn footprint() -> u64 {
-        (nix::cmsg_space!(
-            libc::sock_extended_err,
-            libc::sockaddr_in6,
-            libc::in6_pktinfo,
-            c_int
-        )
-        .capacity()
+        (nix::cmsg_space!(libc::sock_extended_err, libc::sockaddr_in6, c_int).capacity()
             + std::mem::size_of::<Self>()) as u64
     }
 

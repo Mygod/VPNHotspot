@@ -7,9 +7,9 @@ use crate::shared::protocol::IoErrorReportExt;
 /// One failed operation, classified by which side of it failed.
 #[derive(Debug)]
 pub enum Failure {
-    /// This daemon's own local setup: creating a socket, binding it to the selected network, making it
-    /// nonblocking, registering it with the runtime. Nothing a client or a peer can drive, so it becomes a
-    /// structured report under [Local::context] - coalesced, like every other report.
+    /// This daemon's own local setup: creating a socket, applying required socket state, making it nonblocking
+    /// or registering it with the runtime. Nothing a client or a peer can drive, so it becomes a structured
+    /// report under [Local::context] - coalesced, like every other report.
     Local {
         context: &'static str,
         error: io::Error,
@@ -92,14 +92,14 @@ mod tests {
 
     #[test]
     fn a_local_setup_failure_is_structured_and_an_answer_is_not() {
-        let local = Failure::local("shizuku.tcp_connect_bind")(errno(libc::EINVAL));
+        let local = Failure::local("shizuku.tcp_connect_socket")(errno(libc::EINVAL));
         assert_eq!(
             local.reportable().map(|(context, _)| context),
-            Some("shizuku.tcp_connect_bind")
+            Some("shizuku.tcp_connect_socket")
         );
         match local.ended("upstream connect") {
             Ended::Failed { context, error } => {
-                assert_eq!(context, "shizuku.tcp_connect_bind");
+                assert_eq!(context, "shizuku.tcp_connect_socket");
                 assert_eq!(error.raw_os_error(), Some(libc::EINVAL));
             }
             _ => panic!("the daemon's own setup failure must not be a per-record line"),

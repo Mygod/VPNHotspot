@@ -55,7 +55,6 @@ import kotlin.time.Duration.Companion.seconds
 class AppUidDaemon private constructor(
     private val input: ByteReadChannel,
     private val output: ByteWriteChannel,
-    private val publication: SessionPublication,
 ) {
     class Child internal constructor(
         private val process: ChildProcess,
@@ -120,7 +119,6 @@ class AppUidDaemon private constructor(
         internal suspend fun connect(
             tun: ParcelFileDescriptor,
             command: StartShizukuSessionCommand,
-            publication: SessionPublication,
         ): AppUidDaemon {
             Os.fcntlInt(tun.fileDescriptor, OsConstants.F_SETFL,
                 Os.fcntlInt(tun.fileDescriptor, OsConstants.F_GETFL, 0) or OsConstants.O_NONBLOCK)
@@ -174,7 +172,7 @@ class AppUidDaemon private constructor(
                             accepted.socket.setFileDescriptorsForSend(null)
                         }
                     }
-                    val daemon = create(input, accepted.openWriteChannel(), publication, scope)
+                    val daemon = create(input, accepted.openWriteChannel(), scope)
                     select<Unit> {
                         daemon.started.onAwait { }
                         daemon.ended.onAwait { cause ->
@@ -195,15 +193,15 @@ class AppUidDaemon private constructor(
             }
         }
     }
-    private var pending: ShizukuSessionConfig? = null
+    private var pending: Boolean? = null
     private var applying = false
 
     /** A partial frame poisons future writes; only the reader decides the terminal conversation cause. */
     private var poisoned: Throwable? = null
 
-    /** Coalesces to the latest config and waits for its ACK after daemon-side retirement completes. */
-    suspend fun apply(config: ShizukuSessionConfig) {
-        pending = config
+    /** Coalesces to the latest admission state and waits for its ACK. */
+    suspend fun apply(admit: Boolean) {
+        pending = admit
         if (applying) return
         applying = true
         try {
@@ -212,7 +210,7 @@ class AppUidDaemon private constructor(
                 if (ended.isCompleted) {
                     throw ended.await() ?: IOException("$BINARY_NAME is no longer answering")
                 }
-                val next = publication.publish(pending ?: return)
+                val next = pending ?: return
                 pending = null
                 val id = nextCallId++
                 val reply = CompletableDeferred<Unit>()
@@ -221,7 +219,7 @@ class AppUidDaemon private constructor(
                 try {
                     DaemonIpc.writeFrame(output, ClientEnvelope.ADAPTER.encode(ClientEnvelope(
                         call_id = id,
-                        apply_shizuku_config = next)))
+                        apply_shizuku_config = ShizukuSessionConfig(admit = next))))
                 } catch (e: Exception) {
                     if (this.acknowledgement === acknowledgement) {
                         this.acknowledgement = null
@@ -404,9 +402,8 @@ class AppUidDaemon private constructor(
         internal fun create(
             input: ByteReadChannel,
             output: ByteWriteChannel,
-            publication: SessionPublication,
             scope: CoroutineScope,
-        ) = AppUidDaemon(input, output, publication).also { daemon ->
+        ) = AppUidDaemon(input, output).also { daemon ->
             scope.launch { daemon.receive() }
         }
     }

@@ -11,7 +11,6 @@ use crate::shizuku::echo;
 use crate::shizuku::gateway::Gateways;
 use crate::shizuku::output::Output;
 use crate::shizuku::tcp;
-use crate::shizuku::tun_writer::Stamp;
 use crate::shizuku::udp;
 use crate::shizuku::virtual_dns;
 use vpnhotspotd::shared::admission::{Admission, Lease};
@@ -85,8 +84,6 @@ pub(crate) struct Dispatch<'a> {
     /// through it rather than holding a pool of its own.
     pub(crate) fragment_lease: &'a Lease,
     pub(crate) gateways: &'a Gateways,
-    /// The retirement a packet is dispatched under, which the writer gates on again when it dequeues.
-    pub(crate) stamp: Stamp,
     pub(crate) virtual_addresses: &'a [IpAddr],
 }
 
@@ -254,14 +251,13 @@ impl Dispatch<'_> {
         let counters = &mut self.counters;
         let gateways = &self.gateways;
         let output = &mut self.output;
-        let stamp = self.stamp;
         let admission = &mut *self.admission;
         let fragment_lease = self.fragment_lease;
         self.fragments
             .sweep(now, admission, fragment_lease, |quote| {
                 counters.fragments_expired += 1;
                 match gateways.report(&quote, Reason::ReassemblyExpired) {
-                    Some(error) => output.packet(stamp, error),
+                    Some(error) => output.packet(error),
                     None => counters.fragments_unreported += 1,
                 }
             });

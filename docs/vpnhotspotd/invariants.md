@@ -27,8 +27,8 @@ owning document.
   or a second wake protocol.
 - A client FIN is delivered after all preceding bytes. Clean transport completion
   closes the upstream socket but retains client-facing TCP state until its close
-  handshake finishes, or until expiry, retirement or session shutdown.
-- Flow retirement and reservation release happen exactly once. Accepted resets
+  handshake finishes, or until expiry, explicit flow teardown or session shutdown.
+- Flow teardown and reservation release happen exactly once. Accepted resets
   are determined by the TCP stack, not by inspecting a header bit alone.
 - Android resolver work cannot be joined. Each submitted DNS-over-TCP
   transaction, not its transport, owns its precharged descriptor record and
@@ -85,13 +85,12 @@ owning document.
   the matching snapshot.
 - Root clients are keyed by MAC and may have no IPv4 address. An empty client set
   defers NAT66 rather than failing it.
-- `ShizukuSessionConfig` is level-triggered: the newest config is the whole
-  truth, and `upstream_generation` never decreases.
-- Advancing `upstream_generation` retires state bound to the old upstream and
-  fences queued output from it. A configuration ACK is sent only after that
-  daemon-owned work is joined and released.
-- Changing `admit` retires nothing. While false, ingress is dropped and creates
-  or refreshes no state; existing deadlines and protocol endings continue.
+- `ShizukuSessionConfig` is level-triggered and contains only `admit`; the
+  newest value is the whole truth. Its ACK is sent only after TUN ingress has
+  applied that value.
+- Changing `admit` tears down nothing. While false, ingress is dropped and
+  creates or refreshes no state; existing deadlines and protocol endings
+  continue.
 - The app-UID session MTU is immutable and is checked once against the TUN in
   `StartShizukuSessionCommand`.
 
@@ -107,6 +106,15 @@ owning document.
   invariants exposed during cancellation.
 
 ## Platform Assumptions
+
+- The app-UID daemon does not explicitly bind its process or egress sockets to
+  an Android `Network`; Android's UID policy is the only upstream selector.
+- App-default changes are not daemon state boundaries. TCP, unconnected UDP and
+  Echo follow ordinary Android socket behavior rather than being reset, and
+  queued events are fenced only by their owning flow or worker identity.
+- App-UID DNS submits with `NETWORK_UNSPECIFIED`. Android's DNS proxy selects
+  the query network from the peer UID; a submitted transaction remains owned
+  until settlement even if the default network changes.
 
 Public compatibility assumptions belong in the root [`README.md`](../../README.md).
 Keep hardcoded AOSP-derived behavior beside its source and do not duplicate the

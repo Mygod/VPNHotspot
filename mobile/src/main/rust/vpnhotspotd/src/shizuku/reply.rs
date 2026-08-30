@@ -1,4 +1,4 @@
-//! Reads socket replies and exceptional readiness without delaying retirement.
+//! Reads socket replies and exceptional readiness with cancellation.
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -25,7 +25,6 @@ pub(crate) enum Event<K> {
         id: u64,
         remote: SocketAddr,
         hop_limit: u8,
-        interface: u32,
         payload: Vec<u8>,
     },
     /// One ICMP error a router sent about traffic this socket relayed. Reported rather than drained away,
@@ -137,9 +136,8 @@ pub(crate) async fn receive<K: Copy>(
         Sizing::Fixed => vec![0u8; MAX_DATAGRAM],
     };
     // One per worker, for the worker's life. Its ancillary buffer is heap-backed, so building one per
-    // readiness would allocate as often as a remote chose to send errors, and holding one across a handover
-    // would be an allocation nobody charged parked on a channel. This is charged with the record that
-    // admitted this worker - see [egress::ErrorQueue::footprint].
+    // readiness would allocate as often as a remote chose to send errors. This is charged with the record
+    // that admitted this worker - see [egress::ErrorQueue::footprint].
     let mut errors = egress::ErrorQueue::new();
     loop {
         // One turn, and the whole ordering is inside it: readiness, then the slot, then the read - and only
@@ -178,7 +176,6 @@ pub(crate) async fn receive<K: Copy>(
                 id,
                 remote: received.source,
                 hop_limit: received.hop_limit,
-                interface: received.interface,
                 payload,
             },
             |source| {
@@ -192,7 +189,7 @@ pub(crate) async fn receive<K: Copy>(
         match turned {
             // The socket stays ready while anything remains, so the next turn takes a fresh slot.
             Turned::Sent | Turned::Reported | Turned::Released => continue,
-            // The owner is gone, or a retirement asked this worker to stop.
+            // The owner is gone, or cancellation asked this worker to stop.
             Turned::Cancelled | Turned::Closed => return Ended::Expected,
             Turned::Failed(error) => {
                 return Ended::Failed {

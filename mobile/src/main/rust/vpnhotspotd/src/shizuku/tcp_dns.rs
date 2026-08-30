@@ -60,8 +60,6 @@ pub(crate) struct Answering {
 
 pub(crate) struct Delivered {
     answering: Answering,
-    stamp: crate::shizuku::tun_writer::Stamp,
-    network: vpnhotspotd::shared::model::Network,
 }
 
 pub(crate) enum Answered {
@@ -104,41 +102,14 @@ impl Answering {
 }
 
 impl Delivered {
-    pub(crate) fn new(
-        settled: dns_debt::Settled<Resolved>,
-        stamp: crate::shizuku::tun_writer::Stamp,
-        network: vpnhotspotd::shared::model::Network,
-    ) -> Self {
+    pub(crate) fn new(settled: dns_debt::Settled<Resolved>) -> Self {
         Self {
             answering: Answering { settled },
-            stamp,
-            network,
         }
     }
 
     pub(crate) fn has_answer(&self) -> bool {
         self.answering.settled.has_answer()
-    }
-
-    pub(crate) fn stamp(&self) -> crate::shizuku::tun_writer::Stamp {
-        self.stamp
-    }
-
-    pub(crate) fn network(&self) -> vpnhotspotd::shared::model::Network {
-        self.network
-    }
-
-    pub(crate) fn stale(&mut self) -> bool {
-        self.answering.settled.replace_answer(|resolved| {
-            let Resolved { result, message } = resolved;
-            drop(result);
-            let message = message?;
-            let servfail = dns_wire::servfail_response(&message).map(Owned::new);
-            servfail.map(|servfail| Resolved {
-                result: Ok(servfail),
-                message: Some(message),
-            })
-        })
     }
 
     pub(crate) fn answering(self) -> Answering {

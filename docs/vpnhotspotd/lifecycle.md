@@ -40,8 +40,8 @@ is installed. Startup continues under the inherited policy.
 
 `StartShizukuSessionCommand` is the event call that owns the session. Each direct
 `ShizukuSessionConfig` is a one-shot call correlated by its own `call_id`.
-Fields, validation and handover semantics are documented in
-[`shizuku.md`](shizuku.md#configuration-and-handover).
+Admission and acknowledgement semantics are documented in
+[`shizuku.md`](shizuku.md#configuration-and-admission).
 
 Start refusal and session failure return an `ErrorFrame` on the start call.
 Config refusal returns an `ErrorFrame` on that config call and ends the session.

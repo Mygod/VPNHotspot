@@ -18,9 +18,7 @@ use crate::shizuku::gateway::Gateways;
 use crate::shizuku::output::Output;
 use crate::shizuku::reply::Event;
 use crate::shizuku::send_failure::{self, Failure};
-use crate::shizuku::tun_writer::Stamp;
 use vpnhotspotd::shared::admission::{Admission, Class, Denied, Lease, Request as Grant};
-use vpnhotspotd::shared::egress::RelayUpstream as Upstream;
 
 /// Counters rather than a report per event, for the same reason as everywhere else on this path: the input is
 /// chosen by whoever puts packets on the interface, so anything printed per packet is a flood by construction.
@@ -30,7 +28,6 @@ struct Counters {
     sent: u64,
     written: u64,
     denied: u64,
-    no_upstream: u64,
     expired: u64,
     too_big: u64,
     blocked: u64,
@@ -41,7 +38,6 @@ struct Counters {
     df_failed: u64,
     open_failed: u64,
     exhausted: u64,
-    foreign_interface: u64,
     unmatched: u64,
     unparseable: u64,
     translated: u64,
@@ -57,14 +53,13 @@ struct Counters {
 impl Counters {
     fn describe(&self) -> String {
         format!(
-            "sent {} written {} denied {} no-upstream {} expired {} too-big {} blocked {} \
+            "sent {} written {} denied {} expired {} too-big {} blocked {} \
              unreachable {} send-failed {} reported {} unreported {} df-failed {} open-failed {} \
-             exhausted {} foreign-interface {} unmatched {} unparseable {} translated {} \
-             untranslated {} ambiguous {} implausible {} stale {} swept {} unprepared {}",
+             exhausted {} unmatched {} unparseable {} translated {} untranslated {} ambiguous {} \
+             implausible {} stale {} swept {} unprepared {}",
             self.sent,
             self.written,
             self.denied,
-            self.no_upstream,
             self.expired,
             self.too_big,
             self.blocked,
@@ -75,7 +70,6 @@ impl Counters {
             self.df_failed,
             self.open_failed,
             self.exhausted,
-            self.foreign_interface,
             self.unmatched,
             self.unparseable,
             self.translated,
@@ -93,8 +87,6 @@ impl Counters {
 const SESSIONS_PREPARED: usize = 1024;
 
 pub(crate) struct Relay {
-    stamp: Stamp,
-    upstream: Option<Upstream>,
     sockets: Sockets,
     sessions: Sessions,
     /// The session table's own row state and the error-queue scratch below, charged once for the session and
@@ -130,8 +122,6 @@ impl Relay {
         };
         Ok((
             Self {
-                stamp: Stamp::default(),
-                upstream: None,
                 sockets,
                 sessions: Sessions::with_capacity(SESSIONS_PREPARED),
                 tables,
@@ -152,24 +142,6 @@ impl Relay {
         drop(self.sessions);
         drop(self.errors);
         admission.release(self.tables);
-    }
-
-    /// Adopts a config. The generation advancing retires everything, because each socket is bound to the
-    /// network that changed and a session is nothing without the socket that carries it.
-    pub(crate) async fn apply(
-        &mut self,
-        stamp: Stamp,
-        upstream: Option<Upstream>,
-        admission: &mut Admission,
-    ) {
-        let retiring = stamp != self.stamp;
-        // Adopted before the sweep for the same reason the UDP relay does it: whatever a sweep writes belongs to
-        // the retirement that follows it, not to the one being swept.
-        self.stamp = stamp;
-        self.upstream = upstream;
-        if retiring {
-            self.shutdown(admission).await;
-        }
     }
 
     /// Drops every session, cancels every socket, and joins every receive task.
@@ -198,11 +170,6 @@ impl Relay {
         output: &mut Output,
         admission: &mut Admission,
     ) {
-        let Some(upstream) = self.upstream else {
-            // An unavailable upstream drops this operation, not the session.
-            self.counters.no_upstream += 1;
-            return;
-        };
         let Nat66HopLimit::Forward(hop_limit) = nat66_hop_limit(Some(request.hop_limit)) else {
             self.counters.expired += 1;
             // A router owes Time Exceeded here, and for a ping it is the whole point: this is what makes the
@@ -210,7 +177,7 @@ impl Relay {
             return self.report(packet, Reason::Expired, gateways, output);
         };
         let family = Family::of(request.remote);
-        let socket = match self.sockets.acquire(upstream.network, family, admission) {
+        let socket = match self.sockets.acquire(family, admission) {
             Ok(socket) => socket,
             Err(Refused::Denied) => {
                 self.counters.denied += 1;
@@ -342,13 +309,6 @@ impl Relay {
                     }
                 }
             }
-            // Cancelled rather than removed: the refund belongs to the receive task finishing, which is what
-            // says the descriptor is actually gone. Every socket goes, because they are all bound to the same
-            // network.
-            Failure::NetworkGone => {
-                self.sockets.cancel();
-                self.counters.unreachable += 1;
-            }
             Failure::Unreachable => self.counters.unreachable += 1,
             Failure::Unexpected => {
                 if !self.reported_send_failure {
@@ -369,7 +329,7 @@ impl Relay {
         match gateways.report(packet, reason) {
             Some(error) => {
                 self.counters.reported += 1;
-                output.packet(self.stamp, error);
+                output.packet(error);
             }
             None => self.counters.unreported += 1,
         }
@@ -381,7 +341,7 @@ impl Relay {
         output: &mut Output,
         admission: &mut Admission,
     ) {
-        let (family, id, remote, hop_limit, interface, message) = match event {
+        let (family, id, remote, hop_limit, message) = match event {
             Event::Error { key, id, error } => {
                 if !self.sockets.current(key, id) {
                     self.counters.stale += 1;
@@ -395,25 +355,16 @@ impl Relay {
                 id,
                 remote,
                 hop_limit,
-                interface,
                 payload,
-            } => (key, id, remote, hop_limit, interface, payload),
-        };
-        let Some(upstream) = self.upstream else {
-            self.counters.stale += 1;
-            return;
+            } => (key, id, remote, hop_limit, payload),
         };
         if !self.sockets.current(family, id) {
             self.counters.stale += 1;
             return;
         }
-        // Inbound ICMP demultiplexes on the identifier alone, and the mark that steered the send takes no part
-        // in it, so a late reply to a retired socket can be delivered to whatever socket now holds that
-        // identifier. This is the only thing separating the two.
-        if interface != upstream.interface {
-            self.counters.foreign_interface += 1;
-            return;
-        }
+        // Worker identity rejects queued events from a replaced socket. If the kernel later reuses the ping
+        // identifier, a packet delivered to the current socket is indistinguishable here; the remote and
+        // translated sequence below still have to name a live session.
         // The identifier in the reply is the kernel's own, which is what it demultiplexed on to reach this
         // socket at all, so it identifies nothing further and is not compared against anything.
         let (reply, payload) = match echo_wire::peek_reply(&message, family.ipv6()) {
@@ -450,7 +401,6 @@ impl Relay {
             return;
         };
         output.echo(
-            self.stamp,
             remote.ip(),
             session.client,
             hop_limit,
@@ -460,17 +410,17 @@ impl Relay {
         self.counters.written += 1;
     }
 
-    /// The next ping socket to have finished, which is the only thing that retires one.
+    /// The next ping socket to have finished, which is the only thing that removes one.
     pub(crate) async fn finished(&mut self) -> Terminal<Family> {
         self.sockets.finished().await
     }
 
-    /// Settles one ping socket whose receive task has finished, whether it failed on its own or was retired.
+    /// Settles one ping socket whose receive task has finished, whether it failed on its own or was cancelled.
     pub(crate) fn closed(&mut self, terminal: Terminal<Family>, admission: &mut Admission) {
         let Terminal { key, id, ended } = terminal;
         match ended {
             Ended::Expected => {}
-            // once per socket, and there are two per generation at most, so this cannot flood
+            // once per socket rather than once per packet
             Ended::Reported(reason) => report::stdout!("echo {key} socket closed: {reason}"),
             Ended::Failed { context, error } => {
                 report::io_with_details(context, error, [("family", key)])
@@ -548,7 +498,7 @@ impl Relay {
         match icmp_error::build(error.remote, &invoking, reason) {
             Ok(packet) => {
                 self.counters.translated += 1;
-                output.packet(self.stamp, packet);
+                output.packet(packet);
             }
             Err(_) => self.counters.implausible += 1,
         }

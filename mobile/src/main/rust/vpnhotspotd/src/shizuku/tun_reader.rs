@@ -1,4 +1,4 @@
-//! Owns client-keyed dataplane state and joins retired workers before acknowledging a generation.
+//! Owns client-keyed dataplane state and applies admission updates.
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::os::fd::OwnedFd;
@@ -27,16 +27,13 @@ use crate::shizuku::output::Output;
 use crate::shizuku::tcp;
 use vpnhotspotd::shared::ipv4_identification::{Ipv4Identifications, Prepared, Terminal};
 
-use crate::shizuku::tun_writer::{self, Stamp, TERMINAL_DEPTH};
+use crate::shizuku::tun_writer::{self, TERMINAL_DEPTH};
 use crate::shizuku::udp;
 use crate::shizuku::virtual_dns;
-use vpnhotspotd::shared::egress::Egress;
 
 pub(crate) struct Applied {
     pub(crate) admitting: bool,
-    pub(crate) upstream_generation: u64,
-    pub(crate) egress: Egress,
-    pub(crate) retired: oneshot::Sender<()>,
+    pub(crate) applied: oneshot::Sender<()>,
 }
 
 // Bounds the reassembly table itself; the admission ledger separately bounds fragment bytes.
@@ -189,7 +186,6 @@ pub(crate) async fn run(
     } = dataplane;
     let mut counters = Counters::default();
     let mut admitting = false;
-    let mut stamp = Stamp::default();
     let gateways = Gateways::new(gateway_addresses);
     let mut result = loop {
         let mapping_deadline = relay.next_deadline();
@@ -203,31 +199,8 @@ pub(crate) async fn run(
                 let Some(config) = config else {
                     break Ok(());
                 };
-                let retiring = stamp.generation != config.upstream_generation;
-                stamp = Stamp {
-                    generation: config.upstream_generation,
-                };
-                if retiring {
-                    // Gate old packets first; owner sweeps then join every old-generation descriptor.
-                    if let Err(e) = output.writer().retire(stamp).await {
-                        break Err(e.with_report_context("shizuku.tun_ingress.retire"));
-                    }
-                }
-                relay.apply(stamp, config.egress.relay_upstream(), &mut admission).await;
-                echo.apply(stamp, config.egress.relay_upstream(), &mut admission).await;
-                dns.apply(stamp, config.egress.network);
-                tcp.apply(
-                    stamp,
-                    config.egress.network,
-                    &mut admission,
-                    &mut output,
-                ).await;
-                if retiring {
-                    report_owners(&relay, &echo, &fragments, &dns, &tcp, &output, &admission);
-                }
                 admitting = config.admitting;
-                // This is the ACK fence: every owner above has completed retirement before it fires.
-                if config.retired.send(()).is_err() {
+                if config.applied.send(()).is_err() {
                     break Err(io::Error::other("the session abandoned a config it sent")
                         .with_report_context("shizuku.tun_ingress.acknowledge"));
                 }
@@ -320,7 +293,6 @@ pub(crate) async fn run(
                     admission: &mut admission,
                     fragment_lease: &fixed.fragments,
                     gateways: &gateways,
-                    stamp,
                     virtual_addresses: &virtual_addresses,
                 }.expire(now());
                 continue;
@@ -362,7 +334,6 @@ pub(crate) async fn run(
             admission: &mut admission,
             fragment_lease: &fixed.fragments,
             gateways: &gateways,
-            stamp,
             virtual_addresses: &virtual_addresses,
         })
         .accept(&buffer[..read], now())

@@ -117,11 +117,9 @@ impl Engine {
         if expired == 0 {
             return;
         }
-        // Under the stamp current now and before anything is freed, for the same reason [Engine::retire]
-        // polls here: a reset is a packet the stack has not built yet, and removing the socket first would
-        // abort the connection and tell the client nothing. Whether it reaches the wire is the writer's
-        // ordinary business - a config that changes the stamp before the writer dequeues it purges this
-        // packet exactly as it purges every other one of the retired stamp.
+        // Before anything is freed: a reset is a packet the stack has not built yet, and removing the socket
+        // first would abort the connection and tell the client nothing. Whether it reaches the wire is the
+        // writer's ordinary queueing decision.
         self.poll(output);
     }
 }

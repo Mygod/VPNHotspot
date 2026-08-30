@@ -1,12 +1,12 @@
-//! Serializes nonblocking TUN writes after the retirement-stamp gate.
+//! Serializes nonblocking TUN writes.
 use std::io;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::io::unix::AsyncFd;
+use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
-use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use vpnhotspotd::shared::ipv4_identification::{Guarded, Terminal};
 use vpnhotspotd::shared::packet_writer::validate;
@@ -24,27 +24,21 @@ pub(crate) const TERMINAL_DEPTH: usize = QUEUE_DEPTH + 1;
 
 /// Every Rust-visible byte this writer's construction owns, for the whole session.
 pub(crate) fn footprint(mtu: usize) -> Option<u64> {
-    // One producer each. The packet queue and the retirement channel are the ingress task's alone - it holds
-    // the only [Writer] and hands out references rather than clones - and the settlement channel is the writer
-    // task's alone. So none of the three can have a second sender racing a block growth.
-    reply_channel_footprint::<Queued>(QUEUE_DEPTH, 1, mtu as u64)?
-        .checked_add(channel_footprint::<Retirement>(1, 1)?)?
-        .checked_add(channel_footprint::<Terminal>(TERMINAL_DEPTH, 1)?)
+    // One producer each. The packet queue is the ingress task's alone - it holds the only [Writer] and hands
+    // out references rather than clones - and the settlement channel is the writer task's alone. So neither
+    // can have a second sender racing a block growth.
+    reply_channel_footprint::<Queued>(QUEUE_DEPTH, 1, mtu as u64)?.checked_add(channel_footprint::<
+        Terminal,
+    >(
+        TERMINAL_DEPTH, 1
+    )?)
 }
 
 /// Rejected at admission, so the producer still owns the packet and whatever it reserved for it.
 #[derive(Debug)]
 pub(crate) struct Rejected;
 
-/// Generation that bound the packet's upstream selection.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(crate) struct Stamp {
-    pub(crate) generation: u64,
-}
-
 pub(crate) struct Queued {
-    /// Retirement stamp captured at enqueue and checked at dequeue.
-    stamp: Stamp,
     packet: Vec<u8>,
     /// The guarded datagram this packet belongs to, or `None` for everything that carries no Identification
     /// this daemon issued. Every packet of one datagram carries the same identity, so a fragmented datagram
@@ -52,26 +46,16 @@ pub(crate) struct Queued {
     guarded: Option<Guarded>,
 }
 
-/// One retirement, and the half of the handover fence that lives on this side.
-pub(crate) struct Retirement {
-    stamp: Stamp,
-    ack: oneshot::Sender<()>,
-}
-
-/// The two receiving ends the writer task owns, kept together so a caller cannot wire up one without the
-/// other.
+/// The receiving ends the writer task owns, kept together so a caller cannot wire up one without the other.
 pub(crate) struct Queue {
     packets: mpsc::Receiver<Queued>,
-    retirements: mpsc::Receiver<Retirement>,
     /// Where a guarded packet's ending goes. Owned by the writer task because the writer is what produces
     /// one; the ingress task holds the other half and applies it to the allocator.
     terminals: mpsc::Sender<Terminal>,
 }
 
-#[derive(Clone)]
 pub(crate) struct Writer {
     sender: mpsc::Sender<Queued>,
-    retirements: mpsc::Sender<Retirement>,
 }
 
 impl Writer {
@@ -79,50 +63,20 @@ impl Writer {
     /// to build the packet, and the caller is the only thing that knows how to refund it.
     pub(crate) fn enqueue(
         &self,
-        stamp: Stamp,
         packet: Vec<u8>,
         guarded: Option<Guarded>,
     ) -> Result<(), Rejected> {
         self.sender
-            .try_send(Queued {
-                stamp,
-                packet,
-                guarded,
-            })
+            .try_send(Queued { packet, guarded })
             .map_err(|_| Rejected)
-    }
-
-    /// Retires everything produced under the previous stamp and returns only once the writer says so.
-    pub(crate) async fn retire(&self, stamp: Stamp) -> io::Result<()> {
-        let (ack, answered) = oneshot::channel();
-        self.retirements
-            .send(Retirement { stamp, ack })
-            .await
-            .map_err(|_| io::Error::other("tun egress stopped before ingress"))?;
-        answered
-            .await
-            .map_err(|_| io::Error::other("tun egress abandoned a retirement"))
     }
 }
 
-/// The three channels one session's TUN writer owns, and the receiving end the ingress task keeps.
+/// The two channels one session's TUN writer owns, and the receiving end the ingress task keeps.
 pub(crate) fn channel() -> (Writer, Queue, mpsc::Receiver<Terminal>) {
     let (sender, packets) = mpsc::channel(QUEUE_DEPTH);
-    // One at a time, because the ingress task issues one and awaits its answer before doing anything else.
-    let (retirements, retiring) = mpsc::channel(1);
     let (terminals, settled) = mpsc::channel(TERMINAL_DEPTH);
-    (
-        Writer {
-            sender,
-            retirements,
-        },
-        Queue {
-            packets,
-            retirements: retiring,
-            terminals,
-        },
-        settled,
-    )
+    (Writer { sender }, Queue { packets, terminals }, settled)
 }
 
 /// How far one packet got.
@@ -130,12 +84,8 @@ enum Progress {
     /// On the wire, at the moment the write returned. The instant is read *after* the syscall succeeded and
     /// nowhere else: it is the only honest answer to "when was this Identification used".
     Written(Instant),
-    /// A retirement arrived while the write was parked. The packet is abandoned rather than finished: it
-    /// carries the stamp being retired, and writing it after the acknowledgement is the one thing the fence
-    /// exists to prevent.
-    Preempted(Retirement),
-    /// The ingress task is gone, so nothing will ever retire or produce again.
-    Orphaned,
+    /// The session ended while this packet was waiting for the TUN to become writable.
+    Cancelled,
 }
 
 /// Hands one guarded packet's ending back to the allocator, answering whether the writer may carry on.
@@ -167,38 +117,19 @@ pub(crate) async fn run(
     queue: Queue,
     cancel: CancellationToken,
 ) -> io::Result<()> {
-    let Queue {
-        packets,
-        retirements,
-        terminals,
-    } = queue;
+    let Queue { packets, terminals } = queue;
     let mut counts = Counts::default();
     // Drop all queue state before `terminals`; its closure is the ingress task's teardown fence.
     let result = {
         let mut packets = packets;
-        let mut retirements = retirements;
-        writing(
-            &fd,
-            mtu,
-            &mut packets,
-            &mut retirements,
-            &terminals,
-            &cancel,
-            &mut counts,
-        )
-        .await
+        writing(&fd, mtu, &mut packets, &terminals, &cancel, &mut counts).await
     };
     let Counts {
-        stale,
         oversized,
         written,
-        retired,
         settled,
     } = counts;
-    report::stdout!(
-        "tun egress: written {written} stale {stale} rejected {oversized} retired {retired} \
-         settled {settled}"
-    );
+    report::stdout!("tun egress: written {written} rejected {oversized} settled {settled}");
     // Described here and delivered nowhere: attaching the report is this task's whole reporting duty, and
     // [crate::shizuku::app_session] is what puts it in front of the app - as the start call's terminal
     // `ErrorFrame` when that call is still owed one, and as a nonfatal when it is not. Raised here rather
@@ -209,7 +140,6 @@ pub(crate) async fn run(
             "shizuku.tun_egress",
             [
                 ("written", written),
-                ("stale", stale),
                 ("rejected", oversized),
                 ("settled", settled),
             ],
@@ -225,10 +155,8 @@ pub(crate) async fn run(
 /// closing line can still be printed on every way out.
 #[derive(Default)]
 struct Counts {
-    stale: u64,
     oversized: u64,
     written: u64,
-    retired: u64,
     settled: u64,
 }
 
@@ -238,30 +166,14 @@ async fn writing(
     fd: &AsyncFd<OwnedFd>,
     mtu: usize,
     packets: &mut mpsc::Receiver<Queued>,
-    retirements: &mut mpsc::Receiver<Retirement>,
     terminals: &mpsc::Sender<Terminal>,
     cancel: &CancellationToken,
     counts: &mut Counts,
 ) -> io::Result<()> {
-    // Zero, which no config carries, so the first config's retirement runs against an empty queue rather
-    // than being skipped.
-    let mut current = Stamp::default();
     loop {
         let queued = tokio::select! {
             biased;
             () = cancel.cancelled() => break Ok(()),
-            // Ahead of the packet arm, so a retirement is adopted before another packet of the stamp it
-            // retires can be taken out of the queue.
-            retirement = retirements.recv() => match retirement {
-                Some(retirement) => {
-                    current = retirement.stamp;
-                    counts.retired += 1;
-                    // Failure means the ingress task stopped waiting, which its own error already explains.
-                    let _ = retirement.ack.send(());
-                    continue;
-                }
-                None => break Ok(()),
-            },
             queued = packets.recv() => match queued {
                 Some(queued) => queued,
                 None => break Ok(()),
@@ -270,20 +182,6 @@ async fn writing(
         // Only a guarded packet is a settlement: an unguarded one carries no Identification, so there is
         // nothing about it for the allocator to hear and nothing to count.
         let settlement = u64::from(queued.guarded.is_some());
-        if queued.stamp != current {
-            // Produced under a generation that has since been retired. This is the purge and the catch at
-            // once: what a sweep left queued, and what an old-generation task enqueued after the sweep had
-            // already drained it.
-            counts.stale += 1;
-            // Terminal without a write: the packet never reached the TUN, so whatever Identification it
-            // carried is free to be issued again as soon as the rest of its datagram has ended too.
-            match settle(terminals, queued.guarded, None) {
-                Ok(true) => counts.settled += settlement,
-                Ok(false) => break Ok(()),
-                Err(e) => break Err(e),
-            }
-            continue;
-        }
         if let Err(e) = validate(&queued.packet, mtu) {
             // A daemon packetization bug, not client input.
             counts.oversized += 1;
@@ -300,17 +198,15 @@ async fn writing(
             }
             continue;
         }
-        let progress = match write_all(fd, &queued.packet, retirements).await {
+        let progress = match write_all(fd, &queued.packet, cancel).await {
             Ok(progress) => progress,
             // A write that neither succeeded nor asked to be retried is fatal - see [write_all] - so no
             // terminal is sent for this packet and the session ends with its registration outstanding.
             Err(e) => break Err(e),
         };
-        // Settled before the acknowledgement below, so a preempted packet's ending is already on its way when
-        // the ingress task wakes from the retirement it was waiting on.
         let at = match progress {
             Progress::Written(at) => Some(at),
-            _ => None,
+            Progress::Cancelled => None,
         };
         match settle(terminals, queued.guarded, at) {
             Ok(true) => counts.settled += settlement,
@@ -319,13 +215,7 @@ async fn writing(
         }
         match progress {
             Progress::Written(_) => counts.written += 1,
-            Progress::Preempted(retirement) => {
-                counts.stale += 1;
-                current = retirement.stamp;
-                counts.retired += 1;
-                let _ = retirement.ack.send(());
-            }
-            Progress::Orphaned => break Ok(()),
+            Progress::Cancelled => break Ok(()),
         }
     }
 }
@@ -336,18 +226,12 @@ async fn writing(
 async fn write_all(
     fd: &AsyncFd<OwnedFd>,
     packet: &[u8],
-    retirements: &mut mpsc::Receiver<Retirement>,
+    cancel: &CancellationToken,
 ) -> io::Result<Progress> {
     loop {
-        // The parked wait is the only place a retirement can find a packet already accepted but not yet on
-        // the wire, so it is also the only place the fence needs a preemption. Biased, because a retirement
-        // that arrived is more current than a writability that also did.
         let mut guard = tokio::select! {
             biased;
-            retirement = retirements.recv() => return Ok(match retirement {
-                Some(retirement) => Progress::Preempted(retirement),
-                None => Progress::Orphaned,
-            }),
+            () = cancel.cancelled() => return Ok(Progress::Cancelled),
             guard = fd.writable() => guard?,
         };
         match guard

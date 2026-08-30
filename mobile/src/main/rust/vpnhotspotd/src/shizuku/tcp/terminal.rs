@@ -92,7 +92,7 @@ impl Engine {
         };
         // Emitted before the socket is removed, because a reset is a packet the stack has not sent yet and a
         // smoltcp socket only advances when polled: removing it first would abort the connection and tell the
-        // client nothing. Only when there was one, so a mass retirement does not poll once per flow.
+        // client nothing. Only when there was one, so session shutdown does not poll once per flow.
         if reset {
             self.poll(output);
         }

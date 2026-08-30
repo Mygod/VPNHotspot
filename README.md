@@ -68,10 +68,11 @@ Rootless Shizuku mode is in development
 ([#789](https://github.com/Mygod/VPNHotspot/issues/789)) and is not equivalent to
 root mode:
 
-- It relays tethered traffic over this app's default connection, but other apps
-  can inject packets through the TUN interface. They cannot read tunnel traffic
-  or receive downstream-routed replies. A VPN-excluded app may therefore send
-  through the VPN anyway.
+- It relays tethered traffic under this app UID's ordinary network policy,
+  including VPN split/excluded-route fallthrough. Other apps can inject
+  packets through the TUN interface. They cannot read tunnel traffic or receive
+  downstream-routed replies. A VPN-excluded app may therefore send through the
+  VPN anyway.
 - Stopping or losing the TestNetwork does not stop the hotspot. Android selects
   an ordinary upstream and clients continue unprotected without a client-side
   warning.

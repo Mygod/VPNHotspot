@@ -10,7 +10,6 @@ use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr, IpEndpoint, IpListenEndp
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use vpnhotspotd::shared::icmp_nat::{nat66_hop_limit, Nat66HopLimit};
-use vpnhotspotd::shared::model::Network;
 use vpnhotspotd::shared::workers::{Ended, Identity, Workers};
 
 use crate::shizuku::flow_setup;
@@ -29,7 +28,6 @@ use crate::shizuku::owned::Owned;
 use crate::shizuku::tcp_device::Shim;
 use crate::shizuku::tcp_dns::{self, Serving, Transactions};
 use crate::shizuku::tcp_flow;
-use crate::shizuku::tun_writer::Stamp;
 
 mod bridge;
 mod dns;
@@ -48,44 +46,12 @@ fn flow_footprint() -> Option<u64> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Source {
     Resolver,
-    Upstream(Network),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Kind {
     Upstream,
-    Resolver,
-}
-
-impl Source {
-    fn kind(self) -> Kind {
-        match self {
-            Self::Resolver => Kind::Resolver,
-            Self::Upstream(_) => Kind::Upstream,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Retirement {
-    Everything,
-    // Generation changes preserve virtual-DNS transports because they hold no selected-network socket.
-    Upstreams,
-}
-
-impl Retirement {
-    fn retires(self, kind: Kind) -> bool {
-        matches!(
-            (self, kind),
-            (Self::Everything, _) | (Self::Upstreams, Kind::Upstream)
-        )
-    }
 }
 
 struct Flow {
     client: SocketAddr,
     destination: SocketAddr,
-    kind: Kind,
     lease: Lease,
     bridge: Bridge,
     refresh: bool,
@@ -101,11 +67,9 @@ struct Counters {
     resolved: u64,
     answered_here: u64,
     denied: u64,
-    preserved: u64,
     unprepared: u64,
     unsettled: u64,
     client_closing: u64,
-    no_upstream: u64,
     ingress: boundary::Counters,
     expired: u64,
     closed: u64,
@@ -115,15 +79,13 @@ struct Counters {
 impl Counters {
     fn describe(&self) -> String {
         format!(
-            "opened {} resolved {} answered-here {} denied {} preserved {} no-upstream {} reset {} \
+            "opened {} resolved {} answered-here {} denied {} reset {} \
              tail-failed {} expired {} client-closing {} closed {} to-upstream {} to-client {} stale {} \
              unconsumed {}",
             self.opened,
             self.resolved,
             self.answered_here,
             self.denied,
-            self.preserved,
-            self.no_upstream,
             self.ingress.reset,
             self.ingress.tail_failed,
             self.expired,
@@ -143,8 +105,6 @@ pub(crate) struct Engine {
     device: Shim,
     flows: Workers<SocketHandle, Flow>,
     queries: Transactions,
-    stamp: Stamp,
-    upstream: Option<Network>,
     sweep: CancellationToken,
     asks: mpsc::Sender<tcp_dns::Ask>,
     outgoing: Turns<SocketHandle>,
@@ -212,8 +172,6 @@ impl Engine {
                 device,
                 flows: Workers::with_capacity("shizuku.tcp_flow", prepared),
                 queries,
-                stamp: Stamp::default(),
-                upstream: None,
                 sweep: CancellationToken::new(),
                 asks,
                 outgoing: Turns::with_capacity(prepared),
@@ -242,36 +200,13 @@ impl Engine {
         SmolInstant::from_micros(self.started.elapsed().as_micros() as i64)
     }
 
-    pub(crate) async fn apply(
-        &mut self,
-        stamp: Stamp,
-        upstream: Option<Network>,
-        admission: &mut Admission,
-        output: &mut Output,
-    ) {
-        let retiring = (stamp != self.stamp).then_some(Retirement::Upstreams);
-        // Resets emitted by retirement must carry the successor stamp or the TUN writer will discard them.
-        self.stamp = stamp;
-        self.upstream = upstream;
-        if let Some(retiring) = retiring {
-            self.retire(retiring, admission, output).await;
-            self.sweep = CancellationToken::new();
-        }
-    }
-
     /// Retires all flows, then drains transactions, returning the first local failure.
     pub(crate) async fn shutdown(
         &mut self,
         admission: &mut Admission,
         output: &mut Output,
     ) -> io::Result<()> {
-        self.retire(Retirement::Everything, admission, output).await;
-        // Flows may still settle deliveries, so drain transactions last.
-        self.queries.shutdown(admission)
-    }
-
-    async fn retire(&mut self, scope: Retirement, admission: &mut Admission, output: &mut Output) {
-        // Cancel the shared upstream sweep before per-flow tokens so workers choose abortive shutdown.
+        // Cancel the shared flow sweep before per-flow tokens so workers choose abortive shutdown.
         self.sweep.cancel();
         {
             let Engine {
@@ -290,10 +225,6 @@ impl Engine {
                 let Some(held) = flows.get_mut(handle) else {
                     continue;
                 };
-                if !scope.retires(held.record.kind) {
-                    counters.preserved += 1;
-                    continue;
-                }
                 if held.cancel.is_cancelled() {
                     continue;
                 }
@@ -310,18 +241,14 @@ impl Engine {
             let Some((handle, incarnation)) = self
                 .flows
                 .iter()
-                .find(|(_, held)| held.record.client_closing && scope.retires(held.record.kind))
+                .find(|(_, held)| held.record.client_closing)
                 .map(|(handle, held)| (*handle, held.id))
             else {
                 break;
             };
             self.finish_client_close(handle, incarnation, admission);
         }
-        while self
-            .flows
-            .values()
-            .any(|held| scope.retires(held.record.kind) && !held.record.client_closing)
-        {
+        while self.flows.values().any(|held| !held.record.client_closing) {
             // Joining is the descriptor-close fence; accounting is released only from `close` afterwards.
             let terminal = self.flows.finished().await;
             self.close(terminal, admission, output);
@@ -331,6 +258,8 @@ impl Engine {
             self.flows.len(),
             "every socket belongs to exactly one live flow"
         );
+        // Flows may still settle deliveries, so drain transactions last.
+        self.queries.shutdown(admission)
     }
 
     fn open(
@@ -345,11 +274,7 @@ impl Engine {
         let source = if resolver {
             Source::Resolver
         } else {
-            let Some(upstream) = self.upstream else {
-                self.counters.no_upstream += 1;
-                return None;
-            };
-            Source::Upstream(upstream)
+            Source::Upstream
         };
         let Nat66HopLimit::Forward(hop_limit) = nat66_hop_limit(Some(hop_limit)) else {
             return None;
@@ -403,7 +328,7 @@ impl Engine {
             let progressed = self.interface.poll(at, &mut self.device, &mut self.sockets);
             let emitted = match self.device.drain() {
                 Some(packet) => {
-                    output.packet(self.stamp, packet);
+                    output.packet(packet);
                     true
                 }
                 None => false,
@@ -521,7 +446,6 @@ impl Admit<'_> {
                 flow: Flow {
                     client: self.client,
                     destination: self.destination,
-                    kind: self.source.kind(),
                     lease,
                     bridge,
                     refresh: false,
@@ -623,7 +547,7 @@ impl Admit<'_> {
             return Err(Built::without_worker(flow, identity));
         };
         let token = identity.cancel.clone();
-        let Source::Upstream(upstream) = self.source else {
+        let Source::Upstream = self.source else {
             let asks = self.asks.clone();
             return self
                 .flows
@@ -651,7 +575,7 @@ impl Admit<'_> {
                 let connected = tokio::select! {
                     biased;
                     () = token.cancelled() => return Ended::Expected,
-                    connected = crate::shizuku::egress::connect_tcp(upstream, destination) => connected,
+                    connected = crate::shizuku::egress::connect_tcp(destination) => connected,
                 };
                 match connected {
                     Ok(socket) => match tokio::net::TcpStream::from_std(socket.into()) {

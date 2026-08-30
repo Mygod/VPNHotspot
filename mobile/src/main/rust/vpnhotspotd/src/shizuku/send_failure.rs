@@ -12,10 +12,7 @@ pub(crate) enum Failure {
     /// caller reads it off the error queue: that is what makes an honest Fragmentation Needed possible rather
     /// than a guessed one.
     TooBig,
-    /// The selected network is gone, so this socket is bound to something that no longer exists and can never
-    /// send again. Nothing here can be retried; the socket has to go.
-    NetworkGone,
-    /// An error the remote's own network reported, so it is per-destination and the socket survives it.
+    /// The current route or remote path is unreachable. It is per-send and the socket survives it.
     Unreachable,
     /// An errno nobody named. Diagnosable only by being printed, and only once - this path is driven by whoever
     /// puts packets on the interface, so a report per packet would be a flood.
@@ -28,9 +25,7 @@ pub(crate) fn classify(e: &io::Error) -> Failure {
         Failure::Blocked
     } else if e.raw_os_error() == Some(libc::EMSGSIZE) {
         Failure::TooBig
-    } else if e.raw_os_error() == Some(libc::ENONET) {
-        Failure::NetworkGone
-    } else if is_kernel_icmp_error(e) {
+    } else if e.raw_os_error() == Some(libc::ENONET) || is_kernel_icmp_error(e) {
         Failure::Unreachable
     } else {
         Failure::Unexpected

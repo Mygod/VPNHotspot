@@ -1,9 +1,9 @@
 # Shizuku Mode
 
-Shizuku mode shares the app UID's default `Network` with tethered clients
-without root. It publishes a restricted `TRANSPORT_TEST` network over an
-app-owned TUN, asks Android tethering to prefer it, and relays traffic from an
-app-UID child process. It requires Android 13 (API 33) or later.
+Shizuku mode shares the app UID's ordinary Android network policy with tethered
+clients without root. It publishes a restricted `TRANSPORT_TEST` network over
+an app-owned TUN, asks Android tethering to prefer it, and relays traffic from
+an app-UID child process. It requires Android 13 (API 33) or later.
 
 This is one global upstream mode. It neither owns nor starts downstream
 tethering. Shizuku privilege is used only for Android control operations; the
@@ -34,7 +34,7 @@ independent state and may run together.
 
 | Owner | State |
 | --- | --- |
-| [`ShizukuTestNetwork`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/ShizukuTestNetwork.kt) | TUN, agent, exact request, tethering connector and preference, child, upstream observation and cleanup ledger |
+| [`ShizukuTestNetwork`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/ShizukuTestNetwork.kt) | TUN, agent, exact request, tethering connector and preference, child, tethering-upstream observation and cleanup ledger |
 | [`ShizukuLifecycle`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/ShizukuLifecycle.kt) | current job and process-wide predecessor cleanup |
 | [`ShizukuTetheringService`](../../mobile/src/main/java/be/mygod/vpnhotspot/ShizukuTetheringService.kt) | foreground scope and the session job |
 | [`AppUidDaemon`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/AppUidDaemon.kt) | child process, peer authentication and control conversation |
@@ -146,36 +146,54 @@ An unconfirmed privileged release is retried before another start. An `UNKNOWN`
 request or agent blocks in-process recovery because a native network may remain;
 process death is required. Tethering connector death requires an app restart.
 
-## Configuration And Handover
+## Configuration And Admission
 
 `StartShizukuSessionCommand` is the event call that owns the session. It carries
 the TUN descriptor, interface name, MTU, virtual DNS addresses and gateway
 addresses; the daemon verifies the descriptor before acknowledging readiness.
 
 Each subsequent `ShizukuSessionConfig` is sent directly as a one-shot command
-correlated by `call_id`. An ACK contains no duplicate configuration state and is
-sent only after daemon-owned retirement completes. Refusal returns an
+correlated by `call_id`. It contains only `admit`, true in `ACTIVE` and false in
+every other state. An ACK contains no duplicate configuration state and is sent
+only after TUN ingress has applied that admission value. Refusal returns an
 `ErrorFrame` for that config call and ends the session.
 
-`ShizukuSessionConfig` contains:
-
-- `admit`, true only in `ACTIVE`;
-- `upstream_network` and its interface index, or neither when no egress is
-  selectable;
-- `upstream_generation`, advanced whenever the selected network or its pinned
-  properties change.
-
-Changing `admit` retires nothing. While false, ingress is dropped and no state
+Changing `admit` tears down nothing. While false, ingress is dropped and no state
 is created or refreshed; existing deadlines and protocol endings continue.
 Downstream membership is not observed.
 
-Advancing `upstream_generation` fences queued output and retires TCP, UDP and
-Echo state bound to the old `Network`. Workers are cancelled and joined before
-their descriptors and reservations are released. Reassembly and DNS-over-TCP
-transports remain; a resolver answer from the old generation becomes SERVFAIL
-for that query. A submitted query remains transaction-owned until settlement even
-if its transport closes; Android resolver work cannot be cancelled or joined.
-There is no fallback network.
+The daemon neither selects an Android `Network` nor binds its process or egress
+sockets to one. `ProcessBuilder` starts it through fork and exec, so the new
+image begins with libnetd_client's process and resolver selections unset; the
+daemon leaves them unset
+([process launch](https://android.googlesource.com/platform/libcore/+/refs/tags/android-17.0.0_r1/ojluni/src/main/java/java/lang/UNIXProcess.java#67),
+[network state](https://android.googlesource.com/platform/system/netd/+/refs/tags/android-17.0.0_r1/client/NetdClient.cpp#61)).
+Android therefore routes its sockets as ordinary sockets created by the app UID:
+
+- a new TCP connection uses the UID's policy at `connect`; an established
+  connection keeps Android's normal connected-socket behavior and is not ended
+  merely because the app's default network changes
+  ([AOSP](https://android.googlesource.com/platform/system/netd/+/refs/tags/android-17.0.0_r1/server/NetworkController.cpp#282));
+- UDP and Echo use unconnected, unbound sockets, so Android policy routing
+  chooses the path for their sends; existing mappings and Echo sessions are not
+  reset on a default-network change
+  ([AOSP](https://android.googlesource.com/platform/system/netd/+/refs/tags/android-17.0.0_r1/server/FwmarkServer.cpp#237));
+- each DNS submission passes `NETWORK_UNSPECIFIED` to `android_res_nsend`.
+  This is an unset selection, not a handle naming the current default. The DNS
+  proxy obtains the peer UID and chooses the applicable VPN DNS network or the
+  UID/default DNS network for that submission
+  ([unset selection](https://android.googlesource.com/platform/frameworks/native/+/refs/tags/android-17.0.0_r1/include/android/multinetwork.h#47),
+  [submission](https://android.googlesource.com/platform/system/netd/+/refs/tags/android-17.0.0_r1/client/NetdClient.cpp#519),
+  [UID context](https://android.googlesource.com/platform/packages/modules/DnsResolver/+/refs/tags/android-17.0.0_r1/DnsProxyListener.cpp#1024),
+  [selection](https://android.googlesource.com/platform/system/netd/+/refs/tags/android-17.0.0_r1/server/NetworkController.cpp#217)).
+
+An in-flight resolver request remains transaction-owned until settlement even
+if its transport closes or the default network changes; Android resolver work
+cannot be cancelled or joined. Android may deliberately fall through to the
+physical default for a VPN-excluded or otherwise unrouted destination, and may
+use default-network DNS when the VPN supplies none. `VpnService.allowBypass()`
+separately permits explicit selection of other networks
+([AOSP](https://android.googlesource.com/platform/system/netd/+/refs/tags/android-17.0.0_r1/server/RouteController.cpp#712)).
 
 ## App-UID Dataplane
 
@@ -190,6 +208,16 @@ destinations are classified before reassembly or transport dispatch.
 | ICMP Echo | relayed through ping sockets | Echo session and socket |
 | Supported ICMP errors | translated only when the quoted flow is proven | no persistent row |
 | Other traffic | dropped | none |
+
+Android applies the app UID's routing and access policy to every unbound egress
+socket; the daemon adds no network or ingress-interface authorization of its
+own. UDP accepts a reply only for the current live mapping and a remote address
+that mapping contacted. Echo requires the current ping-socket worker and a live
+remote/translated-sequence session. Worker identities reject events already
+queued by sockets that are no longer current. After the kernel reuses a UDP port
+or ping identifier, however, a late or forged packet delivered to that live
+socket and matching the remaining correlation is indistinguishable; this mode
+provides no identity-quarantine or ingress-interface-provenance guarantee.
 
 MTU 1500 is checked once and drives stack sizing and output fragmentation. Path
 MTU errors come from socket error queues and `EMSGSIZE`, not a cached upstream
@@ -219,9 +247,9 @@ Outer idle floors are:
 TCP half-close preserves byte order and backpressure. After upstream I/O
 completes normally, the daemon closes the upstream socket but retains the
 client-facing TCP state until its closing handshake completes. Expiry,
-generation retirement or session shutdown may still end it abortively. A reset
+explicit flow teardown or session shutdown may still end it abortively. A reset
 is acted on only after the TCP stack accepts it; flow identity is socket handle
-plus incarnation so handle reuse cannot retire a successor.
+plus incarnation so handle reuse cannot tear down a successor.
 
 ## External State And Cleanup
 
@@ -244,14 +272,20 @@ or clean platform-owned forwarding directly.
 
 ## Security Boundary
 
-This mode protects tethered traffic from the external network, not from other
-apps on the phone. Qualification verified that restricted `Network`-handle
-selection is enforced: another UID cannot request, bind to, mark, resolve or ping
-through the restricted network. It also verified that any app with network
-access can inject packets by naming the TUN interface directly. Such an app can
-send traffic through the selected upstream and impersonate a tethered source,
-including bypassing a VPN's per-app exclusion, but cannot read the TUN or receive
-the downstream-routed replies.
+This mode gives tethered traffic the app UID's external-network policy; it does
+not create a stronger receive boundary. Android restricts app-UID ingress to the
+VPN interface only for a non-bypassable, fully routed app VPN without excluded
+routes. For a bypassable or split/excluding VPN it installs wildcard ingress
+acceptance instead
+([AOSP](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#12103),
+[BPF enforcement](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/bpf/progs/netd.c#808)).
+
+Qualification verified that another UID cannot select the restricted
+TestNetwork through the normal Android `Network` APIs. It also verified that any
+app with network access can inject packets by naming the TUN interface directly.
+Such an app can send traffic under this app UID's network policy and impersonate
+a tethered source, including bypassing a VPN's per-app exclusion, but cannot
+read the TUN or receive the downstream-routed replies.
 
 Preventing interface injection requires system/root capabilities this mode does
 not have. The dataplane therefore treats all input as hostile and bounds parsing,

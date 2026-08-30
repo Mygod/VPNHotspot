@@ -1,4 +1,4 @@
-//! UDP virtual DNS using Android's selected-network resolver.
+//! UDP virtual DNS using Android's resolver selection for the app UID.
 use std::io;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
@@ -6,7 +6,6 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use vpnhotspotd::shared::dns_wire::servfail_response;
 use vpnhotspotd::shared::failure::Failure;
-use vpnhotspotd::shared::model::Network;
 use vpnhotspotd::shared::udp_wire::Relayed;
 use vpnhotspotd::shared::workers::{Ended, Terminal, Workers};
 
@@ -15,7 +14,6 @@ use crate::shizuku::budget::MAX_DATAGRAM;
 use crate::shizuku::output::Output;
 use crate::shizuku::owned::Owned;
 use crate::shizuku::resolver;
-use crate::shizuku::tun_writer::Stamp;
 use vpnhotspotd::shared::admission::{Admission, Class, Denied, Lease, Request as Grant};
 use vpnhotspotd::shared::dns_debt;
 use vpnhotspotd::shared::reply_bound::channel_footprint;
@@ -33,7 +31,6 @@ const LOCAL_ORIGIN_HOP_LIMIT: u8 = 64;
 
 pub(crate) struct Answer {
     transaction: u64,
-    stamp: Stamp,
     endpoint: SocketAddr,
     client: SocketAddr,
     query: Owned,
@@ -56,7 +53,6 @@ struct Counters {
     answered: u64,
     servfail: u64,
     denied: u64,
-    no_upstream: u64,
     discarded: u64,
     unanswerable: u64,
     unsettled: u64,
@@ -66,12 +62,11 @@ struct Counters {
 impl Counters {
     fn describe(&self) -> String {
         format!(
-            "answered {} servfail {} denied {} no-upstream {} discarded {} unanswerable {} \
+            "answered {} servfail {} denied {} discarded {} unanswerable {} \
              unsettled {} slowest {:?}",
             self.answered,
             self.servfail,
             self.denied,
-            self.no_upstream,
             self.discarded,
             self.unanswerable,
             self.unsettled,
@@ -81,8 +76,6 @@ impl Counters {
 }
 
 pub(crate) struct Handoff {
-    stamp: Stamp,
-    upstream: Option<Network>,
     answers: mpsc::Sender<Arrival>,
     arrivals: mpsc::Receiver<Arrival>,
     queries: Workers<u64, Debt>,
@@ -111,8 +104,6 @@ impl Handoff {
             "the answer queue is charged at the depth it is built at"
         );
         Ok(Self {
-            stamp: Stamp::default(),
-            upstream: None,
             answers,
             arrivals,
             queries: Workers::with_capacity("shizuku.virtual_dns", prepared),
@@ -128,22 +119,12 @@ impl Handoff {
         admission.release(self.tables);
     }
 
-    pub(crate) fn apply(&mut self, stamp: Stamp, upstream: Option<Network>) {
-        self.stamp = stamp;
-        self.upstream = upstream;
-    }
-
     pub(crate) fn submit(
         &mut self,
         datagram: Relayed<'_>,
         output: &mut Output,
         admission: &mut Admission,
     ) -> io::Result<()> {
-        let Some(network) = self.upstream else {
-            self.counters.no_upstream += 1;
-            self.refuse(datagram, output);
-            return Ok(());
-        };
         if !self.queries.has_room() {
             self.counters.denied += 1;
             self.refuse(datagram, output);
@@ -161,7 +142,6 @@ impl Handoff {
             return Ok(());
         };
         let answers = self.answers.clone();
-        let stamp = self.stamp;
         let endpoint = datagram.destination;
         let client = datagram.source;
         let Ok(identity) = self.queries.identity() else {
@@ -204,7 +184,6 @@ impl Handoff {
                 let arrival = match outcome {
                     Ok(result) => Arrival::Answer(Answer {
                         transaction,
-                        stamp,
                         endpoint,
                         client,
                         query,
@@ -243,7 +222,7 @@ impl Handoff {
             return Ok(());
         }
         // Install the debt owner before synchronous submission so no returned descriptor is orphaned.
-        let submission = match resolver::submit(network, &query) {
+        let submission = match resolver::submit(&query) {
             Err(failure) => match failure.ending([("client", client), ("endpoint", endpoint)]) {
                 Err(ending) => {
                     drop(handoff);
@@ -284,7 +263,6 @@ impl Handoff {
             return drained;
         };
         let Answer {
-            stamp,
             endpoint,
             client,
             query,
@@ -292,15 +270,9 @@ impl Handoff {
             ..
         } = answer;
         let answered = match result {
-            Ok(response) if stamp.generation == self.stamp.generation => {
+            Ok(response) => {
                 self.counters.answered += 1;
                 Some(response)
-            }
-            Ok(stale) => {
-                // A query completed on the retired selection; answer its client with SERVFAIL below.
-                self.counters.discarded += 1;
-                drop(stale);
-                None
             }
             Err(_) => None,
         };
@@ -355,8 +327,7 @@ impl Handoff {
                 return drained;
             }
         };
-        let stamp = self.stamp;
-        output.datagram(stamp, endpoint, client, LOCAL_ORIGIN_HOP_LIMIT, &response);
+        output.datagram(endpoint, client, LOCAL_ORIGIN_HOP_LIMIT, &response);
         // Drop every buffer covered by the delivery before returning its lease.
         drop(response);
         drop(query);
@@ -436,7 +407,6 @@ impl Handoff {
             return;
         };
         output.datagram(
-            self.stamp,
             datagram.destination,
             datagram.source,
             LOCAL_ORIGIN_HOP_LIMIT,

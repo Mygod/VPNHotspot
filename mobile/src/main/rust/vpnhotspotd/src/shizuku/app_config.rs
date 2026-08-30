@@ -1,14 +1,12 @@
-//! Applies app-UID configuration and acknowledges it only after old-generation state is retired.
+//! Applies app-UID admission configuration.
 use std::io;
 
 use prost::Message;
 use tokio::net::unix::OwnedReadHalf;
 use tokio::sync::{mpsc, oneshot};
 use vpnhotspotd::shared::app_control::{self, Rejected, Request};
-use vpnhotspotd::shared::egress;
-use vpnhotspotd::shared::proto::daemon::{self, DaemonErrorReport, ShizukuSessionConfig};
+use vpnhotspotd::shared::proto::daemon::{self, DaemonErrorReport};
 use vpnhotspotd::shared::protocol::{ack_reply_frame, describe_io_error, IoErrorReportExt};
-use vpnhotspotd::shared::session_config;
 
 use crate::control_wire::recv_packet;
 use crate::report::{self, ControllerSender, ControllerSenderExt};
@@ -40,7 +38,6 @@ pub(super) async fn serve(
     configs: &mpsc::Sender<Applied>,
     control: &ControllerSender,
 ) -> io::Result<Ended> {
-    let mut previous: Option<ShizukuSessionConfig> = None;
     loop {
         let packet = match recv_packet(stream).await {
             Ok(packet) => packet,
@@ -65,42 +62,15 @@ pub(super) async fn serve(
                 error,
             }) => return Err(error),
         };
-        if let Err(e) = session_config::check(previous.as_ref(), &config) {
-            return Ok(refuse(
-                call_id,
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("config call {call_id} is not a valid successor: {e:?}"),
-                )
-                .with_report_context("shizuku.control.config"),
-            ));
-        }
-        let egress = match egress::decode(&config) {
-            Ok(egress) => egress,
-            Err(why) => {
-                return Ok(refuse(
-                    call_id,
-                    io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("config call {call_id} has no usable egress: {why:?}"),
-                    )
-                    .with_report_context("shizuku.control.config"),
-                ));
-            }
-        };
         report::stdout!(
-            "applying config call {call_id} on {interface_name}: generation {}, admitting {}, egress {egress:?}",
-            config.upstream_generation,
+            "applying config call {call_id} on {interface_name}: admitting {}",
             config.admit,
         );
-        let (retired, applied) = oneshot::channel();
+        let (applied, acknowledged) = oneshot::channel();
         let published = Applied {
             admitting: config.admit,
-            upstream_generation: config.upstream_generation,
-            egress,
-            retired,
+            applied,
         };
-        previous = Some(config);
         if configs.send(published).await.is_err() {
             return Ok(refuse(
                 call_id,
@@ -108,9 +78,8 @@ pub(super) async fn serve(
                     .with_report_context("shizuku.control.config"),
             ));
         }
-        // The reply waits on this, which is the whole ordering guarantee: the app may only believe the
-        // previous generation is gone once the task that owns its state says so.
-        if applied.await.is_err() {
+        // The reply waits until the task that owns admission has applied this value.
+        if acknowledged.await.is_err() {
             return Err(io::Error::other("tun ingress dropped a config it accepted")
                 .with_report_context("shizuku.control.config"));
         }

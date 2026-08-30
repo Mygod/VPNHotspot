@@ -10,13 +10,11 @@ use tokio::io::unix::AsyncFd;
 use tokio::sync::{mpsc, oneshot};
 use vpnhotspotd::shared::icmp_nat::{nat66_hop_limit, Nat66HopLimit};
 use vpnhotspotd::shared::icmp_translate::{self, Correlation, Reported, Untranslatable};
-use vpnhotspotd::shared::model::Network;
 use vpnhotspotd::shared::send_history::{History, Resolution};
 use vpnhotspotd::shared::udp_wire::Relayed;
 use vpnhotspotd::shared::workers::{Ended, Terminal, Workers};
 
 use vpnhotspotd::shared::admission::{logical_footprint, Admission, Class, Denied, Lease, Request};
-use vpnhotspotd::shared::egress::RelayUpstream as Upstream;
 
 use crate::report;
 use crate::shizuku::egress::{self, Fragmentation};
@@ -26,7 +24,6 @@ use crate::shizuku::reply::{
     receive, reply_channel, reply_channel_bytes, Event, Gate, Sizing, ERROR_OR_READABLE,
 };
 use crate::shizuku::send_failure::{self, Failure};
-use crate::shizuku::tun_writer::Stamp;
 use vpnhotspotd::shared::icmp_error::Reason;
 
 // A bounded metadata history is enough to correlate errors without retaining client payloads.
@@ -85,7 +82,6 @@ struct Counters {
     sent: u64,
     written: u64,
     denied: u64,
-    no_upstream: u64,
     expired: u64,
     too_big: u64,
     blocked: u64,
@@ -95,7 +91,6 @@ struct Counters {
     unreported: u64,
     df_failed: u64,
     open_failed: u64,
-    foreign_interface: u64,
     unpermitted: u64,
     translated: u64,
     untranslated: u64,
@@ -111,14 +106,13 @@ struct Counters {
 impl Counters {
     fn describe(&self) -> String {
         format!(
-            "sent {} written {} denied {} no-upstream {} expired {} too-big {} blocked {} \
+            "sent {} written {} denied {} expired {} too-big {} blocked {} \
              unreachable {} send-failed {} reported {} unreported {} df-failed {} open-failed {} \
-             foreign-interface {} unpermitted {} translated {} untranslated {} implausible {} \
-             ambiguous {} unsent {} stale {} swept {} short {} unprepared {}",
+             unpermitted {} translated {} untranslated {} implausible {} ambiguous {} unsent {} \
+             stale {} swept {} short {} unprepared {}",
             self.sent,
             self.written,
             self.denied,
-            self.no_upstream,
             self.expired,
             self.too_big,
             self.blocked,
@@ -128,7 +122,6 @@ impl Counters {
             self.unreported,
             self.df_failed,
             self.open_failed,
-            self.foreign_interface,
             self.unpermitted,
             self.translated,
             self.untranslated,
@@ -144,8 +137,6 @@ impl Counters {
 }
 
 pub(crate) struct Relay {
-    stamp: Stamp,
-    upstream: Option<Upstream>,
     mappings: Workers<SocketAddr, Mapping>,
     tables: Lease,
     errors: egress::ErrorQueue,
@@ -155,7 +146,6 @@ pub(crate) struct Relay {
 }
 
 struct FirstSend<'a> {
-    upstream: Upstream,
     packet: &'a [u8],
     datagram: Relayed<'a>,
     hop_limit: u8,
@@ -176,8 +166,6 @@ impl Relay {
         let (events, receiver) = reply_channel::<SocketAddr>();
         Ok((
             Self {
-                stamp: Stamp::default(),
-                upstream: None,
                 mappings: Workers::with_capacity("shizuku.udp_mapping", prepared),
                 tables,
                 errors: egress::ErrorQueue::new(),
@@ -201,21 +189,6 @@ impl Relay {
         admission.release(self.tables);
     }
 
-    pub(crate) async fn apply(
-        &mut self,
-        stamp: Stamp,
-        upstream: Option<Upstream>,
-        admission: &mut Admission,
-    ) {
-        let retiring = stamp != self.stamp;
-        self.stamp = stamp;
-        self.upstream = upstream;
-        if retiring {
-            // Return only after every old-generation receive task is joined and its descriptor is closed.
-            self.shutdown(admission).await;
-        }
-    }
-
     pub(crate) async fn shutdown(&mut self, admission: &mut Admission) {
         self.mappings.cancel_all();
         while self.mappings.working() {
@@ -232,10 +205,6 @@ impl Relay {
         output: &mut Output,
         admission: &mut Admission,
     ) {
-        let Some(upstream) = self.upstream else {
-            self.counters.no_upstream += 1;
-            return;
-        };
         let Nat66HopLimit::Forward(hop_limit) = nat66_hop_limit(Some(datagram.hop_limit)) else {
             self.counters.expired += 1;
             return self.report(packet, Reason::Expired, gateways, output);
@@ -247,7 +216,6 @@ impl Relay {
             }
             return self.open(
                 FirstSend {
-                    upstream,
                     packet,
                     datagram,
                     hop_limit,
@@ -340,7 +308,6 @@ impl Relay {
         let Some(mapping) = self.mappings.get(&datagram.source) else {
             return;
         };
-        let cancel = mapping.cancel.clone();
         let socket = Arc::clone(&mapping.record.socket);
         match send_failure::classify(&e) {
             Failure::Blocked => self.counters.blocked += 1,
@@ -368,10 +335,6 @@ impl Relay {
                         );
                     }
                 }
-            }
-            Failure::NetworkGone => {
-                cancel.cancel();
-                self.counters.unreachable += 1;
             }
             Failure::Unreachable => self.counters.unreachable += 1,
             Failure::Unexpected => {
@@ -401,7 +364,7 @@ impl Relay {
         match gateways.report(packet, reason) {
             Some(error) => {
                 self.counters.reported += 1;
-                output.packet(self.stamp, error);
+                output.packet(error);
             }
             None => self.counters.unreported += 1,
         }
@@ -409,7 +372,6 @@ impl Relay {
 
     fn open(&mut self, first: FirstSend<'_>, admission: &mut Admission) {
         let FirstSend {
-            upstream,
             packet,
             datagram,
             hop_limit,
@@ -435,7 +397,7 @@ impl Relay {
             self.counters.denied += 1;
             return;
         };
-        let socket = match self.bind(upstream.network, datagram.destination.is_ipv6()) {
+        let socket = match self.bind(datagram.destination.is_ipv6()) {
             Ok(socket) => Arc::new(socket),
             Err(e) => {
                 report::io_with_details("shizuku.udp_open", e, [("source", key)]);
@@ -598,7 +560,7 @@ impl Relay {
                     _ => self.counters.unreported += 1,
                 }
             }
-            Failure::NetworkGone | Failure::Unreachable => self.counters.unreachable += 1,
+            Failure::Unreachable => self.counters.unreachable += 1,
             Failure::Unexpected => {
                 if !self.reported_send_failure {
                     self.reported_send_failure = true;
@@ -616,8 +578,8 @@ impl Relay {
         }
     }
 
-    fn bind(&self, network: Network, ipv6: bool) -> io::Result<AsyncFd<Socket>> {
-        let socket = egress::open_udp(network, ipv6)?;
+    fn bind(&self, ipv6: bool) -> io::Result<AsyncFd<Socket>> {
+        let socket = egress::open_udp(ipv6)?;
         socket.bind(&SockAddr::from(SocketAddr::new(
             if ipv6 {
                 IpAddr::V6(Ipv6Addr::UNSPECIFIED)
@@ -649,7 +611,7 @@ impl Relay {
         let refused = match icmp_translate::repeat(key, error, Correlation::Address) {
             Ok(packet) => {
                 self.counters.translated += 1;
-                output.packet(self.stamp, packet);
+                output.packet(packet);
                 return;
             }
             Err(refused) => refused,
@@ -688,7 +650,7 @@ impl Relay {
         match icmp_translate::repeat(key, error, Correlation::Datagram { hop_limit }) {
             Ok(packet) => {
                 self.counters.translated += 1;
-                output.packet(self.stamp, packet);
+                output.packet(packet);
             }
             Err(Untranslatable::Implausible) => self.counters.implausible += 1,
             Err(_) => self.counters.untranslated += 1,
@@ -696,7 +658,7 @@ impl Relay {
     }
 
     pub(crate) fn handle(&mut self, event: Event<SocketAddr>, output: &mut Output) {
-        let (key, id, remote, hop_limit, interface, payload) = match event {
+        let (key, id, remote, hop_limit, payload) = match event {
             Event::Error { key, id, error } => {
                 if !self.mappings.current(&key, id) {
                     self.counters.stale += 1;
@@ -710,20 +672,11 @@ impl Relay {
                 id,
                 remote,
                 hop_limit,
-                interface,
                 payload,
-            } => (key, id, remote, hop_limit, interface, payload),
-        };
-        let Some(upstream) = self.upstream else {
-            self.counters.stale += 1;
-            return;
+            } => (key, id, remote, hop_limit, payload),
         };
         match self.mappings.get(&key) {
             Some(mapping) if mapping.id == id && mapping.record.state == State::Live => {
-                if interface != upstream.interface {
-                    self.counters.foreign_interface += 1;
-                    return;
-                }
                 if !mapping.record.remotes.contains_key(&remote.ip()) {
                     self.counters.unpermitted += 1;
                     return;
@@ -738,7 +691,7 @@ impl Relay {
             self.counters.expired += 1;
             return;
         };
-        output.datagram(self.stamp, remote, key, hop_limit, &payload);
+        output.datagram(remote, key, hop_limit, &payload);
         self.counters.written += 1;
     }
 
