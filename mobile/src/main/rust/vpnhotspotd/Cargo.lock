@@ -817,6 +817,7 @@ version = "0.1.0"
 dependencies = [
  "cidr",
  "etherparse",
+ "fastrand",
  "futures-channel",
  "futures-util",
  "libc",

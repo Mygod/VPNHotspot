@@ -155,9 +155,9 @@ const CONNECT_SOCKET: &str = "shizuku.tcp_connect_socket";
 const CONNECT_NONBLOCK: &str = "shizuku.tcp_connect_nonblock";
 const CONNECT_REGISTER: &str = "shizuku.tcp_connect_register";
 
-/// Connects one TCP socket through the app UID's routing policy. Dual-family, unlike the NAT66 path's
-/// IPv6-only connect, because terminated TCP has to reach both families.
-pub(crate) async fn connect_tcp(destination: SocketAddr) -> Result<Socket, Failure> {
+/// Opens one nonblocking TCP socket. Kept synchronous so descriptor admission immediately follows a
+/// successful open, before any other owner turn can retain or admit another descriptor.
+pub(crate) fn open_tcp(destination: SocketAddr) -> Result<Socket, Failure> {
     let socket = Socket::new(
         if destination.is_ipv6() {
             Domain::IPV6
@@ -171,6 +171,15 @@ pub(crate) async fn connect_tcp(destination: SocketAddr) -> Result<Socket, Failu
     socket
         .set_nonblocking(true)
         .map_err(Failure::local(CONNECT_NONBLOCK))?;
+    Ok(socket)
+}
+
+/// Connects an already-open TCP socket through the app UID's routing policy. Dual-family, unlike the NAT66
+/// path's IPv6-only connect, because terminated TCP has to reach both families.
+pub(crate) async fn connect_tcp(
+    socket: Socket,
+    destination: SocketAddr,
+) -> Result<Socket, Failure> {
     if let Err(error) = socket.connect(&destination.into()) {
         if error.kind() != io::ErrorKind::WouldBlock
             && error.raw_os_error() != Some(libc::EINPROGRESS)
@@ -203,8 +212,8 @@ async fn settle(socket: &Socket) -> Result<(), Failure> {
 
 /// Reads an unconnected socket's error queue, one message at a time.
 pub(crate) struct ErrorQueue {
-    /// Where the offending bytes land. Exactly the prefix a correlation reads, because the rest was never
-    /// looked at: the kernel copies what fits and truncates the remainder, which is the intent.
+    /// Where the offending bytes land. One complete Echo header is all Echo correlation reads; UDP uses the
+    /// socket and destination metadata instead. The kernel copies what fits and truncates the remainder.
     quote: [u8; QUOTE_BYTES],
     /// Ancillary room for RECVERR and hop limit.
     space: Vec<u8>,
@@ -233,11 +242,6 @@ impl ErrorQueue {
     }
 
     /// Takes the next message off the queue, or answers `None` once it is empty.
-    pub(crate) fn footprint() -> u64 {
-        (nix::cmsg_space!(libc::sock_extended_err, libc::sockaddr_in6, c_int).capacity()
-            + std::mem::size_of::<Self>()) as u64
-    }
-
     pub(crate) fn next(&mut self, socket: &Socket) -> io::Result<Option<Drained>> {
         // Scoped so the iovec's borrow of the buffer ends before the offending bytes are copied out of it: the
         // read and the copy both want that buffer, and only one of them can hold it at a time.

@@ -16,7 +16,6 @@ use vpnhotspotd::shared::admission::Admission;
 use vpnhotspotd::shared::bridge::Worker;
 use vpnhotspotd::shared::dns_debt::{self, DeliveryId, Parked};
 
-use crate::shizuku::budget::MAX_DATAGRAM;
 use crate::shizuku::owned::Owned;
 use crate::shizuku::tcp_flow::Event;
 use vpnhotspotd::shared::flow_budget::READ_CHUNK;
@@ -73,11 +72,11 @@ pub(crate) enum Control {
 }
 
 impl Answering {
-    pub(crate) fn hand_over(self, admission: &mut Admission, serving: &mut Serving) -> bool {
+    pub(crate) fn hand_over(self, serving: &mut Serving) -> bool {
         let Self { settled } = self;
         let mut ending = None;
         let settled = settled.classify(|resolved| classify(resolved, &mut ending));
-        let parking = serving.delivery.park(admission, settled);
+        let parking = serving.delivery.park(settled);
         match parking.answer {
             Some((delivery, deliverable)) => {
                 let Deliverable { answer, message } = deliverable;
@@ -96,8 +95,8 @@ impl Answering {
         parking.replaced
     }
 
-    pub(crate) fn discard(self, admission: &mut Admission) {
-        self.settled.discard(admission);
+    pub(crate) fn discard(self) {
+        self.settled.discard();
     }
 }
 
@@ -116,24 +115,9 @@ impl Delivered {
         self.answering
     }
 
-    pub(crate) fn discard(self, admission: &mut Admission) {
-        self.answering.discard(admission);
+    pub(crate) fn discard(self) {
+        self.answering.discard();
     }
-}
-
-pub(crate) const fn delivery_bytes(answer: usize) -> u64 {
-    2 * answer as u64 + dns_wire::PREFIX as u64
-}
-
-pub(crate) const DELIVERY_BYTES: u64 = delivery_bytes(MAX_DATAGRAM);
-
-// Keep transaction-row sizing and the essential DNS floor aligned with this charge.
-const _: () = assert!(DELIVERY_BYTES >= dns_debt::MINIMUM_SUBMITTED_BYTES);
-
-const _: () = assert!(MAX_DATAGRAM as u64 + DELIVERY_BYTES == dns_debt::MAXIMUM_SUBMITTED_BYTES);
-
-pub(crate) fn exchange_bytes(length: usize) -> Option<u64> {
-    (length as u64).checked_add(DELIVERY_BYTES)
 }
 
 pub(crate) struct Serving {
@@ -182,12 +166,8 @@ impl Serving {
         self.send(Control::Answered(answered));
     }
 
-    pub(crate) fn acknowledge(
-        &mut self,
-        admission: &mut Admission,
-        acked: DeliveryId,
-    ) -> dns_debt::Acked {
-        self.delivery.acknowledge(admission, acked)
+    pub(crate) fn acknowledge(&mut self, acked: DeliveryId) -> dns_debt::Acked {
+        self.delivery.acknowledge(acked)
     }
 
     /// Releases only DNS state still owned by this flow; submitted transactions remain table-owned.
@@ -199,7 +179,7 @@ impl Serving {
             mut delivery,
             ..
         } = self;
-        delivery.close(admission);
+        delivery.close();
         filled.close();
         while filled.try_recv().is_ok() {}
         drop(filled);
@@ -210,14 +190,13 @@ impl Serving {
     }
 }
 
-/// Builds SERVFAIL for an unsubmitted query. Invalid input returns `None`; an uncovered delivery grant is an
-/// error.
+/// Builds SERVFAIL for an unsubmitted query. Invalid input returns `None`.
 pub(crate) fn answered_here(
     reserved: Reserved,
     query: Owned,
     serving: &mut Serving,
     admission: &mut Admission,
-) -> io::Result<Option<Answering>> {
+) -> Option<Answering> {
     let servfail = dns_wire::servfail_response(&query).map(Owned::new);
     drop(query);
     let Some(servfail) = servfail else {
@@ -225,22 +204,10 @@ pub(crate) fn answered_here(
             "a DNS-over-TCP message that is not an answerable query",
         ))));
         reserved.end(admission);
-        return Ok(None);
+        return None;
     };
-    let transaction = reserved.id();
-    let delivery = match reserved.settle(admission, delivery_bytes(servfail.capacity())) {
-        dns_debt::Split::Covered(delivery, denied) => {
-            transactions::report_split(transaction, denied);
-            delivery
-        }
-        dns_debt::Split::Uncovered(debt, denied) => {
-            // Drop the answer before abandoning the grant that should cover it.
-            drop(servfail);
-            dns_debt::abandon(admission, debt);
-            return Err(transactions::uncovered(transaction, denied));
-        }
-    };
-    Ok(Some(Answering {
+    let delivery = reserved.settle(admission);
+    Some(Answering {
         settled: dns_debt::Settled::delivering(
             delivery,
             Resolved {
@@ -248,7 +215,7 @@ pub(crate) fn answered_here(
                 message: None,
             },
         ),
-    }))
+    })
 }
 
 pub(crate) enum Ask {
@@ -273,7 +240,7 @@ enum Filling {
 pub(crate) async fn serve(
     flow: Event,
     mut bridge: Worker,
-    asks: mpsc::Sender<Ask>,
+    asks: mpsc::UnboundedSender<Ask>,
     mut control: mpsc::Receiver<Control>,
     filled: mpsc::Sender<Owned>,
     cancel: CancellationToken,
@@ -408,7 +375,7 @@ pub(crate) async fn serve(
                             }
                         }
                     }
-                    // Release delivery accounting only after the complete framed answer reached the bridge.
+                    // Acknowledge this exact delivery only after the complete framed answer reached the bridge.
                     if !hand_over(&asks, Ask::Delivered { flow, delivery }, &cancel).await {
                         return Ended::Expected;
                     }

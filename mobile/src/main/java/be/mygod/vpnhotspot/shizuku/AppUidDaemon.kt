@@ -371,6 +371,9 @@ class AppUidDaemon private constructor(
 
         /** A single write attaches the descriptor once rather than once per frame fragment. */
         private suspend fun writeFrameWithDescriptor(socket: LocalSocket, packet: ByteArray) {
+            require(packet.size in 1..DaemonIpc.MAX_FRAME_SIZE) {
+                "Invalid daemon frame length ${packet.size}"
+            }
             val frame = ByteBuffer.allocate(Int.SIZE_BYTES + packet.size).putInt(packet.size).put(packet)
             withContext(Dispatchers.IO) { socket.outputStream.write(frame.array()) }
         }

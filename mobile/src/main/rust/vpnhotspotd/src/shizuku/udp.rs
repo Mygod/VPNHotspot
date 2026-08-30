@@ -1,5 +1,4 @@
-//! Per-client UDP mappings with bounded reply authorization and ICMP correlation.
-use std::collections::HashMap;
+//! Per-client UDP mappings with time-bounded reply authorization.
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
@@ -14,27 +13,24 @@ use vpnhotspotd::shared::send_history::{History, Resolution};
 use vpnhotspotd::shared::udp_wire::Relayed;
 use vpnhotspotd::shared::workers::{Ended, Terminal, Workers};
 
-use vpnhotspotd::shared::admission::{logical_footprint, Admission, Class, Denied, Lease, Request};
+use vpnhotspotd::shared::admission::{Admission, Class, Lease};
 use vpnhotspotd::shared::egress_socket;
 
 use crate::report;
 use crate::shizuku::egress::{self, Fragmentation};
 use crate::shizuku::gateway::Gateways;
 use crate::shizuku::output::Output;
-use crate::shizuku::reply::{
-    receive, reply_channel, reply_channel_bytes, Event, Gate, Sizing, ERROR_OR_READABLE,
-};
+use crate::shizuku::reply::{receive, reply_channel, Event, Gate, Sizing, ERROR_OR_READABLE};
 use crate::shizuku::send_failure::{self, Failure};
 use vpnhotspotd::shared::icmp_error::Reason;
 
-// A bounded metadata history is enough to correlate errors without retaining client payloads.
-const HISTORY_DEPTH: usize = 8;
-
-// RFC 4787 requires at least two minutes; five minutes is the recommended default.
+/// Bounds one UDP mapping's upstream socket and permitted remotes. RFC 4787 REQ-5 recommends a five-minute
+/// default (and forbids less than two minutes). On expiry the mapping, socket, contacted-remotes, and dynamically
+/// growing contacted-endpoint hop-limit history are released; late replies and errors are dropped, and later
+/// traffic recreates the mapping. Each IP authorization and all its endpoint evidence use that same deadline;
+/// there is no history-specific timeout or capacity. See
+/// https://www.rfc-editor.org/rfc/rfc4787.html#section-4.3.
 const MAPPING_TIMEOUT: Duration = Duration::from_secs(300);
-
-// Limits the addresses allowed to send replies through one client mapping.
-const REMOTES_PREPARED: usize = 64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum State {
@@ -47,35 +43,9 @@ struct Mapping {
     state: State,
     commit: Option<oneshot::Sender<()>>,
     socket: Arc<AsyncFd<Socket>>,
-    remotes: HashMap<IpAddr, Instant>,
+    history: History,
     deadline: Instant,
     lease: Lease,
-    history: History,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Permit {
-    Recorded,
-    Free,
-    Full,
-}
-
-impl Mapping {
-    fn permits(&self, remote: IpAddr) -> Permit {
-        if self.remotes.contains_key(&remote) {
-            Permit::Recorded
-        } else if self.remotes.len() < REMOTES_PREPARED {
-            Permit::Free
-        } else {
-            Permit::Full
-        }
-    }
-
-    fn footprint() -> Option<u64> {
-        logical_footprint::<(IpAddr, Instant)>(REMOTES_PREPARED)?
-            .checked_add(History::footprint(HISTORY_DEPTH)?)?
-            .checked_add(egress::ErrorQueue::footprint())
-    }
 }
 
 #[derive(Default)]
@@ -95,13 +65,13 @@ struct Counters {
     unpermitted: u64,
     translated: u64,
     untranslated: u64,
-    implausible: u64,
     ambiguous: u64,
-    unsent: u64,
+    untracked: u64,
+    implausible: u64,
     stale: u64,
     swept: u64,
     short: u64,
-    unprepared: u64,
+    unavailable: u64,
 }
 
 impl Counters {
@@ -109,8 +79,8 @@ impl Counters {
         format!(
             "sent {} written {} denied {} expired {} too-big {} blocked {} \
              unreachable {} send-failed {} reported {} unreported {} df-failed {} open-failed {} \
-             unpermitted {} translated {} untranslated {} implausible {} ambiguous {} unsent {} \
-             stale {} swept {} short {} unprepared {}",
+             unpermitted {} translated {} untranslated {} ambiguous {} untracked {} implausible {} stale {} \
+             swept {} short {} unavailable {}",
             self.sent,
             self.written,
             self.denied,
@@ -126,24 +96,22 @@ impl Counters {
             self.unpermitted,
             self.translated,
             self.untranslated,
-            self.implausible,
             self.ambiguous,
-            self.unsent,
+            self.untracked,
+            self.implausible,
             self.stale,
             self.swept,
             self.short,
-            self.unprepared
+            self.unavailable
         )
     }
 }
 
 pub(crate) struct Relay {
     mappings: Workers<SocketAddr, Mapping>,
-    tables: Lease,
     errors: egress::ErrorQueue,
-    events: mpsc::Sender<Event<SocketAddr>>,
+    events: mpsc::UnboundedSender<Event<SocketAddr>>,
     counters: Counters,
-    reported_send_failure: bool,
 }
 
 struct FirstSend<'a> {
@@ -155,39 +123,24 @@ struct FirstSend<'a> {
 }
 
 impl Relay {
-    pub(crate) fn new(
-        admission: &mut Admission,
-    ) -> Result<(Self, mpsc::Receiver<Event<SocketAddr>>), Denied> {
-        let prepared = admission.general_record_ceiling() as usize;
-        let bytes = Workers::<SocketAddr, Mapping>::footprint(prepared)
-            .and_then(|table| table.checked_add(reply_channel_bytes::<SocketAddr>()?))
-            .and_then(|bytes| bytes.checked_add(egress::ErrorQueue::footprint()))
-            .ok_or(Denied::Arithmetic)?;
-        let tables = admission.reserve(Request::bytes(bytes, Class::General))?;
+    pub(crate) fn new() -> (Self, mpsc::UnboundedReceiver<Event<SocketAddr>>) {
         let (events, receiver) = reply_channel::<SocketAddr>();
-        Ok((
+        (
             Self {
-                mappings: Workers::with_capacity("shizuku.udp_mapping", prepared),
-                tables,
+                mappings: Workers::new("shizuku.udp_mapping"),
                 errors: egress::ErrorQueue::new(),
                 events,
                 counters: Counters::default(),
-                reported_send_failure: false,
             },
             receiver,
-        ))
+        )
     }
 
-    pub(crate) fn release(
-        self,
-        events: mpsc::Receiver<Event<SocketAddr>>,
-        admission: &mut Admission,
-    ) {
+    pub(crate) fn release(self, events: mpsc::UnboundedReceiver<Event<SocketAddr>>) {
         drop(self.mappings);
         drop(self.events);
         drop(events);
         drop(self.errors);
-        admission.release(self.tables);
     }
 
     pub(crate) async fn shutdown(&mut self, admission: &mut Admission) {
@@ -212,7 +165,7 @@ impl Relay {
         };
         if !self.live(&datagram.source) {
             if self.mappings.contains(&datagram.source) {
-                self.counters.unprepared += 1;
+                self.counters.unavailable += 1;
                 return;
             }
             return self.open(
@@ -233,22 +186,6 @@ impl Relay {
         else {
             return;
         };
-        let unrecorded = match mapping.permits(datagram.destination.ip()) {
-            Permit::Recorded => false,
-            Permit::Free => true,
-            Permit::Full => {
-                self.counters.unprepared += 1;
-                return;
-            }
-        };
-        if unrecorded
-            && admission
-                .grow(&mapping.lease, Request::records(1, Class::General))
-                .is_err()
-        {
-            self.counters.denied += 1;
-            return;
-        }
         let socket = mapping.socket.get_ref();
         // IPv6 sockets prohibit source fragmentation when opened.
         if !datagram.destination.is_ipv6() {
@@ -260,9 +197,6 @@ impl Relay {
                     Fragmentation::Permitted
                 },
             ) {
-                if unrecorded {
-                    admission.shrink(&mapping.lease, Request::records(1, Class::General));
-                }
                 self.counters.df_failed += 1;
                 report::io_with_details(
                     "shizuku.udp_fragmentation",
@@ -276,24 +210,15 @@ impl Relay {
             }
         }
         match egress::send_to(socket, datagram.destination, datagram.payload, hop_limit) {
-            Ok(_) => {
+            Ok(sent) if sent == datagram.payload.len() => {
                 self.counters.sent += 1;
                 mapping.deadline = Instant::now() + MAPPING_TIMEOUT;
-                mapping.history.record(
-                    datagram.destination,
-                    datagram.payload,
-                    hop_limit,
-                    HISTORY_DEPTH,
-                    Instant::now(),
-                );
                 mapping
-                    .remotes
-                    .insert(datagram.destination.ip(), mapping.deadline);
+                    .history
+                    .record(datagram.destination, hop_limit, mapping.deadline);
             }
+            Ok(_) => self.counters.short += 1,
             Err(e) => {
-                if unrecorded {
-                    admission.shrink(&mapping.lease, Request::records(1, Class::General));
-                }
                 self.fail(e, packet, datagram, gateways, output);
             }
         }
@@ -340,17 +265,11 @@ impl Relay {
             }
             Failure::Unreachable => self.counters.unreachable += 1,
             Failure::Unexpected => {
-                if !self.reported_send_failure {
-                    self.reported_send_failure = true;
-                    report::io_with_details(
-                        "shizuku.udp_send",
-                        e,
-                        [
-                            ("destination", datagram.destination.to_string()),
-                            ("note", "later failures are counted only".to_owned()),
-                        ],
-                    );
-                }
+                report::io_with_details(
+                    "shizuku.udp_send",
+                    e,
+                    [("destination", datagram.destination.to_string())],
+                );
                 self.counters.send_failed += 1;
             }
         }
@@ -382,20 +301,12 @@ impl Relay {
         } = first;
         let key = datagram.source;
         if self.mappings.admits(&key).is_err() {
-            self.counters.unprepared += 1;
+            self.counters.unavailable += 1;
             return;
         }
-        let Some(bytes) = Mapping::footprint() else {
-            self.counters.denied += 1;
-            return;
-        };
-        let Ok(lease) = admission.reserve(Request {
-            records: 2,
-            record_class: Class::General,
-            bytes,
-            byte_class: Class::General,
-            ..Request::default()
-        }) else {
+        // One mapping owns one upstream UDP socket. Its remote-address rows are memory-only state that grows
+        // with the mapping rather than pretending to consume descriptors.
+        let Ok(lease) = admission.reserve(Class::General) else {
             self.counters.denied += 1;
             return;
         };
@@ -427,15 +338,14 @@ impl Relay {
             state: State::Provisional,
             commit: Some(commit),
             socket: Arc::clone(&socket),
-            remotes: HashMap::with_capacity(REMOTES_PREPARED),
+            history: History::default(),
             deadline: Instant::now() + MAPPING_TIMEOUT,
             lease,
-            history: History::with_capacity(HISTORY_DEPTH),
         };
         if let Err((provisional, _)) = self.mappings.admit(key, &identity, provisional, worker) {
             drop(socket);
             self.discard(provisional, admission);
-            self.counters.unprepared += 1;
+            self.counters.unavailable += 1;
             return;
         }
         if !datagram.destination.is_ipv6() {
@@ -500,16 +410,9 @@ impl Relay {
             return;
         };
         mapping.deadline = Instant::now() + MAPPING_TIMEOUT;
-        mapping.history.record(
-            datagram.destination,
-            datagram.payload,
-            hop_limit,
-            HISTORY_DEPTH,
-            mapping.deadline - MAPPING_TIMEOUT,
-        );
         mapping
-            .remotes
-            .insert(datagram.destination.ip(), mapping.deadline);
+            .history
+            .record(datagram.destination, hop_limit, mapping.deadline);
         mapping.state = State::Live;
         // The receive task cannot observe or report this mapping until the first send has committed.
         if let Some(commit) = mapping.commit.take() {
@@ -528,13 +431,11 @@ impl Relay {
     fn discard(&mut self, provisional: Mapping, admission: &mut Admission) {
         let Mapping {
             socket,
-            remotes,
-            lease,
             history,
+            lease,
             ..
         } = provisional;
         drop(socket);
-        drop(remotes);
         drop(history);
         admission.release(lease);
     }
@@ -564,17 +465,11 @@ impl Relay {
             }
             Failure::Unreachable => self.counters.unreachable += 1,
             Failure::Unexpected => {
-                if !self.reported_send_failure {
-                    self.reported_send_failure = true;
-                    report::io_with_details(
-                        "shizuku.udp_send",
-                        e,
-                        [
-                            ("destination", datagram.destination.to_string()),
-                            ("note", "later failures are counted only".to_owned()),
-                        ],
-                    );
-                }
+                report::io_with_details(
+                    "shizuku.udp_send",
+                    e,
+                    [("destination", datagram.destination.to_string())],
+                );
                 self.counters.send_failed += 1;
             }
         }
@@ -606,50 +501,46 @@ impl Relay {
             self.counters.implausible += 1;
             return;
         };
-        if !mapping.record.remotes.contains_key(&destination.ip()) {
+        if !mapping.record.history.authorizes(destination.ip()) {
             self.counters.unpermitted += 1;
             return;
         }
-        let refused = match icmp_translate::repeat(key, error, Correlation::Address) {
+        match icmp_translate::repeat(key, error, Correlation::Address) {
             Ok(packet) => {
                 self.counters.translated += 1;
                 output.packet(packet);
                 return;
             }
-            Err(refused) => refused,
-        };
-        if refused != Untranslatable::Uncorrelated {
-            match refused {
-                Untranslatable::Implausible => self.counters.implausible += 1,
-                _ => self.counters.untranslated += 1,
+            Err(Untranslatable::Implausible) => {
+                self.counters.implausible += 1;
+                return;
             }
-            return;
+            Err(Untranslatable::Unsupported) => {
+                self.counters.untranslated += 1;
+                return;
+            }
+            Err(Untranslatable::Uncorrelated) => {}
         }
-        let Some(mapping) = self.mappings.get_mut(&key) else {
+        let Some(mapping) = self
+            .mappings
+            .get_mut(&key)
+            .filter(|held| held.record.state == State::Live)
+        else {
             self.counters.stale += 1;
             return;
         };
-        let (resolution, _) =
-            mapping
-                .record
-                .history
-                .resolve(destination, error.quoted.as_slice(), Instant::now());
-        let hop_limit = match resolution {
-            Resolution::Matched { hop_limit } => hop_limit,
+        let correlation = match mapping.record.history.resolve(destination) {
+            Resolution::Matched { hop_limit } => Correlation::Datagram { hop_limit },
             Resolution::Ambiguous => {
                 self.counters.ambiguous += 1;
                 return;
             }
             Resolution::Untracked => {
-                self.counters.unsent += 1;
-                return;
-            }
-            Resolution::Spent => {
-                self.counters.untranslated += 1;
+                self.counters.untracked += 1;
                 return;
             }
         };
-        match icmp_translate::repeat(key, error, Correlation::Datagram { hop_limit }) {
+        match icmp_translate::repeat(key, error, correlation) {
             Ok(packet) => {
                 self.counters.translated += 1;
                 output.packet(packet);
@@ -679,7 +570,7 @@ impl Relay {
         };
         match self.mappings.get(&key) {
             Some(mapping) if mapping.id == id && mapping.record.state == State::Live => {
-                if !mapping.record.remotes.contains_key(&remote.ip()) {
+                if !mapping.record.history.authorizes(remote.ip()) {
                     self.counters.unpermitted += 1;
                     return;
                 }
@@ -710,15 +601,13 @@ impl Relay {
             Some(mapping) => {
                 let Mapping {
                     socket,
-                    remotes,
-                    lease,
                     history,
+                    lease,
                     commit,
                     ..
                 } = mapping;
                 drop(commit);
                 drop(socket);
-                drop(remotes);
                 drop(history);
                 // The worker was joined before this terminal, so dropping the retained socket closes the fd.
                 admission.release(lease);
@@ -731,20 +620,14 @@ impl Relay {
         self.mappings.finished().await
     }
 
-    pub(crate) fn sweep(&mut self, admission: &mut Admission) {
+    pub(crate) fn sweep(&mut self) {
         let now = Instant::now();
         for mapping in self.mappings.values_mut() {
             if mapping.cancel.is_cancelled() || mapping.record.state != State::Live {
                 continue;
             }
-            let before = mapping.record.remotes.len();
-            mapping.record.remotes.retain(|_, deadline| *deadline > now);
-            let expired = before - mapping.record.remotes.len();
+            let expired = mapping.record.history.expire(now);
             if expired > 0 {
-                admission.shrink(
-                    &mapping.record.lease,
-                    Request::records(expired as u32, Class::General),
-                );
                 self.counters.swept += expired as u64;
             }
             if mapping.record.deadline <= now {
@@ -758,8 +641,12 @@ impl Relay {
             .values()
             .filter(|mapping| !mapping.cancel.is_cancelled() && mapping.record.state == State::Live)
             .flat_map(|mapping| {
-                std::iter::once(mapping.record.deadline)
-                    .chain(mapping.record.remotes.values().copied())
+                [
+                    Some(mapping.record.deadline),
+                    mapping.record.history.next_deadline(),
+                ]
+                .into_iter()
+                .flatten()
             })
             .min()
     }

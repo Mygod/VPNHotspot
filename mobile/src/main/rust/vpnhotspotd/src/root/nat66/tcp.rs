@@ -219,6 +219,10 @@ async fn relay(
 }
 
 async fn relay_direction(mut reader: RelayReader, mut writer: RelayWriter) -> io::Result<()> {
+    // Pinned Tokio 1.53.1 `io::copy` uses its maintained 8,192-byte `DEFAULT_BUF_SIZE` scratch for this
+    // direction. Filling it completes one read/write iteration and the readiness loop continues, so this
+    // bounds temporary relay storage without truncating or refusing the byte stream.
+    // https://github.com/tokio-rs/tokio/blob/tokio-1.53.1/tokio/src/io/util/mod.rs#L88
     copy(&mut reader, &mut writer).await?;
     writer.shutdown().await
 }

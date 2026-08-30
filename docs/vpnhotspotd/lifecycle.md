@@ -4,6 +4,14 @@ The binary accepts a socket name for root mode, or `--app-uid` plus a socket
 name for the Shizuku child. They share framing and launch support; root routing,
 firewall, `ndc` and NFQUEUE state is never reachable from the app-UID path.
 
+Both modes use pinned Tokio 1.53.1's multi-threaded runtime default: one worker
+thread per value returned by `available_parallelism()`, as implemented by its
+[`Builder`](https://github.com/tokio-rs/tokio/blob/tokio-1.53.1/tokio/src/runtime/builder.rs#L2004-L2022).
+This bounds simultaneous task polling, not the number of admitted tasks. Runnable
+tasks wait in Tokio's scheduler rather than being refused; failure to determine or
+allocate the runtime's worker resources makes runtime construction fail before
+root or app-UID startup.
+
 ## Root Process Startup
 
 [`DaemonController`](../../mobile/src/main/java/be/mygod/vpnhotspot/root/daemon/DaemonController.kt)

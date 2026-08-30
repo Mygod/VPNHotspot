@@ -225,6 +225,12 @@ fn drop_queued_packet(queue: &mut Queue, mut message: nfq::Message) -> io::Resul
 }
 
 fn downstream_packet(message: &nfq::Message) -> Option<DownstreamIcmpPacket> {
+    // NFQA_CAP_LEN is represented by `get_original_len() > get_payload().len()`. This is expected
+    // exhaustion of nfnetlink's structural 65,531-byte payload ceiling, so drop the incomplete packet
+    // without producing one report per downstream packet. Queue/socket I/O failures remain reportable.
+    if message.get_original_len() > message.get_payload().len() {
+        return None;
+    }
     let ipv6 = Ipv6Slice::from_slice(message.get_payload()).ok()?;
     let payload = ipv6.payload();
     if payload.fragmented || payload.ip_number != IpNumber::IPV6_ICMP {
@@ -451,6 +457,9 @@ async fn handle_downstream_echo(
         return;
     }
     let destination = SocketAddrV6::new(packet.destination, 0, 0, 0);
+    // A connected raw socket can surface one stale asynchronous ICMP error on the next send. Draining the
+    // complete error queue is the sole state refresh available, so retry exactly once after that refresh. A
+    // second failure is current path/socket state: remove this allocation rather than resending indefinitely.
     let mut retried_after_error_queue = false;
     loop {
         match send_upstream_echo(&socket.socket, destination, &request).await {

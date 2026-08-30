@@ -49,6 +49,16 @@ impl Engine {
             self.counters.ingress.stale += 1;
             return;
         }
+        // `Terminal` is delivered only after the worker future has completed, so an upstream socket captured
+        // by that future is closed now. Refund its descriptor immediately; client-facing smoltcp state may
+        // remain for a clean closing handshake, but it owns no OS descriptor.
+        if let Some(lease) = self
+            .flows
+            .get_mut(&key)
+            .and_then(|held| held.record.upstream_lease.take())
+        {
+            admission.release(lease);
+        }
         // Keep a clean client-facing close until its remaining bytes and FIN are acknowledged.
         let cancelled = self
             .flows
@@ -112,16 +122,20 @@ impl Engine {
         // Submitted resolver transactions outlive their flow.
         let submitted = self.queries.len();
         let Flow {
-            lease,
+            upstream_lease,
             bridge,
             serving,
             ..
         } = flow;
         // Drop bridge bytes before refunding the DNS delivery they may contain.
         drop(bridge);
-        // Release flow-owned DNS state before its flow lease; submitted transactions remain table-owned.
+        // Release flow-owned DNS state before the flow's buffers; submitted transactions remain table-owned.
         serving.close(admission);
-        admission.release(lease);
+        // Normally taken at the joined worker terminal above. Retain this fallback so an invariant violation
+        // cannot leak descriptor capacity if a future caller reclaims a row through another joined path.
+        if let Some(lease) = upstream_lease {
+            admission.release(lease);
+        }
         debug_assert_eq!(
             self.queries.len(),
             submitted,

@@ -2,10 +2,14 @@ use std::time::{Duration, Instant};
 
 use smoltcp::socket::tcp::State;
 
-/// RFC 5382 REQ-5's floor for an established connection: two hours four minutes.
+/// RFC 5382 REQ-5's floor for an established connection: two hours four minutes. Once idle for
+/// this long, the flow and its upstream descriptor are retired; new traffic creates a new flow.
+/// <https://www.rfc-editor.org/rfc/rfc5382.html#section-5>
 const ESTABLISHED: Duration = Duration::from_secs(7_440);
 
 /// RFC 5382 REQ-5's floor for a transitory one - partially open, or partially closed: four minutes.
+/// Expiry retires the flow and its descriptor rather than retaining an incomplete handshake indefinitely.
+/// <https://www.rfc-editor.org/rfc/rfc5382.html#section-5>
 const TRANSITORY: Duration = Duration::from_secs(240);
 
 /// How long a flow in this phase may stay idle, or `None` where this owner has no say at all.

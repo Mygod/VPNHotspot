@@ -7,7 +7,6 @@ use std::task::{Context, Poll};
 use tokio::task::{Id, JoinSet};
 use tokio_util::sync::CancellationToken;
 
-use crate::shared::admission::logical_footprint;
 pub use crate::shared::ended::Ended;
 
 /// One finished worker: which record it belonged to, and how it ended.
@@ -25,14 +24,14 @@ pub struct Identity {
     pub cancel: CancellationToken,
 }
 
-/// One record its owner keeps, beside the identity and token of the worker holding its descriptor.
+/// One record its owner keeps, beside the identity and token of its worker.
 pub struct Held<R> {
     pub id: u64,
     pub cancel: CancellationToken,
     pub record: R,
 }
 
-/// The records one owner admitted, and the tasks that hold their descriptors.
+/// The records one owner admitted, and their tasks.
 pub struct Workers<K, R> {
     /// Names this owner in the one report a worker that did not complete produces.
     context: &'static str,
@@ -42,9 +41,6 @@ pub struct Workers<K, R> {
     running: HashMap<Id, (K, u64)>,
     tasks: JoinSet<Ended>,
     next: u64,
-    /// The logical maximum: how many records may be held at once. Both maps are built at it and the charge
-    /// covers it; admitting past it is refused rather than grown, and a retirement frees a slot.
-    prepared: usize,
 }
 
 /// There is no identity left to issue. Fails closed: nothing is admitted, nothing is started, and no number
@@ -55,41 +51,26 @@ pub struct Exhausted;
 /// Why an admission was refused, with the record handed back so the caller can unwind what it built.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Refused {
-    /// The fixed prepared bound is full. See [Workers::footprint].
-    AtCapacity { prepared: usize },
     /// This key already names a live record.
     Duplicate { id: u64 },
 }
 
 impl<K: Copy + Eq + Hash, R> Workers<K, R> {
-    /// Prepares for `records` admitted records at once, which is the logical maximum [Workers::footprint]
-    /// charged row state for and the one thing [Workers::admits] refuses on.
-    pub fn with_capacity(context: &'static str, records: usize) -> Self {
+    /// Builds an owner whose tables grow with admitted records. Resource admission, when a record owns a
+    /// bounded external resource, remains with the caller.
+    pub fn new(context: &'static str) -> Self {
         Self {
             context,
-            // Requested at that maximum so the common case allocates nothing. An initial reservation, not a
-            // promise either container owes: both may allocate or reorganise their own backing as they like,
-            // which is count-bounded overhead rather than accounted state.
-            held: HashMap::with_capacity(records),
-            running: HashMap::with_capacity(records),
+            held: HashMap::new(),
+            running: HashMap::new(),
             tasks: JoinSet::new(),
             next: 0,
-            prepared: records,
         }
     }
 
-    /// What a table prepared for `records` owns, whatever is in it - charged once by the owner and kept
-    /// charged until the table is rebuilt or dropped, because the charge follows the prepared bound rather
-    /// than the rows currently in it.
-    pub fn footprint(records: usize) -> Option<u64> {
-        logical_footprint::<(K, Held<R>)>(records)?
-            .checked_add(logical_footprint::<(Id, (K, u64))>(records)?)?
-            .checked_add(std::mem::size_of::<Self>() as u64)
-    }
-
-    /// Whether the count that stands in for a byte charge still holds: `running <= held <= prepared`.
-    pub fn bounded(&self) -> bool {
-        self.running.len() <= self.held.len() && self.held.len() <= self.prepared
+    /// Whether every running task still belongs to a held record.
+    fn consistent(&self) -> bool {
+        self.running.len() <= self.held.len()
     }
 
     /// The identity a record and its worker will share. Taken before either exists, because the worker is
@@ -103,26 +84,10 @@ impl<K: Copy + Eq + Hash, R> Workers<K, R> {
         })
     }
 
-    /// Whether there is room for one more record, for an owner that cannot know its key until after it has
-    /// committed to building something - a TCP flow's handle is issued by the socket set, not chosen.
-    pub fn has_room(&self) -> bool {
-        self.held.len() < self.prepared && self.running.len() < self.prepared
-    }
-
-    /// Whether a record may be admitted: no live record under this key, and a free slot in the logical bound.
-    /// What an owner checks before it commits to anything a refusal would have to unwind.
+    /// Whether a record may be admitted: no live record may already use this key.
     pub fn admits(&self, key: &K) -> Result<(), Refused> {
         if let Some(held) = self.held.get(key) {
             return Err(Refused::Duplicate { id: held.id });
-        }
-        // The prepared bound, on both maps, because a record needs a row in each and [Workers::admit] inserts
-        // into both *after* it has spawned the task - by which point a refusal would be a task with no row to
-        // settle it. A retirement takes both rows back and its slot is immediately the next admission's.
-        // The charged logical bound, not either map's rounded capacity, decides admission.
-        if self.held.len() >= self.prepared || self.running.len() >= self.prepared {
-            return Err(Refused::AtCapacity {
-                prepared: self.prepared,
-            });
         }
         Ok(())
     }
@@ -140,16 +105,13 @@ impl<K: Copy + Eq + Hash, R> Workers<K, R> {
     {
         // Checked before the task is spawned, not after: a worker started and then refused would be a task
         // nothing owns, holding whatever it was built from - and a duplicate that replaced its predecessor
-        // would strand that predecessor's descriptor. `running` is bounded by `held` plus the tasks whose
-        // records have already been retired, and a retired record's row is removed by [Workers::finished]
-        // rather than left, so preparing both to the same capacity is enough.
+        // could strand resources owned by either record.
         if let Err(why) = self.admits(&key) {
             return Err((record, why));
         }
         // One task bundle and one row, together. The token is the caller's own [Identity], issued once by
         // [Workers::identity] and never a child of another, so this worker's opaque runtime cells are the two
-        // this line creates and the one that came with the identity - which is the count the aggregate policy
-        // bounds in place of a byte charge.
+        // this line creates and the one that came with the identity.
         let task = self.tasks.spawn(worker);
         self.running.insert(task.id(), (key, identity.id));
         self.held.insert(
@@ -161,7 +123,7 @@ impl<K: Copy + Eq + Hash, R> Workers<K, R> {
             },
         );
         debug_assert!(
-            self.bounded(),
+            self.consistent(),
             "one admitted worker owns one task bundle and one row"
         );
         Ok(())
@@ -257,7 +219,7 @@ impl<K: Copy + Eq + Hash, R> Workers<K, R> {
             // waiting for the next one is all that can honestly be done with it.
             if let Some((key, id)) = self.running.remove(&task) {
                 debug_assert!(
-                    self.bounded(),
+                    self.consistent(),
                     "a reported task only lowers the running count"
                 );
                 return Poll::Ready(Terminal { key, id, ended });
@@ -265,9 +227,8 @@ impl<K: Copy + Eq + Hash, R> Workers<K, R> {
         }
     }
 
-    /// Takes back the record a finished worker belonged to, which is what closes the descriptor the owner
-    /// still held a share of. `None` when the identity is one this key no longer holds, which its successor
-    /// must survive.
+    /// Takes back the record a finished worker belonged to. `None` when the identity is one this key no
+    /// longer holds, which its successor must survive.
     pub fn retire(&mut self, key: &K, id: u64) -> Option<R> {
         if !self.current(key, id) {
             return None;
@@ -276,7 +237,7 @@ impl<K: Copy + Eq + Hash, R> Workers<K, R> {
         // task has left `running` before its row leaves `held`.
         let record = self.held.remove(key).map(|held| held.record);
         debug_assert!(
-            self.bounded(),
+            self.consistent(),
             "a retired row leaves no task unaccounted for"
         );
         record
@@ -318,7 +279,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_terminal_means_the_task_is_gone_rather_than_that_it_said_so() {
-        let mut workers: Workers<u32, Record> = Workers::with_capacity("test", 4);
+        let mut workers: Workers<u32, Record> = Workers::new("test");
         let counter = Arc::new(AtomicUsize::new(0));
         let identity = workers.identity().expect("a fresh table issues identities");
         let cancel = identity.cancel.clone();
@@ -330,7 +291,7 @@ mod tests {
                 parked(Witness(Arc::clone(&counter)), cancel),
             )
             .map_err(|(_, why)| why)
-            .expect("the table was prepared for it");
+            .expect("a fresh key is admitted");
         assert_eq!(dropped(&counter), 0);
         workers.cancel(&7);
         let terminal = timeout(BOUND, workers.finished())
@@ -351,7 +312,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_worker_blocked_in_both_directions_still_finishes_when_it_is_cancelled() {
-        let mut workers: Workers<u32, Record> = Workers::with_capacity("test", 4);
+        let mut workers: Workers<u32, Record> = Workers::new("test");
         let counter = Arc::new(AtomicUsize::new(0));
         let identity = workers.identity().expect("a fresh table issues identities");
         let cancel = identity.cancel.clone();
@@ -380,7 +341,7 @@ mod tests {
                 ended
             })
             .map_err(|(_, why)| why)
-            .expect("the table was prepared for it");
+            .expect("a fresh key is admitted");
         for _ in 0..4 {
             tokio::task::yield_now().await;
         }
@@ -400,7 +361,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_stale_identity_cannot_retire_the_successor_that_reused_its_key() {
-        let mut workers: Workers<u32, Record> = Workers::with_capacity("test", 4);
+        let mut workers: Workers<u32, Record> = Workers::new("test");
         let predecessor = Arc::new(AtomicUsize::new(0));
         let successor = Arc::new(AtomicUsize::new(0));
         let first = workers.identity().expect("a fresh table issues identities");
@@ -413,7 +374,7 @@ mod tests {
                 parked(Witness(Arc::clone(&predecessor)), cancel),
             )
             .map_err(|(_, why)| why)
-            .expect("prepared");
+            .expect("a fresh key is admitted");
         workers.cancel(&7);
         let terminal = timeout(BOUND, workers.finished())
             .await
@@ -460,10 +421,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_key_a_live_worker_holds_is_refused_rather_than_replaced() {
-        let mut workers: Workers<u32, Record> = Workers::with_capacity("test", 4);
+        let mut workers: Workers<u32, Record> = Workers::new("test");
         let predecessor = Arc::new(AtomicUsize::new(0));
         let candidate = Arc::new(AtomicUsize::new(0));
-        let first = workers.identity().expect("prepared");
+        let first = workers.identity().expect("identity");
         let cancel = first.cancel.clone();
         workers
             .admit(
@@ -473,8 +434,8 @@ mod tests {
                 parked(Witness(Arc::clone(&predecessor)), cancel),
             )
             .map_err(|(_, why)| why)
-            .expect("prepared");
-        let second = workers.identity().expect("prepared");
+            .expect("a fresh key is admitted");
+        let second = workers.identity().expect("identity");
         let cancel = second.cancel.clone();
         let (Record(refused), why) = workers
             .admit(
@@ -507,62 +468,9 @@ mod tests {
         assert_eq!(dropped(&predecessor), 1);
     }
 
-    #[tokio::test]
-    async fn the_prepared_bound_is_what_admission_refuses_on() {
-        let prepared = 2usize;
-        let mut workers: Workers<u32, Record> = Workers::with_capacity("test", prepared);
-        let admitted = Arc::new(AtomicUsize::new(0));
-        let candidate = Arc::new(AtomicUsize::new(0));
-        for key in 0..prepared as u32 {
-            assert!(workers.has_room());
-            let identity = workers.identity().expect("prepared");
-            let cancel = identity.cancel.clone();
-            workers
-                .admit(
-                    key,
-                    &identity,
-                    Record(key),
-                    parked(Witness(Arc::clone(&admitted)), cancel),
-                )
-                .map_err(|(_, why)| why)
-                .expect("inside the bound");
-        }
-        assert!(!workers.has_room());
-        assert!(workers.bounded());
-        let identity = workers.identity().expect("prepared");
-        let cancel = identity.cancel.clone();
-        let (_, why) = workers
-            .admit(
-                9,
-                &identity,
-                Record(9),
-                parked(Witness(Arc::clone(&candidate)), cancel),
-            )
-            .expect_err("one past the bound is refused");
-        assert_eq!(why, Refused::AtCapacity { prepared });
-        assert_eq!(
-            dropped(&admitted),
-            0,
-            "a refusal at the bound stops none of the workers already inside it"
-        );
-        assert_eq!(
-            dropped(&candidate),
-            1,
-            "and nothing was spawned for the one it refused"
-        );
-        workers.cancel_all();
-        for _ in 0..prepared {
-            timeout(BOUND, workers.finished())
-                .await
-                .expect("every live worker finishes");
-        }
-        assert!(!workers.working());
-        assert_eq!(dropped(&admitted), prepared);
-    }
-
     #[tokio::test(start_paused = true)]
     async fn an_empty_table_waits_rather_than_answering() {
-        let mut workers: Workers<u32, Record> = Workers::with_capacity("test", 4);
+        let mut workers: Workers<u32, Record> = Workers::new("test");
         assert!(
             timeout(BOUND, workers.finished()).await.is_err(),
             "an empty table never completes"

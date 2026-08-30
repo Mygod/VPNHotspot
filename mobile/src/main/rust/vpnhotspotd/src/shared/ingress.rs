@@ -70,7 +70,7 @@ pub trait Ingress: Owner {
     /// by [crate::shared::flow::named_by], and not by the owner.
     fn endpoints(&self) -> impl Iterator<Item = (Self::Handle, SocketAddr, SocketAddr)> + '_;
 
-    /// Opens a flow: a socket, a charged grant, a bridge and a worker. `None` means it could not be
+    /// Opens a flow: a socket, a descriptor lease, a bridge and a worker. `None` means it could not be
     /// admitted. The one step that is genuinely the engine's, because none of what it builds exists here.
     fn open(&mut self, segment: &Segment) -> Option<Self::Handle>;
 

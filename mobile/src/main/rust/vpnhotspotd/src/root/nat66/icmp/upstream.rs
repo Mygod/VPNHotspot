@@ -27,6 +27,11 @@ use vpnhotspotd::shared::icmp_wire::{
 use vpnhotspotd::shared::model::Network;
 use vpnhotspotd::shared::nat66_counter::Nat66CounterSource;
 
+/// Buffer for one standard IPv6 payload. The ordinary IPv6 Payload Length field is 16 bits; the NAT66
+/// dataplane does not support RFC 2675 jumbograms, so a supported Echo reply or ICMP error needs no larger
+/// retained receive allocation. <https://www.rfc-editor.org/rfc/rfc8200.html#section-3>
+const MAX_IPV6_PAYLOAD: usize = u16::MAX as usize;
+
 #[derive(Clone, Copy)]
 struct IcmpErrorMetadata {
     offender: SocketAddrV6,
@@ -45,7 +50,7 @@ pub(super) fn spawn_loop(
     stop: CancellationToken,
 ) {
     state.detached.clone().spawn(async move {
-        let mut buffer = vec![0u8; 65535];
+        let mut buffer = vec![0u8; MAX_IPV6_PAYLOAD];
         loop {
             let deadline = match state.upstream_activity(network) {
                 Ok(UpstreamActivity::Active(deadline)) => deadline,
@@ -379,7 +384,7 @@ pub(super) async fn drain_echo_error_queue(
             continue;
         };
         let count_len = if matches!(error, QueuedEchoError::Upstream { .. }) {
-            Some(message.payload.len())
+            Some(message.message_len)
         } else {
             None
         };

@@ -405,9 +405,22 @@ External mutation:
 
 - `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p icmpv6 --icmpv6-type echo-request ! -d <nat66-gateway> -j NFQUEUE --queue-num 30000`
 
+The process-wide queue binding explicitly uses Android common-kernel defaults
+for the same resource: 1,024 queued packets, fail-closed, and the maximum packet
+copy request. When 1,024 packets await verdicts, Linux drops new arrivals before
+userspace receives them; existing queued packets and the iptables rule remain.
+The nfnetlink payload attribute has a structural 65,531-byte ceiling, so Rust
+detects `NFQA_CAP_LEN` and drops a truncated packet without parsing or a
+traffic-driven report. Netlink `ENOBUFS` delivery notifications are enabled and
+remain structured receive failures. See the current common-kernel definitions of
+[`NFQNL_QMAX_DEFAULT` and `NFQNL_MAX_COPY_RANGE`](https://android.googlesource.com/kernel/common/+/afea13f9ff7137797a2858fc973c226ec93866aa/net/netfilter/nfnetlink_queue.c#51)
+and its [fail-closed full-queue path](https://android.googlesource.com/kernel/common/+/afea13f9ff7137797a2858fc973c226ec93866aa/net/netfilter/nfnetlink_queue.c#919).
+
 Rollback:
 
-- delete the same rule.
+- delete the same rule;
+- when the last dispatcher owner stops, close/unbind queue `30000`; the kernel
+  drops any packets still awaiting verdicts.
 
 Routing must omit this rule when ICMP registration failed. Packets must not be
 queued unless the process-wide ICMP dispatcher has a live session registration

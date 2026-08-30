@@ -1,11 +1,11 @@
 use std::collections::HashMap;
 use std::io;
-use std::net::{Ipv4Addr, TcpListener, UdpSocket};
+use std::net::{Ipv4Addr, SocketAddrV4, TcpListener, UdpSocket};
 use std::os::fd::{AsRawFd, RawFd};
 use std::sync::Arc;
 
 use libc::c_int;
-use socket2::SockRef;
+use socket2::{Domain, SockAddr, SockRef, Socket, Type};
 use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, Interest, Ready};
 use tokio::net::{
@@ -19,6 +19,7 @@ use tokio_util::task::TaskTracker;
 use crate::report;
 use crate::socket::{
     is_connection_closed, is_route_unreachable, is_udp_reply_unreachable, set_nonblocking,
+    TCP_LISTEN_BACKLOG,
 };
 use vpnhotspotd::shared::dns_counter::DnsCounters;
 use vpnhotspotd::shared::dns_wire;
@@ -29,8 +30,10 @@ use vpnhotspotd::shared::protocol::daemon_io_error_report_with_details;
 pub(crate) const DNS_PORT: u16 = 53;
 // android/multinetwork.h: ResNsendFlags::ANDROID_RESOLV_NO_RETRY.
 const ANDROID_RESOLV_NO_RETRY: u32 = 1 << 0;
-// Maximum DNS message size carried over TCP or EDNS0 UDP.
-const DNS_MAX_PACKET: usize = 65_535;
+/// Largest DNS message the RFC 1035 TCP framing field can represent. TCP cannot announce a larger frame;
+/// the UDP receive/result buffers retain the same protocol maximum without a daemon-local truncation cap.
+/// <https://www.rfc-editor.org/rfc/rfc1035#section-4.2.2>
+const DNS_MAX_PACKET: usize = u16::MAX as usize;
 
 pub(crate) struct Runtime {
     call_id: u64,
@@ -314,10 +317,12 @@ unsafe extern "C" {
 }
 
 fn create_tcp_listener(reply_mark: u32) -> io::Result<TcpListener> {
-    let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 0))?;
-    SockRef::from(&listener).set_mark(reply_mark)?;
-    listener.set_nonblocking(true)?;
-    Ok(listener)
+    let socket = Socket::new(Domain::IPV4, Type::STREAM, None)?;
+    socket.set_mark(reply_mark)?;
+    socket.bind(&SockAddr::from(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)))?;
+    socket.listen(TCP_LISTEN_BACKLOG)?;
+    socket.set_nonblocking(true)?;
+    Ok(socket.into())
 }
 
 fn create_udp_listener(reply_mark: u32) -> io::Result<UdpSocket> {
@@ -461,7 +466,7 @@ fn spawn_udp_loop(
     // Spawn children before the tracked listener exits, preventing a transient empty tracker.
     let queries = detached.clone();
     detached.spawn(async move {
-        let mut buffer = [0u8; 65535];
+        let mut buffer = [0u8; DNS_MAX_PACKET];
         loop {
             select! {
                 biased;

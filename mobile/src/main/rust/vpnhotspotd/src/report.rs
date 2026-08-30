@@ -3,7 +3,6 @@ use std::fmt;
 use std::io;
 use std::io::Write;
 use std::sync::LazyLock;
-use std::time::Duration;
 
 use libc::{c_char, c_int};
 use tokio::sync::mpsc::UnboundedSender;
@@ -18,9 +17,8 @@ use vpnhotspotd::shared::reporter::{Handed, Pushed, Reporter, ReporterGuard, Rep
 /// Process-wide registry for the active control conversation.
 static REPORTER: LazyLock<ReporterRegistry> = LazyLock::new(ReporterRegistry::default);
 
-const NONFATAL_COALESCE_WINDOW: Duration = Duration::from_secs(1);
-/// Limits nonfatals in the unbounded serial writer queue to one. Extra slots cannot
-/// increase throughput; they only move reports out of the bounded coalescer.
+/// Limits nonfatals in the unbounded serial writer queue to one. Extra slots cannot increase throughput;
+/// while this one is occupied the coalescer retains only the latest report per compiled source site.
 const NONFATAL_QUEUE: usize = 1;
 const ANDROID_LOG_INFO: c_int = 4;
 const ANDROID_LOG_ERROR: c_int = 6;
@@ -99,7 +97,6 @@ unsafe extern "C" {
 pub(crate) fn init(sender: ControllerSender) -> io::Result<ReporterGuard> {
     let controller = sender.downgrade();
     REPORTER.install(Reporter::new(
-        NONFATAL_COALESCE_WINDOW,
         NONFATAL_QUEUE,
         move |NonfatalReport { call_id, report }, place| match controller.upgrade() {
             Some(sender) => {

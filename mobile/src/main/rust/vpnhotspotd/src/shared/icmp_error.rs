@@ -11,11 +11,12 @@ use crate::shared::packet_writer::{WriterError, IPV4_HEADER_LEN, IPV6_HEADER_LEN
 const LOCAL_ORIGIN_HOP_LIMIT: u8 = 64;
 
 /// RFC 1812 section 4.3.2.3: an ICMPv4 error should quote as much of the invoking datagram as possible without
-/// the error itself exceeding 576 bytes, which every IPv4 host must be able to reassemble.
+/// the error itself exceeding 576 bytes, which every IPv4 host must be able to reassemble. A longer quote is
+/// truncated; the error itself is still emitted.
 const ICMPV4_MAX_PACKET: usize = 576;
 
 /// RFC 4443 section 2.4 (c): an ICMPv6 error must not exceed the IPv6 minimum MTU, so that it needs no
-/// fragmentation to reach any host.
+/// fragmentation to reach any host. A longer quote is truncated; the error itself is still emitted.
 const ICMPV6_MAX_PACKET: usize = 1280;
 
 /// What the daemon has to tell a client about a packet it could not forward.

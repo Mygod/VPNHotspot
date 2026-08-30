@@ -14,8 +14,12 @@ use tokio_util::sync::CancellationToken;
 use crate::report::{ControllerMessage, ControllerSender};
 use crate::socket::await_connect;
 
-// Mirrors the app-side control frame cap, matching Android's documented Binder transaction buffer.
-pub(crate) const MAX_CONTROL_PACKET_SIZE: usize = 1024 * 1024;
+/// Largest control payload both peers can frame. Android represents the length and the backing `ByteArray`
+/// with a signed `Int`, and the app-UID handoff prepends the four-byte length in the same allocation. A
+/// larger unsigned wire length is rejected before allocation; exhaustion below this structural maximum is
+/// left to Android rather than hidden behind a daemon policy cap.
+/// https://protobuf.dev/programming-guides/proto-limits/#total-size-of-the-message
+pub(crate) const MAX_CONTROL_PACKET_SIZE: usize = i32::MAX as usize - std::mem::size_of::<u32>();
 
 /// The control writer for both conversations, and the thing that ends one when it cannot write.
 ///

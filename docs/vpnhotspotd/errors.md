@@ -8,9 +8,43 @@ an optional or background failure.
 Reports built by
 [`shared/protocol.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shared/protocol.rs)
 carry context, message, optional errno, kind, Rust source location, process ID
-and bounded details. Context names the owner and operation. Details include the
+and details. Context names the owner and operation. Details include the
 identifiers needed to reproduce the failure, such as downstream/upstream,
 session, client, destination, protocol, listener or queue.
+
+Rust does not impose a second detail-count or field-length policy. The Android
+consumer passes details to Crashlytics, whose
+[event contract](https://firebase.google.com/docs/reference/kotlin/com/google/firebase/crashlytics/FirebaseCrashlytics#recordException(kotlin.Throwable,com.google.firebase.crashlytics.CustomKeysAndValues))
+retains at most 64 combined app/event key-value pairs and truncates keys or
+values beyond 1,024 characters. Crashlytics also retains only the
+[eight most recent recorded nonfatal exceptions](https://firebase.google.com/docs/crashlytics/android/customize-crash-reports#report-non-fatal-exceptions).
+Additional or longer diagnostic data is therefore handled at the consumer
+boundary rather than silently discarded on the daemon wire.
+
+## Control Framing And Diagnostic Bounds
+
+Control protobufs use a four-byte length prefix. Both peers accept payloads up
+to 2,147,483,643 bytes: `Int.MAX_VALUE` minus the four-byte prefix that the
+app-UID descriptor handoff places in the same `ByteArray`. This is the largest
+combined frame size arithmetically representable by `Int`. It remains below
+[protobuf's portable 2 GiB ceiling](https://protobuf.dev/programming-guides/proto-limits/#total-size-of-the-message)
+and is a structural framing maximum, not a daemon memory budget. Zero, negative
+app-side lengths, and larger unsigned daemon-side lengths end the conversation
+before payload allocation; allocation failure below the maximum remains Android
+process-memory pressure.
+
+Failed `iptables-restore`, `ip6tables-restore`, and `dumpsys ipsec` children can
+write without bound even though one report cannot use unbounded diagnostics.
+The daemon therefore retains the first 1,024 bytes from each stdout/stderr
+stream. This is a conservative way to remain within Crashlytics' 1,024-character
+value limit above: converting 1,024 source bytes cannot produce more than 1,024
+Unicode characters, although multibyte UTF-8 may use fewer. Fixed 1,024-byte read
+scratch buffers drain both child pipes concurrently. Firewall line consumers see
+at most the same 1,024-byte prefix of any one line; `dumpsys ipsec` is passed to
+its streaming parser in bounded chunks instead of first accumulating a complete
+line. Bytes beyond a sample or line prefix are consumed and discarded, so hitting
+the bound truncates only diagnostics/line inspection; the child cannot block on a
+full pipe and command completion and status handling are unchanged.
 
 Preserve the first useful context when wrapping `io::Error`; generic layers must
 not overwrite the failing site's context or source location.
@@ -45,8 +79,14 @@ for the process and covers all calls, sessions and probes; the app-UID conversat
 covers one session. A successor cannot install until its predecessor finishes.
 
 Both modes coalesce by Rust source site `(file, line, column)`, bounding pending
-categories to compiled report sites. Context, kind, errno, message, details and the
-optional call ID remain payload; a summary carries the last report in its batch.
+categories to compiled report sites. Context, kind, errno, message, details and
+the optional call ID remain payload; a summary carries the last blocked report
+for its site.
+
+Producers hand every unexpected failure to this shared owner rather than keeping
+owner-lifetime "already reported" flags. This preserves each event whenever the
+writer is available and leaves all suppression and latest-summary retention at
+the documented source-site boundary.
 
 The optional call ID only correlates a degradation with its owning call. Root can
 report call-owned nonfatals after the call succeeds. On the app-UID path such a
@@ -56,21 +96,23 @@ App-UID contexts begin with `shizuku.` and details describe only TUN-visible
 source, destination and family. `platform_dns`, `platform_ipv4` and
 `platform_ipv6` are traffic classes, not physical clients.
 
-Only daemon-owned failures become app-UID reports. Malformed input, refused
-admission, expiry, unreachable peers and other traffic-controlled outcomes are
-counted or logged, not reported per packet.
+Only unexpected daemon/platform failures become app-UID reports. Malformed TUN
+input, refused admission, expiry, unreachable peers and other ordinary
+traffic-controlled outcomes are counted or logged, not reported per packet. A
+ping socket delivering bytes that do not have the promised Echo-reply framing,
+or returning `EMSGSIZE` without an attributable local path MTU, violates the
+owner's expected kernel contract and is reported as well as counted.
 
 ## Coalescing And Delivery
 
-The first report for a source site is attempted immediately. Further reports in the
-one-second window are suppressed; the last becomes a summary with
-`coalesced.suppressed_count` and `coalesced.window_ms`. A continuing site emits at
-most one summary per window. Terminal frames are not coalesced.
-
-Coalescing occurs before queueing, leaving at most one pending batch per site. The
-reporter reserves one place in the control writer's queue. While it is occupied, a
-push updates only its own batch; returning the place wakes the reporter, which
-emits overdue sites by oldest deadline without waiting another window.
+The reporter reserves exactly one place in the serial control writer's queue:
+one place is sufficient to keep one writer busy, while another would only move
+backlog out of the coalescer. A report is attempted immediately whenever that
+place is free. While it is occupied, each compiled source site retains only its
+latest report and counts replaced reports in `coalesced.suppressed_count`.
+Returning the place wakes the reporter, which emits blocked sites in
+first-blocked order. There is no time-based reporting quota. Terminal frames are
+not coalesced.
 
 Orderly shutdown flushes summaries before ending the writer. Root first waits for
 all report-capable detached tasks and their destructors; the app-UID session
@@ -105,9 +147,10 @@ messages.
 
 Cancellation and `Interrupted` during cancellation are not errors. Tasks tied to
 a stop token exit quietly. Report only unexpected cleanup/channel failures that
-affect daemon-owned state or break an invariant. App-UID worker teardown releases
-its record and reservation only after it completes and is joined; clean TCP
-completion may retain client-facing state as documented in
+affect daemon-owned state or break an invariant. An app-UID worker that owns a
+descriptor releases its descriptor lease only after it completes, is joined and
+the descriptor closes; clean TCP completion releases that upstream lease while
+it may retain memory-only client-facing state as documented in
 [`shizuku.md`](shizuku.md#app-uid-dataplane).
 
 ## Best-Effort Cleanup

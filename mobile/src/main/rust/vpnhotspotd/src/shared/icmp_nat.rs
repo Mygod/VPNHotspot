@@ -10,6 +10,12 @@ pub use etherparse::icmpv6::TYPE_TIME_EXCEEDED as ICMPV6_TIME_EXCEEDED;
 
 use crate::shared::model::Network;
 
+/// Rewritten identifiers available to one `(network, destination, original sequence)` tuple. This is exactly
+/// the complete 16-bit ICMPv6 Echo Identifier field. If all 65,536 values are live, allocation refuses only
+/// the new request; replies or the owning mapping timeout release values while existing mappings are retained.
+/// <https://www.rfc-editor.org/rfc/rfc4443.html#section-4.1>
+const ECHO_IDENTIFIER_COUNT: usize = u16::MAX as usize + 1;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Nat66Destination {
     Gateway,
@@ -141,7 +147,7 @@ impl EchoMap {
         allocation: EchoAllocation,
     ) -> io::Result<(u16, u16)> {
         self.expire(now, timeout);
-        for _ in 0..=u16::MAX {
+        for _ in 0..ECHO_IDENTIFIER_COUNT {
             let id = self.next_id;
             self.next_id = self.next_id.wrapping_add(1);
             let key = EchoKey {

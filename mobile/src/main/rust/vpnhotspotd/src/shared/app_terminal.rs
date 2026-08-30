@@ -70,8 +70,6 @@ impl Terminal {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use prost::Message;
     use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver};
     use tokio::task::JoinHandle;
@@ -82,7 +80,6 @@ mod tests {
     use crate::shared::protocol::nonfatal_frame;
     use crate::shared::reporter::{Handed, Pushed, Reporter, ReporterRegistry};
 
-    const WINDOW: Duration = Duration::from_secs(1);
     const HANDOFF: usize = 1;
     const CONFIG_CALL: u64 = 12;
     const SESSION_CALL: u64 = 1;
@@ -171,7 +168,6 @@ mod tests {
         let sink = control.downgrade();
         let reporter = registry
             .install(Reporter::new(
-                WINDOW,
                 HANDOFF,
                 move |NonfatalReport { call_id, report }, place| match sink.upgrade() {
                     Some(control) => control

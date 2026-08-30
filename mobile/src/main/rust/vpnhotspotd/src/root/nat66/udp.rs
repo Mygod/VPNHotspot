@@ -3,7 +3,7 @@ use std::io;
 use std::net::{SocketAddr, SocketAddrV6, UdpSocket};
 use std::os::fd::AsRawFd;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use tokio::io::unix::AsyncFd;
 use tokio::net::UdpSocket as TokioUdpSocket;
@@ -11,7 +11,7 @@ use tokio::select;
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 
-use super::{sleep_until_deadline, IDLE_TIMEOUT};
+use super::sleep_until_deadline;
 use crate::root::dns::{resolve_or_error_counted, DNS_PORT};
 use crate::root::nat66::icmp;
 use crate::root::upstream::{connect_udp, is_selected_network_missing, UpstreamConnectError};
@@ -33,6 +33,17 @@ use icmp_error::send_packet_too_big as send_udp_packet_too_big;
 pub(super) use reply_socket::ReplySocketPool;
 use reply_socket::{report_send_response_error, send_response, ReplySocketLease};
 use socket_io::{enable_recv_hop_limit, forward_udp_datagram, recv_packet, UdpForwardResult};
+
+/// Buffer for one standard IP datagram. IPv6's ordinary Payload Length field is 16 bits; this NAT66
+/// dataplane does not support RFC 2675 jumbograms, so a supported UDP payload cannot require more retained
+/// receive storage. <https://www.rfc-editor.org/rfc/rfc8200.html#section-3>
+const MAX_DATAGRAM: usize = u16::MAX as usize;
+
+/// Bounds one NAT66 UDP association's upstream socket, ICMP registration, and reply-socket lease.
+/// RFC 4787 REQ-5 recommends a five-minute default (and forbids less than two minutes). On expiry
+/// the association is closed, late replies are dropped, and a later downstream datagram recreates it.
+/// See https://www.rfc-editor.org/rfc/rfc4787.html#section-4.3.
+const UDP_IDLE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 struct AssociationKey {
@@ -91,7 +102,7 @@ pub(crate) fn spawn_loop(
         let mut associations = HashMap::<AssociationKey, UdpAssociation>::new();
         let (association_event_tx, mut association_event_rx) = mpsc::unbounded_channel();
         let mut next_association_id = 0u64;
-        let mut buffer = [0u8; 65535];
+        let mut buffer = [0u8; MAX_DATAGRAM];
         let handle_association_event =
             |associations: &mut HashMap<AssociationKey, UdpAssociation>, event| match event {
                 UdpAssociationEvent::Active(key, id) => {
@@ -122,7 +133,7 @@ pub(crate) fn spawn_loop(
             }
             let now = Instant::now();
             associations.retain(|_, association| {
-                let active = now.duration_since(association.last_active) < IDLE_TIMEOUT;
+                let active = now.duration_since(association.last_active) < UDP_IDLE_TIMEOUT;
                 if !active {
                     association.stop.cancel();
                 }
@@ -130,7 +141,7 @@ pub(crate) fn spawn_loop(
             });
             let next_expiry = associations
                 .values()
-                .map(|association| association.last_active + IDLE_TIMEOUT)
+                .map(|association| association.last_active + UDP_IDLE_TIMEOUT)
                 .min();
 
             select! {
@@ -533,7 +544,7 @@ fn log_connection_error(
 
 impl AssociationTask {
     async fn run(self) {
-        let mut buffer = [0u8; 65535];
+        let mut buffer = [0u8; MAX_DATAGRAM];
         loop {
             select! {
                 biased;

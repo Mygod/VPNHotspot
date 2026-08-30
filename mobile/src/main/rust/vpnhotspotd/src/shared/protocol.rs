@@ -15,9 +15,6 @@ use crate::shared::model::{
 };
 use crate::shared::proto::daemon::{self, DaemonErrorReport, MasqueradeMode};
 
-pub(crate) const MAX_ERROR_DETAILS: usize = 32;
-const MAX_ERROR_FIELD_BYTES: usize = 4096;
-
 #[track_caller]
 pub fn daemon_error_report(
     context: impl Into<String>,
@@ -41,11 +38,11 @@ where
 {
     let location = Location::caller();
     daemon::DaemonErrorReport {
-        context: trim_error_field(context.into()),
-        message: trim_error_field(message.into()),
+        context: context.into(),
+        message: message.into(),
         errno: None,
-        kind: trim_error_field(kind.into()),
-        file: trim_error_field(location.file().to_owned()),
+        kind: kind.into(),
+        file: location.file().to_owned(),
         line: location.line(),
         column: location.column(),
         pid: process::id(),
@@ -89,11 +86,11 @@ where
     }
     let location = Location::caller();
     daemon::DaemonErrorReport {
-        context: trim_error_field(context.into()),
-        message: trim_error_field(error.to_string()),
+        context: context.into(),
+        message: error.to_string(),
         errno: error.raw_os_error(),
-        kind: trim_error_field(format!("{:?}", error.kind())),
-        file: trim_error_field(location.file().to_owned()),
+        kind: format!("{:?}", error.kind()),
+        file: location.file().to_owned(),
         line: location.line(),
         column: location.column(),
         pid: process::id(),
@@ -125,10 +122,9 @@ where
 {
     details
         .into_iter()
-        .take(MAX_ERROR_DETAILS)
         .map(|(key, value)| daemon::ErrorDetail {
-            key: trim_error_field(key.to_string()),
-            value: trim_error_field(value.to_string()),
+            key: key.to_string(),
+            value: value.to_string(),
         })
         .collect()
 }
@@ -420,19 +416,6 @@ fn read_prefix_len(prefix_len: u32, max: u32, name: &str) -> io::Result<u8> {
 
 fn invalid_data(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
-}
-
-fn trim_error_field(value: String) -> String {
-    if value.len() <= MAX_ERROR_FIELD_BYTES {
-        return value;
-    }
-    let mut end = MAX_ERROR_FIELD_BYTES;
-    while !value.is_char_boundary(end) {
-        end -= 1;
-    }
-    let mut value = value[..end].to_owned();
-    value.push_str("...");
-    value
 }
 
 #[cfg(test)]

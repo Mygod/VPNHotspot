@@ -5,7 +5,7 @@ use std::net::{IpAddr, Ipv6Addr, SocketAddrV6};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use libc::{EADDRNOTAVAIL, ENOBUFS, MSG_DONTWAIT};
+use libc::{EADDRNOTAVAIL, ENOBUFS, MSG_DONTWAIT, MSG_TRUNC};
 use rtnetlink::packet_route::{
     address::{AddressAttribute, AddressMessage},
     AddressFamily,
@@ -27,13 +27,32 @@ use crate::socket::send_packet_to;
 use vpnhotspotd::shared::model::SessionConfig;
 use vpnhotspotd::shared::ra_wire::{
     is_router_link_local, make_current_ra_packet, make_zero_lifetime_ra_packet,
-    router_advertisement_destination,
+    router_advertisement_destination, MAX_RA_INTERVAL_SECONDS, MIN_RA_INTERVAL_SECONDS,
 };
 
-const RA_PERIOD: Duration = Duration::from_secs(30);
-const SUPPRESSED_RA_PERIOD: Duration = Duration::from_secs(3);
-const SUPPRESSED_RA_WINDOW: Duration = Duration::from_secs(15);
-const DEFAULT_MTU: u32 = 1500;
+/// Android's minimum spacing between urgent multicast advertisements. While a suppression record is live,
+/// hitting this bound schedules its next zero-lifetime advertisement rather than queueing another one.
+/// <https://android.googlesource.com/platform/packages/modules/Connectivity/+/347fbd34b368d19f0d87e908ea101eed3601a731/Tethering/src/android/net/ip/RouterAdvertisementDaemon.java#100>
+const MIN_URGENT_RA_INTERVAL: Duration = Duration::from_secs(3);
+/// Android's number of urgent advertisements after RA content changes. Once all five three-second opportunities
+/// pass, the suppression record expires; existing client state has already received zero lifetimes.
+/// <https://android.googlesource.com/platform/packages/modules/Connectivity/+/347fbd34b368d19f0d87e908ea101eed3601a731/Tethering/src/android/net/ip/RouterAdvertisementDaemon.java#100>
+const MAX_URGENT_ROUTER_ADVERTISEMENTS: u64 = 5;
+/// Fifteen seconds of suppression metadata, derived exactly from Android's five urgent advertisements at its
+/// three-second minimum spacing. Expiry removes only the record; a later address event can recreate it.
+const URGENT_RA_RETENTION: Duration =
+    Duration::from_secs(MIN_URGENT_RA_INTERVAL.as_secs() * MAX_URGENT_ROUTER_ADVERTISEMENTS);
+/// RFC 8200 requires every IPv6 link to support a 1,280-byte MTU. A failed link-MTU lookup therefore falls
+/// back to the protocol minimum rather than advertising an assumed Ethernet MTU; the lookup error remains
+/// reported, and a missing link retains no daemon-side MTU state.
+/// <https://www.rfc-editor.org/rfc/rfc8200.html#section-5>
+const IPV6_MINIMUM_MTU: u32 = 1280;
+const ROUTER_SOLICITATION_TYPE: u8 = 133;
+/// Retains exactly the fixed Router Solicitation header needed to validate its type and code.
+/// `recvfrom(MSG_TRUNC)` consumes the complete datagram while the unparsed options are discarded.
+/// RFC 4861 section 4.1 defines this header as eight octets and permits options after it:
+/// https://www.rfc-editor.org/rfc/rfc4861.html#section-4.1.
+const ROUTER_SOLICITATION_HEADER_LEN: usize = 8;
 
 enum RaRequest {
     RouterSolicitation(SocketAddrV6),
@@ -64,10 +83,11 @@ pub(crate) fn spawn_loop(
     let socket = AsyncFd::new(create_recv_socket(&initial.downstream, initial.reply_mark)?)?;
     // Tracking covers failed startup; Runtime::stop joins normal shutdown and withdraws prefixes.
     Ok(detached.spawn(stop.clone().run_until_cancelled_owned(async move {
+        let mut random = fastrand::Rng::new();
         let mut next_ra = Instant::now();
         let mut next_suppressed_ra = None;
         let mut suppressed_prefixes = HashMap::<Ipv6Inet, Instant>::new();
-        let mut buffer = [MaybeUninit::<u8>::uninit(); 1500];
+        let mut buffer = [MaybeUninit::<u8>::uninit(); ROUTER_SOLICITATION_HEADER_LEN];
         let mut last_router = None;
         let mut address_changed = false;
         let mut refresh_downstream_prefixes = true;
@@ -156,7 +176,7 @@ pub(crate) fn spawn_loop(
                 if let Some(ipv6_nat) = current.ipv6_nat.as_ref() {
                     for prefix in mtu_prefixes {
                         if prefix != ipv6_nat.gateway {
-                            suppressed_prefixes.insert(prefix, now + SUPPRESSED_RA_WINDOW);
+                            suppressed_prefixes.insert(prefix, now + URGENT_RA_RETENTION);
                             send_current = true;
                         }
                     }
@@ -205,7 +225,7 @@ pub(crate) fn spawn_loop(
                     }
                 }
                 if next_ra <= now {
-                    next_ra = now + RA_PERIOD;
+                    next_ra = now + periodic_ra_interval(&mut random);
                 }
                 next_suppressed_ra = None;
             }
@@ -225,7 +245,7 @@ pub(crate) fn spawn_loop(
                         mtu,
                     )
                     .await;
-                    next_suppressed_ra = Some(now + SUPPRESSED_RA_PERIOD);
+                    next_suppressed_ra = Some(now + MIN_URGENT_RA_INTERVAL);
                 }
                 if send_current || router_changed || send_address_changed || next_ra <= now {
                     match send_ra(&current, router, None, mtu).await {
@@ -257,7 +277,7 @@ pub(crate) fn spawn_loop(
                             );
                         }
                     }
-                    next_ra = now + RA_PERIOD;
+                    next_ra = now + periodic_ra_interval(&mut random);
                 }
             }
             let next_deadline = [Some(next_ra), next_suppressed_ra]
@@ -483,12 +503,16 @@ async fn downstream_mtu(
 ) -> u32 {
     match netlink::link_mtu(handle, interface).await {
         Ok(mtu) => mtu,
-        Err(e) if netlink::is_missing_link(&e) => DEFAULT_MTU,
+        Err(e) if netlink::is_missing_link(&e) => IPV6_MINIMUM_MTU,
         Err(e) => {
             report::io_with_details(context, e, [("interface", interface.to_owned())]);
-            DEFAULT_MTU
+            IPV6_MINIMUM_MTU
         }
     }
+}
+
+fn periodic_ra_interval(random: &mut fastrand::Rng) -> Duration {
+    Duration::from_secs(random.u64(MIN_RA_INTERVAL_SECONDS..MAX_RA_INTERVAL_SECONDS))
 }
 
 async fn downstream_ipv6_prefixes(
@@ -579,14 +603,17 @@ fn router_address(message: &AddressMessage) -> Option<Ipv6Addr> {
 }
 
 fn recv_request(socket: &Socket, buffer: &mut [MaybeUninit<u8>]) -> io::Result<RaRequest> {
-    let (size, address) = match socket.recv_from_with_flags(buffer, MSG_DONTWAIT) {
+    let (size, address) = match socket.recv_from_with_flags(buffer, MSG_DONTWAIT | MSG_TRUNC) {
         Ok(result) => result,
         Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
             return Ok(RaRequest::WouldBlock)
         }
         Err(error) => return Err(error),
     };
-    if size == 0 || unsafe { buffer[0].assume_init() } != 133 {
+    if size < ROUTER_SOLICITATION_HEADER_LEN
+        || unsafe { buffer[0].assume_init() } != ROUTER_SOLICITATION_TYPE
+        || unsafe { buffer[1].assume_init() } != 0
+    {
         return Ok(RaRequest::Ignored);
     }
     address

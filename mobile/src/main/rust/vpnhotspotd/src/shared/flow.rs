@@ -18,12 +18,6 @@ impl<H> FlowId<H> {
     }
 }
 
-/// Admitting a flow would exceed the fixed bound the owner's tables were charged for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct AtCapacity {
-    pub prepared: usize,
-}
-
 /// The order one owner serves its flows in, and the rotation that keeps a pass from always starting at the
 /// same one.
 pub struct Turns<H> {
@@ -34,28 +28,22 @@ pub struct Turns<H> {
     served: usize,
 }
 
-impl<H: Copy + Eq> Turns<H> {
-    /// Prepares for `prepared` live flows, so the common case allocates nothing. That is an initial
-    /// reservation rather than the bound: what enforces the bound is [admit_flow]'s refusal.
-    pub fn with_capacity(prepared: usize) -> Self {
+impl<H> Default for Turns<H> {
+    fn default() -> Self {
         Self {
-            order: VecDeque::with_capacity(prepared),
+            order: VecDeque::new(),
             served: 0,
         }
     }
+}
 
+impl<H: Copy + Eq> Turns<H> {
     pub fn len(&self) -> usize {
         self.order.len()
     }
 
     pub fn is_empty(&self) -> bool {
         self.order.is_empty()
-    }
-
-    /// What the backing really reserved, which is what a charge is checked against - never a bound anything
-    /// admits on.
-    pub fn capacity(&self) -> usize {
-        self.order.capacity()
     }
 
     /// Every live flow, in the order they are served, for an owner that only needs to *find* them - a
@@ -124,14 +112,10 @@ pub trait FlowOps {
     /// Why a build failed, which the caller reports its own way.
     type Error;
 
-    /// Whether the worker table can take another record without growing. Asked *before* anything is built,
-    /// so a refusal costs nothing to unwind.
-    fn has_room(&self) -> bool;
-
-    /// Opens the socket, takes the grant, builds the bridge, and answers the incarnation they belong to.
+    /// Builds the flow's transport and client-side state, and answers the incarnation they belong to.
     fn build(&mut self) -> Result<(Self::Handle, u64, Self::Record), Self::Error>;
 
-    /// Undoes [FlowOps::build] exactly: the socket, the bridge and the grant all go.
+    /// Undoes [FlowOps::build] exactly: the transport and client-side state both go.
     fn unwind(&mut self, handle: Self::Handle, incarnation: u64, record: Self::Record);
 
     /// Hands the record to the worker table and starts its task. The record comes back on refusal.
@@ -146,29 +130,25 @@ pub trait FlowOps {
 /// Why a flow could not be admitted.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Refused<E> {
-    /// One of the prepared tables is full. Answered before anything was built.
-    AtCapacity(AtCapacity),
-    /// The socket, the grant or the bridge could not be made.
+    /// The transport or client-side state could not be made.
     Unbuildable(E),
+    /// The dynamically growing worker owner refused the completed record, normally because its key was a
+    /// duplicate. Every side effect has already been unwound.
+    Unadmitted,
 }
 
 /// Admits one flow, or leaves nothing behind.
 pub fn admit_flow<O: FlowOps>(
     ops: &mut O,
     turns: &mut Turns<O::Handle>,
-    prepared: usize,
 ) -> Result<O::Handle, Refused<O::Error>> {
-    // Both tables, before anything exists to unwind.
-    if !ops.has_room() || turns.len() >= prepared {
-        return Err(Refused::AtCapacity(AtCapacity { prepared }));
-    }
     let (handle, incarnation, record) = ops.build().map_err(Refused::Unbuildable)?;
     turns.admit(handle);
     if let Err(record) = ops.admit(handle, incarnation, record) {
         // Exactly the place just taken, never every place this handle holds - see [Turns::undo].
         turns.undo(handle);
         ops.unwind(handle, incarnation, record);
-        return Err(Refused::AtCapacity(AtCapacity { prepared }));
+        return Err(Refused::Unadmitted);
     }
     Ok(handle)
 }
@@ -257,17 +237,15 @@ mod tests {
 
     struct Recorder<'a> {
         ledger: &'a mut Ledger,
-        room: usize,
         refuse_build: bool,
         refuse_admit: bool,
         handle: Option<u32>,
     }
 
     impl Recorder<'_> {
-        fn new(ledger: &mut Ledger, room: usize) -> Recorder<'_> {
+        fn new(ledger: &mut Ledger) -> Recorder<'_> {
             Recorder {
                 ledger,
-                room,
                 refuse_build: false,
                 refuse_admit: false,
                 handle: None,
@@ -283,10 +261,6 @@ mod tests {
         type Handle = u32;
         type Record = Record;
         type Error = &'static str;
-
-        fn has_room(&self) -> bool {
-            self.ledger.records < self.room
-        }
 
         fn build(&mut self) -> Result<(u32, u64, Record), &'static str> {
             if self.refuse_build {
@@ -334,7 +308,7 @@ mod tests {
 
     #[test]
     fn a_pass_serves_every_flow_once_and_the_next_pass_starts_further_on() {
-        let mut turns = Turns::with_capacity(3);
+        let mut turns = Turns::default();
         for handle in [7u32, 8, 9] {
             turns.admit(handle);
         }
@@ -348,7 +322,7 @@ mod tests {
 
     #[test]
     fn an_abandoned_pass_leaves_the_order_where_it_was() {
-        let mut turns = Turns::with_capacity(3);
+        let mut turns = Turns::default();
         for handle in [7u32, 8, 9] {
             turns.admit(handle);
         }
@@ -358,15 +332,14 @@ mod tests {
 
     #[test]
     fn an_empty_order_has_no_turns_and_nothing_to_rotate() {
-        let mut turns: Turns<u32> = Turns::with_capacity(0);
+        let mut turns: Turns<u32> = Turns::default();
         assert!(turns.is_empty());
         assert_eq!(pass(&mut turns), Vec::<u32>::new());
-        assert_eq!(turns.capacity(), 0);
     }
 
     #[test]
     fn a_reclaimed_flow_takes_one_place_and_the_rest_keep_theirs() {
-        let mut turns = Turns::with_capacity(3);
+        let mut turns = Turns::default();
         for handle in [7u32, 8, 9] {
             turns.admit(handle);
         }
@@ -379,19 +352,15 @@ mod tests {
 
     #[test]
     fn a_refused_duplicate_takes_back_only_its_own_place_in_the_order() {
-        let prepared = 4usize;
-        let mut turns = Turns::with_capacity(prepared);
+        let mut turns = Turns::default();
         turns.admit(7);
         let mut ledger = Ledger::default();
         let mut ops = Recorder {
             refuse_admit: true,
             handle: Some(7),
-            ..Recorder::new(&mut ledger, prepared)
+            ..Recorder::new(&mut ledger)
         };
-        assert!(matches!(
-            admit_flow(&mut ops, &mut turns, prepared),
-            Err(Refused::AtCapacity(_))
-        ));
+        assert_eq!(admit_flow(&mut ops, &mut turns), Err(Refused::Unadmitted));
         assert_eq!(order(&turns), vec![7]);
         assert_eq!(pass(&mut turns), vec![7]);
         assert_eq!(ledger.sockets, 0);
@@ -402,60 +371,29 @@ mod tests {
     }
 
     #[test]
-    fn a_flow_admission_leaves_nothing_behind_however_it_fails() {
-        for prepared in [0usize, 1, 3, 16] {
-            let mut turns: Turns<u32> = Turns::with_capacity(prepared);
-            let reserved = turns.capacity();
-            let mut ledger = Ledger::default();
-
-            for admitted in 0..prepared {
-                let mut ops = Recorder::new(&mut ledger, prepared);
-                admit_flow(&mut ops, &mut turns, prepared)
-                    .unwrap_or_else(|_| panic!("prepared {prepared}: flow {admitted} must fit"));
-            }
-            assert_eq!(ledger.records, prepared);
-            assert_eq!(ledger.tasks, prepared);
-            assert_eq!(turns.capacity(), reserved, "prepared {prepared}");
-
-            let before = (
-                ledger.sockets,
-                ledger.bridges,
-                ledger.leases,
-                ledger.tasks,
-                ledger.records,
-            );
-            let mut ops = Recorder::new(&mut ledger, prepared);
-            assert_eq!(
-                admit_flow(&mut ops, &mut turns, prepared),
-                Err(Refused::AtCapacity(AtCapacity { prepared }))
-            );
-            assert_eq!(
-                (
-                    ledger.sockets,
-                    ledger.bridges,
-                    ledger.leases,
-                    ledger.tasks,
-                    ledger.records
-                ),
-                before,
-                "prepared {prepared}: a refusal built nothing"
-            );
-            assert_eq!(turns.len(), prepared);
+    fn flow_tables_grow_with_admitted_flows() {
+        let mut turns: Turns<u32> = Turns::default();
+        let mut ledger = Ledger::default();
+        for admitted in 0..16 {
+            let mut ops = Recorder::new(&mut ledger);
+            admit_flow(&mut ops, &mut turns)
+                .unwrap_or_else(|_| panic!("dynamic flow {admitted} must fit"));
         }
+        assert_eq!(ledger.records, 16);
+        assert_eq!(ledger.tasks, 16);
+        assert_eq!(turns.len(), 16);
     }
 
     #[test]
     fn a_refused_admission_unwinds_every_side_effect() {
-        let prepared = 4usize;
-
-        let mut turns: Turns<u32> = Turns::with_capacity(prepared);
+        let mut turns: Turns<u32> = Turns::default();
         let mut ledger = Ledger::default();
         let mut ops = Recorder {
             refuse_build: true,
-            ..Recorder::new(&mut ledger, prepared)
+            ..Recorder::new(&mut ledger)
         };
         assert_eq!(
-            admit_flow(&mut ops, &mut turns, prepared),
+            admit_flow(&mut ops, &mut turns),
             Err(Refused::Unbuildable("the socket could not be opened"))
         );
         assert!(turns.is_empty());
@@ -465,13 +403,9 @@ mod tests {
 
         let mut ops = Recorder {
             refuse_admit: true,
-            ..Recorder::new(&mut ledger, prepared)
+            ..Recorder::new(&mut ledger)
         };
-        let refused = admit_flow(&mut ops, &mut turns, prepared);
-        assert!(
-            matches!(refused, Err(Refused::AtCapacity(_))),
-            "{refused:?}"
-        );
+        assert_eq!(admit_flow(&mut ops, &mut turns), Err(Refused::Unadmitted));
         assert_eq!(ledger.sockets, 0);
         assert_eq!(ledger.bridges, 0);
         assert_eq!(ledger.leases, 0);
@@ -479,23 +413,8 @@ mod tests {
         assert_eq!(ledger.records, 0);
         assert!(turns.is_empty());
 
-        let mut ops = Recorder::new(&mut ledger, prepared);
-        assert!(admit_flow(&mut ops, &mut turns, prepared).is_ok());
+        let mut ops = Recorder::new(&mut ledger);
+        assert!(admit_flow(&mut ops, &mut turns).is_ok());
         assert_eq!(turns.len(), 1);
-    }
-
-    #[test]
-    fn a_zero_bound_admission_builds_nothing() {
-        let mut turns: Turns<u32> = Turns::with_capacity(0);
-        let mut ledger = Ledger::default();
-        let mut ops = Recorder::new(&mut ledger, 0);
-        assert_eq!(
-            admit_flow(&mut ops, &mut turns, 0),
-            Err(Refused::AtCapacity(AtCapacity { prepared: 0 }))
-        );
-        assert_eq!(ledger.sockets, 0);
-        assert_eq!(ledger.leases, 0);
-        assert_eq!(ledger.tasks, 0);
-        assert_eq!(turns.capacity(), 0);
     }
 }

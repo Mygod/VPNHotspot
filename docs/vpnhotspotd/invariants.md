@@ -20,28 +20,32 @@ owning document.
   joins both dataplane tasks, and ends when either task completes.
 - An app-UID TCP flow is identified by socket handle plus incarnation because
   smoltcp reuses handles.
-- App-UID workers are never detached. Cancellation is followed by join and
-  descriptor close before the flow record or admission reservation is released.
+- App-UID workers are never detached. Cancellation is followed by join. For an
+  upstream TCP worker, its terminal proves the captured descriptor is closed and
+  releases its lease immediately; the memory-only flow record may remain for the
+  client closing handshake.
 - Client TCP bytes cross a bounded per-flow stream. Backpressure is lossless;
   readiness comes from that stream and packet/timer events, not capacity polling
   or a second wake protocol.
 - A client FIN is delivered after all preceding bytes. Clean transport completion
-  closes the upstream socket but retains client-facing TCP state until its close
-  handshake finishes, or until expiry, explicit flow teardown or session shutdown.
-- Flow teardown and reservation release happen exactly once. Accepted resets
+  closes the upstream socket and releases its lease but retains client-facing TCP
+  state until its close handshake finishes, or until expiry, explicit flow
+  teardown or session shutdown.
+- Flow teardown and every descriptor-lease release happen exactly once, although
+  an upstream lease may end before its memory-only client flow. Accepted resets
   are determined by the TCP stack, not by inspecting a header bit alone.
 - Android resolver work cannot be joined. Each submitted DNS-over-TCP
-  transaction, not its transport, owns its precharged descriptor record and
-  buffers until settlement; transport closure neither cancels nor recharges it.
-  Daemon admission is independent of Android's per-UID query limit.
+  transaction, not its transport, owns its resolver descriptor and query buffer
+  until settlement; transport closure does not cancel it. Resolver terminal
+  settlement releases descriptor capacity before answer delivery. Daemon
+  admission is independent of Android's per-UID query limit.
 - DNS-over-TCP resolver waits are readiness-driven and transaction-table-owned.
-  Every wait has one accounting row while the table is live; ownership and
-  accounting failures are reported, and buffers never outlive their charge. See
-  [`dns.md`](dns.md).
+  Every wait has one row while the table is live; ownership mismatches are
+  reported and the affected delivery is discarded. See [`dns.md`](dns.md).
 - Each conversation owns one nonfatal reporter, and a successor cannot install
   it while its predecessor is finishing.
-- Nonfatals coalesce by compiled source site. One handoff bounds queued nonfatals;
-  a full handoff leaves batches overdue and drains the oldest first.
+- Nonfatals coalesce by compiled source site only while their one writer handoff
+  is occupied; blocked sites drain in first-blocked order when it returns.
 - Root waits for every detached report-capable task and destructor before
   finishing its reporter.
 - Failed session startup cancels staged resources. Cancellation after downstream
@@ -49,6 +53,34 @@ owning document.
 - Tracked packet loops observe cancellation at blocking waits and within
   continuously ready drains. Rtnetlink request drivers end when their owning
   connection drops.
+
+## App-UID Resource Policy
+
+- Admission accounts descriptors only. Its ceiling is the soft
+  `RLIMIT_NOFILE` less the descriptors measured open at session start. Exactly
+  one unit within that ceiling is protected for DNS resolver work; it is a
+  floor general traffic cannot enter, not a DNS concurrency ceiling or an
+  eagerly opened descriptor.
+- Every admitted unit is capacity for at most one traffic-created descriptor: a
+  UDP mapping socket, TCP upstream-flow socket, opened Echo family socket or
+  submitted resolver descriptor. TCP DNS may reserve its unit while receiving
+  the admitted framed body, but releases it if submission never returns a
+  descriptor. Denial refuses the new owner only; after a descriptor exists, its
+  lease is released after descriptor close and, where a worker owns it, worker
+  join. A virtual-DNS TCP transport and retained client-closing state own no
+  descriptor lease.
+- The daemon has no aggregate memory-share calculation, byte ledger or
+  byte-precharge model. Memory-only downstream state, including UDP send
+  histories, queued TUN datagrams, UDP/Echo reply events and aggregate TCP-DNS
+  owner requests, grows dynamically and is dropped on session stop/restart or
+  process exit. Real memory exhaustion may terminate the recoverable app-UID
+  child.
+- Fixed TCP buffers, protocol-size buffers, depth-one per-flow DNS control
+  handoffs, the descriptor-derived virtual-UDP DNS completion handoff, protocol
+  maximums, and their exact full/expiry behavior are catalogued in
+  [`shizuku.md`](shizuku.md#bounded-buffers-and-handoffs) and
+  [`dns.md`](dns.md). No table capacity may be inferred from traffic counter
+  classes.
 
 ## Interception
 

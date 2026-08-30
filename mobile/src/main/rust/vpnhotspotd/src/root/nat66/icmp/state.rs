@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io;
 use std::net::{Ipv6Addr, SocketAddrV6};
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use socket2::Socket;
 use tokio::io::unix::AsyncFd;
@@ -10,7 +10,6 @@ use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use super::super::IDLE_TIMEOUT;
 use super::probe::normalize_udp_error_addr;
 use super::raw_socket::{create_upstream_socket, enable_ipv6_error_queue};
 use super::UdpErrorContext;
@@ -18,6 +17,13 @@ use crate::report;
 use vpnhotspotd::shared::icmp_nat::{EchoAllocation, EchoEntry, EchoMap};
 use vpnhotspotd::shared::model::Network;
 use vpnhotspotd::shared::nat66_counter::Nat66Counters;
+
+/// Keeps one translated ICMPv6 Echo Query mapping valid for 60 seconds after allocation and
+/// releases its rewritten identifier when expiry is observed.
+/// RFC 5508 section 3.2 REQ-2 requires that an ICMP Query mapping timer not expire in less than 60
+/// seconds; a later reply is dropped after expiry and a later request allocates a fresh mapping.
+/// See https://www.rfc-editor.org/rfc/rfc5508.html#section-3.2.
+const ICMP_ECHO_MAPPING_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub(super) struct EchoState {
     inner: StdMutex<EchoStateInner>,
@@ -99,8 +105,13 @@ impl EchoState {
         let (id, seq, socket, notify) = {
             let mut inner = state.lock_inner()?;
             let now = Instant::now();
-            let old_deadline = inner.map.network_idle_deadline(now, network, IDLE_TIMEOUT);
-            let (id, seq) = inner.map.allocate(now, IDLE_TIMEOUT, allocation)?;
+            let old_deadline =
+                inner
+                    .map
+                    .network_idle_deadline(now, network, ICMP_ECHO_MAPPING_TIMEOUT);
+            let (id, seq) = inner
+                .map
+                .allocate(now, ICMP_ECHO_MAPPING_TIMEOUT, allocation)?;
             let socket = inner.upstream.get(&network).cloned();
             let notify = if old_deadline.is_none() {
                 Self::upstream_changed_locked(&inner, network)
@@ -136,7 +147,7 @@ impl EchoState {
             let now = Instant::now();
             let entry = inner
                 .map
-                .restore(now, IDLE_TIMEOUT, network, source, id, seq);
+                .restore(now, ICMP_ECHO_MAPPING_TIMEOUT, network, source, id, seq);
             let upstream = Self::remove_idle_upstream_locked(&mut inner, network, now);
             (entry, upstream)
         };
@@ -156,9 +167,14 @@ impl EchoState {
         let upstream = {
             let mut inner = self.lock_inner()?;
             let now = Instant::now();
-            inner
-                .map
-                .remove(now, IDLE_TIMEOUT, network, destination, id, seq);
+            inner.map.remove(
+                now,
+                ICMP_ECHO_MAPPING_TIMEOUT,
+                network,
+                destination,
+                id,
+                seq,
+            );
             Self::remove_idle_upstream_locked(&mut inner, network, now)
         };
         if let Some(upstream) = upstream {
@@ -201,7 +217,7 @@ impl EchoState {
                 && !Self::has_udp_error_entries_locked(&inner, key.network)
                 && inner
                     .map
-                    .network_idle_deadline(now, key.network, IDLE_TIMEOUT)
+                    .network_idle_deadline(now, key.network, ICMP_ECHO_MAPPING_TIMEOUT)
                     .is_some()
             {
                 Self::upstream_changed_locked(&inner, key.network)
@@ -242,16 +258,23 @@ impl EchoState {
         seq: u16,
     ) -> io::Result<bool> {
         let mut inner = self.lock_inner()?;
-        Ok(inner
-            .map
-            .contains(Instant::now(), IDLE_TIMEOUT, network, destination, id, seq))
+        Ok(inner.map.contains(
+            Instant::now(),
+            ICMP_ECHO_MAPPING_TIMEOUT,
+            network,
+            destination,
+            id,
+            seq,
+        ))
     }
 
     pub(super) fn remove_session(&self, session_key: u64) -> io::Result<()> {
         let upstreams = {
             let mut inner = self.lock_inner()?;
             let now = Instant::now();
-            inner.map.remove_session(now, IDLE_TIMEOUT, session_key);
+            inner
+                .map
+                .remove_session(now, ICMP_ECHO_MAPPING_TIMEOUT, session_key);
             inner.session_counters.remove(&session_key);
             Self::remove_idle_upstreams_locked(&mut inner, now)
         };
@@ -269,9 +292,12 @@ impl EchoState {
         let upstreams = {
             let mut inner = self.lock_inner()?;
             let now = Instant::now();
-            inner
-                .map
-                .remove_session_client(now, IDLE_TIMEOUT, session_key, client_mac);
+            inner.map.remove_session_client(
+                now,
+                ICMP_ECHO_MAPPING_TIMEOUT,
+                session_key,
+                client_mac,
+            );
             Self::remove_idle_upstreams_locked(&mut inner, now)
         };
         for upstream in upstreams {
@@ -291,7 +317,10 @@ impl EchoState {
     pub(super) fn upstream_activity(&self, network: Network) -> io::Result<UpstreamActivity> {
         let mut inner = self.lock_inner()?;
         let now = Instant::now();
-        let echo_deadline = inner.map.network_idle_deadline(now, network, IDLE_TIMEOUT);
+        let echo_deadline =
+            inner
+                .map
+                .network_idle_deadline(now, network, ICMP_ECHO_MAPPING_TIMEOUT);
         if echo_deadline.is_some() || Self::has_udp_error_entries_locked(&inner, network) {
             Ok(UpstreamActivity::Active(echo_deadline))
         } else {
@@ -386,7 +415,9 @@ impl EchoState {
         network: Network,
         now: Instant,
     ) -> bool {
-        inner.map.has_network_entries(now, IDLE_TIMEOUT, network)
+        inner
+            .map
+            .has_network_entries(now, ICMP_ECHO_MAPPING_TIMEOUT, network)
             || Self::has_udp_error_entries_locked(inner, network)
     }
 

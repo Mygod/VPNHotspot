@@ -13,7 +13,7 @@ use crate::shizuku::output::Output;
 use crate::shizuku::tcp;
 use crate::shizuku::udp;
 use crate::shizuku::virtual_dns;
-use vpnhotspotd::shared::admission::{Admission, Lease};
+use vpnhotspotd::shared::admission::Admission;
 
 /// Session counters avoid attacker-controlled per-packet reporting.
 #[derive(Default)]
@@ -25,7 +25,6 @@ pub(crate) struct Counters {
     echo: u64,
     unsupported: u64,
     fragmented: u64,
-    fragments_denied: u64,
     fragments_overlapping: u64,
     fragments_expired: u64,
     fragments_unreported: u64,
@@ -42,7 +41,7 @@ impl Counters {
     pub(crate) fn describe(&self) -> String {
         format!(
             "dns {} undeliverable-dns {} relayed {} tcp {} echo {} unsupported {} \
-             fragmented {} fragments-denied {} fragments-overlapping {} fragments-expired {} \
+             fragmented {} fragments-overlapping {} fragments-expired {} \
              fragments-unreported {} extended {} chain-refused {} unparseable {} reserved {} \
              unroutable {} malformed {} unadmitted {}",
             self.dns,
@@ -52,7 +51,6 @@ impl Counters {
             self.echo,
             self.unsupported,
             self.fragmented,
-            self.fragments_denied,
             self.fragments_overlapping,
             self.fragments_expired,
             self.fragments_unreported,
@@ -77,9 +75,6 @@ pub(crate) struct Dispatch<'a> {
     pub(crate) fragments: &'a mut reassembly::Table,
     pub(crate) output: &'a mut Output,
     pub(crate) admission: &'a mut Admission,
-    /// The reassembly table's own aggregate owner. Passed beside the admission because the table charges
-    /// through it rather than holding a pool of its own.
-    pub(crate) fragment_lease: &'a Lease,
     pub(crate) gateways: &'a Gateways,
     pub(crate) virtual_addresses: &'a [IpAddr],
 }
@@ -87,14 +82,14 @@ pub(crate) struct Dispatch<'a> {
 impl Dispatch<'_> {
     /// Only daemon-owned resolver-wrapper failures escape as `Err`; packet failures are handled locally.
     pub(crate) fn accept(&mut self, packet: &[u8], now: Instant) -> io::Result<()> {
-        // Allow three gated rewrites plus delivery of their final result. A fourth wrapper is rejected before
-        // extension walking or reassembly state changes.
-        let mut rewrites = extension::Budget::default();
+        // Continue while each step makes structural progress by stripping an extension chain or completing and
+        // removing a Fragment header. Both come from a finite protocol packet, so no transform-count cap is
+        // needed.
         let mut rewritten: Option<Vec<u8>> = None;
         loop {
             let produced = match rewritten.as_deref() {
-                Some(current) => self.deliver(current, now, &mut rewrites)?,
-                None => self.deliver(packet, now, &mut rewrites)?,
+                Some(current) => self.deliver(current, now)?,
+                None => self.deliver(packet, now)?,
             };
             match produced {
                 Some(produced) => rewritten = Some(produced),
@@ -106,12 +101,7 @@ impl Dispatch<'_> {
     /// Dispatches one whole datagram, or holds one fragment, or unwraps one extension chain. Returns a packet
     /// that still has to be dispatched, which is either the datagram a fragment completed or one with its
     /// extension headers removed.
-    fn deliver(
-        &mut self,
-        packet: &[u8],
-        now: Instant,
-        rewrites: &mut extension::Budget,
-    ) -> io::Result<Option<Vec<u8>>> {
+    fn deliver(&mut self, packet: &[u8], now: Instant) -> io::Result<Option<Vec<u8>>> {
         match classify(packet, self.virtual_addresses) {
             // Answered rather than relayed, and it must never reach the relay: the destination is an
             // address the daemon occupies.
@@ -126,8 +116,8 @@ impl Dispatch<'_> {
                     }
                     // A provisional fragment carries no ports yet, so it is not known to be DNS at all and goes
                     // to reassembly to find out.
-                    Err(Reject::Fragmented) => return Ok(self.fragment(packet, now, rewrites)),
-                    Err(Reject::Extended) => return Ok(self.unwrap(packet, rewrites)),
+                    Err(Reject::Fragmented) => return Ok(self.fragment(packet, now)),
+                    Err(Reject::Extended) => return Ok(self.unwrap(packet)),
                     // TCP port 53 to a virtual address is the same principal over the terminating engine, which
                     // answers it from the resolver rather than from an upstream connection.
                     Err(Reject::NotUdp) => match tcp_wire::peek(packet) {
@@ -180,13 +170,13 @@ impl Dispatch<'_> {
                         // handles the packet: an ICMP type Android's own downstream link control owns, or a
                         // protocol this mode does not carry.
                         Err(Reject::NotUdp) => self.counters.unsupported += 1,
-                        Err(Reject::Fragmented) => return Ok(self.fragment(packet, now, rewrites)),
-                        Err(Reject::Extended) => return Ok(self.unwrap(packet, rewrites)),
+                        Err(Reject::Fragmented) => return Ok(self.fragment(packet, now)),
+                        Err(Reject::Extended) => return Ok(self.unwrap(packet)),
                         Err(Reject::Malformed(_)) => self.counters.unparseable += 1,
                     },
                 },
-                Err(Reject::Fragmented) => return Ok(self.fragment(packet, now, rewrites)),
-                Err(Reject::Extended) => return Ok(self.unwrap(packet, rewrites)),
+                Err(Reject::Fragmented) => return Ok(self.fragment(packet, now)),
+                Err(Reject::Extended) => return Ok(self.unwrap(packet)),
                 Err(Reject::Malformed(_)) => self.counters.unparseable += 1,
             },
             Classified::Dropped(Drop::Reserved) => self.counters.reserved += 1,
@@ -197,14 +187,9 @@ impl Dispatch<'_> {
     }
 
     /// Removes one packet's IPv6 extension chain, and hands back what is left for the transports to parse.
-    fn unwrap(&mut self, packet: &[u8], rewrites: &mut extension::Budget) -> Option<Vec<u8>> {
-        let Some(walked) = rewrites.spend(|| extension::walk(packet)) else {
-            // Refuse before walking or copying another chain.
-            self.counters.unparseable += 1;
-            return None;
-        };
+    fn unwrap(&mut self, packet: &[u8]) -> Option<Vec<u8>> {
         self.counters.extended += 1;
-        match walked {
+        match extension::walk(packet) {
             Ok(extension::Walked::Stripped(stripped)) => Some(stripped),
             // Nothing to remove after a transport already refused it as extended, which means the chain is one
             // the walk does not recognise as one.
@@ -212,8 +197,8 @@ impl Dispatch<'_> {
                 self.counters.unsupported += 1;
                 None
             }
-            // A chain refused rather than walked: source routing, a misplaced hop-by-hop header, or one built
-            // to be expensive. Counted apart from a malformed packet because it is well formed and unwelcome.
+            // A chain refused rather than walked: source routing, a misplaced hop-by-hop header, or an
+            // unsupported header. Counted apart from a malformed packet because it is well formed and unwelcome.
             Err(_) => {
                 self.counters.chain_refused += 1;
                 None
@@ -222,30 +207,11 @@ impl Dispatch<'_> {
     }
 
     /// Holds one fragment, and hands back the datagram if that was the last one missing.
-    fn fragment(
-        &mut self,
-        packet: &[u8],
-        now: Instant,
-        rewrites: &mut extension::Budget,
-    ) -> Option<Vec<u8>> {
-        let Some(held) = rewrites.spend(|| {
-            self.fragments
-                .accept(packet, now, self.admission, self.fragment_lease)
-        }) else {
-            // Refuse before creating or charging another reassembly context.
-            self.counters.unparseable += 1;
-            return None;
-        };
+    fn fragment(&mut self, packet: &[u8], now: Instant) -> Option<Vec<u8>> {
         self.counters.fragmented += 1;
-        match held {
+        match self.fragments.accept(packet, now) {
             Ok(reassembly::Accepted::Pending) => None,
             Ok(reassembly::Accepted::Complete(whole)) => Some(whole),
-            // Counted with the reason it was refused rather than as one drop: a ceiling that is full and a
-            // sender overlapping its own fragments are different problems with different fixes.
-            Err(reassembly::Reject::Denied) => {
-                self.counters.fragments_denied += 1;
-                None
-            }
             Err(reassembly::Reject::Overlap) => {
                 self.counters.fragments_overlapping += 1;
                 None
@@ -259,20 +225,17 @@ impl Dispatch<'_> {
 
     /// Answers the reassembly timeouts a router owes, from the interface's own address.
     pub(crate) fn expire(&mut self, now: Instant) {
-        // One quote at a time rather than a batch: however many contexts expire together, only the one being
-        // reported exists, and it is dropped before the next is built.
+        // Reassembly yields one expired quote at a time; each resulting ICMP error is handed off as its own
+        // logical datagram.
         let counters = &mut self.counters;
         let gateways = &self.gateways;
         let output = &mut self.output;
-        let admission = &mut *self.admission;
-        let fragment_lease = self.fragment_lease;
-        self.fragments
-            .sweep(now, admission, fragment_lease, |quote| {
-                counters.fragments_expired += 1;
-                match gateways.report(&quote, Reason::ReassemblyExpired) {
-                    Some(error) => output.packet(error),
-                    None => counters.fragments_unreported += 1,
-                }
-            });
+        self.fragments.sweep(now, |quote| {
+            counters.fragments_expired += 1;
+            match gateways.report(&quote, Reason::ReassemblyExpired) {
+                Some(error) => output.packet(error),
+                None => counters.fragments_unreported += 1,
+            }
+        });
     }
 }

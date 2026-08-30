@@ -3,8 +3,9 @@
 Traffic control is MAC-facing. IP addresses are implementation metadata, not
 the product identity.
 
-This document describes the daemon-side accounting and admission model. The
-database schema still stores `TrafficRecord.ip` and `TrafficRecord.upstream` for
+This document describes the daemon-side identity, authorization and accounting
+model. The database schema still stores `TrafficRecord.ip` and
+`TrafficRecord.upstream` for
 compatibility, but the live identity used for blocking, accounting, and UI
 aggregation is:
 
@@ -31,8 +32,9 @@ addresses in neighbour state.
 
 The app-UID path has no MAC identity: Android NAT has already translated IPv4,
 and local apps can forge TUN sources. Its `platform_dns`, `platform_ipv4` and
-`platform_ipv6` classes bound allocation but do not identify clients. Per-client
-accounting and blocking are therefore root-only; see [`shizuku.md`](shizuku.md).
+`platform_ipv6` classes are aggregate counter labels; they do not identify
+clients or bound maps, buffers or other allocations. Per-client accounting and
+blocking are therefore root-only; see [`shizuku.md`](shizuku.md).
 
 ## Client Identity
 
@@ -59,7 +61,7 @@ reserved source marker in `TrafficRecord.upstream`:
 These markers are opaque compatibility payloads. They are not upstream
 interface names and must not be shown as user-visible upstreams.
 
-## Admission Handoff
+## Authorization Handoff
 
 DNS and NAT66 TCP/UDP use per-MAC listener ownership:
 

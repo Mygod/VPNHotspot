@@ -1,9 +1,7 @@
 use std::net::{IpAddr, SocketAddr};
-use std::time::Instant;
 
 use etherparse::{IpNumber, UdpHeader};
 use vpnhotspotd::shared::echo_wire::{self, Identity, ECHO_HEADER_LEN};
-use vpnhotspotd::shared::ipv4_identification::{Guarded, Prepared, Terminal};
 use vpnhotspotd::shared::packet_writer::{
     Addressed, Emitter, Reporter, Sink, WriterError, IPV4_HEADER_LEN, IPV6_HEADER_LEN,
 };
@@ -13,24 +11,19 @@ use crate::report;
 use crate::shizuku::tun_writer::Writer;
 
 pub(crate) struct Output {
-    /// The size policy, the identification table and every counter that says what happened to a datagram.
-    /// One owner, because the size comparison, the identification decision and which counter moves are one
-    /// decision - see [vpnhotspotd::shared::packet_writer::Emitter].
+    /// The size policy, the identification table and every packet handoff counter. One owner, because the
+    /// size comparison, the identification decision and which counter moves are one decision - see
+    /// [vpnhotspotd::shared::packet_writer::Emitter].
     emitter: Emitter,
     writer: Writer,
 }
 
 impl Output {
-    pub(crate) fn new(mtu: usize, prepared: Prepared, writer: Writer) -> Self {
+    pub(crate) fn new(mtu: usize, writer: Writer) -> Self {
         Self {
-            emitter: Emitter::new(mtu, prepared),
+            emitter: Emitter::new(mtu),
             writer,
         }
-    }
-
-    /// Applies one ending the TUN writer sent back for a guarded packet it owned.
-    pub(crate) fn terminal(&mut self, terminal: Terminal) {
-        self.emitter.terminal(terminal);
     }
 
     /// Emits one UDP datagram toward a client, splitting it only if the interface cannot carry it whole.
@@ -80,7 +73,6 @@ impl Output {
         // issued, which counter moves, and whether anything is reported. A caller that passed its own idea of
         // "oversized" or incremented its own counter would be deciding what this exists to decide.
         self.emitter.emit(
-            Instant::now(),
             Addressed {
                 source,
                 destination,
@@ -101,21 +93,21 @@ impl Output {
         self.enqueue(packet);
     }
 
-    /// A refusal here is the daemon's own queue being full, which is an admission decision: the packet is
-    /// dropped rather than retried, and nothing was charged for it that needs refunding.
+    /// The unbounded handoff refuses only after its writer receiver has closed. This packet is then dropped;
+    /// it owns no descriptor lease or persistent state to unwind, and the writer task's end is already a
+    /// session-ending dataplane event.
     fn enqueue(&mut self, packet: Vec<u8>) {
-        let accepted = self.writer.enqueue(packet, None).is_ok();
+        let accepted = self.writer.enqueue(vec![packet]).is_ok();
         self.emitter.wrote(accepted);
     }
 
     pub(crate) fn describe(&self) -> String {
         format!(
-            "mtu {} written {} blocked {} unwritable {} identification-denied {}; {}",
+            "mtu {} queued-packets {} writer-closed-packets {} unwritable {}; {}",
             self.emitter.mtu(),
             self.emitter.written(),
-            self.emitter.blocked(),
+            self.emitter.refused(),
             self.emitter.unwritable(),
-            self.emitter.identification_denied(),
             self.emitter.identifications().describe(),
         )
     }
@@ -141,8 +133,8 @@ impl Reporter for Structured {
 }
 
 impl Sink for Queue<'_> {
-    fn packet(&mut self, packet: Vec<u8>, guarded: Option<Guarded>) -> bool {
-        self.writer.enqueue(packet, guarded).is_ok()
+    fn datagram(&mut self, packets: Vec<Vec<u8>>) -> bool {
+        self.writer.enqueue(packets).is_ok()
     }
 }
 

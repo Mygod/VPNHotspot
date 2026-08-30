@@ -1,4 +1,4 @@
-//! Bounded IPv4 and IPv6 ingress reassembly.
+//! IPv4 and IPv6 ingress reassembly with protocol-derived size and lifetime bounds.
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt;
@@ -8,18 +8,33 @@ use std::net::Ipv6Addr;
 use std::ops::Range;
 use std::time::{Duration, Instant};
 
-use crate::shared::admission::{logical_footprint, Admission, Class, Lease, Request};
-
 use etherparse::{IpNumber, Ipv4Header, Ipv6FragmentHeaderSlice};
 
 use crate::shared::ip_wire::Packet;
 #[cfg(test)]
 use crate::shared::packet_writer::{IPV4_HEADER_LEN, IPV6_FRAGMENT_HEADER_LEN, IPV6_HEADER_LEN};
 
-const REASSEMBLY_TIMEOUT: Duration = Duration::from_secs(60);
+/// Android/Linux IPv4's `IP_FRAG_TIME`. Expiry discards the incomplete context (and yields fragment zero to
+/// the owner when available); a later fragment starts a fresh context.
+/// https://android.googlesource.com/kernel/common/+/refs/tags/android15-6.6-2025-09_r7/include/net/ip.h#146
+const IPV4_REASSEMBLY_TIMEOUT: Duration = Duration::from_secs(30);
 
-const MAX_DATAGRAM: usize = u16::MAX as usize;
+/// Android/Linux IPv6's `IPV6_FRAG_TIMEOUT`, with the same expiry behavior as IPv4.
+/// https://android.googlesource.com/kernel/common/+/refs/tags/android15-6.6-2025-09_r7/include/net/ipv6.h#548
+const IPV6_REASSEMBLY_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Widest length representable by IPv4's 16-bit Total Length or IPv6's 16-bit Payload Length field. IPv4
+/// reassembly also subtracts its actual header length before accepting that many body bytes. A fragment beyond
+/// the applicable bound is rejected without growing its context; an IPv4 fragment-zero header that makes
+/// already-retained body bytes exceed Total Length discards that context.
+/// <https://www.rfc-editor.org/rfc/rfc791.html#section-3.1>
+/// <https://www.rfc-editor.org/rfc/rfc8200.html#section-3>
+/// <https://www.rfc-editor.org/rfc/rfc8200.html#section-4.5>
+const MAX_ENCODED_LENGTH: usize = u16::MAX as usize;
+
+/// Largest IPv4 header representable by the four-bit IHL field: 15 32-bit words. A larger claimed header is
+/// malformed and no reassembly context is retained.
+/// <https://www.rfc-editor.org/rfc/rfc791.html#section-3.1>
 const MAX_HEADER: usize = 60;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -32,7 +47,6 @@ pub enum Accepted {
 pub enum Reject {
     Malformed(&'static str),
     Overlap,
-    Denied,
 }
 
 struct Fragment<'a> {
@@ -57,7 +71,6 @@ struct Context {
     header: Option<Header>,
     total: Option<usize>,
     deadline: Instant,
-    charged: u64,
 }
 
 impl Context {
@@ -67,37 +80,6 @@ impl Context {
             _ => false,
         }
     }
-
-    fn footprint(&self) -> usize {
-        self.payload.capacity() + self.received.capacity() * std::mem::size_of::<Range<usize>>()
-    }
-
-    fn project(&self, end: usize, completing: bool) -> Option<Projection> {
-        let range = std::mem::size_of::<Range<usize>>() as u64;
-        let payload = self.payload.capacity();
-        let grows = end > payload;
-        let next_payload = if grows { end } else { payload } as u64;
-        let next_ranges = (self.received.len() as u64)
-            .checked_add(1)?
-            .checked_mul(range)?;
-        let retained = next_payload.checked_add(next_ranges)?;
-        let mut peak = (self.received.capacity() as u64).checked_mul(range)?;
-        if grows {
-            peak = peak.checked_add(payload as u64)?;
-        }
-        if completing {
-            peak = peak
-                .checked_add(MAX_HEADER as u64)?
-                .checked_add(next_payload)?;
-        }
-        Some(Projection { retained, peak })
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Projection {
-    retained: u64,
-    peak: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -122,6 +104,10 @@ impl Header {
     fn as_slice(&self) -> &[u8] {
         &self.bytes[..self.length as usize]
     }
+
+    fn len(&self) -> usize {
+        self.length as usize
+    }
 }
 
 impl fmt::Debug for Header {
@@ -136,43 +122,22 @@ struct Counters {
     completed: u64,
     malformed: u64,
     overlapping: u64,
-    denied: u64,
     expired: u64,
     headless: u64,
-    undercharged: u64,
 }
 
+#[derive(Default)]
 pub struct Table {
     contexts: HashMap<Key, Context>,
-    charged: u64,
-    prepared: usize,
-    peak: u64,
     counters: Counters,
 }
 
 impl Table {
-    pub fn with_capacity(contexts: usize) -> Self {
-        Self {
-            contexts: HashMap::with_capacity(contexts),
-            charged: 0,
-            prepared: contexts,
-            peak: 0,
-            counters: Counters::default(),
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    pub fn footprint(contexts: usize) -> Option<u64> {
-        logical_footprint::<(Key, Context)>(contexts)?
-            .checked_add(std::mem::size_of::<Self>() as u64)
-    }
-
-    pub fn accept(
-        &mut self,
-        packet: &[u8],
-        now: Instant,
-        admission: &mut Admission,
-        lease: &Lease,
-    ) -> Result<Accepted, Reject> {
+    pub fn accept(&mut self, packet: &[u8], now: Instant) -> Result<Accepted, Reject> {
         let fragment = match parse(packet) {
             Ok(fragment) => fragment,
             Err(e) => {
@@ -181,14 +146,39 @@ impl Table {
             }
         };
         let end = fragment.offset + fragment.payload.len();
-        if end > MAX_DATAGRAM {
+        let maximum_body = match fragment.key.source {
+            IpAddr::V4(_) => MAX_ENCODED_LENGTH - Ipv4Header::MIN_LEN,
+            IpAddr::V6(_) => MAX_ENCODED_LENGTH,
+        };
+        if end > maximum_body {
             self.counters.malformed += 1;
             return Err(Reject::Malformed("fragment reaches past a datagram"));
         }
         let total = (!fragment.more).then_some(end);
-        if !self.contexts.contains_key(&fragment.key) && self.contexts.len() >= self.prepared {
-            self.counters.denied += 1;
-            return Err(Reject::Denied);
+        if let Some(context) = self.contexts.get(&fragment.key) {
+            if context.total.is_some_and(|known| {
+                total.is_some_and(|total| total != known)
+                    || end > known
+                    || fragment.more && end == known
+            }) || total.is_some_and(|total| context.payload.len() > total)
+            {
+                self.discard(fragment.key);
+                self.counters.overlapping += 1;
+                return Err(Reject::Overlap);
+            }
+        }
+        let existing = self.contexts.get(&fragment.key);
+        let header = fragment
+            .header
+            .as_ref()
+            .or_else(|| existing.and_then(|context| context.header.as_ref()));
+        let body_end = existing.map_or(end, |context| context.payload.len().max(end));
+        if fragment.key.source.is_ipv4()
+            && header.is_some_and(|header| header.len() + body_end > MAX_ENCODED_LENGTH)
+        {
+            self.discard(fragment.key);
+            self.counters.malformed += 1;
+            return Err(Reject::Malformed("IPv4 reassembly exceeds total length"));
         }
         let context = match self.contexts.entry(fragment.key) {
             Entry::Occupied(entry) => entry.into_mut(),
@@ -197,63 +187,15 @@ impl Table {
                 received: Vec::new(),
                 header: None,
                 total: None,
-                deadline: now + REASSEMBLY_TIMEOUT,
-                charged: 0,
+                deadline: now
+                    + match fragment.key.source {
+                        IpAddr::V4(_) => IPV4_REASSEMBLY_TIMEOUT,
+                        IpAddr::V6(_) => IPV6_REASSEMBLY_TIMEOUT,
+                    },
             }),
         };
-        if let Some(known) = context.total {
-            if total.is_some_and(|total| total != known) || end > known {
-                self.discard(fragment.key, admission, lease);
-                self.counters.overlapping += 1;
-                return Err(Reject::Overlap);
-            }
-        }
-        let previous = context.charged;
-        let completing = total.or(context.total).is_some_and(|total| {
-            end == total || context.received.iter().any(|range| range.end == total)
-        });
-        let Some(projection) = context.project(end, completing) else {
-            self.counters.denied += 1;
-            if context.received.is_empty() {
-                self.contexts.remove(&fragment.key);
-            }
-            return Err(Reject::Denied);
-        };
-        let growth = projection.retained.saturating_sub(previous);
-        let Some(reserve) = growth.checked_add(projection.peak) else {
-            self.counters.denied += 1;
-            if context.received.is_empty() {
-                self.contexts.remove(&fragment.key);
-            }
-            return Err(Reject::Denied);
-        };
-        if reserve > 0
-            && admission
-                .grow(
-                    lease,
-                    Request {
-                        bytes: reserve,
-                        byte_class: Class::General,
-                        fragment_bytes: reserve,
-                        ..Request::default()
-                    },
-                )
-                .is_err()
-        {
-            self.counters.denied += 1;
-            if context.received.is_empty() {
-                self.contexts.remove(&fragment.key);
-            }
-            return Err(Reject::Denied);
-        }
-        self.charged += reserve;
-        let context = self
-            .contexts
-            .get_mut(&fragment.key)
-            .expect("just inserted or found");
-        context.charged = previous + reserve;
         if !insert(context, fragment.offset, fragment.payload) {
-            self.discard(fragment.key, admission, lease);
+            self.discard(fragment.key);
             self.counters.overlapping += 1;
             return Err(Reject::Overlap);
         }
@@ -263,101 +205,35 @@ impl Table {
         if let Some(total) = total {
             context.total = Some(total);
         }
-        let reserved = previous + reserve;
-        let actual = context.footprint() as u64;
-        let keep = if context.complete() {
-            actual.checked_add(projection.peak)
-        } else {
-            Some(actual)
-        };
-        let Some(excess) = keep.and_then(|keep| reconcile(reserved, keep)) else {
-            return Err(self.undercharged(fragment.key, admission, lease));
-        };
-        if excess > 0 {
-            admission.shrink(
-                lease,
-                Request {
-                    bytes: excess,
-                    byte_class: Class::General,
-                    fragment_bytes: excess,
-                    ..Request::default()
-                },
-            );
-            self.charged -= excess;
-        }
-        let context = self
-            .contexts
-            .get_mut(&fragment.key)
-            .expect("just reconciled");
-        context.charged = reserved - excess;
-        self.peak = self.peak.max(self.charged);
         if !context.complete() {
             self.counters.held += 1;
             return Ok(Accepted::Pending);
         }
         let context = self.contexts.remove(&fragment.key).expect("just held");
         let Some(header) = context.header else {
-            let charged = context.charged;
-            drop(context);
-            self.release(charged, admission, lease);
             self.counters.headless += 1;
             return Err(Reject::Malformed("reassembled without fragment zero"));
         };
-        let (assembled, charged) = complete(context, &header);
-        self.release(charged, admission, lease);
+        let assembled = assemble(header.as_slice(), &context.payload);
         self.counters.completed += 1;
         Ok(Accepted::Complete(assembled))
     }
 
-    pub fn retire(&mut self, admission: &mut Admission, lease: &Lease) {
-        self.contexts.clear();
-        let held = self.charged;
-        self.release(held, admission, lease);
+    pub fn retire(&mut self) {
+        self.contexts = HashMap::new();
     }
 
-    fn discard(&mut self, key: Key, admission: &mut Admission, lease: &Lease) {
-        if let Some(context) = self.contexts.remove(&key) {
-            self.release(context.charged, admission, lease);
-        }
+    fn discard(&mut self, key: Key) {
+        self.contexts.remove(&key);
     }
 
-    fn undercharged(&mut self, key: Key, admission: &mut Admission, lease: &Lease) -> Reject {
-        self.counters.undercharged += 1;
-        self.discard(key, admission, lease);
-        Reject::Denied
-    }
-
-    fn release(&mut self, bytes: u64, admission: &mut Admission, lease: &Lease) {
-        if bytes == 0 {
-            return;
-        }
-        admission.shrink(
-            lease,
-            Request {
-                bytes,
-                byte_class: Class::General,
-                fragment_bytes: bytes,
-                ..Request::default()
-            },
-        );
-        self.charged -= bytes;
-    }
-
-    pub fn sweep(
-        &mut self,
-        now: Instant,
-        admission: &mut Admission,
-        lease: &Lease,
-        mut quote: impl FnMut(Vec<u8>),
-    ) -> u64 {
-        let mut freed = 0;
+    pub fn sweep(&mut self, now: Instant, mut quote: impl FnMut(Vec<u8>)) -> u64 {
         let mut retired = 0u64;
         let mut quoted = 0u64;
         self.contexts.retain(|_, context| {
             if context.deadline > now {
                 return true;
             }
-            freed += context.charged;
             retired += 1;
             if let Some(header) = &context.header {
                 quoted += 1;
@@ -365,7 +241,6 @@ impl Table {
             }
             false
         });
-        self.release(freed, admission, lease);
         self.counters.expired += retired;
         self.counters.headless += retired - quoted;
         retired
@@ -377,20 +252,14 @@ impl Table {
 
     pub fn describe(&self) -> String {
         format!(
-            "{} contexts of {} prepared holding {} bytes, peak {}, held {} completed {} malformed {} \
-             overlapping {} denied {} expired {} headless {} undercharged {}",
+            "{} contexts, held {} completed {} malformed {} overlapping {} expired {} headless {}",
             self.contexts.len(),
-            self.prepared,
-            self.charged,
-            self.peak,
             self.counters.held,
             self.counters.completed,
             self.counters.malformed,
             self.counters.overlapping,
-            self.counters.denied,
             self.counters.expired,
-            self.counters.headless,
-            self.counters.undercharged
+            self.counters.headless
         )
     }
 }
@@ -442,24 +311,14 @@ fn insert(context: &mut Context, offset: usize, payload: &[u8]) -> bool {
     true
 }
 
-fn reconcile(reserved: u64, keep: u64) -> Option<u64> {
-    reserved.checked_sub(keep)
-}
-
-fn complete(context: Context, header: &Header) -> (Vec<u8>, u64) {
-    let assembled = assemble(header.as_slice(), &context.payload);
-    let charged = context.charged;
-    drop(context);
-    (assembled, charged)
-}
-
 fn assemble(header: &[u8], payload: &[u8]) -> Vec<u8> {
     let mut packet = Vec::with_capacity(header.len() + payload.len());
     packet.extend_from_slice(header);
     packet.extend_from_slice(payload);
     match packet.first().map(|byte| byte >> 4) {
         Some(4) => {
-            let length = u16::try_from(packet.len()).unwrap_or(u16::MAX);
+            let length = u16::try_from(packet.len())
+                .expect("IPv4 reassembly length was validated before insertion");
             packet[2..4].copy_from_slice(&length.to_be_bytes());
             packet[6] = 0;
             packet[7] = 0;
@@ -471,7 +330,8 @@ fn assemble(header: &[u8], payload: &[u8]) -> Vec<u8> {
             }
         }
         _ => {
-            let length = u16::try_from(payload.len()).unwrap_or(u16::MAX);
+            let length = u16::try_from(payload.len())
+                .expect("IPv6 reassembly length was validated before insertion");
             packet[4..6].copy_from_slice(&length.to_be_bytes());
         }
     }
@@ -587,53 +447,23 @@ mod tests {
     }
 
     struct Fixture {
-        admission: Admission,
-        lease: Lease,
         table: Table,
     }
 
     impl Fixture {
-        fn with_cap(fragment_cap: u64) -> Self {
-            let mut admission = Admission::new(crate::shared::admission::Totals {
-                admission_id: 1,
-                record_total: 64,
-                dns_record_floor: 0,
-                byte_total: 8 << 20,
-                reserved_byte_floor: 1 << 20,
-                fragment_cap,
-                byte_only_owners: 4,
-            })
-            .expect("the fixture totals hold their own accounting");
-            let lease = admission
-                .reserve(Request::bytes(
-                    Table::footprint(64).expect("fits"),
-                    Class::General,
-                ))
-                .expect("granted");
-            Self {
-                admission,
-                lease,
-                table: Table::with_capacity(64),
-            }
-        }
-
         fn accept(&mut self, packet: &[u8], now: Instant) -> Result<Accepted, Reject> {
-            self.table
-                .accept(packet, now, &mut self.admission, &self.lease)
+            self.table.accept(packet, now)
         }
 
         fn sweep(&mut self, now: Instant, quote: impl FnMut(Vec<u8>)) -> u64 {
-            self.table
-                .sweep(now, &mut self.admission, &self.lease, quote)
-        }
-
-        fn retire(&mut self) {
-            self.table.retire(&mut self.admission, &self.lease);
+            self.table.sweep(now, quote)
         }
     }
 
     fn table() -> Fixture {
-        Fixture::with_cap(1 << 20)
+        Fixture {
+            table: Table::new(),
+        }
     }
 
     #[test]
@@ -653,7 +483,6 @@ mod tests {
             }
             assert_eq!(completed.as_deref(), Some(packet.as_slice()), "ipv6 {ipv6}");
             assert!(udp_wire::parse(&completed.unwrap()).is_ok(), "ipv6 {ipv6}");
-            assert_eq!(table.table.charged, 0);
             assert!(table.table.contexts.is_empty());
         }
     }
@@ -673,7 +502,6 @@ mod tests {
                 }
             }
             assert_eq!(completed.as_deref(), Some(packet.as_slice()), "ipv6 {ipv6}");
-            assert_eq!(table.table.charged, 0);
         }
     }
 
@@ -687,7 +515,6 @@ mod tests {
             assert_eq!(table.accept(&pieces[0], now), Ok(Accepted::Pending));
             assert_eq!(table.accept(&pieces[0], now), Err(Reject::Overlap));
             assert!(table.table.contexts.is_empty(), "ipv6 {ipv6}");
-            assert_eq!(table.table.charged, 0);
             for piece in &pieces[1..] {
                 assert_eq!(table.accept(piece, now), Ok(Accepted::Pending));
             }
@@ -709,7 +536,6 @@ mod tests {
         beyond[6..8].copy_from_slice(&(0x2000 | (total / 8) as u16).to_be_bytes());
         assert_eq!(held.accept(&beyond, now), Err(Reject::Overlap));
         assert!(held.table.contexts.is_empty());
-        assert_eq!(held.table.charged, 0);
     }
 
     #[test]
@@ -750,23 +576,6 @@ mod tests {
             let _ = table.accept(piece, now);
         }
         assert!(!table.table.contexts.is_empty());
-        assert!(table.table.charged > 0);
-    }
-
-    #[test]
-    fn the_ceiling_refuses_growth_and_the_charge_is_returned() {
-        let packet = datagram(false, 3000);
-        let pieces = fragments(&packet, 1280);
-        let now = Instant::now();
-        let mut probe = table();
-        assert_eq!(probe.accept(&pieces[0], now), Ok(Accepted::Pending));
-        let mut table = Fixture::with_cap(probe.table.charged);
-        assert_eq!(table.accept(&pieces[0], now), Ok(Accepted::Pending));
-        let held = table.table.charged;
-        assert!(held > 0);
-        assert_eq!(table.accept(&pieces[1], now), Err(Reject::Denied));
-        assert_eq!(table.table.charged, held);
-        assert_eq!(table.table.contexts.len(), 1);
     }
 
     fn ipv4_fragment(offset: usize, more: bool, payload: usize) -> Vec<u8> {
@@ -817,7 +626,6 @@ mod tests {
             ));
         }
         assert!(table.table.contexts.is_empty());
-        assert_eq!(table.table.charged, 0);
     }
 
     #[test]
@@ -846,102 +654,89 @@ mod tests {
     }
 
     #[test]
-    fn a_sparse_pattern_is_charged_for_the_ranges_it_opens() {
-        let mut sparse = table();
+    fn ipv4_reassembly_accepts_the_largest_encodable_total_length() {
+        let mut table = table();
         let now = Instant::now();
-        for slot in 0..64 {
+        assert_eq!(
+            table.accept(&ipv4_fragment(0, true, 65_512), now),
+            Ok(Accepted::Pending)
+        );
+        let Accepted::Complete(packet) = table
+            .accept(&ipv4_fragment(65_512, false, 3), now)
+            .expect("the maximum-length datagram fits")
+        else {
+            panic!("the two contiguous fragments should complete")
+        };
+        assert_eq!(packet.len(), MAX_ENCODED_LENGTH);
+        assert_eq!(u16::from_be_bytes([packet[2], packet[3]]), u16::MAX);
+    }
+
+    #[test]
+    fn ipv4_reassembly_rejects_a_body_that_only_exceeds_the_total_with_its_header() {
+        let now = Instant::now();
+        for reverse in [false, true] {
+            let plain = ipv4_fragment(0, true, 8);
+            let mut zero = Vec::with_capacity(plain.len() + 4);
+            zero.extend_from_slice(&plain[..IPV4_HEADER_LEN]);
+            zero.extend_from_slice(&[0; 4]);
+            zero.extend_from_slice(&plain[IPV4_HEADER_LEN..]);
+            zero[0] = 0x46;
+            let total = zero.len() as u16;
+            zero[2..4].copy_from_slice(&total.to_be_bytes());
+            let tail = ipv4_fragment(65_504, false, 11);
+            let mut table = table();
+            let (first, second) = if reverse {
+                (&tail, &zero)
+            } else {
+                (&zero, &tail)
+            };
+            assert_eq!(table.accept(first, now), Ok(Accepted::Pending));
             assert_eq!(
-                sparse.accept(&ipv4_fragment(slot * 16, true, 8), now),
-                Ok(Accepted::Pending)
+                table.accept(second, now),
+                Err(Reject::Malformed("IPv4 reassembly exceeds total length"))
             );
+            assert!(table.table.contexts.is_empty());
         }
-        let context = sparse.table.contexts.values().next().unwrap();
-        assert_eq!(context.received.len(), 64);
-        let mut dense = table();
-        assert_eq!(
-            dense.accept(&ipv4_fragment(0, true, 63 * 16 + 8), now),
-            Ok(Accepted::Pending)
-        );
-        assert!(
-            sparse.table.charged > dense.table.charged,
-            "sparse {} dense {}",
-            sparse.table.charged,
-            dense.table.charged
-        );
-        assert_eq!(
-            sparse.table.charged,
-            sparse
-                .table
-                .contexts
-                .values()
-                .map(|c| c.charged)
-                .sum::<u64>()
-        );
     }
 
     #[test]
-    fn a_context_is_charged_for_its_buffers_and_its_row_only_once() {
-        let now = Instant::now();
-        let mut fixture = table();
+    fn headless_ipv4_reassembly_reserves_space_for_the_minimum_header() {
+        let mut table = table();
         assert_eq!(
-            fixture.accept(&ipv4_fragment(0, true, 1200), now),
-            Ok(Accepted::Pending)
+            table.accept(&ipv4_fragment(65_504, false, 12), Instant::now()),
+            Err(Reject::Malformed("fragment reaches past a datagram"))
         );
-        let context = fixture.table.contexts.values().next().expect("held");
-        assert_eq!(
-            context.charged,
-            context.payload.capacity() as u64
-                + (context.received.capacity() * std::mem::size_of::<Range<usize>>()) as u64,
-            "a context holds its two buffers and nothing else"
-        );
-        assert_eq!(
-            Table::footprint(fixture.table.prepared).expect("chargeable"),
-            (fixture.table.prepared * std::mem::size_of::<(Key, Context)>()) as u64
-                + std::mem::size_of::<Table>() as u64,
-            "the fixed lease owns the rows"
-        );
+        assert!(table.table.contexts.is_empty());
     }
 
     #[test]
-    fn the_ceiling_binds_on_a_sparse_pattern() {
+    fn a_non_final_fragment_cannot_end_at_an_already_declared_total() {
+        let mut table = table();
         let now = Instant::now();
-        let mut probe = table();
         assert_eq!(
-            probe.accept(&ipv4_fragment(0, true, 8), now),
+            table.accept(&ipv4_fragment(16, false, 8), now),
             Ok(Accepted::Pending)
         );
-        let mut table = Fixture::with_cap(probe.table.charged);
         assert_eq!(
-            table.accept(&ipv4_fragment(0, true, 8), now),
-            Ok(Accepted::Pending)
+            table.accept(&ipv4_fragment(0, true, 24), now),
+            Err(Reject::Overlap)
         );
+        assert!(table.table.contexts.is_empty());
+    }
+
+    #[test]
+    fn a_final_fragment_cannot_shrink_below_previously_held_data() {
+        let mut table = table();
+        let now = Instant::now();
         assert_eq!(
             table.accept(&ipv4_fragment(16, true, 8), now),
-            Err(Reject::Denied)
+            Ok(Accepted::Pending)
         );
-        assert_eq!(table.table.contexts.len(), 1);
-    }
-
-    #[test]
-    fn every_cleanup_path_returns_the_whole_charge() {
-        let now = Instant::now();
-        for retire in [true, false] {
-            let mut table = table();
-            for slot in 0..8 {
-                assert_eq!(
-                    table.accept(&ipv4_fragment(slot * 16, true, 8), now),
-                    Ok(Accepted::Pending)
-                );
-            }
-            assert!(table.table.charged > 0);
-            if retire {
-                table.retire();
-            } else {
-                table.sweep(now + REASSEMBLY_TIMEOUT, |_| {});
-            }
-            assert!(table.table.contexts.is_empty());
-            assert_eq!(table.table.charged, 0);
-        }
+        assert_eq!(
+            table.accept(&ipv4_fragment(8, false, 8), now),
+            Err(Reject::Overlap)
+        );
+        assert!(table.table.contexts.is_empty());
     }
 
     #[test]
@@ -978,302 +773,6 @@ mod tests {
     }
 
     #[test]
-    fn completion_holds_its_charge_until_the_packet_exists() {
-        let payload = vec![0x5au8; 2_000];
-        let header = Header::new(&[0x45u8; 20]).expect("a header");
-        let context = Context {
-            payload: payload.clone(),
-            received: merge_ranges(&[], 0..payload.len()),
-            header: Some(header),
-            total: Some(payload.len()),
-            deadline: Instant::now(),
-            charged: 4_096,
-        };
-        let (assembled, charged) = complete(context, &header);
-        assert_eq!(assembled.len(), 20 + payload.len());
-        assert_eq!(charged, 4_096);
-
-        let packet = datagram(false, 3000);
-        let pieces = fragments(&packet, 1280);
-        let mut table = table();
-        let now = Instant::now();
-        let mut completed = None;
-        for piece in &pieces {
-            match table.accept(piece, now).expect("accepted") {
-                Accepted::Pending => assert!(
-                    table.table.charged > 0,
-                    "a held context is charged for what it holds"
-                ),
-                Accepted::Complete(whole) => completed = Some(whole),
-            }
-        }
-        assert_eq!(completed.as_deref(), Some(packet.as_slice()));
-        assert_eq!(table.table.charged, 0);
-        assert_eq!(table.table.counters.undercharged, 0);
-    }
-
-    #[test]
-    fn a_reconciliation_that_would_saturate_fails_closed_instead() {
-        assert_eq!(reconcile(1_000, 400), Some(600));
-        assert_eq!(reconcile(1_000, 1_000), Some(0));
-        assert_eq!(reconcile(1_000, 1_001), None);
-        assert_eq!(reconcile(0, 1), None);
-        assert_eq!(reconcile(u64::MAX, u64::MAX), Some(0));
-    }
-
-    #[test]
-    fn an_undercharged_context_is_discarded_rather_than_continued() {
-        let packet = datagram(false, 3000);
-        let pieces = fragments(&packet, 1280);
-        let mut table = table();
-        let now = Instant::now();
-        table.accept(&pieces[0], now).expect("the first fits");
-        table.accept(&pieces[1], now).expect("and the second");
-        assert_eq!(table.table.contexts.len(), 1);
-        let held = table.table.charged;
-        assert!(held > 0);
-        let charged = table.admission.bytes_charged();
-        let key = *table.table.contexts.keys().next().expect("held");
-
-        let refused = table
-            .table
-            .undercharged(key, &mut table.admission, &table.lease);
-        assert_eq!(refused, Reject::Denied);
-        assert_eq!(
-            table.table.counters.undercharged, 1,
-            "the violation is counted rather than absorbed"
-        );
-        assert!(
-            table.table.contexts.is_empty(),
-            "and the context is gone rather than left holding more than was granted"
-        );
-        assert_eq!(
-            table.table.charged, 0,
-            "with its whole reservation given back"
-        );
-        assert_eq!(table.admission.bytes_charged(), charged - held);
-        assert_eq!(table.admission.invariant_violations(), 0);
-
-        assert_eq!(table.accept(&pieces[0], now), Ok(Accepted::Pending));
-        assert!(table.table.charged > 0);
-    }
-
-    #[test]
-    fn a_completed_context_frees_its_slot_for_the_next_identification() {
-        let mut fixture = table();
-        let prepared = fixture.table.prepared;
-        let packet = datagram(true, 3_000);
-        let now = Instant::now();
-        let pieces = |identification: u32| -> Vec<Vec<u8>> {
-            let mut pieces = Vec::new();
-            fragment_ipv6(&packet, 1_280, identification, |piece| pieces.push(piece))
-                .expect("a fragmentable datagram");
-            assert!(pieces.len() > 2, "{} pieces", pieces.len());
-            pieces
-        };
-
-        let mut live: Vec<Vec<Vec<u8>>> = Vec::new();
-        let mut identification = 1u32;
-        while fixture.table.contexts.len() < prepared {
-            let mut fragments = pieces(identification);
-            identification += 1;
-            assert_eq!(fixture.accept(&fragments[0], now), Ok(Accepted::Pending));
-            fragments.remove(0);
-            live.push(fragments);
-        }
-        assert_eq!(fixture.table.contexts.len(), prepared);
-
-        let extra = pieces(identification);
-        identification += 1;
-        assert_eq!(fixture.accept(&extra[0], now), Err(Reject::Denied));
-        assert_eq!(
-            fixture.table.contexts.len(),
-            prepared,
-            "nothing was evicted"
-        );
-
-        let finishing = live.remove(0);
-        let mut completed = false;
-        for piece in &finishing {
-            match fixture
-                .accept(piece, now)
-                .expect("a held context takes its own pieces")
-            {
-                Accepted::Pending => {}
-                Accepted::Complete(_) => completed = true,
-            }
-        }
-        assert!(
-            completed,
-            "the datagram was reassembled and its row released"
-        );
-        assert_eq!(
-            fixture.table.contexts.len(),
-            prepared - 1,
-            "the slot came back"
-        );
-        let newcomer = pieces(identification);
-        assert_eq!(
-            fixture.accept(&newcomer[0], now),
-            Ok(Accepted::Pending),
-            "and the next identification takes it"
-        );
-        assert_eq!(fixture.table.contexts.len(), prepared);
-        assert_eq!(
-            fixture.table.prepared, prepared,
-            "with the bound the charge covers where it was"
-        );
-        for fragments in &live {
-            for piece in fragments {
-                assert!(
-                    fixture.accept(piece, now).is_ok(),
-                    "a held context takes its own pieces"
-                );
-            }
-        }
-
-        fixture.retire();
-        assert_eq!(fixture.table.charged, 0);
-        assert_eq!(fixture.admission.invariant_violations(), 0);
-    }
-
-    #[test]
-    fn a_denied_fragment_zero_allocates_and_retains_nothing() {
-        for ipv6 in [false, true] {
-            let mut table = Fixture::with_cap(8);
-            let packet = datagram(ipv6, 3000);
-            let pieces = fragments(&packet, 1280);
-            let charged = table.admission.bytes_charged();
-            let now = Instant::now();
-            assert_eq!(table.accept(&pieces[0], now), Err(Reject::Denied));
-            assert!(table.table.contexts.is_empty(), "ipv6 {ipv6}");
-            assert_eq!(table.table.charged, 0, "ipv6 {ipv6}");
-            assert_eq!(
-                table.admission.bytes_charged(),
-                charged,
-                "a refusal charges nothing, ipv6 {ipv6}"
-            );
-            assert_eq!(table.table.counters.undercharged, 0);
-        }
-    }
-
-    #[test]
-    fn a_denial_preserves_the_context_it_could_not_grow() {
-        let packet = datagram(false, 3000);
-        let pieces = fragments(&packet, 1280);
-        let mut probe = Fixture::with_cap(1 << 20);
-        let now = Instant::now();
-        probe.accept(&pieces[0], now).expect("the first fits");
-        let held = probe.table.charged;
-
-        let mut table = Fixture::with_cap(held);
-        assert_eq!(table.accept(&pieces[0], now), Ok(Accepted::Pending));
-        assert_eq!(table.table.charged, held);
-        let contexts = table.table.contexts.len();
-        assert_eq!(table.accept(&pieces[1], now), Err(Reject::Denied));
-        assert_eq!(table.table.contexts.len(), contexts);
-        assert_eq!(table.table.charged, held);
-        assert_eq!(table.table.contexts.values().next().unwrap().charged, held);
-    }
-
-    #[test]
-    fn no_offset_pattern_ever_allocates_past_its_reservation() {
-        for ipv6 in [false, true] {
-            for mtu in [576usize, 1280, 1500] {
-                for reverse in [false, true] {
-                    for size in [8usize, 100, 3000, 20_000] {
-                        let packet = datagram(ipv6, size);
-                        let mut pieces = fragments(&packet, mtu);
-                        if reverse {
-                            pieces.reverse();
-                        }
-                        let mut table = Fixture::with_cap(1 << 22);
-                        let now = Instant::now();
-                        for piece in &pieces {
-                            let _ = table.accept(piece, now);
-                            assert_eq!(
-                                table.table.counters.undercharged, 0,
-                                "ipv6 {ipv6} mtu {mtu} reverse {reverse} size {size}"
-                            );
-                            assert_eq!(
-                                table.table.charged,
-                                table
-                                    .table
-                                    .contexts
-                                    .values()
-                                    .map(|context| context.charged)
-                                    .sum::<u64>(),
-                                "ipv6 {ipv6} mtu {mtu} reverse {reverse} size {size}"
-                            );
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn a_sparse_pattern_charges_the_old_and_new_range_storage_at_once() {
-        let packet = datagram(false, 4000);
-        let pieces = fragments(&packet, 600);
-        let mut table = Fixture::with_cap(1 << 22);
-        let now = Instant::now();
-        for piece in pieces.iter().step_by(2) {
-            assert_eq!(table.accept(piece, now), Ok(Accepted::Pending));
-        }
-        let context = table.table.contexts.values().next().expect("held");
-        assert!(
-            context.received.len() > 1,
-            "the pattern must actually be sparse: {} ranges",
-            context.received.len()
-        );
-        let range = std::mem::size_of::<Range<usize>>() as u64;
-        let projection = context.project(context.payload.len(), false).expect("fits");
-        assert!(
-            projection.peak >= context.received.capacity() as u64 * range,
-            "the peak covers the range list being replaced"
-        );
-        assert_eq!(table.table.counters.undercharged, 0);
-    }
-
-    #[test]
-    fn payload_growth_and_completion_charge_both_buffers_at_once() {
-        let packet = datagram(false, 3000);
-        let pieces = fragments(&packet, 1280);
-        let mut table = Fixture::with_cap(1 << 22);
-        let now = Instant::now();
-        table.accept(&pieces[0], now).expect("the first fits");
-
-        let context = table.table.contexts.values().next().expect("held");
-        let held = context.payload.capacity() as u64;
-        assert!(held > 0);
-        let growing = context
-            .project(context.payload.capacity() + 1, false)
-            .expect("fits");
-        assert!(
-            growing.peak >= held,
-            "the peak covers the payload being replaced: {} < {held}",
-            growing.peak
-        );
-        let completing = context
-            .project(context.payload.capacity() + 1, true)
-            .expect("fits");
-        assert!(
-            completing.peak > growing.peak,
-            "completion costs more than growth alone"
-        );
-
-        for piece in &pieces[1..] {
-            if let Ok(Accepted::Complete(whole)) = table.accept(piece, now) {
-                assert_eq!(whole, packet);
-            }
-        }
-        assert_eq!(table.table.charged, 0);
-        assert!(table.table.contexts.is_empty());
-        assert_eq!(table.table.counters.undercharged, 0);
-    }
-
-    #[test]
     fn simultaneous_expiries_never_hold_more_than_one_quote() {
         let mut table = table();
         let now = Instant::now();
@@ -1292,7 +791,7 @@ mod tests {
         let mut live = 0usize;
         let mut peak = 0usize;
         let mut quoted = 0u64;
-        let retired = table.sweep(now + REASSEMBLY_TIMEOUT, |quote| {
+        let retired = table.sweep(now + IPV4_REASSEMBLY_TIMEOUT, |quote| {
             live += 1;
             peak = peak.max(live);
             quoted += 1;
@@ -1303,31 +802,52 @@ mod tests {
         assert_eq!(retired, opened);
         assert_eq!(quoted, opened);
         assert_eq!(peak, 1);
-        assert_eq!(table.table.charged, 0);
         assert!(table.table.contexts.is_empty());
     }
 
     #[test]
-    fn an_expired_context_yields_fragment_zero_and_frees_its_bytes() {
+    fn an_expired_context_yields_fragment_zero_and_is_removed() {
         let packet = datagram(false, 3000);
         let pieces = fragments(&packet, 1280);
         let mut table = table();
         let now = Instant::now();
         assert_eq!(table.accept(&pieces[0], now), Ok(Accepted::Pending));
-        assert_eq!(table.table.next_deadline(), Some(now + REASSEMBLY_TIMEOUT));
+        assert_eq!(
+            table.table.next_deadline(),
+            Some(now + IPV4_REASSEMBLY_TIMEOUT)
+        );
         assert_eq!(table.sweep(now, |_| panic!("not due yet")), 0);
         let mut expired = Vec::new();
         assert_eq!(
-            table.sweep(now + REASSEMBLY_TIMEOUT, |quote| expired.push(quote)),
+            table.sweep(now + IPV4_REASSEMBLY_TIMEOUT, |quote| expired.push(quote)),
             1
         );
         assert_eq!(expired.len(), 1);
         let quote = &expired[0];
         assert_eq!(&quote[12..16], &packet[12..16]);
         assert_eq!(u16::from_be_bytes([quote[6], quote[7]]) & 0x3fff, 0);
-        assert_eq!(table.table.charged, 0);
         assert!(table.table.contexts.is_empty());
         assert_eq!(table.table.next_deadline(), None);
+    }
+
+    #[test]
+    fn context_deadlines_follow_the_android_kernel_default_for_each_family() {
+        let now = Instant::now();
+        for (ipv6, timeout) in [
+            (false, IPV4_REASSEMBLY_TIMEOUT),
+            (true, IPV6_REASSEMBLY_TIMEOUT),
+        ] {
+            let packet = datagram(ipv6, 3000);
+            let pieces = fragments(&packet, 1280);
+            let mut table = table();
+            assert_eq!(table.accept(&pieces[0], now), Ok(Accepted::Pending));
+            assert_eq!(table.table.next_deadline(), Some(now + timeout));
+            assert_eq!(
+                table.sweep(now + timeout - Duration::from_nanos(1), |_| {}),
+                0
+            );
+            assert_eq!(table.sweep(now + timeout, |_| {}), 1);
+        }
     }
 
     #[test]

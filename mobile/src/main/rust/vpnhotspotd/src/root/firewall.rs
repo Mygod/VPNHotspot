@@ -2,11 +2,10 @@ use std::io;
 use std::process::ExitStatus;
 use std::process::Stdio;
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+use vpnhotspotd::shared::process_io::{read_limited, read_limited_lines};
 use vpnhotspotd::shared::protocol::{IoErrorReportExt, IoResultReportExt};
-
-use crate::root::process_io::{append_limited, read_limited};
 
 pub(crate) const NDC: &str = "/system/bin/ndc";
 
@@ -49,7 +48,7 @@ pub(crate) async fn restore_status(target: IptablesTarget, input: &str) -> io::R
 pub(crate) async fn restore_stdout_lines(
     target: IptablesTarget,
     input: &str,
-    mut line: impl FnMut(&str),
+    line: impl FnMut(&str),
 ) -> io::Result<()> {
     let binary = target.restore_binary();
     let mut child = Command::new(binary)
@@ -77,39 +76,25 @@ pub(crate) async fn restore_stdout_lines(
         io::Error::other("missing restore stderr")
             .with_report_context_details("firewall.restore.stderr", restore_details(target, input))
     })?;
-    let stderr_task = tokio::spawn(read_limited(stderr));
-    let mut stdout = BufReader::new(stdout);
-    let mut stdout_sample = Vec::new();
-    let mut buffer = Vec::new();
-    while stdout
-        .read_until(b'\n', &mut buffer)
-        .await
-        .with_report_context_details("firewall.restore.stdout", restore_details(target, input))?
-        != 0
-    {
-        append_limited(&mut stdout_sample, &buffer);
-        if buffer.last() == Some(&b'\n') {
-            buffer.pop();
-            if buffer.last() == Some(&b'\r') {
-                buffer.pop();
-            }
-        }
-        line(&String::from_utf8_lossy(&buffer));
-        buffer.clear();
-    }
-    let status = child
-        .wait()
-        .await
-        .with_report_context_details("firewall.restore.wait", restore_details(target, input))?;
-    let stderr = stderr_task
-        .await
-        .map_err(|e| {
-            io::Error::other(e.to_string()).with_report_context_details(
-                "firewall.restore.stderr",
-                restore_details(target, input),
-            )
-        })?
-        .with_report_context_details("firewall.restore.stderr", restore_details(target, input))?;
+    let status = async move {
+        child
+            .wait()
+            .await
+            .with_report_context_details("firewall.restore.wait", restore_details(target, input))
+    };
+    let stdout = async move {
+        read_limited_lines(stdout, line)
+            .await
+            .with_report_context_details("firewall.restore.stdout", restore_details(target, input))
+    };
+    let stderr = async move {
+        read_limited(stderr)
+            .await
+            .with_report_context_details("firewall.restore.stderr", restore_details(target, input))
+    };
+    // Scoped together: an error in line parsing, waiting, or either drain drops the other futures and the
+    // kill-on-drop child rather than detaching a pipe reader.
+    let (status, stdout_sample, stderr) = tokio::try_join!(status, stdout, stderr)?;
     if status.success() {
         Ok(())
     } else {
@@ -153,10 +138,55 @@ async fn run_restore(
         .write_all(input.as_bytes())
         .await
         .with_report_context_details("firewall.restore.write", restore_details(target, input))?;
-    child
-        .wait_with_output()
-        .await
-        .with_report_context_details("firewall.restore.wait", restore_details(target, input))
+    match output {
+        RestoreOutput::Status => child
+            .wait()
+            .await
+            .map(|status| std::process::Output {
+                status,
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+            })
+            .with_report_context_details("firewall.restore.wait", restore_details(target, input)),
+        RestoreOutput::Capture => {
+            let stdout = child.stdout.take().ok_or_else(|| {
+                io::Error::other("missing restore stdout").with_report_context_details(
+                    "firewall.restore.stdout",
+                    restore_details(target, input),
+                )
+            })?;
+            let stderr = child.stderr.take().ok_or_else(|| {
+                io::Error::other("missing restore stderr").with_report_context_details(
+                    "firewall.restore.stderr",
+                    restore_details(target, input),
+                )
+            })?;
+            let status = async move {
+                child.wait().await.with_report_context_details(
+                    "firewall.restore.wait",
+                    restore_details(target, input),
+                )
+            };
+            let stdout = async move {
+                read_limited(stdout).await.with_report_context_details(
+                    "firewall.restore.stdout",
+                    restore_details(target, input),
+                )
+            };
+            let stderr = async move {
+                read_limited(stderr).await.with_report_context_details(
+                    "firewall.restore.stderr",
+                    restore_details(target, input),
+                )
+            };
+            let (status, stdout, stderr) = tokio::try_join!(status, stdout, stderr)?;
+            Ok(std::process::Output {
+                status,
+                stdout,
+                stderr,
+            })
+        }
+    }
 }
 
 fn restore_status_error(
@@ -175,15 +205,17 @@ fn restore_status_error_parts(
     stderr: &[u8],
 ) -> io::Error {
     let binary = target.restore_binary();
-    let stdout = String::from_utf8_lossy(stdout);
-    let stderr = String::from_utf8_lossy(stderr);
-    io::Error::other(format!(
-        "{binary} exited with {} stdout={} stderr={}",
-        status,
-        stdout.trim_end(),
-        stderr.trim_end(),
-    ))
-    .with_report_context_details("firewall.restore.status", restore_details(target, input))
+    let mut details = restore_details(target, input);
+    details.push((
+        "stdout".to_owned(),
+        String::from_utf8_lossy(stdout).trim_end().to_owned(),
+    ));
+    details.push((
+        "stderr".to_owned(),
+        String::from_utf8_lossy(stderr).trim_end().to_owned(),
+    ));
+    io::Error::other(format!("{binary} exited with {status}"))
+        .with_report_context_details("firewall.restore.status", details)
 }
 
 pub(crate) fn restore_input(table: &str, lines: &[String]) -> String {

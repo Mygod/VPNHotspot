@@ -150,7 +150,7 @@ impl Session {
             .await
             .with_report_context("shizuku.control.budget")?;
         let mtu = start.mtu as usize;
-        // `prepare` reserves the aggregate before building queues or buffers.
+        // Measure descriptor headroom before building owners whose structural depths derive from it.
         let (dataplane, queue) = tun_reader::prepare(measured, mtu).await?;
         // One config in flight at a time, which is all the app ever sends: it coalesces to a single pending
         // slot and waits for the reply before sending the next.

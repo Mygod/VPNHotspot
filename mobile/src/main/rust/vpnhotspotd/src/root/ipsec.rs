@@ -1,13 +1,12 @@
 use std::io;
 use std::process::Stdio;
 
-use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use vpnhotspotd::shared::ipsec::{ForwardPolicyTargetScanner, IpSecForwardPolicyTarget};
+use vpnhotspotd::shared::process_io::{read_limited, read_limited_with};
 use vpnhotspotd::shared::protocol::{IoErrorReportExt, IoResultReportExt};
 
 use crate::root::platform;
-use crate::root::process_io::{append_limited, read_limited};
 
 const DUMPSYS: &str = "/system/bin/dumpsys";
 
@@ -28,42 +27,41 @@ pub(crate) async fn scan() -> io::Result<Vec<IpSecForwardPolicyTarget>> {
     let stderr = child.stderr.take().ok_or_else(|| {
         io::Error::other("missing dumpsys stderr").with_report_context("ipsec.dumpsys.stderr")
     })?;
-    let stderr_task = tokio::spawn(read_limited(stderr));
-    let mut scanner = ForwardPolicyTargetScanner::new();
-    let mut stdout = BufReader::new(stdout);
-    let mut stdout_sample = Vec::new();
-    let mut buffer = Vec::new();
-    let mut parse_error = None;
-    while stdout
-        .read_until(b'\n', &mut buffer)
-        .await
-        .with_report_context("ipsec.dumpsys.stdout")?
-        != 0
-    {
-        append_limited(&mut stdout_sample, &buffer);
-        if parse_error.is_none() {
-            if let Err(error) = scanner.push_str(&String::from_utf8_lossy(&buffer)) {
-                parse_error = Some(error.with_report_context("ipsec.parse"));
+    let output = async move {
+        let mut scanner = ForwardPolicyTargetScanner::new();
+        let mut parse_error = None;
+        let stdout_sample = read_limited_with(stdout, |chunk| {
+            if parse_error.is_none() {
+                if let Err(error) = scanner.push_str(&String::from_utf8_lossy(chunk)) {
+                    parse_error = Some(error.with_report_context("ipsec.parse"));
+                }
             }
-        }
-        buffer.clear();
-    }
-    let status = child
-        .wait()
+        })
         .await
-        .with_report_context("ipsec.dumpsys.wait")?;
-    let stderr = stderr_task
-        .await
-        .map_err(|e| io::Error::other(e.to_string()).with_report_context("ipsec.dumpsys.stderr"))?
-        .with_report_context("ipsec.dumpsys.stderr")?;
+        .with_report_context("ipsec.dumpsys.stdout")?;
+        let status = child
+            .wait()
+            .await
+            .with_report_context("ipsec.dumpsys.wait")?;
+        Ok::<_, io::Error>((status, stdout_sample, parse_error, scanner))
+    };
+    let stderr = async move {
+        read_limited(stderr)
+            .await
+            .with_report_context("ipsec.dumpsys.stderr")
+    };
+    let ((status, stdout_sample, parse_error, scanner), stderr) = tokio::try_join!(output, stderr)?;
     if !status.success() {
-        return Err(io::Error::other(format!(
-            "{DUMPSYS} ipsec exited with {} stdout={} stderr={}",
-            status,
-            String::from_utf8_lossy(&stdout_sample).trim_end(),
-            String::from_utf8_lossy(&stderr).trim_end(),
-        ))
-        .with_report_context("ipsec.dumpsys.status"));
+        return Err(
+            io::Error::other(format!("{DUMPSYS} ipsec exited with {status}"))
+                .with_report_context_details(
+                    "ipsec.dumpsys.status",
+                    [
+                        ("stdout", String::from_utf8_lossy(&stdout_sample).trim_end()),
+                        ("stderr", String::from_utf8_lossy(&stderr).trim_end()),
+                    ],
+                ),
+        );
     }
     if let Some(error) = parse_error {
         return Err(error);

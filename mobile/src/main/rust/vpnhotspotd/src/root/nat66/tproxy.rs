@@ -5,6 +5,8 @@ use nix::sys::socket::{setsockopt, sockopt};
 use socket2::{Domain, SockAddr, Socket, Type};
 use vpnhotspotd::shared::model::DAEMON_TPROXY_ADDRESS;
 
+use crate::socket::TCP_LISTEN_BACKLOG;
+
 pub(crate) fn create_tcp_listener(mark: u32) -> io::Result<TcpListener> {
     let socket = Socket::new(Domain::IPV6, Type::STREAM, None)?;
     socket.set_reuse_address(true)?;
@@ -17,7 +19,7 @@ pub(crate) fn create_tcp_listener(mark: u32) -> io::Result<TcpListener> {
         0,
         0,
     )))?;
-    socket.listen(32)?;
+    socket.listen(TCP_LISTEN_BACKLOG)?;
     socket.set_nonblocking(true)?;
     Ok(socket.into())
 }

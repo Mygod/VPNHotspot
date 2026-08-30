@@ -26,7 +26,7 @@ pub(crate) async fn splice(
     cancel: CancellationToken,
     sweep: CancellationToken,
 ) -> Ended {
-    // One scratch per direction, at the size the flow was charged for. The bridge is a byte stream, so this
+    // One upstream scratch per direction, at the pinned Tokio copy-utility size. The bridge is a byte stream, so this
     // is no longer a segment boundary - it is how much of the upstream socket one read takes.
     let failure = tokio::select! {
         biased;

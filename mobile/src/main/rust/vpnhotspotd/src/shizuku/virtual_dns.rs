@@ -10,22 +10,13 @@ use vpnhotspotd::shared::udp_wire::Relayed;
 use vpnhotspotd::shared::workers::{Ended, Terminal, Workers};
 
 use crate::report;
-use crate::shizuku::budget::MAX_DATAGRAM;
 use crate::shizuku::output::Output;
 use crate::shizuku::owned::Owned;
 use crate::shizuku::resolver;
-use vpnhotspotd::shared::admission::{Admission, Class, Denied, Lease, Request as Grant};
-use vpnhotspotd::shared::dns_debt;
-use vpnhotspotd::shared::reply_bound::channel_footprint;
-
-const QUERY_BYTES: u64 = MAX_DATAGRAM as u64;
-
-const ANSWER_BYTES: u64 = MAX_DATAGRAM as u64;
-
-// Keep the row-bound divisor no larger than this exchange's charge.
-const _: () = assert!(QUERY_BYTES + ANSWER_BYTES >= dns_debt::MINIMUM_SUBMITTED_BYTES);
+use vpnhotspotd::shared::admission::{Admission, Class, Lease};
 
 const UNROUTED: &str = "shizuku.virtual_dns.unrouted";
+const COMPLETION_FULL: &str = "shizuku.virtual_dns.completion_full";
 
 const LOCAL_ORIGIN_HOP_LIMIT: u8 = 64;
 
@@ -79,7 +70,6 @@ pub(crate) struct Handoff {
     answers: mpsc::Sender<Arrival>,
     arrivals: mpsc::Receiver<Arrival>,
     queries: Workers<u64, Debt>,
-    tables: Lease,
     counters: Counters,
 }
 
@@ -89,34 +79,23 @@ struct Debt {
 }
 
 impl Handoff {
-    pub(crate) fn new(admission: &mut Admission) -> Result<Self, Denied> {
-        // Size both to the maximum admission can charge, giving every admitted worker a completion slot.
-        let prepared = dns_debt::rows(admission);
-        let depth = prepared.max(1);
-        let bytes = Workers::<u64, Debt>::footprint(prepared)
-            .and_then(|table| table.checked_add(channel_footprint::<Arrival>(depth, depth)?))
-            .ok_or(Denied::Arithmetic)?;
-        let tables = dns_debt::tables(admission, bytes)?;
+    pub(crate) fn new(admission: &Admission) -> Self {
+        // One completion slot per descriptor admission unit, so every admitted resolver can publish one
+        // terminal result without a second arbitrary query-count ceiling.
+        let depth = admission.descriptor_total() as usize;
         let (answers, arrivals) = mpsc::channel(depth);
-        debug_assert_eq!(
-            answers.max_capacity(),
-            depth,
-            "the answer queue is charged at the depth it is built at"
-        );
-        Ok(Self {
+        Self {
             answers,
             arrivals,
-            queries: Workers::with_capacity("shizuku.virtual_dns", prepared),
-            tables,
+            queries: Workers::new("shizuku.virtual_dns"),
             counters: Counters::default(),
-        })
+        }
     }
 
-    pub(crate) fn release(self, admission: &mut Admission) {
+    pub(crate) fn release(self) {
         drop(self.queries);
         drop(self.answers);
         drop(self.arrivals);
-        admission.release(self.tables);
     }
 
     pub(crate) fn submit(
@@ -125,18 +104,7 @@ impl Handoff {
         output: &mut Output,
         admission: &mut Admission,
     ) -> io::Result<()> {
-        if !self.queries.has_room() {
-            self.counters.denied += 1;
-            self.refuse(datagram, output);
-            return Ok(());
-        }
-        let Ok(lease) = admission.reserve(Grant {
-            records: 1,
-            record_class: Class::Reserved,
-            bytes: QUERY_BYTES + ANSWER_BYTES,
-            byte_class: Class::Reserved,
-            ..Grant::default()
-        }) else {
+        let Ok(lease) = admission.reserve(Class::Reserved) else {
             self.counters.denied += 1;
             self.refuse(datagram, output);
             return Ok(());
@@ -198,7 +166,21 @@ impl Handoff {
                 let undelivered = match answers.try_send(arrival) {
                     Ok(()) => return Ended::Expected,
                     Err(mpsc::error::TrySendError::Closed(arrival)) => arrival,
-                    Err(mpsc::error::TrySendError::Full(arrival)) => arrival,
+                    Err(mpsc::error::TrySendError::Full(arrival)) => {
+                        let error = match arrival {
+                            Arrival::Answer(_) => io::Error::other(format!(
+                                "virtual DNS completion handoff for {client} -> {endpoint} was full despite \
+                                 one slot per admitted descriptor"
+                            )),
+                            // Preserve the already-structured local failure as primary; the terminal context
+                            // below still identifies the independent handoff invariant.
+                            Arrival::Ending(ending) => ending,
+                        };
+                        return Ended::Failed {
+                            context: COMPLETION_FULL,
+                            error,
+                        };
+                    }
                 };
                 match undelivered {
                     Arrival::Answer(_) => report::stdout!(
@@ -258,8 +240,10 @@ impl Handoff {
             self.counters.unsettled += 1;
             return drained;
         };
+        // The worker terminal means its resolver descriptor and future are gone. Userspace answer buffers do
+        // not extend descriptor debt.
+        admission.release(lease);
         let Some(answer) = answer else {
-            admission.release(lease);
             return drained;
         };
         let Answer {
@@ -286,52 +270,11 @@ impl Handoff {
         };
         let Some(response) = response else {
             drop(query);
-            admission.release(lease);
             return drained;
         };
-        let live = (query.as_ref().map_or(0, Owned::capacity) + response.capacity()) as u64;
-        let held = match admission.split(
-            &lease,
-            Grant::bytes(live.min(QUERY_BYTES + ANSWER_BYTES), Class::Reserved),
-        ) {
-            Ok(delivery) => {
-                admission.release(lease);
-                delivery
-            }
-            // The original lease still covers both buffers; report the invariant failure and retain it.
-            Err(denied) if denied.leaves_source_intact() => {
-                report::message_with_details(
-                    UNROUTED,
-                    "a settled virtual DNS answer kept the whole grant its delivery split was refused from",
-                    "InvalidData",
-                    [("query", key.to_string()), ("denied", format!("{denied:?}"))],
-                );
-                lease
-            }
-            // Nothing covers these buffers: drop them before releasing the lease and discard only this
-            // datagram.
-            Err(denied) => {
-                report::message_with_details(
-                    UNROUTED,
-                    "a settled virtual DNS answer has no grant known to cover its buffers",
-                    "InvalidData",
-                    [
-                        ("query", key.to_string()),
-                        ("denied", format!("{denied:?}")),
-                    ],
-                );
-                self.counters.discarded += 1;
-                drop(response);
-                drop(query);
-                admission.release(lease);
-                return drained;
-            }
-        };
         output.datagram(endpoint, client, LOCAL_ORIGIN_HOP_LIMIT, &response);
-        // Drop every buffer covered by the delivery before returning its lease.
         drop(response);
         drop(query);
-        admission.release(held);
         drained
     }
 

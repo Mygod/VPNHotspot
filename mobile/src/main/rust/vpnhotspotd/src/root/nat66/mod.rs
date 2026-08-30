@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::future::pending;
 use std::io;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use rtnetlink::MulticastGroup;
 use tokio::sync::{Mutex, Notify};
@@ -31,8 +31,6 @@ mod udp;
 
 pub(crate) use icmp::Dispatcher as IcmpDispatcher;
 use udp::ReplySocketPool;
-
-const IDLE_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Clone)]
 pub(crate) struct ProcessResources {

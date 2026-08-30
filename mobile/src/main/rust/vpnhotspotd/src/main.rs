@@ -18,7 +18,11 @@ use vpnhotspotd::shared::protocol::daemon_io_error_report;
 /// scheduling policy it was launched under, and a Tokio worker thread inherits the policy of the thread that
 /// created it. The multi-threaded builder creates all of them inside `build()`, so the normalization has to
 /// happen before that call - see [shizuku::scheduling]. Everything else about the runtime is what the macro
-/// would have built: a multi-threaded scheduler with every driver enabled, one worker per CPU.
+/// would have built: a multi-threaded scheduler with every driver enabled. Pinned Tokio 1.53.1 defaults to
+/// `available_parallelism()` worker threads; that bounds simultaneous task polling, not admitted tasks, and
+/// runnable tasks wait in Tokio's scheduler rather than being refused. Runtime/thread allocation failure makes
+/// `build()` fail before either daemon mode starts.
+/// <https://github.com/tokio-rs/tokio/blob/tokio-1.53.1/tokio/src/runtime/builder.rs#L2004-L2022>
 fn main() -> io::Result<()> {
     let mut args = env::args().skip(1);
     let first = args

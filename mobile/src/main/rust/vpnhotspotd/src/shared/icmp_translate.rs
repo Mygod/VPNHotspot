@@ -35,11 +35,17 @@ pub struct Reported {
     pub code: u8,
     /// Protocol-specific: the reported MTU for a too-big, the pointer for a parameter problem.
     pub info: u32,
-    /// The offending packet's bytes from its transport header onward, as the kernel kept them.
+    /// Protocol-specific offending bytes exposed by Linux's error queue. Ping sockets start at the quoted ICMP
+    /// Echo header. UDP sockets start after the quoted UDP header, but their owner relies on the kernel's
+    /// socket/destination correlation rather than retaining payload metadata.
     pub quoted: Quote,
 }
 
-/// How much of an offending packet is kept, which is everything any correlation reads.
+/// The complete eight-byte ICMP Echo header needed by the ping owner to recover its rewritten sequence. Linux
+/// `ping_err` starts the queued payload at that header; bytes after it cannot affect Echo-session correlation
+/// and are discarded. A shorter result cannot identify a session and is rejected by the Echo parser. UDP does
+/// not depend on the scratch contents.
+/// <https://android.googlesource.com/kernel/common/+/e8c92d268b8b8feb550ca8d24a92c1c98ed65ace/net/ipv4/ping.c#483>
 pub const QUOTE_BYTES: usize = 8;
 
 /// The kept prefix of an offending packet, inline.
@@ -79,8 +85,9 @@ impl Quote {
 pub enum Correlation {
     /// This client sent *to that address*. Enough for a claim about the route there.
     Address,
-    /// This client sent *that exact datagram*, and this is the hop limit it used. Enough for a claim about one
-    /// datagram, which is what the send history exists to establish.
+    /// The Echo owner matched the rewritten sequence to one live request, or Linux matched a UDP error's
+    /// offending tuple to this mapping's socket and the UDP owner retained one exact hop limit for the returned
+    /// destination. This is the hop limit that request used, which is enough for a claim about that datagram.
     Datagram { hop_limit: u8 },
 }
 

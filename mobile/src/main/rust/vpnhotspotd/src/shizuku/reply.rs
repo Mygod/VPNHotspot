@@ -9,12 +9,9 @@ use tokio::io::Interest;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use vpnhotspotd::shared::icmp_translate::Reported;
-use vpnhotspotd::shared::reply_bound::{
-    reply_channel_footprint, Drained, ErrorSource, Turn, Turned,
-};
+use vpnhotspotd::shared::reply_turn::{Drained, ErrorSource, Turn, Turned};
 use vpnhotspotd::shared::workers::Ended;
 
-use crate::shizuku::budget::REPLY_QUEUE_DEPTH;
 use crate::shizuku::egress;
 use crate::socket::is_kernel_icmp_error;
 
@@ -33,19 +30,20 @@ pub(crate) enum Event<K> {
     Error { key: K, id: u64, error: Reported },
 }
 
-/// The largest an IP datagram can be, so a read sized by this can never truncate one.
+/// Largest standard IP datagram representable by the IPv4 total-length or IPv6 payload-length field. The
+/// fixed ping-socket buffer therefore cannot truncate a supported reply; IPv6 jumbograms are unsupported.
 const MAX_DATAGRAM: usize = u16::MAX as usize;
 
 /// One socket's error queue, as the shared turn sees it.
-struct Bound<'a> {
+struct Errors<'a> {
     queue: &'a mut egress::ErrorQueue,
     socket: &'a Socket,
     /// The router error the last turn took, if it took one. Kept here rather than in the classification,
-    /// because the shared decision is about the slot and not about the payload.
+    /// because the shared decision is about the error kind and not about the payload.
     found: Option<Reported>,
 }
 
-impl ErrorSource for Bound<'_> {
+impl ErrorSource for Errors<'_> {
     fn next(&mut self) -> io::Result<Drained> {
         Ok(match self.queue.next(self.socket)? {
             None => Drained::Empty,
@@ -62,24 +60,14 @@ impl ErrorSource for Bound<'_> {
 }
 
 /// One reply channel: the sender the owner clones per worker, and the receiver it keeps.
-pub(crate) type ReplyChannel<K> = (mpsc::Sender<Event<K>>, mpsc::Receiver<Event<K>>);
+pub(crate) type ReplyChannel<K> = (
+    mpsc::UnboundedSender<Event<K>>,
+    mpsc::UnboundedReceiver<Event<K>>,
+);
 
-/// What one reply channel costs, before one exists.
-pub(crate) fn reply_channel_bytes<K>() -> Option<u64> {
-    // One sender per worker, because this owner clones it into every one it starts - so the grow-race term
-    // is whatever the permits allow rather than one. See [vpnhotspotd::shared::reply_bound::blocks_for].
-    reply_channel_footprint::<Event<K>>(REPLY_QUEUE_DEPTH, REPLY_QUEUE_DEPTH, MAX_DATAGRAM as u64)
-}
-
-/// Builds one reply channel, at the depth [reply_channel_bytes] was charged for.
+/// Builds the session-owned reply handoff without an arbitrary aggregate event cap.
 pub(crate) fn reply_channel<K>() -> ReplyChannel<K> {
-    let (sender, receiver) = mpsc::channel(REPLY_QUEUE_DEPTH);
-    debug_assert_eq!(
-        sender.max_capacity(),
-        REPLY_QUEUE_DEPTH,
-        "a reply channel is built at the depth it was charged for"
-    );
-    (sender, receiver)
+    mpsc::unbounded_channel()
 }
 
 /// What the task waits for: a datagram to forward, or an error to translate. Both, because they are separate
@@ -112,7 +100,7 @@ pub(crate) async fn receive<K: Copy>(
     id: u64,
     sizing: Sizing,
     gate: Gate,
-    events: mpsc::Sender<Event<K>>,
+    events: mpsc::UnboundedSender<Event<K>>,
     cancel: CancellationToken,
 ) -> Ended {
     if let Gate::Pending(commit) = gate {
@@ -136,14 +124,12 @@ pub(crate) async fn receive<K: Copy>(
         Sizing::Fixed => vec![0u8; MAX_DATAGRAM],
     };
     // One per worker, for the worker's life. Its ancillary buffer is heap-backed, so building one per
-    // readiness would allocate as often as a remote chose to send errors. This is charged with the record
-    // that admitted this worker - see [egress::ErrorQueue::footprint].
+    // readiness would allocate as often as a remote chose to send errors.
     let mut errors = egress::ErrorQueue::new();
     loop {
-        // One turn, and the whole ordering is inside it: readiness, then the slot, then the read - and only
-        // then an allocation. See [vpnhotspotd::shared::reply_bound::Turn::run] for why readiness cannot come
-        // second and the read cannot come first.
-        let mut source = Bound {
+        // One turn, and the whole ordering is inside it: readiness, closure/cancellation, then one read and
+        // only then an allocation. See [vpnhotspotd::shared::reply_turn::Turn::run].
+        let mut source = Errors {
             queue: &mut errors,
             socket: socket.get_ref(),
             found: None,
@@ -187,8 +173,9 @@ pub(crate) async fn receive<K: Copy>(
         )
         .await;
         match turned {
-            // The socket stays ready while anything remains, so the next turn takes a fresh slot.
-            Turned::Sent | Turned::Reported | Turned::Released => continue,
+            // The socket stays ready while anything remains. Yield between units so a continuously ready
+            // socket cannot monopolize the runtime before the owner or another worker consumes its turn.
+            Turned::Sent | Turned::Reported | Turned::Released => tokio::task::yield_now().await,
             // The owner is gone, or cancellation asked this worker to stop.
             Turned::Cancelled | Turned::Closed => return Ended::Expected,
             Turned::Failed(error) => {

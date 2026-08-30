@@ -46,13 +46,18 @@ pub async fn shutdown<W: AsyncWrite + Unpin>(
     }
 }
 
-/// Hands one event to the owner, waiting for room but not past a cancellation. `false` means the worker is
-/// stopping instead: either it is being retired, or the owner is gone and there is nobody to deliver to.
-pub async fn hand_over<T>(events: &mpsc::Sender<T>, event: T, cancel: &CancellationToken) -> bool {
+/// Hands one event to the owner without imposing a shared queue capacity. Cancellation wins if it is already
+/// observable when this turn is polled; `false` otherwise means the owner is gone and there is nobody to
+/// deliver to. The owning worker remains sequential, so it cannot publish a second event until it resumes.
+pub async fn hand_over<T>(
+    events: &mpsc::UnboundedSender<T>,
+    event: T,
+    cancel: &CancellationToken,
+) -> bool {
     tokio::select! {
         biased;
         () = cancel.cancelled() => false,
-        sent = events.send(event) => sent.is_ok(),
+        sent = async { events.send(event) } => sent.is_ok(),
     }
 }
 
@@ -92,19 +97,32 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_event_a_full_owner_cannot_take_does_not_hold_up_retirement() {
-        let (events, _events) = mpsc::channel(1);
+    async fn owner_handoffs_do_not_wait_for_an_arbitrary_queue_slot() {
+        let (events, mut receiver) = mpsc::unbounded_channel();
         let cancel = CancellationToken::new();
         assert!(hand_over(&events, 1u8, &cancel).await);
+        assert!(hand_over(&events, 2u8, &cancel).await);
+        assert_eq!(receiver.recv().await, Some(1));
+        assert_eq!(receiver.recv().await, Some(2));
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_handoff_does_not_publish() {
+        let (events, mut receiver) = mpsc::unbounded_channel();
+        let cancel = CancellationToken::new();
         cancel.cancel();
-        assert!(!hand_over(&events, 2u8, &cancel).await);
+        assert!(!hand_over(&events, 3u8, &cancel).await);
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
     }
 
     #[tokio::test]
     async fn an_owner_that_is_gone_ends_the_worker_without_a_cancellation() {
-        let (events, receiver) = mpsc::channel(1);
+        let (events, receiver) = mpsc::unbounded_channel();
         drop(receiver);
-        assert!(!hand_over(&events, 3u8, &CancellationToken::new()).await);
+        assert!(!hand_over(&events, 4u8, &CancellationToken::new()).await);
     }
 
     #[tokio::test]

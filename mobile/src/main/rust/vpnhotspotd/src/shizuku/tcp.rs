@@ -3,7 +3,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::time::Instant;
 
-use smoltcp::iface::{Config, Interface, PollResult, SocketHandle, SocketStorage};
+use smoltcp::iface::{Config, Interface, PollResult, SocketHandle};
 use smoltcp::socket::tcp::Socket;
 use smoltcp::time::Instant as SmolInstant;
 use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr, IpEndpoint, IpListenEndpoint};
@@ -13,14 +13,12 @@ use vpnhotspotd::shared::icmp_nat::{nat66_hop_limit, Nat66HopLimit};
 use vpnhotspotd::shared::workers::{Ended, Identity, Workers};
 
 use crate::shizuku::flow_setup;
-use vpnhotspotd::shared::admission::{
-    largest_fitting, linear_footprint, Admission, Class, Denied, Lease, Request,
-};
+use vpnhotspotd::shared::admission::{Admission, Class, Lease};
 use vpnhotspotd::shared::bridge::{Bridge, Worker};
+use vpnhotspotd::shared::failure::Failure;
 use vpnhotspotd::shared::flow::{self, FlowId, Turns};
 use vpnhotspotd::shared::flow_budget;
 use vpnhotspotd::shared::ingress as boundary;
-use vpnhotspotd::shared::reply_bound::{built_depth, channel_footprint};
 
 use crate::report;
 use crate::shizuku::output::Output;
@@ -37,12 +35,6 @@ mod terminal;
 
 pub(crate) use bridge::Attention;
 
-const SOCKET_SLOT_BYTES: u64 = std::mem::size_of::<SocketStorage<'static>>() as u64;
-
-fn flow_footprint() -> Option<u64> {
-    flow_budget::footprint::<Owned, tcp_dns::Control>(&flow_budget::SIZING)
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Source {
     Resolver,
@@ -52,7 +44,9 @@ enum Source {
 struct Flow {
     client: SocketAddr,
     destination: SocketAddr,
-    lease: Lease,
+    /// Present exactly while this flow's upstream descriptor exists. Virtual-DNS flows never have one, and a
+    /// cleanly completed upstream drops it before client-facing TCP closing state is retained.
+    upstream_lease: Option<Lease>,
     bridge: Bridge,
     refresh: bool,
     serving: Serving,
@@ -67,7 +61,7 @@ struct Counters {
     resolved: u64,
     answered_here: u64,
     denied: u64,
-    unprepared: u64,
+    unadmitted: u64,
     unsettled: u64,
     client_closing: u64,
     ingress: boundary::Counters,
@@ -79,13 +73,15 @@ struct Counters {
 impl Counters {
     fn describe(&self) -> String {
         format!(
-            "opened {} resolved {} answered-here {} denied {} reset {} \
+            "opened {} resolved {} answered-here {} denied {} unadmitted {} unsettled {} reset {} \
              tail-failed {} expired {} client-closing {} closed {} to-upstream {} to-client {} stale {} \
              unconsumed {}",
             self.opened,
             self.resolved,
             self.answered_here,
             self.denied,
+            self.unadmitted,
+            self.unsettled,
             self.ingress.reset,
             self.ingress.tail_failed,
             self.expired,
@@ -106,20 +102,14 @@ pub(crate) struct Engine {
     flows: Workers<SocketHandle, Flow>,
     queries: Transactions,
     sweep: CancellationToken,
-    asks: mpsc::Sender<tcp_dns::Ask>,
+    asks: mpsc::UnboundedSender<tcp_dns::Ask>,
     outgoing: Turns<SocketHandle>,
-    tables: Lease,
-    prepared: usize,
     counters: Counters,
     started: Instant,
 }
 
 impl Engine {
-    pub(crate) fn new(
-        mtu: usize,
-        seed: u64,
-        admission: &mut Admission,
-    ) -> Result<(Self, mpsc::Receiver<tcp_dns::Ask>), Denied> {
+    pub(crate) fn new(mtu: usize, seed: u64) -> (Self, mpsc::UnboundedReceiver<tcp_dns::Ask>) {
         let mut device = Shim::new(mtu);
         let started = Instant::now();
         let mut config = Config::new(HardwareAddress::Ip);
@@ -127,6 +117,9 @@ impl Engine {
         let mut interface = Interface::new(config, &mut device, SmolInstant::from_millis(0));
         // Interception listens on the remote destination rather than an address assigned to this interface.
         interface.set_any_ip(true);
+        // Cargo explicitly pins smoltcp's maintained interface-address capacity to two: exactly these IPv4
+        // and IPv6 interception addresses. A full vector refuses the push; the address is omitted and the
+        // invariant failure is reported rather than hidden.
         interface.update_ip_addrs(|addresses| {
             for cidr in [
                 IpCidr::new(IpAddress::v4(192, 0, 2, 1), 30),
@@ -142,58 +135,35 @@ impl Engine {
                 }
             }
         });
-        let per_flow = flow_footprint().ok_or(Denied::Arithmetic)?;
-        // Transactions has no implicit lease refund: reserve it before sizing flows, and every failure before
-        // Engine takes ownership must call release.
-        let queries = Transactions::new(admission)?;
-        // Solve from general headroom so TCP cannot consume the reserved DNS and packet-completion floors.
-        let prepared = largest_fitting(admission.general_headroom(), per_flow, |flows| {
-            tables_footprint(flows, mtu)
-        });
-        let bytes = match tables_footprint(prepared, mtu) {
-            Some(bytes) => bytes,
-            None => {
-                queries.release(admission);
-                return Err(Denied::Arithmetic);
-            }
-        };
-        let tables = match admission.reserve(Request::bytes(bytes, Class::General)) {
-            Ok(tables) => tables,
-            Err(why) => {
-                queries.release(admission);
-                return Err(why);
-            }
-        };
-        let (asks, asking) = mpsc::channel(submission_depth(prepared));
-        Ok((
+        let queries = Transactions::new();
+        // Each transport remains sequential, while this aggregate owner handoff has no locally invented
+        // transport-count cap. The session owner consumes one request per fair scheduler pass.
+        let (asks, asking) = mpsc::unbounded_channel();
+        (
             Self {
                 interface,
-                sockets: flow_setup::Sockets::new(prepared),
+                sockets: flow_setup::Sockets::new(),
                 device,
-                flows: Workers::with_capacity("shizuku.tcp_flow", prepared),
+                flows: Workers::new("shizuku.tcp_flow"),
                 queries,
                 sweep: CancellationToken::new(),
                 asks,
-                outgoing: Turns::with_capacity(prepared),
-                tables,
-                prepared,
+                outgoing: Turns::default(),
                 counters: Counters::default(),
                 started,
             },
             asking,
-        ))
+        )
     }
 
-    pub(crate) fn release(self, asking: mpsc::Receiver<tcp_dns::Ask>, admission: &mut Admission) {
-        // Drop every allocation covered by `tables` before refunding its lease.
-        self.queries.release(admission);
+    pub(crate) fn release(self, asking: mpsc::UnboundedReceiver<tcp_dns::Ask>) {
+        self.queries.release();
         drop(self.flows);
         drop(self.outgoing);
         drop(self.sockets);
         drop(self.asks);
         drop(asking);
         drop(self.device);
-        admission.release(self.tables);
     }
 
     fn now(&self) -> SmolInstant {
@@ -283,7 +253,6 @@ impl Engine {
             sockets,
             flows,
             outgoing,
-            prepared,
             asks,
             sweep,
             counters,
@@ -302,7 +271,7 @@ impl Engine {
             source,
             now,
         };
-        match flow::admit_flow(&mut ops, outgoing, *prepared) {
+        match flow::admit_flow(&mut ops, outgoing) {
             Ok(handle) => {
                 self.counters.opened += 1;
                 if resolver {
@@ -310,8 +279,8 @@ impl Engine {
                 }
                 Some(handle)
             }
-            Err(flow::Refused::AtCapacity(_)) => {
-                self.counters.unprepared += 1;
+            Err(flow::Refused::Unadmitted) => {
+                self.counters.unadmitted += 1;
                 None
             }
             Err(flow::Refused::Unbuildable(())) => None,
@@ -380,7 +349,7 @@ impl Engine {
 struct Admit<'a> {
     sockets: &'a mut flow_setup::Sockets,
     flows: &'a mut Workers<SocketHandle, Flow>,
-    asks: &'a mpsc::Sender<tcp_dns::Ask>,
+    asks: &'a mpsc::UnboundedSender<tcp_dns::Ask>,
     sweep: &'a CancellationToken,
     counters: &'a mut Counters,
     admission: &'a mut Admission,
@@ -394,9 +363,15 @@ struct Admit<'a> {
 struct Built {
     flow: Flow,
     identity: Identity,
+    transport: Option<Transport>,
     stream: Option<Worker>,
     control: Option<mpsc::Receiver<tcp_dns::Control>>,
     filled: Option<mpsc::Sender<Owned>>,
+}
+
+enum Transport {
+    Resolver,
+    Upstream(Result<socket2::Socket, Failure>),
 }
 
 impl Built {
@@ -404,6 +379,7 @@ impl Built {
         Self {
             flow,
             identity,
+            transport: None,
             stream: None,
             control: None,
             filled: None,
@@ -413,13 +389,10 @@ impl Built {
 
 impl Admit<'_> {
     fn prepare(&mut self) -> Result<flow_setup::Prepared, flow_setup::Denied> {
-        let bytes = flow_footprint().ok_or(flow_setup::Denied::Grant)?;
         flow_setup::prepare(
-            self.admission,
             self.sockets,
             self.flows,
             flow_setup::Sizing {
-                bytes,
                 flow: flow_budget::SIZING,
                 hop_limit: self.hop_limit,
             },
@@ -427,9 +400,13 @@ impl Admit<'_> {
         )
     }
 
-    fn assemble(&self, prepared: flow_setup::Prepared) -> (SocketHandle, u64, Built) {
+    fn assemble(
+        &self,
+        prepared: flow_setup::Prepared,
+        upstream_lease: Option<Lease>,
+        transport: Transport,
+    ) -> (SocketHandle, u64, Built) {
         let flow_setup::Prepared {
-            lease,
             handle,
             identity,
             bridge,
@@ -446,7 +423,7 @@ impl Admit<'_> {
                 flow: Flow {
                     client: self.client,
                     destination: self.destination,
-                    lease,
+                    upstream_lease,
                     bridge,
                     refresh: false,
                     serving,
@@ -457,6 +434,7 @@ impl Admit<'_> {
                     ),
                 },
                 identity,
+                transport: Some(transport),
                 stream: Some(stream),
                 control: Some(control),
                 filled: Some(filled),
@@ -469,10 +447,6 @@ impl flow::FlowOps for Admit<'_> {
     type Handle = SocketHandle;
     type Record = Built;
     type Error = ();
-
-    fn has_room(&self) -> bool {
-        self.flows.has_room()
-    }
 
     fn build(&mut self) -> Result<(SocketHandle, u64, Built), ()> {
         let prepared = match self.prepare() {
@@ -490,37 +464,78 @@ impl flow::FlowOps for Admit<'_> {
                 return Err(());
             }
         };
-        let (handle, incarnation, built) = self.assemble(prepared);
+        let (upstream_lease, transport) = match self.source {
+            Source::Resolver => (None, Transport::Resolver),
+            Source::Upstream => match crate::shizuku::egress::open_tcp(self.destination) {
+                Err(failure) => (None, Transport::Upstream(Err(failure))),
+                Ok(socket) => {
+                    let Ok(lease) = self.admission.reserve(Class::General) else {
+                        // Admission follows the synchronous open, so denial closes the candidate before any
+                        // other owner turn and retains neither a descriptor nor client-side flow state.
+                        drop(socket);
+                        let flow_setup::Prepared {
+                            handle,
+                            identity,
+                            bridge,
+                            stream,
+                            serving,
+                            control,
+                            filled,
+                        } = prepared;
+                        drop(identity);
+                        drop(serving);
+                        flow_setup::release(
+                            self.sockets,
+                            handle,
+                            flow_setup::Leftovers {
+                                bridge,
+                                stream: Some(stream),
+                                control: Some(control),
+                                filled: Some(filled),
+                            },
+                        );
+                        self.counters.denied += 1;
+                        return Err(());
+                    };
+                    (Some(lease), Transport::Upstream(Ok(socket)))
+                }
+            },
+        };
+        let (handle, incarnation, built) = self.assemble(prepared, upstream_lease, transport);
         Ok((handle, incarnation, built))
     }
 
     fn unwind(&mut self, handle: SocketHandle, _incarnation: u64, record: Built) {
         let Built {
             flow,
+            transport,
             stream,
             control,
             filled,
             ..
         } = record;
         let Flow {
-            lease,
+            upstream_lease,
             bridge,
             serving,
             ..
         } = flow;
+        // If admission refused after build, its unspawned worker future has already dropped the open socket.
+        drop(transport);
         serving.close(self.admission);
         flow_setup::release(
-            self.admission,
             self.sockets,
             handle,
             flow_setup::Leftovers {
-                lease,
                 bridge,
                 stream,
                 control,
                 filled,
             },
         );
+        if let Some(lease) = upstream_lease {
+            self.admission.release(lease);
+        }
     }
 
     fn admit(
@@ -539,15 +554,18 @@ impl Admit<'_> {
         let Built {
             flow,
             identity,
+            transport,
             stream,
             control,
             filled,
         } = record;
-        let (Some(stream), Some(control), Some(filled)) = (stream, control, filled) else {
+        let (Some(transport), Some(stream), Some(control), Some(filled)) =
+            (transport, stream, control, filled)
+        else {
             return Err(Built::without_worker(flow, identity));
         };
         let token = identity.cancel.clone();
-        let Source::Upstream = self.source else {
+        let Transport::Upstream(socket) = transport else {
             let asks = self.asks.clone();
             return self
                 .flows
@@ -572,10 +590,13 @@ impl Admit<'_> {
         let sweep = self.sweep.clone();
         self.flows
             .admit(handle, &identity, flow, async move {
-                let connected = tokio::select! {
-                    biased;
-                    () = token.cancelled() => return Ended::Expected,
-                    connected = crate::shizuku::egress::connect_tcp(destination) => connected,
+                let connected = match socket {
+                    Ok(socket) => tokio::select! {
+                        biased;
+                        () = token.cancelled() => return Ended::Expected,
+                        connected = crate::shizuku::egress::connect_tcp(socket, destination) => connected,
+                    },
+                    Err(failure) => Err(failure),
                 };
                 match connected {
                     Ok(socket) => match tokio::net::TcpStream::from_std(socket.into()) {
@@ -590,25 +611,6 @@ impl Admit<'_> {
             })
             .map_err(|(flow, _)| Built::without_worker(flow, identity))
     }
-}
-
-fn tables_footprint(flows: usize, mtu: usize) -> Option<u64> {
-    Workers::<SocketHandle, Flow>::footprint(flows)?
-        .checked_add(linear_footprint(
-            flows,
-            std::mem::size_of::<SocketHandle>() as u64,
-        )?)?
-        .checked_add(channel_footprint::<tcp_dns::Ask>(
-            submission_depth(flows),
-            flows,
-        )?)?
-        .checked_add(linear_footprint(flows, SOCKET_SLOT_BYTES)?)?
-        .checked_add(mtu as u64)
-}
-
-/// At most one pending ask per prepared sequential transport.
-fn submission_depth(flows: usize) -> usize {
-    built_depth(flows)
 }
 
 fn endpoint(address: SocketAddr) -> IpEndpoint {

@@ -2,7 +2,6 @@
 use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
-use std::time::{Duration, Instant};
 
 use tokio::sync::Notify;
 use tokio::task::JoinHandle;
@@ -18,7 +17,7 @@ type Sink = Box<dyn Fn(NonfatalReport, Handed) -> bool + Send + Sync>;
 /// A reporter's share of its conversation's writer queue: how many reports may be waiting in it at once.
 struct Handoff {
     available: AtomicUsize,
-    /// Woken when a place comes back, which is the only thing that can un-stick a window the handoff had no
+    /// Woken when a place comes back, which is the only thing that can un-stick a report the handoff had no
     /// room for. Nothing polls for it: the release is the event.
     freed: Notify,
 }
@@ -64,7 +63,7 @@ impl Handoff {
 pub struct Handed(Arc<Handoff>);
 
 impl Drop for Handed {
-    /// Gives the place back and announces it in the same step, so the window that had no room for a summary is
+    /// Gives the place back and announces it in the same step, so the source that had no room for a report is
     /// woken by the writer's own progress rather than by a timer.
     fn drop(&mut self) {
         self.0.available.fetch_add(1, Ordering::AcqRel);
@@ -72,14 +71,9 @@ impl Drop for Handed {
     }
 }
 
-/// The clock the windows are kept on.
-fn now() -> Instant {
-    tokio::time::Instant::now().into_std()
-}
-
 /// What became of one report, which is a thing the caller has to be able to act on rather than assume.
 pub enum Pushed {
-    /// Taken: coalesced, and emitted now or when its window closes.
+    /// Taken: emitted immediately, or coalesced until the writer handoff has room.
     Coalesced,
     /// Handed back, because the conversation that owned the reporter has finished. Nothing was coalesced,
     /// emitted or opened - so this is not a report in flight, it is a report with nowhere to go, and the
@@ -90,7 +84,7 @@ pub enum Pushed {
 pub struct Reporter {
     state: Arc<State>,
     cancel: CancellationToken,
-    /// Everything about ending this reporter, under one lock: the window task, whether a finalizer has been
+    /// Everything about ending this reporter, under one lock: the drain task, whether a finalizer has been
     /// started, and the answer it left. One lock because those three are one decision - "has somebody already
     /// taken responsibility for shutting this down, and if so what did they conclude".
     shutdown: Mutex<Shutdown>,
@@ -103,7 +97,7 @@ pub struct Reporter {
 struct Shutdown {
     /// Taken by the finalizer that runs, and only by it. A cancelled `finish` waiter never touches it, so a
     /// dropped future cannot detach the task the conversation's result depends on.
-    window: Option<JoinHandle<()>>,
+    drainer: Option<JoinHandle<()>>,
     /// Whether a finalizer task has been spawned. Exactly one ever is.
     running: bool,
     /// What that finalizer concluded, or `None` while it has not concluded anything. A message rather than an
@@ -113,8 +107,8 @@ struct Shutdown {
 
 struct State {
     /// The coalescer and whether it still admits reports, under one lock because those two have to be
-    /// checked and acted on together: a report admitted after the final flush would sit in a window nothing
-    /// will ever close, which is exactly the allocation a finished reporter must not make.
+    /// checked and acted on together: a report admitted after the final flush would stay pending forever,
+    /// which is exactly the allocation a finished reporter must not make.
     admission: Mutex<Admission>,
     sink: Sink,
     /// This reporter's places in the control writer's queue - see the module note and [Handoff].
@@ -125,7 +119,7 @@ struct State {
     /// besides its own task.
     drained: Notify,
     undelivered: AtomicUsize,
-    /// Woken on the first pending window; existing windows already have a deadline or wait for room.
+    /// Woken when the first source becomes pending; an existing pending set already waits for handoff room.
     opened: Notify,
 }
 
@@ -137,14 +131,13 @@ struct Admission {
 impl Reporter {
     /// Builds a reporter that holds no task yet.
     pub fn new(
-        window: Duration,
         handoff: usize,
         sink: impl Fn(NonfatalReport, Handed) -> bool + Send + Sync + 'static,
     ) -> Self {
         Self {
             state: Arc::new(State {
                 admission: Mutex::new(Admission {
-                    coalescer: SiteCoalescer::new(window),
+                    coalescer: SiteCoalescer::new(),
                     closed: false,
                 }),
                 sink: Box::new(sink),
@@ -160,7 +153,7 @@ impl Reporter {
         }
     }
 
-    /// Coalesces one report and emits whatever that made due. Never waits, so a packet path can call it.
+    /// Emits one report or retains it behind the occupied handoff. Never waits, so a packet path can call it.
     pub fn push(&self, call_id: Option<u64>, report: DaemonErrorReport) -> Pushed {
         let mut refused = None;
         let mut opened = false;
@@ -169,7 +162,7 @@ impl Reporter {
                 refused = Some(report);
                 return Vec::new();
             }
-            let (ready, wake) = admission.coalescer.push(now(), call_id, report, room);
+            let (ready, wake) = admission.coalescer.push(call_id, report, room);
             opened = wake;
             ready
         });
@@ -203,17 +196,17 @@ impl Reporter {
             .expect("the reporter's shutdown is poisoned")
     }
 
-    /// Starts the window task. Called by [ReporterRegistry::install] once this reporter is where producers
+    /// Starts the pending-report drainer. Called by [ReporterRegistry::install] once this reporter is where producers
     /// can find it, which is the only order in which a failed installation spawns nothing.
     fn open(&self) {
-        let task = tokio::spawn(close_windows(Arc::clone(&self.state), self.cancel.clone()));
-        let previous = self.locked_shutdown().window.replace(task);
+        let task = tokio::spawn(drain_pending(Arc::clone(&self.state), self.cancel.clone()));
+        let previous = self.locked_shutdown().drainer.replace(task);
         debug_assert!(previous.is_none());
     }
 }
 
 impl State {
-    /// The window's lock, held for the coalescer's own bookkeeping and for taking places in the writer's
+    /// The admission lock, held for the coalescer's own bookkeeping and for taking places in the writer's
     /// queue, and never across an await. Poisoning cannot happen: the daemon aborts on panic.
     fn locked(&self) -> MutexGuard<'_, Admission> {
         self.admission
@@ -221,12 +214,12 @@ impl State {
             .expect("the report coalescer is poisoned")
     }
 
-    /// One emission: `due` decides what to hand over, under the admission lock and against the room actually
+    /// One emission: `ready` decides what to hand over, under the admission lock and against the room actually
     /// available, and the sink is then called outside it.
-    fn emit(&self, due: impl FnOnce(&mut Admission, usize) -> Vec<NonfatalReport>) {
+    fn emit(&self, ready: impl FnOnce(&mut Admission, usize) -> Vec<NonfatalReport>) {
         let taken = {
             let mut admission = self.locked();
-            let reports = due(&mut admission, self.handoff.available());
+            let reports = ready(&mut admission, self.handoff.available());
             if reports.is_empty() {
                 return;
             }
@@ -413,7 +406,7 @@ fn ensure_finalized(registry: &Arc<RegistryInner>, reporter: &Arc<Reporter>) {
         Ok(runtime) => runtime,
         Err(_) => {
             // Nothing here can own a finalizer, so nothing here may pretend one ran. Admission is closed and
-            // the window task cancelled so that nothing accumulates or wakes for a window nobody will close;
+            // the drain task cancelled so that nothing accumulates or waits for a handoff nobody will drain;
             // the handle is *not* taken, so it is neither detached nor joined by anyone but a real finalizer,
             // and `closing` is *not* released - which leaves this registry permanently refusing successors.
             // Fail-closed, and visibly so.
@@ -424,18 +417,18 @@ fn ensure_finalized(registry: &Arc<RegistryInner>, reporter: &Arc<Reporter>) {
         }
     };
     shutdown.running = true;
-    let window = shutdown.window.take();
+    let drainer = shutdown.drainer.take();
     drop(shutdown);
     let registry = Arc::clone(registry);
     let reporter = Arc::clone(reporter);
-    runtime.spawn(finalize(registry, reporter, window));
+    runtime.spawn(finalize(registry, reporter, drainer));
 }
 
 /// Ends one conversation's reporting, in the one order that makes each step's promise true of the next.
 async fn finalize(
     registry: Arc<RegistryInner>,
     reporter: Arc<Reporter>,
-    window: Option<JoinHandle<()>>,
+    drainer: Option<JoinHandle<()>>,
 ) {
     let last = {
         let mut admission = reporter.state.locked();
@@ -444,11 +437,11 @@ async fn finalize(
     };
     reporter.cancel.cancel();
     reporter.state.drain().await;
-    let mut failure = match window {
-        Some(window) => window
+    let mut failure = match drainer {
+        Some(drainer) => drainer
             .await
             .err()
-            .map(|e| format!("the report window task failed: {e}")),
+            .map(|e| format!("the pending-report drain task failed: {e}")),
         None => None,
     };
     for report in last {
@@ -479,35 +472,21 @@ async fn finalize(
     reporter.finished.notify_waiters();
 }
 
-/// Emits each window's summary when it falls due. The only part of reporting that needs a task at all.
-async fn close_windows(state: Arc<State>, cancel: CancellationToken) {
+/// Gives each returned handoff place to the oldest blocked source. No clock participates: a source is pending
+/// exactly while the writer handoff is occupied.
+async fn drain_pending(state: Arc<State>, cancel: CancellationToken) {
     loop {
-        // Ahead of the wait rather than inside one of its arms, because what to wait for is decided from what
-        // is left afterwards - and because a window already due must be closed before another push is taken
-        // into account: a steady stream of reports must not keep postponing the summary it is producing.
-        state.emit(|admission, room| admission.coalescer.emit_due(now(), room));
-        let deadline = state.locked().coalescer.next_deadline();
-        // A window still due after that is one the handoff had no room for, so what this waits for is room
-        // rather than time. Sleeping until a deadline already in the past would spin instead.
-        let full = deadline.is_some_and(|deadline| deadline <= now());
+        // Ahead of the wait so a stored opened/freed notification cannot make a pending report wait through
+        // another event. If anything remains, every handoff place was consumed and writer progress is the only
+        // useful wake; otherwise the first blocked source is.
+        state.emit(|admission, room| admission.coalescer.emit(room));
+        let pending = state.locked().coalescer.has_pending();
         tokio::select! {
             biased;
             () = cancel.cancelled() => break,
-            // A wakeup and nothing more - the emission at the top of the loop is what takes the place it
-            // needs. Enabled only while something is waiting on room, so an idle daemon does not spin here.
-            () = state.handoff.freed.notified(), if full => {}
-            () = due(deadline), if !full => {}
-            () = state.opened.notified() => {}
+            () = state.handoff.freed.notified(), if pending => {}
+            () = state.opened.notified(), if !pending => {}
         }
-    }
-}
-
-/// Waits for one window to fall due, or forever when none is open. `pending` rather than an interval, so an
-/// idle daemon costs no wakeups.
-async fn due(deadline: Option<Instant>) {
-    match deadline {
-        Some(deadline) => tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)).await,
-        None => std::future::pending().await,
     }
 }
 
@@ -515,11 +494,12 @@ async fn due(deadline: Option<Instant>) {
 mod tests {
     use std::sync::atomic::AtomicBool;
     use std::sync::mpsc;
+    use std::time::Duration;
 
     use super::*;
 
-    const WINDOW: Duration = Duration::from_secs(1);
-    const HANDOFF: usize = 8;
+    const WAIT: Duration = Duration::from_secs(1);
+    const HANDOFF: usize = 1;
 
     fn report(context: &str, line: u32) -> DaemonErrorReport {
         DaemonErrorReport {
@@ -553,6 +533,22 @@ mod tests {
         emitted.lock().expect("the sink is poisoned").len()
     }
 
+    type Held = Arc<Mutex<Vec<(NonfatalReport, Handed)>>>;
+
+    fn holding() -> (Held, Sink) {
+        let held = Arc::new(Mutex::new(Vec::new()));
+        let sink = Arc::clone(&held);
+        (
+            held,
+            Box::new(move |report, place| {
+                sink.lock()
+                    .expect("the sink is poisoned")
+                    .push((report, place));
+                true
+            }),
+        )
+    }
+
     fn suppressed(report: &NonfatalReport) -> Option<&str> {
         report
             .report
@@ -563,112 +559,127 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_flood_is_coalesced_before_anything_is_queued() {
+    async fn a_flood_retains_one_latest_summary_behind_the_occupied_handoff() {
         let registry = ReporterRegistry::new();
-        let (emitted, sink) = collecting();
+        let (held, sink) = holding();
         let reporter = registry
-            .install(Reporter::new(Duration::from_secs(60), HANDOFF, sink))
+            .install(Reporter::new(HANDOFF, sink))
             .expect("the first installation must be accepted");
         let pushing = registry.get().expect("a producer finds the reporter");
-        for _ in 0..10_000 {
+        assert!(matches!(
+            pushing.push(None, report("shizuku.udp_send", 42)),
+            Pushed::Coalesced
+        ));
+        for _ in 1..10_000 {
             assert!(matches!(
                 pushing.push(None, report("shizuku.udp_send", 42)),
                 Pushed::Coalesced
             ));
         }
-        assert_eq!(count(&emitted), 1);
+        assert_eq!(held.lock().expect("the sink is poisoned").len(), 1);
         drop(pushing);
+        held.lock().expect("the sink is poisoned").remove(0);
         reporter.finish().await.expect("the flush must complete");
-        let emitted = emitted.lock().expect("the sink is poisoned");
-        assert_eq!(emitted.len(), 2);
-        assert_eq!(suppressed(&emitted[1]), Some("9999"));
+        let held = held.lock().expect("the sink is poisoned");
+        assert_eq!(held.len(), 1);
+        assert_eq!(suppressed(&held[0].0), Some("9998"));
     }
 
     #[tokio::test(start_paused = true)]
-    async fn only_the_first_pending_window_wakes_the_window_task() {
-        let (emitted, sink) = collecting();
-        let reporter = Reporter::new(WINDOW, HANDOFF, sink);
+    async fn only_the_first_pending_source_wakes_the_drain_task() {
+        let (held, sink) = holding();
+        let reporter = Reporter::new(HANDOFF, sink);
 
         assert!(matches!(
             reporter.push(None, report("shizuku.udp_send", 42)),
             Pushed::Coalesced
         ));
+        assert!(matches!(
+            reporter.push(None, report("shizuku.udp_send", 42)),
+            Pushed::Coalesced
+        ));
         reporter.state.opened.notified().await;
-
-        for line in [42u32, 77u32] {
-            assert!(matches!(
-                reporter.push(None, report("shizuku.udp_send", line)),
-                Pushed::Coalesced
-            ));
-        }
+        assert!(matches!(
+            reporter.push(None, report("shizuku.udp_send", 77)),
+            Pushed::Coalesced
+        ));
         assert!(
             tokio::time::timeout(Duration::from_millis(1), reporter.state.opened.notified())
                 .await
                 .is_err(),
-            "an existing deadline already wakes the window task",
+            "the drain task already owns the nonempty pending set",
         );
-        assert_eq!(count(&emitted), 2);
+        assert_eq!(held.lock().expect("the sink is poisoned").len(), 1);
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn the_window_task_closes_a_window_and_finish_joins_it() {
+    #[tokio::test]
+    async fn returning_the_handoff_emits_the_latest_summary_and_finish_joins_the_drainer() {
         let registry = ReporterRegistry::new();
-        let (emitted, sink) = collecting();
+        let places: Arc<Mutex<Vec<Handed>>> = Arc::new(Mutex::new(Vec::new()));
+        let (emitted, mut arriving) = tokio::sync::mpsc::unbounded_channel();
+        let sink = Arc::clone(&places);
         let reporter = registry
-            .install(Reporter::new(WINDOW, HANDOFF, sink))
+            .install(Reporter::new(HANDOFF, move |report, place| {
+                sink.lock().expect("the sink is poisoned").push(place);
+                emitted.send(report).is_ok()
+            }))
             .expect("the first installation must be accepted");
         let pushing = registry.get().expect("a producer finds the reporter");
-        for call_id in [7, 8] {
+        for call_id in [7, 8, 9] {
             assert!(matches!(
                 pushing.push(Some(call_id), report("shizuku.echo_send", 11)),
                 Pushed::Coalesced
             ));
         }
-        assert_eq!(count(&emitted), 1);
-        tokio::time::sleep(WINDOW * 2).await;
-        {
-            let emitted = emitted.lock().expect("the sink is poisoned");
-            assert_eq!(emitted.len(), 2);
-            assert_eq!(emitted[1].call_id, Some(8));
-            assert_eq!(suppressed(&emitted[1]), Some("1"));
-        }
+        assert_eq!(
+            arriving.recv().await.expect("the first report").call_id,
+            Some(7)
+        );
+        assert!(arriving.try_recv().is_err());
+        places.lock().expect("the sink is poisoned").remove(0);
+        let summary = arriving
+            .recv()
+            .await
+            .expect("the returned place wakes the batch");
+        assert_eq!(summary.call_id, Some(9));
+        assert_eq!(suppressed(&summary), Some("1"));
+        places.lock().expect("the sink is poisoned").clear();
         reporter.finish().await.expect("the flush must complete");
         assert!(matches!(
             pushing.push(None, report("shizuku.echo_send", 11)),
             Pushed::Closed(_)
         ));
-        tokio::time::sleep(WINDOW * 2).await;
-        assert_eq!(count(&emitted), 2);
+        assert!(arriving.try_recv().is_err());
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn a_pending_window_is_flushed_exactly_once_when_the_conversation_finishes() {
+    #[tokio::test]
+    async fn a_pending_summary_is_flushed_exactly_once_when_the_conversation_finishes() {
         let registry = ReporterRegistry::new();
-        let (emitted, sink) = collecting();
+        let (held, sink) = holding();
         let reporter = registry
-            .install(Reporter::new(WINDOW, HANDOFF, sink))
+            .install(Reporter::new(HANDOFF, sink))
             .expect("the first installation must be accepted");
         let pushing = registry.get().expect("a producer finds the reporter");
-        for _ in 0..2 {
+        for _ in 0..3 {
             assert!(matches!(
                 pushing.push(None, report("shizuku.tun_output", 5)),
                 Pushed::Coalesced
             ));
         }
-        assert_eq!(count(&emitted), 1);
-        tokio::time::advance(WINDOW * 2).await;
+        assert_eq!(held.lock().expect("the sink is poisoned").len(), 1);
+        held.lock().expect("the sink is poisoned").remove(0);
         reporter.finish().await.expect("the flush must complete");
-        let emitted = emitted.lock().expect("the sink is poisoned");
-        assert_eq!(emitted.len(), 2);
-        assert_eq!(suppressed(&emitted[1]), Some("1"));
+        let held = held.lock().expect("the sink is poisoned");
+        assert_eq!(held.len(), 1);
+        assert_eq!(suppressed(&held[0].0), Some("1"));
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn nothing_is_reported_after_the_conversation_finished() {
         let registry = ReporterRegistry::new();
         let (emitted, sink) = collecting();
         let reporter = registry
-            .install(Reporter::new(WINDOW, HANDOFF, sink))
+            .install(Reporter::new(HANDOFF, sink))
             .expect("the first installation must be accepted");
         let racing = registry.get().expect("a producer finds the reporter");
         reporter.finish().await.expect("the flush must complete");
@@ -677,7 +688,6 @@ mod tests {
             racing.push(Some(3), report("shizuku.udp_send", 42)),
             Pushed::Closed(_)
         ));
-        tokio::time::sleep(WINDOW * 3).await;
         assert_eq!(count(&emitted), 0);
         drop(racing);
         assert_eq!(count(&emitted), 0);
@@ -688,10 +698,10 @@ mod tests {
         let registry = ReporterRegistry::new();
         let (emitted, sink) = collecting();
         let reporter = registry
-            .install(Reporter::new(WINDOW, HANDOFF, sink))
+            .install(Reporter::new(HANDOFF, sink))
             .expect("the first installation must be accepted");
         let (refused_emitted, refused_sink) = collecting();
-        let refused = match registry.install(Reporter::new(WINDOW, HANDOFF, refused_sink)) {
+        let refused = match registry.install(Reporter::new(HANDOFF, refused_sink)) {
             Ok(_) => panic!("a second conversation must not install its own reporter"),
             Err(e) => e,
         };
@@ -706,7 +716,7 @@ mod tests {
         reporter.finish().await.expect("the flush must complete");
         let (successor_emitted, successor_sink) = collecting();
         let successor = registry
-            .install(Reporter::new(WINDOW, HANDOFF, successor_sink))
+            .install(Reporter::new(HANDOFF, successor_sink))
             .expect("a finished conversation releases the registration");
         registry
             .get()
@@ -716,13 +726,13 @@ mod tests {
         successor.finish().await.expect("the flush must complete");
     }
 
-    #[tokio::test(start_paused = true)]
+    #[tokio::test]
     async fn a_guard_dropped_without_finishing_ends_the_reporter() {
         let registry = ReporterRegistry::new();
         let (abandoned_emitted, sink) = collecting();
         let abandoned = {
             let _guard = registry
-                .install(Reporter::new(WINDOW, HANDOFF, sink))
+                .install(Reporter::new(HANDOFF, sink))
                 .expect("the first installation must be accepted");
             let handle = registry.get().expect("a producer finds the reporter");
             for _ in 0..2 {
@@ -734,7 +744,10 @@ mod tests {
             handle
         };
         assert!(registry.get().is_none());
-        tokio::time::sleep(WINDOW * 3).await;
+        abandoned
+            .terminal()
+            .await
+            .expect("the guard's finalizer completes");
         assert!(matches!(
             abandoned.push(None, report("shizuku.tun_output", 5)),
             Pushed::Closed(_)
@@ -743,7 +756,7 @@ mod tests {
         drop(abandoned);
         let (emitted, sink) = collecting();
         let successor = registry
-            .install(Reporter::new(WINDOW, HANDOFF, sink))
+            .install(Reporter::new(HANDOFF, sink))
             .expect("an abandoned registration must not outlive its conversation");
         registry
             .get()
@@ -757,7 +770,7 @@ mod tests {
     async fn a_report_the_conversation_could_not_carry_is_returned_by_finish() {
         let registry = ReporterRegistry::new();
         let reporter = registry
-            .install(Reporter::new(WINDOW, HANDOFF, |_: NonfatalReport, _| false))
+            .install(Reporter::new(HANDOFF, |_: NonfatalReport, _| false))
             .expect("the first installation must be accepted");
         registry
             .get()
@@ -777,7 +790,7 @@ mod tests {
         let (emitted, sink) = collecting();
         let guard = runtime.enter();
         let reporter = registry
-            .install(Reporter::new(WINDOW, HANDOFF, sink))
+            .install(Reporter::new(HANDOFF, sink))
             .expect("the first installation must be accepted");
         let handle = registry.get().expect("a producer finds the reporter");
         assert!(matches!(
@@ -794,7 +807,7 @@ mod tests {
         assert_eq!(count(&emitted), 1);
         let (_, successor_sink) = collecting();
         assert!(registry
-            .install(Reporter::new(WINDOW, HANDOFF, successor_sink))
+            .install(Reporter::new(HANDOFF, successor_sink))
             .is_err());
     }
 
@@ -853,7 +866,7 @@ mod tests {
         let registry = ReporterRegistry::new();
         let (parked, sink) = parking();
         let reporter = registry
-            .install(Reporter::new(WINDOW, HANDOFF, sink))
+            .install(Reporter::new(HANDOFF, sink))
             .expect("the first installation must be accepted");
         let pushing = registry.get().expect("a producer finds the reporter");
         let producer = std::thread::spawn(move || {
@@ -869,7 +882,7 @@ mod tests {
             .expect("the producer reaches the sink");
 
         let mut finishing = Box::pin(reporter.finish());
-        tokio::time::timeout(WINDOW * 4, &mut finishing)
+        tokio::time::timeout(WAIT, &mut finishing)
             .await
             .expect_err("a finish must not return while a producer is still emitting");
         assert_eq!(parked.late.load(Ordering::SeqCst), 0);
@@ -891,7 +904,7 @@ mod tests {
         let registry = ReporterRegistry::new();
         let (parked, sink) = parking();
         let reporter = registry
-            .install(Reporter::new(WINDOW, HANDOFF, sink))
+            .install(Reporter::new(HANDOFF, sink))
             .expect("the first installation must be accepted");
         let pushing = registry.get().expect("a producer finds the reporter");
         let producer = std::thread::spawn(move || {
@@ -903,12 +916,12 @@ mod tests {
             .expect("the producer reaches the sink");
 
         let mut finishing = Box::pin(reporter.finish());
-        tokio::time::timeout(WINDOW * 4, &mut finishing)
+        tokio::time::timeout(WAIT, &mut finishing)
             .await
             .expect_err("a finish must not return while a producer is still emitting");
         assert!(registry.get().is_none());
         let (early_emitted, early_sink) = collecting();
-        let refused = match registry.install(Reporter::new(WINDOW, HANDOFF, early_sink)) {
+        let refused = match registry.install(Reporter::new(HANDOFF, early_sink)) {
             Ok(_) => panic!("a successor must not install while a finish is still running"),
             Err(e) => e,
         };
@@ -920,7 +933,7 @@ mod tests {
         producer.join().expect("the producer completes");
         let (emitted, sink) = collecting();
         let successor = registry
-            .install(Reporter::new(WINDOW, HANDOFF, sink))
+            .install(Reporter::new(HANDOFF, sink))
             .expect("a completed finish releases the registration");
         registry
             .get()
@@ -935,9 +948,10 @@ mod tests {
         let registry = ReporterRegistry::new();
         let (parked, sink) = parking();
         let reporter = registry
-            .install(Reporter::new(WINDOW, HANDOFF, sink))
+            .install(Reporter::new(HANDOFF, sink))
             .expect("the first installation must be accepted");
         let pushing = registry.get().expect("a producer finds the reporter");
+        let watching = Arc::clone(&pushing);
         let producer = std::thread::spawn(move || {
             pushing.push(None, report("shizuku.udp_send", 42));
         });
@@ -948,21 +962,24 @@ mod tests {
 
         {
             let mut finishing = Box::pin(reporter.finish());
-            tokio::time::timeout(WINDOW * 4, &mut finishing)
+            tokio::time::timeout(WAIT, &mut finishing)
                 .await
                 .expect_err("the drain has not completed");
         }
         let (_, early_sink) = collecting();
         assert!(registry
-            .install(Reporter::new(WINDOW, HANDOFF, early_sink))
+            .install(Reporter::new(HANDOFF, early_sink))
             .is_err());
 
         parked.release.send(()).expect("the producer is waiting");
         producer.join().expect("the producer completes");
-        tokio::time::sleep(WINDOW * 4).await;
+        watching
+            .terminal()
+            .await
+            .expect("the detached finalizer completes");
         let (emitted, sink) = collecting();
         let successor = registry
-            .install(Reporter::new(WINDOW, HANDOFF, sink))
+            .install(Reporter::new(HANDOFF, sink))
             .expect("a completed finalizer releases the registration");
         registry
             .get()
@@ -977,12 +994,15 @@ mod tests {
     async fn a_finish_dropped_at_the_final_flush_leaves_the_same_finalizer_running() {
         let registry = ReporterRegistry::new();
         let held: Arc<Mutex<Vec<(NonfatalReport, Handed)>>> = Arc::new(Mutex::new(Vec::new()));
+        let arrived = Arc::new(Notify::new());
         let sink = Arc::clone(&held);
+        let sink_arrived = Arc::clone(&arrived);
         let reporter = registry
-            .install(Reporter::new(WINDOW, 1, move |report, permit| {
+            .install(Reporter::new(1, move |report, permit| {
                 sink.lock()
                     .expect("the sink is poisoned")
                     .push((report, permit));
+                sink_arrived.notify_one();
                 true
             }))
             .expect("the first installation must be accepted");
@@ -994,25 +1014,30 @@ mod tests {
             ));
         }
         assert_eq!(held.lock().expect("the sink is poisoned").len(), 1);
+        arrived.notified().await;
 
         {
             let mut finishing = Box::pin(reporter.finish());
-            tokio::time::timeout(WINDOW * 4, &mut finishing)
+            tokio::time::timeout(WAIT, &mut finishing)
                 .await
                 .expect_err("the flush has nowhere to hand its summary");
         }
         let (_, early_sink) = collecting();
         assert!(registry
-            .install(Reporter::new(WINDOW, HANDOFF, early_sink))
+            .install(Reporter::new(HANDOFF, early_sink))
             .is_err());
 
         held.lock().expect("the sink is poisoned").remove(0);
-        tokio::time::sleep(WINDOW * 4).await;
+        arrived.notified().await;
         assert_eq!(held.lock().expect("the sink is poisoned").len(), 1);
         held.lock().expect("the sink is poisoned").clear();
+        pushing
+            .terminal()
+            .await
+            .expect("the detached finalizer completes");
         let (emitted, sink) = collecting();
         let successor = registry
-            .install(Reporter::new(WINDOW, HANDOFF, sink))
+            .install(Reporter::new(HANDOFF, sink))
             .expect("a completed finalizer releases the registration");
         registry
             .get()
@@ -1022,13 +1047,13 @@ mod tests {
         successor.finish().await.expect("the flush must complete");
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn a_blocked_handoff_holds_reports_in_their_windows_across_windows() {
+    #[tokio::test]
+    async fn a_blocked_handoff_retains_one_latest_summary_per_source() {
         let registry = ReporterRegistry::new();
         let held: Arc<Mutex<Vec<(NonfatalReport, Handed)>>> = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&held);
         let reporter = registry
-            .install(Reporter::new(WINDOW, 2, move |report, permit| {
+            .install(Reporter::new(2, move |report, permit| {
                 sink.lock()
                     .expect("the sink is poisoned")
                     .push((report, permit));
@@ -1044,16 +1069,13 @@ mod tests {
             ));
         }
         assert_eq!(held.lock().expect("the sink is poisoned").len(), 2);
-        for _ in 0..5u32 {
-            for _ in 0..10u32 {
-                for line in sites {
-                    assert!(matches!(
-                        pushing.push(None, report("shizuku.udp_send", line)),
-                        Pushed::Coalesced
-                    ));
-                }
+        for _ in 0..50u32 {
+            for line in sites {
+                assert!(matches!(
+                    pushing.push(None, report("shizuku.udp_send", line)),
+                    Pushed::Coalesced
+                ));
             }
-            tokio::time::advance(WINDOW * 2).await;
         }
         assert_eq!(held.lock().expect("the sink is poisoned").len(), 2);
 
@@ -1063,18 +1085,18 @@ mod tests {
         assert_eq!(held.len(), 2);
         for (report, _) in held.iter() {
             assert!(sites.contains(&report.report.line));
-            assert_eq!(suppressed(report), Some("50"));
+            assert_eq!(suppressed(report), Some("49"));
         }
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn freeing_the_one_place_drains_every_waiting_site_without_another_window() {
+    #[tokio::test]
+    async fn freeing_the_one_place_drains_every_waiting_site_in_order() {
         let registry = ReporterRegistry::new();
         let places: Arc<Mutex<Vec<Handed>>> = Arc::new(Mutex::new(Vec::new()));
         let (emitted, mut arriving) = tokio::sync::mpsc::unbounded_channel();
         let sink = Arc::clone(&places);
         let reporter = registry
-            .install(Reporter::new(WINDOW, 1, move |report, place| {
+            .install(Reporter::new(1, move |report, place| {
                 sink.lock().expect("the sink is poisoned").push(place);
                 emitted.send(report).is_ok()
             }))
@@ -1095,25 +1117,18 @@ mod tests {
         assert_eq!(places.lock().expect("the sink is poisoned").len(), 1);
         assert!(arriving.try_recv().is_err());
 
-        tokio::time::advance(WINDOW * 2).await;
         assert!(
             arriving.try_recv().is_err(),
-            "a window that falls due with no room has nowhere to go yet",
+            "an occupied handoff keeps every source pending",
         );
 
         let mut summarised = Vec::new();
         for _ in 0..sites.len() {
-            let released = tokio::time::Instant::now();
             places.lock().expect("the sink is poisoned").remove(0);
             let summary = arriving
                 .recv()
                 .await
                 .expect("a place coming back releases a waiting summary");
-            assert_eq!(
-                tokio::time::Instant::now(),
-                released,
-                "a summary waiting on room must not also wait out another window",
-            );
             summarised.push(summary.report.line);
         }
         summarised.sort_unstable();
@@ -1125,72 +1140,12 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
-    async fn a_writer_slower_than_the_window_still_drains_every_waiting_site() {
-        let registry = ReporterRegistry::new();
-        let places: Arc<Mutex<Vec<Handed>>> = Arc::new(Mutex::new(Vec::new()));
-        let (emitted, mut arriving) = tokio::sync::mpsc::unbounded_channel();
-        let sink = Arc::clone(&places);
-        let reporter = registry
-            .install(Reporter::new(WINDOW, 1, move |report, place| {
-                sink.lock().expect("the sink is poisoned").push(place);
-                emitted.send(report).is_ok()
-            }))
-            .expect("the first installation must be accepted");
-        let pushing = registry.get().expect("a producer finds the reporter");
-        let sites = [42u32, 77u32, 99u32];
-        for line in sites {
-            for _ in 0..2 {
-                assert!(matches!(
-                    pushing.push(None, report("shizuku.udp_send", line)),
-                    Pushed::Coalesced
-                ));
-            }
-        }
-        assert!(sites.contains(
-            &arriving
-                .recv()
-                .await
-                .expect("a site is emitted")
-                .report
-                .line
-        ));
-        assert!(arriving.try_recv().is_err());
-
-        let mut summarised = Vec::new();
-        for _ in 0..sites.len() {
-            tokio::time::advance(WINDOW * 2).await;
-            for line in sites {
-                assert!(matches!(
-                    pushing.push(None, report("shizuku.udp_send", line)),
-                    Pushed::Coalesced
-                ));
-            }
-            places.lock().expect("the sink is poisoned").remove(0);
-            summarised.push(
-                arriving
-                    .recv()
-                    .await
-                    .expect("a place coming back releases a waiting summary")
-                    .report
-                    .line,
-            );
-        }
-        summarised.sort_unstable();
-        assert_eq!(
-            summarised, sites,
-            "each release must go to the site that has waited longest, so none is passed over forever",
-        );
-        // Finishing would wait for the held slot; the next test covers that path.
-        drop(reporter);
-    }
-
-    #[tokio::test(start_paused = true)]
     async fn the_final_flush_waits_for_the_writer_between_summaries() {
         let registry = ReporterRegistry::new();
         let held: Arc<Mutex<Vec<(NonfatalReport, Handed)>>> = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&held);
         let reporter = registry
-            .install(Reporter::new(WINDOW, 1, move |report, permit| {
+            .install(Reporter::new(1, move |report, permit| {
                 sink.lock()
                     .expect("the sink is poisoned")
                     .push((report, permit));
@@ -1212,13 +1167,13 @@ mod tests {
         assert_eq!(taken(&held), 1);
 
         let mut finishing = Box::pin(reporter.finish());
-        tokio::time::timeout(WINDOW * 4, &mut finishing)
+        tokio::time::timeout(WAIT, &mut finishing)
             .await
             .expect_err("the flush must wait for the one permit");
         assert_eq!(taken(&held), 1);
 
         held.lock().expect("the sink is poisoned").remove(0);
-        tokio::time::timeout(WINDOW * 4, &mut finishing)
+        tokio::time::timeout(WAIT, &mut finishing)
             .await
             .expect_err("the flush must wait between summaries");
         assert_eq!(taken(&held), 1);
@@ -1238,7 +1193,7 @@ mod tests {
         let sink = Arc::clone(&held);
         let sink_connected = Arc::clone(&connected);
         let reporter = registry
-            .install(Reporter::new(WINDOW, 1, move |report, permit| {
+            .install(Reporter::new(1, move |report, permit| {
                 if !sink_connected.load(Ordering::SeqCst) {
                     return false;
                 }
@@ -1260,7 +1215,7 @@ mod tests {
         assert_eq!(held.lock().expect("the sink is poisoned").len(), 1);
 
         let mut finishing = Box::pin(reporter.finish());
-        tokio::time::timeout(WINDOW * 4, &mut finishing)
+        tokio::time::timeout(WAIT, &mut finishing)
             .await
             .expect_err("the flush must wait for the one permit");
         connected.store(false, Ordering::SeqCst);

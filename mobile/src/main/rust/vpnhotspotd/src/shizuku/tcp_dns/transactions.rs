@@ -2,8 +2,7 @@
 //!
 //! Each query has one row and one table-polled future, independent of its flow. No task is spawned or
 //! detached: this owner polls and drops each future directly, so shutdown needs neither abort nor join;
-//! Android's work remains unjoinable. Missing rows or waits and uncovered delivery grants are reported as
-//! table invariants.
+//! Android's work remains unjoinable. Missing rows or waits are reported as table invariants.
 use std::collections::HashMap;
 use std::future::Future;
 use std::io;
@@ -13,7 +12,7 @@ use std::task::{Context, Poll};
 use futures_util::stream::FuturesUnordered;
 use futures_util::{FutureExt, StreamExt};
 
-use vpnhotspotd::shared::admission::{logical_footprint, Admission, Denied, Lease};
+use vpnhotspotd::shared::admission::Admission;
 use vpnhotspotd::shared::dns_debt::{self, QueryDebt};
 use vpnhotspotd::shared::dns_wire::resolved;
 use vpnhotspotd::shared::failure::Failure;
@@ -24,25 +23,13 @@ use crate::shizuku::owned::Owned;
 use crate::shizuku::resolver::Resolving;
 use crate::shizuku::tcp_flow::Event;
 
-use super::{exchange_bytes, Delivered, Resolved, DELIVERY_BYTES};
+use super::{Delivered, Resolved};
 
 /// Where a resolver transaction's own failure is reported from when it finished with no owner left to end.
 const INCOMPLETE: &str = "shizuku.tcp_dns.transaction";
 
-/// Where an accounting invariant met while splitting a settled query's delivery is reported from.
-const SPLIT: &str = "shizuku.tcp_dns.delivery_split";
-
 /// Report context for a broken completion/row bijection.
 const MISMATCH: &str = "shizuku.tcp_dns.transaction_mismatch";
-
-/// Conservative upper bound for `FuturesUnordered`'s opaque per-future node overhead: about ten words,
-/// doubled to avoid undercharging. Recheck when `futures-util` changes.
-const COMPLETION_NODE_BYTES: u64 = (std::mem::size_of::<usize>() as u64) * 20;
-
-/// Conservative fixed `FuturesUnordered` overhead: its queue plus one full-size stub node.
-const COMPLETION_STATE_BYTES: u64 = COMPLETION_NODE_BYTES
-    + std::mem::size_of::<Completion>() as u64
-    + (std::mem::size_of::<usize>() as u64) * 10;
 
 fn unreached() -> Failure {
     Failure::platform(io::Error::from(io::ErrorKind::NotConnected))
@@ -56,7 +43,7 @@ enum Awaiting {
     Refused(Option<Failure>),
 }
 
-/// One table-owned query future, charged per row by [Transactions::footprint].
+/// One table-owned query future.
 struct Completion {
     id: u64,
     awaiting: Awaiting,
@@ -95,22 +82,6 @@ impl Pending {
     }
 }
 
-/// Reports a refused delivery split whose original grant still covers the buffers.
-pub(super) fn report_split(transaction: u64, denied: Option<Denied>) {
-    let Some(denied) = denied else {
-        return;
-    };
-    report::message_with_details(
-        SPLIT,
-        "a settled DNS-over-TCP query kept the whole grant its delivery split was refused from",
-        "InvalidData",
-        [
-            ("transaction", transaction.to_string()),
-            ("denied", format!("{denied:?}")),
-        ],
-    );
-}
-
 /// Builds the terminal error for a missing transaction row or wait.
 fn mismatched(transaction: u64, missing: &str) -> io::Error {
     io::Error::other(format!(
@@ -118,15 +89,6 @@ fn mismatched(transaction: u64, missing: &str) -> io::Error {
          make impossible"
     ))
     .with_report_context(MISMATCH)
-}
-
-/// Builds the terminal error for a delivery grant that covers none of its buffers.
-pub(super) fn uncovered(transaction: u64, denied: Denied) -> io::Error {
-    io::Error::other(format!(
-        "a settled DNS-over-TCP query has no grant known to cover its buffers: transaction \
-         {transaction}, {denied:?}"
-    ))
-    .with_report_context(SPLIT)
 }
 
 pub(crate) struct Settlement {
@@ -153,14 +115,8 @@ pub(crate) struct Reserved {
 }
 
 impl Reserved {
-    /// Transaction identity retained for settlement reports.
-    pub(crate) fn id(&self) -> u64 {
-        self.id
-    }
-
-    /// Settles this reservation; the caller owns cleanup for [dns_debt::Split::Uncovered].
-    pub(crate) fn settle(self, admission: &mut Admission, delivery_bytes: u64) -> dns_debt::Split {
-        dns_debt::settle(admission, self.debt, delivery_bytes)
+    pub(crate) fn settle(self, admission: &mut Admission) -> dns_debt::Delivery {
+        dns_debt::settle(admission, self.debt)
     }
 
     pub(crate) fn end(self, admission: &mut Admission) {
@@ -173,32 +129,19 @@ pub(crate) struct Transactions {
     /// One future per row. `None` after shutdown takes the collection; taking avoids
     /// `FuturesUnordered::clear`'s replacement allocation and permits direct iteration.
     completions: Option<FuturesUnordered<Completion>>,
-    // HashMap may round up; only `prepared` rows were charged.
-    prepared: usize,
     next: u64,
-    tables: Lease,
     skipped: u64,
 }
 
 impl Transactions {
-    /// Charges rows, futures, readiness nodes and collection fixed state.
-    pub(crate) fn footprint(queries: usize) -> Option<u64> {
-        let per_completion =
-            (std::mem::size_of::<Completion>() as u64).checked_add(COMPLETION_NODE_BYTES)?;
-        logical_footprint::<(u64, Pending)>(queries)?
-            .checked_add(u64::try_from(queries).ok()?.checked_mul(per_completion)?)?
-            .checked_add(COMPLETION_STATE_BYTES)?
-            .checked_add(std::mem::size_of::<Self>() as u64)
-    }
-
     /// Waits still held; zero after shutdown takes the collection.
     fn waiting(&self) -> usize {
         self.completions.as_ref().map_or(0, |waits| waits.len())
     }
 
-    /// Active invariant: one wait per row, bounded by prepared capacity.
-    fn bounded(&self) -> bool {
-        self.waiting() == self.rows.len() && self.rows.len() <= self.prepared
+    /// Active invariant: one wait per row.
+    fn consistent(&self) -> bool {
+        self.waiting() == self.rows.len()
     }
 
     /// Outstanding queries, used to verify flow closure leaves them untouched.
@@ -206,51 +149,36 @@ impl Transactions {
         self.rows.len()
     }
 
-    pub(crate) fn new(admission: &mut Admission) -> Result<Self, Denied> {
-        // Size and preallocate for the maximum number of queries admission can charge.
-        let prepared = dns_debt::rows(admission);
-        // Reserve before allocating either collection.
-        let bytes = Self::footprint(prepared).ok_or(Denied::Arithmetic)?;
-        let tables = dns_debt::tables(admission, bytes)?;
-        Ok(Self {
-            rows: HashMap::with_capacity(prepared),
+    pub(crate) fn new() -> Self {
+        Self {
+            rows: HashMap::new(),
             completions: Some(FuturesUnordered::new()),
-            prepared,
             next: 0,
-            tables,
             skipped: 0,
-        })
+        }
     }
 
-    /// Releases an empty or already-shutdown table.
-    pub(crate) fn release(self, admission: &mut Admission) {
+    pub(crate) fn release(self) {
         debug_assert!(
             self.waiting() == 0 && self.rows.is_empty(),
-            "every wait and every row is ended before this table's lease goes back"
+            "every wait and every row is ended before this table is released"
         );
         drop(self.rows);
         drop(self.completions);
-        admission.release(self.tables);
     }
     pub(crate) fn reserve(
         &mut self,
         length: usize,
         admission: &mut Admission,
     ) -> Option<(Reserved, Owned)> {
-        if self.rows.len() >= self.prepared {
-            self.skipped += 1;
-            return None;
-        }
         // One checked identity names both the transaction and its eventual delivery.
         let Some(next) = self.next.checked_add(1) else {
             self.skipped += 1;
             return None;
         };
         let id = self.next;
-        // Reserve one descriptor and the query plus worst-case delivery bytes before allocating the query.
-        let Some(debt) =
-            exchange_bytes(length).and_then(|bytes| dns_debt::submit(admission, id, bytes).ok())
-        else {
+        // Reserve one resolver descriptor before allocating the query.
+        let Some(debt) = dns_debt::submit(admission, id).ok() else {
             self.skipped += 1;
             return None;
         };
@@ -267,9 +195,6 @@ impl Transactions {
         admission: &mut Admission,
     ) -> io::Result<Submitted> {
         // Reservation and insertion are separate owner turns.
-        if self.rows.len() >= self.prepared {
-            return Ok(Submitted::Refused(reserved, query));
-        }
         // Shutdown has taken the completion collection, so no platform work can start.
         let Some(completions) = self.completions.as_mut() else {
             return Ok(Submitted::Refused(reserved, query));
@@ -297,7 +222,7 @@ impl Transactions {
             },
         );
         debug_assert!(
-            self.bounded(),
+            self.consistent(),
             "one submitted query owns one wait and one row"
         );
         Ok(Submitted::Outstanding)
@@ -329,7 +254,7 @@ impl Transactions {
             return Poll::Ready(Err(ending));
         };
         debug_assert!(
-            self.bounded(),
+            self.consistent(),
             "a settled query leaves neither a wait nor a row"
         );
         let result = resolved(completed, &pending.message).map(Owned::new);
@@ -363,19 +288,7 @@ impl Transactions {
                 }
             },
         };
-        let delivery = match dns_debt::settle(admission, debt, DELIVERY_BYTES) {
-            dns_debt::Split::Covered(delivery, denied) => {
-                report_split(key, denied);
-                delivery
-            }
-            dns_debt::Split::Uncovered(debt, denied) => {
-                // Drop response and query before abandoning their debt.
-                drop(result);
-                drop(message);
-                dns_debt::abandon(admission, debt);
-                return Err(uncovered(key, denied));
-            }
-        };
+        let delivery = dns_debt::settle(admission, debt);
         Ok(Delivered::new(dns_debt::Settled::delivering(
             delivery,
             Resolved::new(result, Some(message)),
@@ -397,7 +310,7 @@ impl Transactions {
             if row.is_none() {
                 ended = report::keep_first(MISMATCH, ended, Err(mismatched(id, "row")));
             }
-            // Consume any answer before releasing its grant.
+            // Consume any answer before releasing its resolver-descriptor lease.
             let carried = match completed {
                 Some((_, Err(failure))) => failure.ending([("transaction", id)]).err(),
                 Some((_, Ok(_))) | None => None,

@@ -2,13 +2,12 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::time::{Duration, Instant};
 
-use vpnhotspotd::shared::admission::logical_footprint;
-
 use vpnhotspotd::shared::echo_wire::Identity;
 
-/// Timers: an Echo session lives at least 60 seconds. Taken as exactly that, unlike the UDP mapping timeout
-/// where a recommendation sits above the floor: nothing recommends longer for a ping, and a session is consumed
-/// by its own reply anyway, so this only bounds how long an unanswered one occupies a sequence.
+/// Bounds one unanswered translated Echo request's session metadata and rewritten sequence. RFC 5508 section
+/// 3.2 REQ-2 forbids expiry below 60 seconds. On expiry the metadata and sequence are released, a late reply or
+/// error is unmatched, and a later request allocates a fresh sequence on the still-owned family socket.
+/// See https://www.rfc-editor.org/rfc/rfc5508.html#section-3.2.
 const ECHO_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// What one outstanding request is known by upstream: who it went to, and under which substituted sequence.
@@ -43,38 +42,13 @@ pub(crate) enum Found {
 #[derive(Default)]
 pub(crate) struct Sessions {
     sessions: HashMap<Key, Session>,
-    /// How many live sessions this table may hold. Its own number rather than whatever the container rounded
-    /// its request up to: the charge below is taken for this many rows, so this is what policy allows, and
-    /// reading the container's capacity as the bound would let a rounding decision set a resource limit.
-    prepared: usize,
     next_sequence: u16,
 }
 
 impl Sessions {
-    /// Prepares the charged logical maximum; the map's rounded capacity never raises that limit.
-    pub(crate) fn with_capacity(sessions: usize) -> Self {
-        Self {
-            sessions: HashMap::with_capacity(sessions),
-            prepared: sessions,
-            next_sequence: 0,
-        }
-    }
-
-    /// What a table prepared for `sessions` rows costs, whatever is in it. Retained because it was taken for
-    /// the bound rather than for the rows in it, so a session being taken or expiring refunds nothing here.
-    /// The container's own backing is count-bounded rather than charged - see [logical_footprint].
-    pub(crate) fn footprint(sessions: usize) -> Option<u64> {
-        logical_footprint::<(Key, Session)>(sessions)?
-            .checked_add(std::mem::size_of::<Self>() as u64)
-    }
-
-    /// Whether one more session may be inserted: inside the prepared bound, which is the logical maximum this
-    /// table was charged row state for.
-    pub(crate) fn admits(&self) -> bool {
-        self.sessions.len() < self.prepared
-    }
-
-    /// Finds a sequence this remote has no live session under, without creating one.
+    /// Finds a sequence this remote has no live session under, without creating one. The 65,536 attempts are
+    /// exactly the complete 16-bit ICMP Echo Sequence Number space; if all are live, the new request is
+    /// refused until a reply or the RFC-derived expiry releases one.
     pub(crate) fn allocate(&mut self, remote: IpAddr) -> Option<u16> {
         for _ in 0..=u16::MAX {
             let sequence = self.next_sequence;
@@ -130,19 +104,17 @@ impl Sessions {
         }
     }
 
-    /// Drops what has timed out, returning how many went so the caller can refund them. Nothing is awaited: a
-    /// session holds no descriptor, so there is no close to wait for.
+    /// Drops what has timed out, returning how many went for the owner's counter. Nothing is awaited: a session
+    /// holds no descriptor, so there is no close or admission refund to wait for.
     pub(crate) fn expire(&mut self, now: Instant) -> usize {
         let before = self.sessions.len();
         self.sessions.retain(|_, session| session.deadline > now);
         before - self.sessions.len()
     }
 
-    /// Drops everything, returning how many went during session shutdown.
-    pub(crate) fn clear(&mut self) -> usize {
-        let held = self.sessions.len();
+    /// Drops every memory-only session during shutdown.
+    pub(crate) fn clear(&mut self) {
         self.sessions.clear();
-        held
     }
 
     /// The earliest deadline, which is what the owning task sleeps until. None means there is nothing to expire,

@@ -327,6 +327,7 @@ mod tests {
             vec![(DESTINATION, 0, 0)],
             vec![(HOP_BY_HOP, 0, 0)],
             vec![(HOP_BY_HOP, 0, 0), (ROUTING, 0, 0), (DESTINATION, 1, 0)],
+            std::iter::repeat_n((DESTINATION, 0, 0), 128).collect(),
         ] {
             for protocol in [PROTOCOL_UDP, PROTOCOL_TCP] {
                 let packet = wrapped(
@@ -388,11 +389,7 @@ mod tests {
 
     #[test]
     fn inspecting_a_chain_to_a_virtual_address_does_not_relax_what_the_walk_refuses() {
-        for chain in [
-            vec![(ROUTING, 0, 1)],
-            vec![(AUTHENTICATION, 0, 0)],
-            std::iter::repeat_n((DESTINATION, 0, 0), 7).collect(),
-        ] {
+        for chain in [vec![(ROUTING, 0, 1)], vec![(AUTHENTICATION, 0, 0)]] {
             let packet = wrapped(
                 Ipv6Addr::new(0xfd00, 0, 0, 0, 0, 0, 0, 0x53),
                 &chain,

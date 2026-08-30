@@ -2,20 +2,19 @@
 //!
 //! That owner selects on every source at once, biased. Cancellation is the first arm and is answered before
 //! anything else. Bias below that point is what turns a source that is ready every time into starvation of
-//! everything under it: a bounded reply queue bounds memory, not readiness, and a worker refills it the
-//! moment the owner takes one. A pass gives each metered source at most one turn, so a source that is ready
-//! every time is inactive for the rest of that pass however often it is polled.
+//! everything under it: an unbounded reply queue may already contain another event, and a worker can publish
+//! another after the owner takes one. A pass gives each metered source at most one turn, so a source that is
+//! ready every time is inactive for the rest of that pass however often it is polled.
 //!
 //! Not every arm is metered, and the unmetered ones are unmetered for two different reasons. The
 //! configuration channel is prioritized deliberately, because it carries the admission value everything
 //! below it reads: one call is in flight at a time, since the config reader waits for the owner's
 //! acknowledgement before reading another, but it is the app's authenticated control stream that produces
 //! them, so metered dataplane work does not make a run of config calls finite and no ordinary source is
-//! promised a turn against one. The TUN writer's settlement channel and the UDP, Echo and virtual-DNS
-//! completion arms are resource-bounded instead: each one's readiness is produced by the metered sources, so
-//! it drains once those stop being served. Either way this is a bound on turns among the metered sources and
-//! not a wall-clock bound - an unmetered arm can legitimately run several times between two turns of a
-//! metered one.
+//! promised a turn against one. The UDP, Echo and virtual-DNS completion arms are resource-bounded instead:
+//! each one's readiness is produced by the metered sources, so it drains once those stop being served. Either
+//! way this is a bound on turns among the metered sources and not a wall-clock bound - an unmetered arm can
+//! legitimately run several times between two turns of a metered one.
 //!
 //! The pass has to end on *readiness* rather than on having served everyone, because most of these sources
 //! are idle most of the time and one that never becomes ready must not be able to hold a pass open. The owner

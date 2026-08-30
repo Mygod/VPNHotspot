@@ -186,28 +186,23 @@ pub(super) async fn send_response(
     payload: &[u8],
 ) -> Result<(), SendResponseError> {
     let socket = reply_socket.socket().map_err(SendResponseError::Acquire)?;
-    if let Err(initial) = socket.send_to(payload, SocketAddr::V6(target)).await {
-        socket
-            .send_to(payload, SocketAddr::V6(target))
-            .await
-            .map_err(|error| SendResponseError::Retry { initial, error })?;
-    }
-    Ok(())
+    socket
+        .send_to(payload, SocketAddr::V6(target))
+        .await
+        .map(|_| ())
+        .map_err(SendResponseError::Send)
 }
 
 pub(super) enum SendResponseError {
     Acquire(io::Error),
-    Retry {
-        initial: io::Error,
-        error: io::Error,
-    },
+    Send(io::Error),
 }
 
 impl SendResponseError {
-    fn into_report_parts(self) -> (io::Error, Option<io::Error>, &'static str) {
+    fn into_report_parts(self) -> (io::Error, &'static str) {
         match self {
-            Self::Acquire(error) => (error, None, "acquire_socket"),
-            Self::Retry { initial, error } => (error, Some(initial), "retry_send"),
+            Self::Acquire(error) => (error, "acquire_socket"),
+            Self::Send(error) => (error, "send"),
         }
     }
 }
@@ -219,32 +214,24 @@ pub(super) fn report_send_response_error(
     client: SocketAddrV6,
     destination: SocketAddrV6,
 ) {
-    if let SendResponseError::Retry { initial, error } = &error {
-        if is_udp_reply_unreachable(initial) && is_udp_reply_unreachable(error) {
+    if let SendResponseError::Send(error) = &error {
+        if is_udp_reply_unreachable(error) {
             report::stderr!(
-                "{context} dropped: client={client} destination={destination} \
-                 initial_send={initial} retry_send={error}"
+                "{context} dropped: client={client} destination={destination} send={error}"
             );
             return;
         }
     }
-    let (error, initial, stage) = error.into_report_parts();
-    let mut details = vec![
-        ("client", client.to_string()),
-        ("destination", destination.to_string()),
-        ("reply_socket_stage", stage.to_owned()),
-    ];
-    if let Some(initial) = initial {
-        let initial_errno = initial.raw_os_error();
-        details.extend([
-            ("initial_send_kind", format!("{:?}", initial.kind())),
-            ("initial_send_error", initial.to_string()),
-        ]);
-        if let Some(errno) = initial_errno {
-            details.push(("initial_send_errno", errno.to_string()));
-        }
-    }
-    report::io_with_details(context, error, details);
+    let (error, stage) = error.into_report_parts();
+    report::io_with_details(
+        context,
+        error,
+        [
+            ("client", client.to_string()),
+            ("destination", destination.to_string()),
+            ("reply_socket_stage", stage.to_owned()),
+        ],
+    );
 }
 
 fn create_reply_socket(source: SocketAddrV6, mark: u32) -> io::Result<TokioUdpSocket> {

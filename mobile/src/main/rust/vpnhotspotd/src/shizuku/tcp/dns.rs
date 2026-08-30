@@ -23,7 +23,7 @@ impl Engine {
             }
             tcp_dns::Ask::Query(flow) => return self.commit_query(flow, admitting, admission),
             // The transport has written the whole answer into its bridge and dropped both of its own
-            // buffers, so the delivery grant may end. Validated on both halves first: a report naming a
+            // buffers, so its delivery identity may be cleared. Validated on both halves first: a report naming a
             // handle whose flow has been replaced would end the successor's delivery instead of its
             // predecessor's.
             tcp_dns::Ask::Delivered { flow, delivery } => {
@@ -31,15 +31,15 @@ impl Engine {
                 // this owner still holds - handles are reused, so a report from a replaced flow would
                 // otherwise reach its successor - and the delivery says *which answer* it is about, because a
                 // transport asks one question after another and a late acknowledgment for a finished one
-                // would release its successor's grant while those bytes are still being framed.
+                // would clear its successor's identity while those bytes are still being framed.
                 let Some(held) = self.serving(flow) else {
                     self.counters.ingress.stale += 1;
                     return Ok(());
                 };
-                match held.record.serving.acknowledge(admission, delivery) {
+                match held.record.serving.acknowledge(delivery) {
                     dns_debt::Acked::Released => {}
                     // A duplicate, or one whose answer the flow's close already ended, or one naming a
-                    // delivery that is not the parked one. None of them releases anything.
+                    // delivery that is not the parked one. None of them clears current state.
                     dns_debt::Acked::Mismatched | dns_debt::Acked::Absent => {
                         self.counters.ingress.stale += 1
                     }
@@ -124,7 +124,7 @@ impl Engine {
             return Ok(());
         };
         let Some((reserved, query)) = held.record.serving.accept() else {
-            // Nothing was admitted for this transport, so there is no query to publish and no grant to end.
+            // Nothing was admitted for this transport, so there is no query to publish or reservation to end.
             self.counters.ingress.stale += 1;
             return Ok(());
         };
@@ -146,7 +146,7 @@ impl Engine {
             Submitted::Outstanding => self.counters.resolved += 1,
             // No platform work started; return the reservation and answer locally.
             Submitted::Refused(reserved, query) => {
-                self.counters.unprepared += 1;
+                self.counters.unadmitted += 1;
                 self.answer_here(flow, reserved, query, admission)?;
             }
         }
@@ -163,19 +163,19 @@ impl Engine {
     ) -> io::Result<()> {
         self.counters.answered_here += 1;
         let Some(held) = self.flows.get_mut(&flow.handle) else {
-            // Unreachable: validated by the caller with nothing awaited since. The query goes before the
-            // grant that covered it, like every other buffer on this path.
+            // Unreachable: validated by the caller with nothing awaited since. Drop the query before ending
+            // the resolver-descriptor reservation that covered its submission.
             self.counters.ingress.stale += 1;
             drop(query);
             reserved.end(admission);
             return Ok(());
         };
         let serving = &mut held.record.serving;
-        let Some(answering) = tcp_dns::answered_here(reserved, query, serving, admission)? else {
+        let Some(answering) = tcp_dns::answered_here(reserved, query, serving, admission) else {
             // The transport was notified and will terminate the invalid message.
             return Ok(());
         };
-        if answering.hand_over(admission, serving) {
+        if answering.hand_over(serving) {
             self.counters.unsettled += 1;
         }
         Ok(())
@@ -201,25 +201,22 @@ impl Engine {
         // its own failure never reaches here - that ends the session above.
         if !live {
             self.counters.ingress.stale += 1;
-            delivered.discard(admission);
+            delivered.discard();
             return Ok(());
         }
         if !delivered.has_answer() {
             // Nothing was produced at all, so nobody will ever acknowledge these bytes.
-            delivered.discard(admission);
+            delivered.discard();
             return Ok(());
         }
         let Some(flow) = self.flows.get_mut(&asked.handle) else {
-            delivered.discard(admission);
+            delivered.discard();
             return Ok(());
         };
         // One call, and it classifies before it parks and parks before it hands anything over. At most one
         // delivery per flow, because a transport is sequential; anything already there would be a second
-        // answer for a question that was never asked, released inside and counted here.
-        if delivered
-            .answering()
-            .hand_over(admission, &mut flow.record.serving)
-        {
+        // answer for a question that was never asked, replaced inside and counted here.
+        if delivered.answering().hand_over(&mut flow.record.serving) {
             self.counters.unsettled += 1;
         }
         Ok(())

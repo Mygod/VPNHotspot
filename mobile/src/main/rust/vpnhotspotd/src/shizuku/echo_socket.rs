@@ -8,18 +8,11 @@ use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc;
 use vpnhotspotd::shared::workers::{Terminal, Workers};
 
-use vpnhotspotd::shared::admission::{Admission, Class, Denied, Lease, Request};
+use vpnhotspotd::shared::admission::{Admission, Class, Lease};
 use vpnhotspotd::shared::egress_socket;
 
 use crate::report;
-use crate::shizuku::budget::MAX_DATAGRAM;
-use crate::shizuku::egress;
-use crate::shizuku::reply::{
-    receive, reply_channel, reply_channel_bytes, Event, Gate, Sizing, ERROR_OR_READABLE,
-};
-
-/// How many ping sockets can exist at once: one per family, and there are two.
-const FAMILIES: usize = 2;
+use crate::shizuku::reply::{receive, reply_channel, Event, Gate, Sizing, ERROR_OR_READABLE};
 
 /// Which family's ping socket something belongs to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -56,14 +49,13 @@ impl Display for Family {
 /// the rest of the dataplane is unaffected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Refused {
-    /// The aggregate budget is full, so nothing was created.
+    /// Descriptor admission is full, so no socket was created.
     Denied,
     /// The kernel refused the socket itself.
     OpenFailed,
 }
 
-/// One socket's grant: its record and descriptor, and the one maximum datagram its receive task may hold in
-/// the reply queue at a time.
+/// One family socket and the descriptor grant released only after its receive task is joined.
 struct Held {
     socket: Arc<AsyncFd<Socket>>,
     lease: Lease,
@@ -73,42 +65,25 @@ pub(crate) struct Sockets {
     /// One share of each descriptor, beside the task that holds the other. A socket comes back out of here
     /// only once its task has been joined, which is what the release below is keyed to.
     sockets: Workers<Family, Held>,
-    /// The table's own capacity and the reply queue's slots, charged once for the session.
-    tables: Lease,
-    events: mpsc::Sender<Event<Family>>,
+    events: mpsc::UnboundedSender<Event<Family>>,
 }
 
 impl Sockets {
-    pub(crate) fn new(
-        admission: &mut Admission,
-    ) -> Result<(Self, mpsc::Receiver<Event<Family>>), Denied> {
-        // The channel's whole allocation and every payload its slots can hold, charged before any of it
-        // exists. A ping socket's own persistent receive scratch is charged separately, per socket, because it
-        // exists whether or not anything is queued and is not one of these payloads.
-        let bytes = Workers::<Family, Held>::footprint(FAMILIES)
-            .and_then(|table| table.checked_add(reply_channel_bytes::<Family>()?))
-            .ok_or(Denied::Arithmetic)?;
-        let tables = admission.reserve(Request::bytes(bytes, Class::General))?;
-        // Reserved above, allocated here, and in that order deliberately - see
-        // [crate::shizuku::reply::reply_channel].
+    pub(crate) fn new() -> (Self, mpsc::UnboundedReceiver<Event<Family>>) {
         let (events, receiver) = reply_channel::<Family>();
-        Ok((
+        (
             Self {
-                sockets: Workers::with_capacity("shizuku.echo_socket", FAMILIES),
-                tables,
+                sockets: Workers::new("shizuku.echo_socket"),
                 events,
             },
             receiver,
-        ))
+        )
     }
 
-    /// Releases the table's own capacity, after every socket in it has been settled.
-    /// Gives this owner's retained capacity back, once everything it covers is physically gone.
-    pub(crate) fn release(self, echoes: mpsc::Receiver<Event<Family>>, admission: &mut Admission) {
+    pub(crate) fn release(self, echoes: mpsc::UnboundedReceiver<Event<Family>>) {
         drop(self.sockets);
         drop(self.events);
         drop(echoes);
-        admission.release(self.tables);
     }
 
     /// The socket to send this family's requests on, opening it if this is the first.
@@ -120,26 +95,11 @@ impl Sockets {
         if let Some(held) = self.sockets.get(&family) {
             return Ok(Arc::clone(&held.record.socket));
         }
-        // The table was prepared for both families at session start, so this cannot be full; checking anyway
-        // keeps the "admitted then allocated" order true rather than assumed.
+        // A duplicate family is checked before taking a descriptor grant or opening anything.
         if self.sockets.admits(&family).is_err() {
             return Err(Refused::Denied);
         }
-        // One record for the descriptor, plus this socket's own persistent receive scratch. A ping socket
-        // will not report a datagram's length, so it holds one maximum-sized buffer for its whole life -
-        // charged here, per socket, and distinct from the queued payload copies, which come out of the one
-        // queue reservation above. The two are different memory: the scratch is read into, the payload is
-        // copied out of it.
-        let Some(bytes) = (MAX_DATAGRAM as u64).checked_add(egress::ErrorQueue::footprint()) else {
-            return Err(Refused::Denied);
-        };
-        let Ok(lease) = admission.reserve(Request {
-            records: 1,
-            record_class: Class::General,
-            bytes,
-            byte_class: Class::General,
-            ..Request::default()
-        }) else {
+        let Ok(lease) = admission.reserve(Class::General) else {
             return Err(Refused::Denied);
         };
         let socket = match self.bind(family) {
@@ -152,11 +112,9 @@ impl Sockets {
                 return Err(Refused::OpenFailed);
             }
         };
-        // Issued *after* the socket exists, and under the grant that already covers both. One socket, one
-        // identity, one task: an Echo socket's opaque runtime cells are the `AsyncFd` registration inside the
-        // `Arc` above, this identity's cancellation node, and the task admitted below. All three are taken
-        // after the grant, one per socket record, and count-bounded rather than byte-charged. There is no
-        // oneshot on this path.
+        // Issued *after* the socket exists, under its one-descriptor grant. One socket, one identity, one
+        // task: an Echo socket's opaque runtime cells are the `AsyncFd` registration inside the `Arc` above,
+        // this identity's cancellation node, and the task admitted below. There is no oneshot on this path.
         let Ok(identity) = self.sockets.identity() else {
             // The socket goes before the grant that pays for its record does. Left to fall out of scope it
             // would be a descriptor still open while its capacity had already been handed back.

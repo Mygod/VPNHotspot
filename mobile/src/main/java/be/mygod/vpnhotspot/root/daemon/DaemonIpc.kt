@@ -10,10 +10,9 @@ import java.io.IOException
 
 object DaemonIpc {
     /**
-     * Matches Android's documented Binder transaction buffer size. AOSP's hidden
-     * `IBinder.MAX_IPC_SIZE` is only the smaller suggested per-call cap.
+     * Largest payload whose four-byte-prefixed app-UID handoff size is arithmetically representable by `Int`.
      */
-    const val MAX_FRAME_SIZE = 1024 * 1024
+    const val MAX_FRAME_SIZE = Int.MAX_VALUE - Int.SIZE_BYTES
 
     suspend fun readFrame(input: ByteReadChannel): ByteArray {
         val length = input.readInt()
