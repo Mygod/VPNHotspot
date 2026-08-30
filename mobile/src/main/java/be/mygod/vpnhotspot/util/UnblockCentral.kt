@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.util
 import android.annotation.SuppressLint
 import android.net.ConnectivityManager
 import android.net.IConnectivityManager
+import android.net.IIntResultListener
 import android.net.ITetheringConnector
 import android.net.MacAddress
 import android.net.NetworkRequest
@@ -17,11 +18,13 @@ import android.net.wifi.`WifiManager$SoftApCallback`
 import android.net.wifi.p2p.WifiP2pConfig
 import android.os.Build
 import android.os.IBinder
+import android.os.IInterface
 import android.os.Looper
 import android.service.quicksettings.TileService
 import androidx.annotation.RequiresApi
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import timber.log.Timber
+import java.lang.reflect.Modifier
 import java.util.concurrent.Executor
 
 /**
@@ -151,6 +154,7 @@ object UnblockCentral {
     /**
      * Exact service-returned request handle. It classifies issuance and survives until direct privileged
      * release; the public unregister wrapper discards the callback mapping on any normal RPC return.
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/core/java/android/net/ConnectivityManager.java#3493
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/ConnectivityManager.java#4189
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/ConnectivityManager.java#4858
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/ConnectivityManager.java#4783
@@ -159,53 +163,121 @@ object UnblockCentral {
     val NetworkCallback_networkRequest by lazy {
         init
         ConnectivityManager.NetworkCallback::class.java.getDeclaredField("networkRequest").apply {
+            if (type != NetworkRequest::class.java) throw NoSuchFieldException(
+                "NetworkCallback.networkRequest has type ${type.name}")
             isAccessible = true
         }
     }
 
     /**
      * Preflight for the typed direct release, resolved before the session mutates anything.
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/core/java/android/net/IConnectivityManager.aidl#186
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/IConnectivityManager.aidl#169
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/IConnectivityManager.aidl#174
      */
-    @get:RequiresApi(33)
+    @get:RequiresApi(30)
     val IConnectivityManager_releaseNetworkRequest by lazy {
         init
         IConnectivityManager::class.java.getDeclaredMethod("releaseNetworkRequest",
-            NetworkRequest::class.java)
+            NetworkRequest::class.java).apply {
+            if (returnType != Void.TYPE) throw NoSuchMethodException(
+                "releaseNetworkRequest returns ${returnType.name}")
+        }
     }
 
     /**
-     * Its sole constructor supplies the possibly jarjar-relocated TestNetwork interface runtime name.
+     * Preflight for starting the TestNetwork service before the session mutates anything.
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/core/java/android/net/IConnectivityManager.aidl#231
      */
-    val TestNetworkManager_constructor by lazy {
+    @get:RequiresApi(30)
+    val IConnectivityManager_startOrGetTestNetworkService by lazy {
         init
-        TestNetworkManager::class.java.declaredConstructors.single().apply { isAccessible = true }
+        IConnectivityManager::class.java.getDeclaredMethod("startOrGetTestNetworkService").apply {
+            if (returnType != IBinder::class.java) throw NoSuchMethodException(
+                "startOrGetTestNetworkService returns ${returnType.name}")
+        }
     }
-    /** Resolves `$Stub.asInterface` from [TestNetworkManager_constructor]'s runtime parameter class. */
-    val ITestNetworkManager_asInterface by lazy {
+
+    /**
+     * Selects the constructor whose one interface parameter has a matching `$Stub.asInterface`.
+     * Unrelated additive constructors therefore do not change the selected runtime bridge.
+     */
+    private val TestNetworkManager_bridge by lazy {
         init
-        val iface = TestNetworkManager_constructor.parameterTypes.single()
-        Class.forName("${iface.name}\$Stub", true, iface.classLoader)
-            .getDeclaredMethod("asInterface", IBinder::class.java).apply { isAccessible = true }
+        val declared = TestNetworkManager::class.java.declaredConstructors
+        val compatible = declared.mapNotNull { constructor ->
+            if (constructor.parameterCount != 1) return@mapNotNull null
+            val iface = constructor.parameterTypes.single()
+            if (!iface.isInterface || !IInterface::class.java.isAssignableFrom(iface)) {
+                return@mapNotNull null
+            }
+            val asInterface = try {
+                Class.forName("${iface.name}\$Stub", true, iface.classLoader)
+                    .getDeclaredMethod("asInterface", IBinder::class.java)
+            } catch (_: ClassNotFoundException) {
+                return@mapNotNull null
+            } catch (_: NoSuchMethodException) {
+                return@mapNotNull null
+            }
+            if (!Modifier.isStatic(asInterface.modifiers) ||
+                !iface.isAssignableFrom(asInterface.returnType)) return@mapNotNull null
+            constructor.apply { isAccessible = true } to asInterface.apply { isAccessible = true }
+        }
+        if (compatible.size != 1) throw NoSuchMethodException(
+            "Expected one TestNetworkManager interface bridge, found ${compatible.size}; declared: " +
+                    declared.joinToString { it.toGenericString() })
+        compatible.single()
     }
+    val TestNetworkManager_constructor get() = TestNetworkManager_bridge.first
+    val ITestNetworkManager_asInterface get() = TestNetworkManager_bridge.second
 
     /**
      * Derives the connector Stub from the already-resolved interface rather than assuming relocation.
      */
-    @get:RequiresApi(33)
+    @get:RequiresApi(30)
     val ITetheringConnector_asInterface by lazy {
         init
         Class.forName("${ITetheringConnector::class.java.name}\$Stub")
-            .getDeclaredMethod("asInterface", IBinder::class.java).apply { isAccessible = true }
+            .getDeclaredMethod("asInterface", IBinder::class.java).apply {
+                if (!Modifier.isStatic(modifiers) ||
+                    !ITetheringConnector::class.java.isAssignableFrom(returnType)) {
+                    throw NoSuchMethodException("Incompatible ITetheringConnector.Stub.asInterface")
+                }
+                isAccessible = true
+            }
+    }
+
+    /**
+     * This method can arrive through a newer tethering APEX on an older base release. Retaining the
+     * reflected [java.lang.reflect.Method] also keeps the optional invokeinterface edge out of DEX.
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-mainline-12.0.0_r19/Tethering/common/TetheringLib/src/android/net/ITetheringConnector.aidl#53
+     */
+    @get:RequiresApi(30)
+    val ITetheringConnector_setPreferTestNetworks by lazy {
+        init
+        ITetheringConnector::class.java.getDeclaredMethod("setPreferTestNetworks",
+            Boolean::class.javaPrimitiveType, IIntResultListener::class.java).apply {
+                if (returnType != Void.TYPE) throw NoSuchMethodException(
+                    "setPreferTestNetworks returns ${returnType.name}")
+                isAccessible = true
+            }
     }
 
     @get:RequiresApi(30)
     val TetheringManager_ConnectorConsumer by lazy { Class.forName("android.net.TetheringManager\$ConnectorConsumer") }
     @get:RequiresApi(30)
+    val TetheringManager_ConnectorConsumer_onConnectorAvailable by lazy {
+        TetheringManager_ConnectorConsumer.getDeclaredMethod(
+            "onConnectorAvailable", ITetheringConnector::class.java).apply {
+            if (returnType != Void.TYPE) throw NoSuchMethodException(
+                "onConnectorAvailable returns ${returnType.name}")
+        }
+    }
+    @get:RequiresApi(30)
     val TetheringManager_getConnector by lazy {
         init
         TetheringManager::class.java.getDeclaredMethod("getConnector", TetheringManager_ConnectorConsumer).apply {
+            if (returnType != Void.TYPE) throw NoSuchMethodException("getConnector returns ${returnType.name}")
             isAccessible = true
         }
     }

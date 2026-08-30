@@ -117,7 +117,8 @@
         <service
             android:name=".ShizukuTetheringService"
             android:directBootAware="true"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="specialUse"
+            tools:targetApi="30">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keep the test network and packet daemon alive while rootless VPN tethering is active" />

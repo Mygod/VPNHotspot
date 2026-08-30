@@ -9,9 +9,12 @@ import android.net.NetworkCapabilities
 import android.net.`NetworkCapabilities$Builder`
 import android.net.NetworkRequest
 import android.net.RouteInfo
+import android.net.TestNetworkInterface
 import android.net.TestNetworkManager
 import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.os.ext.SdkExtensions
+import androidx.annotation.RequiresApi
 import androidx.annotation.StringRes
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.R
@@ -41,6 +44,7 @@ import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import okio.ByteString.Companion.toByteString
+import java.lang.reflect.Modifier
 import java.net.InetAddress
 import java.net.NetworkInterface
 
@@ -49,6 +53,8 @@ import java.net.NetworkInterface
  * the app-UID daemon. Tethering itself is never started or cycled; only its global test-network preference
  * is changed and later cleared.
  */
+@SuppressLint("ObsoleteSdkInt")
+@RequiresApi(30)
 object ShizukuTestNetwork {
     /** RFC 5737 TEST-NET-1 keeps the synthetic IPv4 connected prefix unroutable on the Internet. */
     private const val TUN_IPV4_ADDRESS = "192.0.2.1"
@@ -67,32 +73,46 @@ object ShizukuTestNetwork {
     private const val EXACT_REQUEST_LIFETIME_MILLIS = 60_000
 
     /**
-     * `NetworkCapabilities.TRANSPORT_TEST`, blocked and 7 on Android 13 and 17.
+     * `NetworkCapabilities.TRANSPORT_TEST`, blocked and 7 on Android 11-17.
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/core/java/android/net/NetworkCapabilities.java#767
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/NetworkCapabilities.java#1799
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/NetworkCapabilities.java#2278
      */
     private const val TRANSPORT_TEST = 7
     /**
-     * `NET_CAPABILITY_NOT_VCN_MANAGED`, test API and 28 on Android 13 and 17.
+     * `NET_CAPABILITY_NOT_VCN_MANAGED`, test API and 28 on Android 12-17.
+     * The integer is also passed on Android 11; IllegalArgumentException is the runtime availability probe.
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-12.0.0_r1/framework/src/android/net/NetworkCapabilities.java#474
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/NetworkCapabilities.java#360
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/NetworkCapabilities.java#434
      */
     private const val NET_CAPABILITY_NOT_VCN_MANAGED = 28
     /**
-     * `ConnectivityManager.TYPE_TEST`, blocked and 18 on Android 13 and 17.
+     * `NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED`, public and 37 when the runtime supports it.
+     * The integer is used for a behavioral probe so U extension 16 can expose it on an older base SDK.
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-16.0.0_r1/framework/src/android/net/NetworkCapabilities.java#754
+     */
+    private const val NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED = 37
+    /**
+     * `ConnectivityManager.TYPE_TEST`, blocked and 18 on Android 11-17.
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/core/java/android/net/ConnectivityManager.java#707
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/ConnectivityManager.java#345
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/ConnectivityManager.java#369
      */
     private const val TYPE_TEST = 18
     /**
-     * The deprecated specifier builder produces this hidden type only after `TRANSPORT_TEST` is added.
+     * The deprecated string builder produces StringNetworkSpecifier on Android 11 and
+     * TestNetworkSpecifier on Android 12+ after `TRANSPORT_TEST` is added.
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/core/java/android/net/NetworkRequest.java#319
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/NetworkRequest.java#419
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/NetworkRequest.java#559
      */
+    private const val STRING_NETWORK_SPECIFIER_CLASS = "android.net.StringNetworkSpecifier"
     private const val TEST_NETWORK_SPECIFIER_CLASS = "android.net.TestNetworkSpecifier"
 
     /**
-     * `LinkAddress(InetAddress, int)`, test API across Android 13-17.
+     * `LinkAddress(InetAddress, int)`, test API across Android 11-17.
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/core/java/android/net/LinkAddress.java#293
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/LinkAddress.java#287
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/LinkAddress.java#285
      */
@@ -101,7 +121,16 @@ object ShizukuTestNetwork {
         LinkAddress::class.java.getDeclaredConstructor(InetAddress::class.java, Int::class.javaPrimitiveType)
     }
     /**
-     * `RouteInfo(IpPrefix, InetAddress, String, int)`, test API across Android 13-17.
+     * `IpPrefix(InetAddress, int)`, system/test API on Android 11 and public API on Android 13+.
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/core/java/android/net/IpPrefix.java#90
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/IpPrefix.java#91
+     */
+    private val constructorIpPrefix by lazy {
+        IpPrefix::class.java.getDeclaredConstructor(InetAddress::class.java, Int::class.javaPrimitiveType)
+    }
+    /**
+     * `RouteInfo(IpPrefix, InetAddress, String, int)`, test API across Android 11-17.
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/core/java/android/net/RouteInfo.java#139
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/RouteInfo.java#146
      * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/RouteInfo.java#146
      */
@@ -109,6 +138,100 @@ object ShizukuTestNetwork {
         RouteInfo::class.java.getDeclaredConstructor(IpPrefix::class.java, InetAddress::class.java,
             String::class.java, Int::class.javaPrimitiveType)
     }
+    /**
+     * `RouteInfo.RTN_UNICAST`, system/test API and 1 on Android 11, public API on current releases.
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/core/java/android/net/RouteInfo.java#88
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/RouteInfo.java#89
+     */
+    private val routeTypeUnicast by lazy {
+        RouteInfo::class.java.getDeclaredField("RTN_UNICAST").apply { isAccessible = true }.getInt(null)
+    }
+
+    private fun unsupported(message: String, expected: Boolean, evidence: Throwable) =
+        UnsupportedDeviceException(message, expected).apply {
+            addSuppressed(evidence)
+            val module = try {
+                val application = TetheringManagerCompat.resolvedService.serviceInfo.applicationInfo
+                "baseSdk=${Build.VERSION.SDK_INT}; tetheringPackage=${application.packageName}; " +
+                        "tetheringVersion=${app.packageManager.getPackageInfo(
+                            application.packageName, 0).longVersionCode}; source=${application.sourceDir}"
+            } catch (e: Exception) {
+                "baseSdk=${Build.VERSION.SDK_INT}; tetheringService=${e.javaClass.name}: ${e.message}"
+            }
+            addSuppressed(IllegalStateException(module))
+        }
+
+    private inline fun probe(message: String, expected: Boolean, block: () -> Unit) = try {
+        block()
+        null
+    } catch (e: ReflectiveOperationException) {
+        unsupported(message, expected, e)
+    } catch (e: LinkageError) {
+        unsupported(message, expected, e)
+    } catch (e: SecurityException) {
+        unsupported(message, expected = false, e)
+    } catch (e: IllegalStateException) {
+        unsupported(message, expected = false, e)
+    }
+
+    /** Required runtime shapes are immutable for this process, but not implied by the base SDK. */
+    private val compatibilityFailure by lazy @SuppressLint("BlockedPrivateApi") {
+        var failure = if (Build.VERSION.SDK_INT < 30) UnsupportedDeviceException(
+            "Shizuku mode requires Android 11", expected = true) else null
+        if (failure == null) failure = probe(
+            "The installed tethering module does not support Shizuku mode",
+            Build.VERSION.SDK_INT < 33) {
+            UnblockCentral.ITetheringConnector_setPreferTestNetworks
+        }
+        if (failure == null) failure = probe(
+            "This Android build has an incompatible TestNetwork API", expected = false) {
+            UnblockCentral.ConnectivityManager_mContext
+            UnblockCentral.ConnectivityManager_mService
+            UnblockCentral.ConnectivityManager_sInstance
+            UnblockCentral.IConnectivityManager_releaseNetworkRequest
+            UnblockCentral.IConnectivityManager_startOrGetTestNetworkService
+            UnblockCentral.NetworkCallback_networkRequest
+            UnblockCentral.TestNetworkManager_constructor
+            UnblockCentral.ITestNetworkManager_asInterface
+            UnblockCentral.ITetheringConnector_asInterface
+            UnblockCentral.TetheringManager_ConnectorConsumer
+            UnblockCentral.TetheringManager_ConnectorConsumer_onConnectorAvailable
+            UnblockCentral.TetheringManager_getConnector
+            UnblockCentral.UNIXProcess_pid
+            TestNetworkManager::class.java.getDeclaredMethod("createTunInterface",
+                Array<LinkAddress>::class.java).also {
+                check(Modifier.isPublic(it.modifiers) && !Modifier.isStatic(it.modifiers) &&
+                        it.returnType == TestNetworkInterface::class.java) {
+                    "Incompatible TestNetworkManager.createTunInterface"
+                }
+            }
+            TestNetworkInterface::class.java.getDeclaredMethod("getInterfaceName").also {
+                check(Modifier.isPublic(it.modifiers) && !Modifier.isStatic(it.modifiers) &&
+                        it.returnType == String::class.java) {
+                    "Incompatible TestNetworkInterface.getInterfaceName"
+                }
+            }
+            TestNetworkInterface::class.java.getDeclaredMethod("getFileDescriptor").also {
+                check(Modifier.isPublic(it.modifiers) && !Modifier.isStatic(it.modifiers) &&
+                        it.returnType == ParcelFileDescriptor::class.java) {
+                    "Incompatible TestNetworkInterface.getFileDescriptor"
+                }
+            }
+            `NetworkCapabilities$Builder`::class.java.getDeclaredConstructor()
+            constructorLinkAddress
+            constructorIpPrefix
+            constructorRouteInfo
+            routeTypeUnicast
+            RestrictedAgent.lifecycleCallbacks
+        }
+        failure?.let { if (it.expected) Timber.d(it) else Timber.w(it) }
+        failure
+    }
+
+    internal val supported get() = Build.VERSION.SDK_INT >= 30 && compatibilityFailure == null
+
+    internal fun expectsBandwidthCapability(sdk: Int, uExtension: Int) =
+        sdk >= 36 || sdk >= 34 && uExtension >= 16
 
     enum class State(@StringRes val label: Int) {
         ARMED(R.string.shizuku_state_armed),
@@ -191,7 +314,7 @@ object ShizukuTestNetwork {
 
     /** Performs non-mutating gates; the returned closure begins publication under the accepted lifespan. */
     internal suspend fun prepare(): suspend () -> Unit {
-        check(Build.VERSION.SDK_INT >= 33) { "Shizuku mode requires Android 13" }
+        compatibilityFailure?.let { throw it }
         val lifespan = currentCoroutineContext().job
         // Authorization may wait for user input, so run independent gates concurrently.
         lateinit var epoch: ShizukuEpoch
@@ -218,6 +341,7 @@ object ShizukuTestNetwork {
     private suspend fun publish(epoch: ShizukuEpoch, lifespan: Job) {
         // Resolve cleanup and child-PID reflection before the first external mutation.
         UnblockCentral.IConnectivityManager_releaseNetworkRequest
+        UnblockCentral.IConnectivityManager_startOrGetTestNetworkService
         UnblockCentral.NetworkCallback_networkRequest
         UnblockCentral.UNIXProcess_pid
         val privileged = PrivilegedConnectivity.create(epoch)
@@ -307,25 +431,31 @@ object ShizukuTestNetwork {
                 .setNetworkSpecifier(current.interfaceName)
                 .build()
             val specifier = checkNotNull(request.networkSpecifier) { "Request lost its specifier" }
-            check(specifier.javaClass.name == TEST_NETWORK_SPECIFIER_CLASS) {
-                "Expected $TEST_NETWORK_SPECIFIER_CLASS but built ${specifier.javaClass.name}"
+            check(specifier.javaClass.name == STRING_NETWORK_SPECIFIER_CLASS ||
+                    specifier.javaClass.name == TEST_NETWORK_SPECIFIER_CLASS) {
+                "Expected a TestNetwork string specifier but built ${specifier.javaClass.name}"
             }
-            val capabilities = `NetworkCapabilities$Builder`()
+            val capabilitiesBuilder = `NetworkCapabilities$Builder`()
                 .addTransportType(TRANSPORT_TEST)
                 .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
                 .removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
                 .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED)
-                .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
                 .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
                 .setNetworkSpecifier(specifier)
-                .also {
-                    try {
-                        it.addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED)
-                    } catch (e: IllegalArgumentException) {
-                        if (Build.VERSION.SDK_INT >= 37) Timber.w(e)
-                    }
+            try {
+                capabilitiesBuilder.addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
+            } catch (e: IllegalArgumentException) {
+                if (Build.VERSION.SDK_INT >= 31) Timber.w(e)
+            }
+            try {
+                capabilitiesBuilder.addCapability(NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED)
+            } catch (e: IllegalArgumentException) {
+                if (expectsBandwidthCapability(Build.VERSION.SDK_INT,
+                        SdkExtensions.getExtensionVersion(34))) {
+                    Timber.w(e)
                 }
-                .build()
+            }
+            val capabilities = capabilitiesBuilder.build()
             val properties = LinkProperties().apply {
                 interfaceName = current.interfaceName
                 val addresses = checkNotNull(NetworkInterface.getByName(current.interfaceName)) {
@@ -335,11 +465,11 @@ object ShizukuTestNetwork {
                 }
                 setLinkAddresses(addresses)
                 for (address in addresses) addRoute(constructorRouteInfo.newInstance(
-                    IpPrefix(address.address, address.prefixLength), null, current.interfaceName,
-                    RouteInfo.RTN_UNICAST))
+                    constructorIpPrefix.newInstance(address.address, address.prefixLength), null,
+                    current.interfaceName, routeTypeUnicast))
                 for (any in arrayOf("0.0.0.0", "::")) addRoute(constructorRouteInfo.newInstance(
-                    IpPrefix(InetAddress.getByName(any), 0), null, current.interfaceName,
-                    RouteInfo.RTN_UNICAST))
+                    constructorIpPrefix.newInstance(InetAddress.getByName(any), 0), null,
+                    current.interfaceName, routeTypeUnicast))
                 setDnsServers(listOf(InetAddress.getByName(VIRTUAL_DNS_IPV4),
                     InetAddress.getByName(VIRTUAL_DNS_IPV6)))
                 mtu = TEST_NETWORK_MTU
@@ -393,22 +523,23 @@ object ShizukuTestNetwork {
         lateinit var readback: LinkProperties
         try {
             coroutineScope {
-                listOf(
-                    async<Unit>(start = CoroutineStart.UNDISPATCHED) {
+                buildList {
+                    if (RestrictedAgent.lifecycleCallbacks) add(async<Unit>(
+                        start = CoroutineStart.UNDISPATCHED) {
                         awaitNetworkRequest(agent.created, callback.unavailable)
-                    },
-                    async<Unit>(start = CoroutineStart.UNDISPATCHED) {
+                    })
+                    add(async<Unit>(start = CoroutineStart.UNDISPATCHED) {
                         check(awaitNetworkRequest(callback.available, callback.unavailable) == network) {
                             "Request matched a different network than the one published"
                         }
-                    },
-                    async<Unit>(start = CoroutineStart.UNDISPATCHED) {
+                    })
+                    add(async<Unit>(start = CoroutineStart.UNDISPATCHED) {
                         published = awaitNetworkRequest(callback.capabilities, callback.unavailable)
-                    },
-                    async<Unit>(start = CoroutineStart.UNDISPATCHED) {
+                    })
+                    add(async<Unit>(start = CoroutineStart.UNDISPATCHED) {
                         readback = awaitNetworkRequest(callback.properties, callback.unavailable)
-                    },
-                ).awaitAll()
+                    })
+                }.awaitAll()
             }
         } catch (e: NetworkRequestExpiredException) {
             current.request.expired()
@@ -431,7 +562,9 @@ object ShizukuTestNetwork {
         check(readback.routes.containsAll(properties.routes)) { "Lost routes" }
         check(readback.dnsServers.containsAll(properties.dnsServers)) { "Lost DNS servers" }
         check(!callback.lost.isCompleted) { "The request lost its network during startup" }
-        check(!agent.destroyed.isCompleted) { "The test network was destroyed during startup" }
+        if (RestrictedAgent.lifecycleCallbacks) {
+            check(!agent.destroyed.isCompleted) { "The test network was destroyed during startup" }
+        }
         current.network = network
         val committed = current.commit()
         current.state = committed
@@ -447,7 +580,9 @@ object ShizukuTestNetwork {
                     app.getText(R.string.shizuku_failure_tethering_died)
                 }
                 daemon.ended.onAwait { it?.readableMessage ?: app.getText(R.string.shizuku_failure_daemon) }
-                agent.destroyed.onAwait { app.getText(R.string.shizuku_failure_network) }
+                if (RestrictedAgent.lifecycleCallbacks) {
+                    agent.destroyed.onAwait { app.getText(R.string.shizuku_failure_network) }
+                }
                 callback.lost.onAwait { app.getText(R.string.shizuku_failure_network) }
                 current.failed.onAwait { it.readableMessage }
             }
@@ -524,11 +659,14 @@ object ShizukuTestNetwork {
                         val unregistered = try {
                             session.agent.unregistering()?.unregister()
                             session.agent.awaiting?.let { agent ->
-                                // Agent-Binder ordering makes the post-`unwanted` `created` check exact.
-                                // Request callbacks use another Binder, so `lost` is best-effort;
-                                // `destroyed` fences TUN closure.
+                                // When the runtime exposes the lifecycle pair, agent-Binder ordering
+                                // makes the post-`unwanted` `created` check exact, and `destroyed`
+                                // fences TUN closure. Without it, unwanted plus request lost is the
+                                // strongest available withdrawal observation.
                                 agent.unwanted.await()
-                                if (agent.created.isCompleted) agent.destroyed.await()
+                                if (RestrictedAgent.lifecycleCallbacks && agent.created.isCompleted) {
+                                    agent.destroyed.await()
+                                }
                                 session.request.value?.callback?.let { callback ->
                                     if (callback.available.isCompleted) callback.lost.await()
                                 }

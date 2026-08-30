@@ -87,6 +87,7 @@ import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.shizuku.ShizukuTestNetwork
 import be.mygod.vpnhotspot.net.wifi.VendorData
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.Services
@@ -298,7 +299,7 @@ fun TetheringScreen(
                         onCheckedChange = if (onConfigureTemporaryHotspot == null) null else toggleLocalOnly,
                     )
                 }
-                if (Build.VERSION.SDK_INT >= 33) row(R.string.shizuku_tethering) {
+                if (Build.VERSION.SDK_INT >= 30 && ShizukuTestNetwork.supported) row(R.string.shizuku_tethering) {
                     val shizuku by ShizukuTetheringService.status.collectAsStateWithLifecycle(
                         ShizukuTetheringService.Status(null, on = false))
                     TetheringRow(

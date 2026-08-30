@@ -3,7 +3,9 @@
 Shizuku mode shares the app UID's ordinary Android network policy with tethered
 clients without root. It publishes a restricted `TRANSPORT_TEST` network over
 an app-owned TUN, asks Android tethering to prefer it, and relays traffic from
-an app-UID child process. It requires Android 13 (API 33) or later.
+an app-UID child process. It can run on Android 11 (API 30) or later only when
+the installed Mainline modules expose the complete runtime-probed API shape;
+the base SDK level alone does not establish availability.
 
 This is one global upstream mode. It neither owns nor starts downstream
 tethering. Shizuku privilege is used only for Android control operations; the
@@ -57,7 +59,10 @@ descriptor can survive.
 
 Privileged operations use a pinned Shizuku publication and effective UID. A
 permission answer is accepted only for the publication and request code that
-issued it. The exact `NetworkRequest` is released through its retained handle
+issued it. Its preflight requires `MANAGE_TEST_NETWORKS` and `NETWORK_SETTINGS`,
+while accepting either `CONNECTIVITY_USE_RESTRICTED_NETWORKS` or
+ConnectivityService's legacy `CONNECTIVITY_INTERNAL` fallback for restricted
+networks. The exact `NetworkRequest` is released through its retained handle
 under the same effective UID; `unregisterNetworkCallback` is not used as a
 substitute. Hidden APIs and compatibility assumptions are inventoried in
 [`mobile/src/hiddenApiStubs/README.md`](../../mobile/src/hiddenApiStubs/README.md)
@@ -66,9 +71,12 @@ and the root [`README.md`](../../README.md).
 The app calls `TestNetworkManager.createTunInterface`, never
 `setupTestNetwork`, and publishes its own restricted `NetworkAgent` with:
 
-- `TRANSPORT_TEST` and the session's exact `TestNetworkSpecifier`;
+- `TRANSPORT_TEST` and the request's exact specifier object: a
+  `StringNetworkSpecifier` on API 30 or `TestNetworkSpecifier` on API 31+;
 - no `NOT_RESTRICTED`, `TRUSTED` or `INTERNET` capability;
-- an empty allowed-UID set, legacy type `TYPE_TEST`, and score 1.
+- legacy type `TYPE_TEST` and integer score 1; and
+- on API 31+, `NOT_VCN_MANAGED` and an empty allowed-UID set. API 30 uses the
+  older restricted-network permission model.
 
 The session's interface contract is immutable:
 
@@ -86,10 +94,11 @@ The documentation prefixes cannot collide with destinations clients need to
 reach. Exact routes, DNS servers and cleanup are catalogued in
 [`routing.md`](routing.md#rootless-shizuku-mode).
 
-The mode calls `ITetheringConnector.setPreferTestNetworks` directly so the
-result code is observed; `TetheringManager` discards it
+The mode resolves and invokes `ITetheringConnector.setPreferTestNetworks`
+reflectively because a newer tethering APEX can supply it on an older base
+release. The listener result is still observed; `TetheringManager` discards it
 ([AOSP](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/Tethering/common/TetheringLib/src/android/net/TetheringManager.java#2241)).
-Android 13 is supported only when automatic upstream selection is enabled.
+Android 11-13 are supported only when automatic upstream selection is enabled.
 Tethering-service death clears the in-service preference but is terminal for the
 app process because `TetheringManager` cannot reacquire its cached connector;
 restart the app before starting another session.
@@ -107,17 +116,19 @@ The observed tethering upstream produces three states:
 Startup keeps only required dependencies ordered:
 
 1. retry inherited cleanup;
-2. authorize Shizuku in parallel with the read-only compatibility and session
-   gates;
-3. create the TUN;
-4. in parallel, acquire the tethering connector, wait for the first upstream,
+2. resolve the compatibility-sensitive runtime methods, members, constructors
+   and agent lifecycle shape before authorization;
+3. authorize Shizuku in parallel with the remaining read-only session gates;
+4. preflight the remaining cleanup-critical reflection, then create the TUN;
+5. in parallel, acquire the tethering connector, wait for the first upstream,
    launch and authenticate the child, transfer its TUN descriptor, start the
    observers, and build the network configuration;
-5. set the global preference, register the exact request, then register the
+6. set the global preference, register the exact request, then register the
    agent;
-6. await the agent-created, request-available, capabilities and link-property
-   callbacks in parallel, then validate the publication;
-7. publish the initial state and await the first configuration ACK.
+7. await request-available, capabilities and link-property callbacks in
+   parallel, plus `onNetworkCreated` when the runtime agent supports it, then
+   validate the publication; and
+8. publish the initial state and await the first configuration ACK.
 
 The exact request has a one-minute platform lifetime. Its `onUnavailable` is the
 terminal for native-network creation failures that ConnectivityService otherwise
@@ -129,18 +140,24 @@ Withdrawal is idempotent, resumable and non-cancellable:
 1. stop observers and close daemon admission;
 2. in parallel, stop the child and clear `preferTestNetworks`; unregister the
    agent only after the clear attempt settles;
-3. await agent `unwanted`, then re-check and await `destroyed` and request `lost`;
+3. await agent `unwanted` and request `lost`; when the runtime exposes the
+   created/destroyed callback pair (baseline API 31+), also re-check creation
+   and await `destroyed`;
 4. if both cleanup lanes succeed, close the TUN; otherwise retain it and the
    cleanup ledger for a later retirement attempt;
 5. after TUN closure, retry any unconfirmed preference clear and release the
    retained request in parallel, then clean up the local callback.
 
-`destroyed` is the hard fence before TUN closure
+When the runtime exposes the created/destroyed pair, `destroyed` is the hard
+native-network fence before TUN closure
 ([AOSP](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/NetworkAgent.java#1158)).
-The `lost` re-check is best-effort because agent and request callbacks use
-different Binder channels. Both cleanup lanes settle before the first failure in
-issue order is rethrown with later failures suppressed, deferring TUN closure
-and privileged cleanup to a later retirement attempt.
+Without that pair (including baseline API 30), `unwanted` plus request `lost`
+is the strongest observable withdrawal, but both can precede native-network
+destruction. No delay or polling is used to pretend otherwise. The `lost`
+re-check is best-effort because agent and request callbacks use different Binder
+channels. Both cleanup lanes settle before the first failure in issue order is
+rethrown with later failures suppressed, deferring TUN closure and privileged
+cleanup to a later retirement attempt.
 
 An unconfirmed privileged release is retried before another start. An `UNKNOWN`
 request or agent blocks in-process recovery because a native network may remain;

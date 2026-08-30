@@ -51,7 +51,7 @@ import kotlin.time.Duration.Companion.seconds
  * Config calls and receive share [privilegedDispatcher]; each acknowledgement is installed before its
  * suspending frame write so the reader cannot overtake it.
  */
-@RequiresApi(33)
+@RequiresApi(30)
 class AppUidDaemon private constructor(
     private val input: ByteReadChannel,
     private val output: ByteWriteChannel,

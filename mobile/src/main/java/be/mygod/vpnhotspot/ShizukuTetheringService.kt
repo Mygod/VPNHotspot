@@ -8,6 +8,7 @@ import androidx.annotation.StringRes
 import be.mygod.vpnhotspot.shizuku.OwnedState
 import be.mygod.vpnhotspot.shizuku.ShizukuLifecycle
 import be.mygod.vpnhotspot.shizuku.ShizukuTestNetwork
+import be.mygod.vpnhotspot.shizuku.UnsupportedDeviceException
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +19,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import timber.log.Timber
 
 /** Foreground-service owner for one [ShizukuLifecycle] lifespan and any inherited cleanup debt. */
-@RequiresApi(33)
+@RequiresApi(30)
 class ShizukuTetheringService : Service(), CoroutineScope {
     data class Status(@StringRes val label: Int?, val on: Boolean)
 
@@ -52,7 +53,7 @@ class ShizukuTetheringService : Service(), CoroutineScope {
         override suspend fun fenced() = ShizukuTestNetwork.localResourcesFenced()
 
         override fun report(e: Exception) {
-            Timber.w(e)
+            if (e is UnsupportedDeviceException && e.expected) Timber.d(e) else Timber.w(e)
             SmartSnackbar.make(e).show()
         }
 

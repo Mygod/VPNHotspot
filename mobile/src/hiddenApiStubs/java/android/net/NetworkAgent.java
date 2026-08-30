@@ -5,15 +5,16 @@ import android.os.Looper;
 import androidx.annotation.RequiresApi;
 
 /**
- * API 33+ app-hosted agent. {@link #onNetworkUnwanted()} is always the withdrawal barrier, while destruction
- * is conditional on creation.
+ * App-hosted agent. Android 11 has the integer-score constructor and unwanted callback; Android 12 adds
+ * the created/destroyed callbacks.
+ * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/core/java/android/net/NetworkAgent.java#375
  * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/NetworkAgent.java#590
  * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/NetworkAgent.java#675
  */
 public abstract class NetworkAgent {
-    @RequiresApi(31)
+    @RequiresApi(30)
     public NetworkAgent(Context context, Looper looper, String logTag, NetworkCapabilities nc,
-                        LinkProperties lp, NetworkScore score, NetworkAgentConfig config,
+                        LinkProperties lp, int score, NetworkAgentConfig config,
                         NetworkProvider provider) {
     }
 

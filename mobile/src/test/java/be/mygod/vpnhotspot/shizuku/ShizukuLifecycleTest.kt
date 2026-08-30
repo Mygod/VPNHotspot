@@ -186,6 +186,29 @@ class ShizukuLifecycleTest {
     }
 
     @Test
+    fun anUnsupportedPlatformGateCreatesNoCleanupDebt() = driving(Recorder(
+        prepareFails = UnsupportedDeviceException("missing tethering capability", expected = true))) {
+            lifecycle, session ->
+        lifecycle.start()
+        session.awaitLog("on", "prepare", "off", "settled")
+
+        assertEquals(0, session.log.count { it == "publish" })
+        assertEquals(0, session.log.count { it == "retire" })
+        assertEquals(true, session.fenced)
+        assertTrue(session.reported.single() is UnsupportedDeviceException)
+        assertTrue(lifecycle.idle)
+    }
+
+    @Test
+    fun bandwidthCapabilityAvailabilityIncludesUExtension16() {
+        assertFalse(ShizukuTestNetwork.expectsBandwidthCapability(33, 99))
+        assertFalse(ShizukuTestNetwork.expectsBandwidthCapability(34, 15))
+        assertTrue(ShizukuTestNetwork.expectsBandwidthCapability(34, 16))
+        assertTrue(ShizukuTestNetwork.expectsBandwidthCapability(35, 16))
+        assertTrue(ShizukuTestNetwork.expectsBandwidthCapability(36, 0))
+    }
+
+    @Test
     fun anAutonomousEndPublishesOffBeforeCleanup() = driving { lifecycle, session ->
         lifecycle.start()
         session.awaitLog("on", "prepare", "publish", "run")

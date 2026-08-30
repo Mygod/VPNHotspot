@@ -59,8 +59,18 @@ class ShizukuEpoch private constructor(
 
         private val requiredPermissions = arrayOf(
             "android.permission.MANAGE_TEST_NETWORKS",
-            "android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS",
             "android.permission.NETWORK_SETTINGS",
+        )
+
+        /**
+         * ConnectivityService accepts CONNECTIVITY_INTERNAL as the legacy fallback for
+         * CONNECTIVITY_USE_RESTRICTED_NETWORKS. Android 11's shell holds only that fallback.
+         * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/services/core/java/com/android/server/ConnectivityService.java#2188
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#4440
+         */
+        private val restrictedNetworkPermissions = arrayOf(
+            "android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS",
+            "android.permission.CONNECTIVITY_INTERNAL",
         )
 
         private val publisher = BinderPublisher<IBinder>()
@@ -94,6 +104,11 @@ class ShizukuEpoch private constructor(
                 if (Shizuku.checkRemotePermission(permission) != PackageManager.PERMISSION_GRANTED) {
                     throw UnavailableException("Shizuku identity uid $uid lacks $permission")
                 }
+            }
+            if (restrictedNetworkPermissions.none {
+                    Shizuku.checkRemotePermission(it) == PackageManager.PERMISSION_GRANTED }) {
+                throw UnavailableException(
+                    "Shizuku identity uid $uid lacks ${restrictedNetworkPermissions.joinToString(" or ")}")
             }
             val opPackage = if (uid == 0) app.packageName else {
                 val packages = app.packageManager.getPackagesForUid(uid)
