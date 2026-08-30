@@ -26,8 +26,9 @@ independent state and may run together.
   reselect its current upstream.
 - Losing the TestNetwork does not stop tethering. Android selects an ordinary
   upstream and clients continue unprotected without a client-side warning.
-- Startup refuses any existing `TRANSPORT_TEST` network. A foreign test network
-  selected as the tethering upstream ends the session.
+- Concurrent `TRANSPORT_TEST` networks are unsupported and not detected. Android
+  may select any of them, so tethered traffic can bypass this mode's TUN
+  ([AOSP](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/Tethering/src/com/android/networkstack/tethering/UpstreamNetworkMonitor.java#333)).
 
 ## Ownership And Lifecycle
 
@@ -93,27 +94,30 @@ Tethering-service death clears the in-service preference but is terminal for the
 app process because `TetheringManager` cannot reacquire its cached connector;
 restart the app before starting another session.
 
-The observed tethering upstream produces four states:
+The observed tethering upstream produces three states:
 
 | State | Meaning | Admits traffic |
 | --- | --- | --- |
 | `ARMED` | no upstream | no |
-| `VERIFYING` | upstream cannot yet be classified | no |
 | `ACTIVE` | exact session `Network` selected | yes |
-| `RESTART_REQUIRED` | ordinary upstream still selected | no |
+| `RESTART_REQUIRED` | some other upstream selected | no |
 
 ## Startup And Withdrawal
 
-Startup performs, in order:
+Startup keeps only required dependencies ordered:
 
 1. retry inherited cleanup;
-2. authorize Shizuku and reject unsupported Android 13 configuration, latched
-   tethering death, an existing session, or a TestNetwork collision;
-3. create the TUN, pin the tethering connector, start upstream observation,
-   launch and authenticate the child, and transfer a duplicate TUN descriptor;
-4. set the global preference, register the exact request, then register and
-   validate the agent;
-5. publish the initial state and await the first configuration ACK.
+2. authorize Shizuku in parallel with the read-only compatibility and session
+   gates;
+3. create the TUN;
+4. in parallel, acquire the tethering connector, wait for the first upstream,
+   launch and authenticate the child, transfer its TUN descriptor, start the
+   observers, and build the network configuration;
+5. set the global preference, register the exact request, then register the
+   agent;
+6. await the agent-created, request-available, capabilities and link-property
+   callbacks in parallel, then validate the publication;
+7. publish the initial state and await the first configuration ACK.
 
 The exact request has a one-minute platform lifetime. Its `onUnavailable` is the
 terminal for native-network creation failures that ConnectivityService otherwise
@@ -122,13 +126,21 @@ All startup failures enter the same rollback.
 
 Withdrawal is idempotent, resumable and non-cancellable:
 
-1. stop observers, close daemon admission and await its ACK; fence the child if
-   that cannot be confirmed;
-2. clear `preferTestNetworks` and unlink the pinned connector death recipient;
-3. terminate the child and confirm exit;
-4. unregister the agent and await the callbacks proving the network and exact
-   request lost;
-5. close the TUN, then release the retained request handle.
+1. stop observers and close daemon admission;
+2. in parallel, stop the child and clear `preferTestNetworks`; unregister the
+   agent only after the clear attempt settles;
+3. await agent `unwanted`, then re-check and await `destroyed` and request `lost`;
+4. if both cleanup lanes succeed, close the TUN; otherwise retain it and the
+   cleanup ledger for a later retirement attempt;
+5. after TUN closure, retry any unconfirmed preference clear and release the
+   retained request in parallel, then clean up the local callback.
+
+`destroyed` is the hard fence before TUN closure
+([AOSP](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/NetworkAgent.java#1158)).
+The `lost` re-check is best-effort because agent and request callbacks use
+different Binder channels. Both cleanup lanes settle before the first failure in
+issue order is rethrown with later failures suppressed, deferring TUN closure
+and privileged cleanup to a later retirement attempt.
 
 An unconfirmed privileged release is retried before another start. An `UNKNOWN`
 request or agent blocks in-process recovery because a native network may remain;
@@ -225,10 +237,6 @@ and global preference. Process death is weaker:
   can survive;
 - `preferTestNetworks` can remain set until a later owned session clears it or
   the tethering service/reboot resets it;
-- Android 17 qualification observed stale `testtunN` counter rules in netd's
-  shared `tetherctrl_counters` chain. They clear on reboot and must not be deleted
-  by the app because the chain also contains live platform state.
-
 Android forwarding, inner IPv4 NAT and delegated IPv6 prefix are
 framework-owned consequences of tethering selecting the TestNetwork. Losing the
 network makes tethering select another upstream; the app does not cycle tethering
@@ -261,22 +269,6 @@ reassembly and allocation. Root mode does not have this limitation.
 
 See [`errors.md`](errors.md) for report delivery and [`dns.md`](dns.md) for
 resolver failure classification.
-
-## Qualification
-
-Manual qualification used Android 17 debug builds. This repository has no
-instrumented tests.
-
-| Area | Verified | Topology |
-| --- | --- | --- |
-| Publication | Restricted agent, exact specifier, selection as tethering upstream, delegated `/64`, MTU 1500 | root- and shell-backed Shizuku; USB tethering |
-| Admission | `ARMED` TUN injection was dropped without creating dataplane state | root-backed Shizuku; direct TUN input |
-| Client traffic | IPv4/IPv6 ping, UDP DNS and HTTPS from an external client | root- and shell-backed Shizuku; USB tethering |
-| VPN egress/handover | Full-tunnel VPN egress; old TCP reset and fresh connections succeeded across off/on cycles; no stale resolver state under UDP/DNS load | root-backed Shizuku; USB tethering |
-| Root coexistence | Root policy rules won; starting or stopping either mode changed no state owned by the other | root-backed Shizuku; USB tethering |
-| Dataplane | IPv4 PMTU, 8 KiB IPv4/IPv6 fragmentation, TCP half-close, malformed-DNS recovery and 16 concurrent 512 KiB downloads | root-backed Shizuku; one USB client |
-| Failure/cleanup | Killing the child removed the network; force-stop removed the network but left the preference; normal stop removed network, request, TUN, child and service | root- and shell-backed Shizuku |
-| Security | Restricted handle selection held; direct interface injection succeeded | separately signed attacker harness and TUN capture |
 
 ## References
 

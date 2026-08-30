@@ -28,10 +28,14 @@ import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -110,12 +114,8 @@ object ShizukuTestNetwork {
             String::class.java, Int::class.javaPrimitiveType)
     }
 
-    class CollisionException(interfaceName: String?) : Exception(app.getString(
-        R.string.shizuku_failure_collision, interfaceName ?: "?"))
-
     enum class State(@StringRes val label: Int) {
         ARMED(R.string.shizuku_state_armed),
-        VERIFYING(R.string.shizuku_state_verifying),
         ACTIVE(R.string.shizuku_state_active),
         RESTART_REQUIRED(R.string.shizuku_state_restart_required),
     }
@@ -196,25 +196,26 @@ object ShizukuTestNetwork {
     }
 
     /** Performs non-mutating gates; the returned closure begins publication under the accepted lifespan. */
-    @SuppressLint("WrongConstant")
     internal suspend fun prepare(): suspend () -> Unit {
         check(Build.VERSION.SDK_INT >= 33) { "Shizuku mode requires Android 13" }
         val lifespan = currentCoroutineContext().job
-        val epoch = ShizukuEpoch.authorize()
-        PinnedTetheringConnector.requireAutomaticUpstream()
-        withContext(privilegedDispatcher) {
-            check(!PinnedTetheringConnector.died.isCompleted) {
-                app.getString(R.string.shizuku_failure_tethering_died)
-            }
-            current?.let {
-                throw IllegalStateException("Shizuku session is still outstanding: $it")
-            }
-            @Suppress("DEPRECATION")
-            for (network in Services.connectivity.allNetworks) {
-                if (Services.connectivity.getNetworkCapabilities(network)
-                        ?.hasTransport(TRANSPORT_TEST) != true) continue
-                throw CollisionException(Services.connectivity.getLinkProperties(network)?.interfaceName)
-            }
+        // Authorization may wait for user input, so run independent gates concurrently.
+        lateinit var epoch: ShizukuEpoch
+        coroutineScope {
+            listOf(
+                async<Unit>(start = CoroutineStart.UNDISPATCHED) { epoch = ShizukuEpoch.authorize() },
+                async<Unit>(start = CoroutineStart.UNDISPATCHED) {
+                    PinnedTetheringConnector.requireAutomaticUpstream()
+                    withContext(privilegedDispatcher) {
+                        check(!PinnedTetheringConnector.died.isCompleted) {
+                            app.getString(R.string.shizuku_failure_tethering_died)
+                        }
+                        current?.let {
+                            throw IllegalStateException("Shizuku session is still outstanding: $it")
+                        }
+                    }
+                },
+            ).awaitAll()
         }
         return { withContext(privilegedDispatcher) { publish(epoch, lifespan) } }
     }
@@ -247,114 +248,122 @@ object ShizukuTestNetwork {
                 current.descriptor.live(tun.fileDescriptor)
             }
         }
-        val connector = current.connector.live(PinnedTetheringConnector.acquire(epoch))
         val snapshot = CompletableDeferred<Unit>()
-        current.scope.launch {
-            try {
-                TetheringManagerCompat.eventFlow.collect { event ->
-                    if (event !is TetheringManagerCompat.Event.UpstreamChanged) return@collect
-                    snapshot.complete(Unit)
-                    if (event.network == current.upstream) return@collect
-                    current.upstream = event.network
-                    if (current.network == null) return@collect
-                    val next = try {
-                        current.commit()
-                    } catch (e: CollisionException) {
-                        Timber.w(e)
-                        current.failed.complete(e)
-                        return@collect
+        // `UNDISPATCHED` starts every independent branch before any await. Each records what it
+        // acquires before completion so rollback owns partial startup.
+        val (request, capabilities, properties) = coroutineScope {
+            val prerequisites = listOf(
+                async<Unit>(start = CoroutineStart.UNDISPATCHED) {
+                    current.connector.live(PinnedTetheringConnector.acquire(epoch))
+                },
+                async<Unit>(start = CoroutineStart.UNDISPATCHED) {
+                    current.child.live(AppUidDaemon.spawn()).connect(descriptor,
+                        StartShizukuSessionCommand(
+                            interface_name = current.interfaceName,
+                            mtu = TEST_NETWORK_MTU,
+                            virtual_addresses = listOf(VIRTUAL_DNS_IPV4, VIRTUAL_DNS_IPV6).map {
+                                InetAddress.getByName(it).address.toByteString()
+                            },
+                            gateway_addresses = listOf(TUN_IPV4_ADDRESS, TUN_IPV6_ADDRESS).map {
+                                InetAddress.getByName(it).address.toByteString()
+                            },
+                        ), current.publication).also { current.daemon = it }
+                },
+                async<Unit>(start = CoroutineStart.UNDISPATCHED) {
+                    select<Unit> {
+                        snapshot.onAwait { }
+                        PinnedTetheringConnector.died.onAwait {
+                            throw PinnedTetheringConnector.DiedException(
+                                app.getString(R.string.shizuku_failure_tethering_died))
+                        }
                     }
-                    if (current.state == next) return@collect
-                    current.state = next
-                    stateFlow.value = OwnedState(current.lifespan, next)
-                    Timber.i("Shizuku session is $next, upstream ${current.upstream}")
-                    current.push()
-                }
-            } catch (e: Throwable) {
-                if (e is CancellationException) throw e
-                if (!snapshot.completeExceptionally(e)) throw e
-            }
-        }
-        select<Unit> {
-            snapshot.onAwait { }
-            PinnedTetheringConnector.died.onAwait {
-                throw PinnedTetheringConnector.DiedException(
-                    app.getString(R.string.shizuku_failure_tethering_died))
-            }
-        }
-        current.scope.launch {
-            Upstreams.appDefault.collect { upstream ->
-                val next = upstream?.takeUnless {
-                    it.properties.interfaceName == current.interfaceName
-                }
-                if (next == null && upstream != null) {
-                    Timber.w("Refusing this session's own TUN as its upstream")
-                }
-                if (next == current.selected) return@collect
-                current.selected = next
-                Timber.i("Shizuku session egress is " +
-                        "${next?.properties?.interfaceName}, generation " +
-                        current.publication.advanceUpstream())
-                if (current.network != null) current.push()
-            }
-        }
-        val child = current.child.live(AppUidDaemon.spawn())
-        val daemon = child.connect(descriptor, StartShizukuSessionCommand(
-            interface_name = current.interfaceName,
-            mtu = TEST_NETWORK_MTU,
-            virtual_addresses = listOf(VIRTUAL_DNS_IPV4, VIRTUAL_DNS_IPV6).map {
-                InetAddress.getByName(it).address.toByteString()
-            },
-            gateway_addresses = listOf(TUN_IPV4_ADDRESS, TUN_IPV6_ADDRESS).map {
-                InetAddress.getByName(it).address.toByteString()
-            },
-        ), current.publication)
-        current.daemon = daemon
-        @Suppress("DEPRECATION")
-        val request = NetworkRequest.Builder()
-            .clearCapabilities()
-            .addTransportType(TRANSPORT_TEST)
-            .setNetworkSpecifier(current.interfaceName)
-            .build()
-        val specifier = checkNotNull(request.networkSpecifier) { "Request lost its specifier" }
-        check(specifier.javaClass.name == TEST_NETWORK_SPECIFIER_CLASS) {
-            "Expected $TEST_NETWORK_SPECIFIER_CLASS but built ${specifier.javaClass.name}"
-        }
-        val capabilities = `NetworkCapabilities$Builder`()
-            .addTransportType(TRANSPORT_TEST)
-            .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
-            .removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED)
-            .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
-            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
-            .setNetworkSpecifier(specifier)
-            .also {
+                },
+            )
+            current.scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 try {
-                    it.addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED)
-                } catch (e: IllegalArgumentException) {
-                    if (Build.VERSION.SDK_INT >= 37) Timber.w(e)
+                    TetheringManagerCompat.eventFlow.collect { event ->
+                        if (event !is TetheringManagerCompat.Event.UpstreamChanged) return@collect
+                        snapshot.complete(Unit)
+                        if (event.network == current.upstream) return@collect
+                        current.upstream = event.network
+                        if (current.network == null) return@collect
+                        val next = current.commit()
+                        if (current.state == next) return@collect
+                        current.state = next
+                        stateFlow.value = OwnedState(current.lifespan, next)
+                        Timber.i("Shizuku session is $next, upstream ${current.upstream}")
+                        current.push()
+                    }
+                } catch (e: Throwable) {
+                    if (e is CancellationException) throw e
+                    if (!snapshot.completeExceptionally(e)) throw e
                 }
             }
-            .build()
-        val properties = LinkProperties().apply {
-            interfaceName = current.interfaceName
-            val addresses = checkNotNull(NetworkInterface.getByName(current.interfaceName)) {
-                "No such interface ${current.interfaceName}"
-            }.interfaceAddresses.map {
-                constructorLinkAddress.newInstance(it.address, it.networkPrefixLength.toInt())
+            current.scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                Upstreams.appDefault.collect { upstream ->
+                    val next = upstream?.takeUnless {
+                        it.properties.interfaceName == current.interfaceName
+                    }
+                    if (next == null && upstream != null) {
+                        Timber.w("Refusing this session's own TUN as its upstream")
+                    }
+                    if (next == current.selected) return@collect
+                    current.selected = next
+                    Timber.i("Shizuku session egress is " +
+                            "${next?.properties?.interfaceName}, generation " +
+                            current.publication.advanceUpstream())
+                    if (current.network != null) current.push()
+                }
             }
-            setLinkAddresses(addresses)
-            for (address in addresses) addRoute(constructorRouteInfo.newInstance(
-                IpPrefix(address.address, address.prefixLength), null, current.interfaceName,
-                RouteInfo.RTN_UNICAST))
-            for (any in arrayOf("0.0.0.0", "::")) addRoute(constructorRouteInfo.newInstance(
-                IpPrefix(InetAddress.getByName(any), 0), null, current.interfaceName,
-                RouteInfo.RTN_UNICAST))
-            setDnsServers(listOf(InetAddress.getByName(VIRTUAL_DNS_IPV4),
-                InetAddress.getByName(VIRTUAL_DNS_IPV6)))
-            mtu = TEST_NETWORK_MTU
+            @Suppress("DEPRECATION")
+            val request = NetworkRequest.Builder()
+                .clearCapabilities()
+                .addTransportType(TRANSPORT_TEST)
+                .setNetworkSpecifier(current.interfaceName)
+                .build()
+            val specifier = checkNotNull(request.networkSpecifier) { "Request lost its specifier" }
+            check(specifier.javaClass.name == TEST_NETWORK_SPECIFIER_CLASS) {
+                "Expected $TEST_NETWORK_SPECIFIER_CLASS but built ${specifier.javaClass.name}"
+            }
+            val capabilities = `NetworkCapabilities$Builder`()
+                .addTransportType(TRANSPORT_TEST)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
+                .removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_SUSPENDED)
+                .addCapability(NET_CAPABILITY_NOT_VCN_MANAGED)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+                .setNetworkSpecifier(specifier)
+                .also {
+                    try {
+                        it.addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_BANDWIDTH_CONSTRAINED)
+                    } catch (e: IllegalArgumentException) {
+                        if (Build.VERSION.SDK_INT >= 37) Timber.w(e)
+                    }
+                }
+                .build()
+            val properties = LinkProperties().apply {
+                interfaceName = current.interfaceName
+                val addresses = checkNotNull(NetworkInterface.getByName(current.interfaceName)) {
+                    "No such interface ${current.interfaceName}"
+                }.interfaceAddresses.map {
+                    constructorLinkAddress.newInstance(it.address, it.networkPrefixLength.toInt())
+                }
+                setLinkAddresses(addresses)
+                for (address in addresses) addRoute(constructorRouteInfo.newInstance(
+                    IpPrefix(address.address, address.prefixLength), null, current.interfaceName,
+                    RouteInfo.RTN_UNICAST))
+                for (any in arrayOf("0.0.0.0", "::")) addRoute(constructorRouteInfo.newInstance(
+                    IpPrefix(InetAddress.getByName(any), 0), null, current.interfaceName,
+                    RouteInfo.RTN_UNICAST))
+                setDnsServers(listOf(InetAddress.getByName(VIRTUAL_DNS_IPV4),
+                    InetAddress.getByName(VIRTUAL_DNS_IPV6)))
+                mtu = TEST_NETWORK_MTU
+            }
+            prerequisites.awaitAll()
+            Triple(request, capabilities, properties)
         }
-        connector.setPreferTestNetworks(true, current.preference)
+        checkNotNull(current.connector.value) { "The session lost its tethering connector" }
+            .setPreferTestNetworks(true, current.preference)
         val exact = ExactRequest()
         epoch.ensureCurrent()
         check(exact.readBack() == null) { "$exact was already registered" }
@@ -394,22 +403,37 @@ object ShizukuTestNetwork {
         val network = checkNotNull(agent.published) { "Agent registration returned no network" }
         epoch.ensureCurrent()
         agent.markConnected()
-        val published: NetworkCapabilities
-        val readback: LinkProperties
+        // Arm all independent publication callbacks before awaiting any of them.
+        lateinit var published: NetworkCapabilities
+        lateinit var readback: LinkProperties
         try {
-            awaitNetworkRequest(agent.created, callback.unavailable)
-            check(awaitNetworkRequest(callback.available, callback.unavailable) == network) {
-                "Request matched a different network than the one published"
+            coroutineScope {
+                listOf(
+                    async<Unit>(start = CoroutineStart.UNDISPATCHED) {
+                        awaitNetworkRequest(agent.created, callback.unavailable)
+                    },
+                    async<Unit>(start = CoroutineStart.UNDISPATCHED) {
+                        check(awaitNetworkRequest(callback.available, callback.unavailable) == network) {
+                            "Request matched a different network than the one published"
+                        }
+                    },
+                    async<Unit>(start = CoroutineStart.UNDISPATCHED) {
+                        published = awaitNetworkRequest(callback.capabilities, callback.unavailable)
+                    },
+                    async<Unit>(start = CoroutineStart.UNDISPATCHED) {
+                        readback = awaitNetworkRequest(callback.properties, callback.unavailable)
+                    },
+                ).awaitAll()
             }
-            published = awaitNetworkRequest(callback.capabilities, callback.unavailable)
-            readback = awaitNetworkRequest(callback.properties, callback.unavailable)
         } catch (e: NetworkRequestExpiredException) {
             current.request.expired()
             throw e
         }
         epoch.ensureCurrent()
         check(published.hasTransport(TRANSPORT_TEST)) { "Published network lost TRANSPORT_TEST" }
-        check(published.networkSpecifier == specifier) { "Published network lost its specifier" }
+        check(published.networkSpecifier == request.networkSpecifier) {
+            "Published network lost its specifier"
+        }
         check(!published.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)) {
             "Published network is not restricted"
         }
@@ -427,6 +451,7 @@ object ShizukuTestNetwork {
         val committed = current.commit()
         current.state = committed
         stateFlow.value = OwnedState(current.lifespan, committed)
+        val daemon = checkNotNull(current.daemon) { "The session lost its daemon" }
         daemon.apply(current.config())
         Timber.i("Published restricted test network $network on ${current.interfaceName} as " +
                 "$committed, upstream ${current.upstream}: $published $readback")
@@ -460,7 +485,7 @@ object ShizukuTestNetwork {
     }
 
 
-    /** Ordered, joinable teardown; local resources fence before privileged residue is retried. */
+    /** Barriered, joinable teardown; every local resource fences before privileged residue is retried. */
     private suspend fun retire(session: Session): Unit = withContext(NonCancellable) {
         session.retirement?.let { return@withContext it.await() }
         val retirement = CompletableDeferred<Unit>()
@@ -469,38 +494,77 @@ object ShizukuTestNetwork {
         stateFlow.value = null
         try {
             session.scope.coroutineContext.job.cancelAndJoin()
-            val daemon = session.daemon
-            val admissionClosed = if (daemon == null) {
-                !session.child.outstanding
-            } else try {
-                daemon.apply(session.config())
-                true
-            } catch (e: Exception) {
-                if (e is CancellationException) throw e
-                Timber.w(e, "Shizuku session could not close admission")
-                false
-            }
-            if (!admissionClosed) fenceChild(session)
-            session.connector.value?.let { connector ->
+            // Observers are joined first, so no later config can name retiring resources. If the
+            // admission update fails, the child fence below remains the barrier.
+            session.daemon?.let { daemon ->
                 try {
-                    if (session.preference.clearable) connector.setPreferTestNetworks(false, session.preference)
+                    daemon.apply(session.config())
                 } catch (e: Exception) {
                     if (e is CancellationException) throw e
-                    Timber.w(e, "Shizuku session could not clear the preference")
-                } finally {
-                    session.connector.releasing()?.unlink()
-                    session.connector.confirm()
+                    Timber.w(e, "Shizuku session could not close admission")
                 }
             }
-            fenceChild(session)
-            session.agent.unregistering()?.unregister()
-            session.agent.awaiting?.let { agent ->
-                val callback = session.request.value?.callback
-                agent.unwanted.await()
-                if (agent.created.isCompleted) agent.destroyed.await()
-                if (callback?.available?.isCompleted == true) callback.lost.await()
-                session.agent.confirm()
+            // Return failures as values so both lanes settle; rethrow the first in issue order,
+            // with later failures suppressed, before closing the TUN.
+            val fenced = coroutineScope {
+                listOf(
+                    async(start = CoroutineStart.UNDISPATCHED) {
+                        try {
+                            fenceChild(session)
+                            null
+                        } catch (e: Throwable) {
+                            e
+                        }
+                    },
+                    // Clear the preference before unregistering the network it names.
+                    async(start = CoroutineStart.UNDISPATCHED) {
+                        val cleared = try {
+                            session.connector.value?.let { connector ->
+                                try {
+                                    if (session.preference.clearable) {
+                                        connector.setPreferTestNetworks(false, session.preference)
+                                    }
+                                } catch (e: Exception) {
+                                    if (e is CancellationException) throw e
+                                    Timber.w(e, "Shizuku session could not clear the preference")
+                                } finally {
+                                    session.connector.releasing()?.unlink()
+                                    session.connector.confirm()
+                                }
+                            }
+                            null
+                        } catch (e: Throwable) {
+                            e
+                        }
+                        val unregistered = try {
+                            session.agent.unregistering()?.unregister()
+                            session.agent.awaiting?.let { agent ->
+                                // Agent-Binder ordering makes the post-`unwanted` `created` check exact.
+                                // Request callbacks use another Binder, so `lost` is best-effort;
+                                // `destroyed` fences TUN closure.
+                                agent.unwanted.await()
+                                if (agent.created.isCompleted) agent.destroyed.await()
+                                session.request.value?.callback?.let { callback ->
+                                    if (callback.available.isCompleted) callback.lost.await()
+                                }
+                                session.agent.confirm()
+                            }
+                            null
+                        } catch (e: Throwable) {
+                            e
+                        }
+                        unregistered?.let { cleared?.addSuppressed(it) }
+                        cleared ?: unregistered
+                    },
+                ).awaitAll()
             }
+            var failure: Throwable? = null
+            for (ending in fenced) {
+                if (ending == null) continue
+                val first = failure
+                if (first == null) failure = ending else first.addSuppressed(ending)
+            }
+            failure?.let { throw it }
             session.descriptor.releasing()?.let {
                 it.close()
                 session.descriptor.confirm()
@@ -540,27 +604,61 @@ object ShizukuTestNetwork {
             "Shizuku session cannot release ${session.request}"
         }
         val epoch = session.cleanupEpoch()
-        if (session.preference.clearable) try {
-            val connector = PinnedTetheringConnector.acquire(epoch)
-            try {
-                connector.setPreferTestNetworks(false, session.preference)
-            } finally {
-                connector.unlink()
-            }
-        } catch (e: Exception) {
-            if (!PinnedTetheringConnector.died.isCompleted) throw e
-            session.preference.lostWithService()
-            if (e is CancellationException) throw e
-            Timber.w(e, "Shizuku session lost its tethering preference with the service")
+        // Attempt both remote repairs even if one fails. Only a confirmed request release
+        // transfers its callback to the local cleanup below.
+        val repaired = coroutineScope {
+            listOf(
+                async(start = CoroutineStart.UNDISPATCHED) {
+                    try {
+                        if (session.preference.clearable) try {
+                            val connector = PinnedTetheringConnector.acquire(epoch)
+                            try {
+                                connector.setPreferTestNetworks(false, session.preference)
+                            } finally {
+                                connector.unlink()
+                            }
+                        } catch (e: Exception) {
+                            if (!PinnedTetheringConnector.died.isCompleted) throw e
+                            session.preference.lostWithService()
+                            if (e is CancellationException) throw e
+                            Timber.w(e, "Shizuku session lost its tethering preference with the service")
+                        }
+                        null
+                    } catch (e: Throwable) {
+                        e
+                    }
+                },
+                async(start = CoroutineStart.UNDISPATCHED) {
+                    try {
+                        session.request.releasing()?.let { handle ->
+                            val privileged = if (epoch === session.epoch) {
+                                checkNotNull(session.privileged) {
+                                    "The session lost its privileged manager"
+                                }
+                            } else PrivilegedConnectivity.create(epoch)
+                            epoch.bracket { privileged.service.releaseNetworkRequest(handle) }
+                            session.request.released()
+                        }
+                        null
+                    } catch (e: Throwable) {
+                        e
+                    }
+                },
+            ).awaitAll()
         }
-        session.request.releasing()?.let { handle ->
-            val privileged = if (epoch === session.epoch) {
-                checkNotNull(session.privileged) { "The session lost its privileged manager" }
-            } else PrivilegedConnectivity.create(epoch)
-            epoch.bracket { privileged.service.releaseNetworkRequest(handle) }
-            session.request.released()
+        val cleaned = try {
+            cleanLocalCallback(session)
+            null
+        } catch (e: Throwable) {
+            e
         }
-        cleanLocalCallback(session)
+        var failure: Throwable? = null
+        for (ending in repaired + cleaned) {
+            if (ending == null) continue
+            val first = failure
+            if (first == null) failure = ending else first.addSuppressed(ending)
+        }
+        failure?.let { throw it }
     }
 
     private fun cleanLocalCallback(session: Session) {
@@ -611,20 +709,10 @@ object ShizukuTestNetwork {
         }
     }
 
-    @SuppressLint("WrongConstant")
-    private fun Session.commit(): State {
-        val upstream = upstream
-        return when {
-            network != null && upstream == network -> State.ACTIVE
-            upstream == null -> State.ARMED
-            else -> when (Services.connectivity.getNetworkCapabilities(upstream)
-                    ?.hasTransport(TRANSPORT_TEST)) {
-                true -> throw CollisionException(
-                    Services.connectivity.getLinkProperties(upstream)?.interfaceName)
-                false -> State.RESTART_REQUIRED
-                null -> State.VERIFYING
-            }
-        }
+    private fun Session.commit() = when {
+        network != null && upstream == network -> State.ACTIVE
+        upstream == null -> State.ARMED
+        else -> State.RESTART_REQUIRED
     }
 }
 

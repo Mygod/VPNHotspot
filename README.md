@@ -259,10 +259,6 @@ Other:
   set. Omitting `NOT_RESTRICTED` publishes a restricted netd network without the
   blocked `setAllowedUids`; the empty set cannot be read back reliably on Android
   13-17.
-* (since API 33) `getAllNetworks` and `getNetworkCapabilities` require only
-  `ACCESS_NETWORK_STATE`, are not ownership-filtered, and preserve
-  `TRANSPORT_TEST`. The pre-publication collision scan depends on this; session
-  `ACTIVE` uses exact `Network` identity instead.
 * (since API 33) Tethering delegates a restricted TestNetwork's global `/64` to
   only the oldest active downstream and clamps its MTU to 1280-1500. An older
   local-only downstream can therefore prevent tethered IPv6.
