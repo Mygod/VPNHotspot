@@ -1,9 +1,11 @@
 use std::net::IpAddr;
 #[cfg(test)]
 use std::net::Ipv6Addr;
+use std::time::Instant;
 
 use crate::shared::ip_wire::{Error as IpError, Packet};
-use crate::shared::ipv4_identification::{Ipv4Identifications, Tuple};
+use crate::shared::ipv4_identification::{Denial, Guarded, Ipv4Identifications, Terminal, Tuple};
+use crate::shared::tun_handoff::Batch;
 
 use etherparse::{IpFragOffset, Ipv4Header};
 
@@ -150,34 +152,55 @@ pub fn fragment_ipv4(
     Ok(emitted)
 }
 
+/// What the size policy decided about one datagram before it was built.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sizing {
+    /// Output that needs no daemon-issued Identification. RFC 6864 section 4.1 exempts atomic datagrams from
+    /// the reuse constraint.
     Atomic,
-    Fragmentable(u16),
+    /// Oversized IPv4, so a receiver will reassemble it and the value it reassembles on has to be unique.
+    Fragmentable(Guarded),
+    /// Oversized IPv4 that may not be given a value yet.
+    Denied(Denial),
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct SizingInput {
     pub tuple: Option<Tuple>,
     pub oversized: bool,
+    pub now: Instant,
 }
 
 pub fn size_policy(identifications: &mut Ipv4Identifications, input: SizingInput) -> Sizing {
-    let SizingInput { tuple, oversized } = input;
+    let SizingInput {
+        tuple,
+        oversized,
+        now,
+    } = input;
+    // Only IPv4 output this daemon will fragment needs an Identification.
     let Some(tuple) = tuple.filter(|_| oversized) else {
         return Sizing::Atomic;
     };
-    Sizing::Fragmentable(identifications.next(tuple))
+    match identifications.next(tuple, now) {
+        Ok(guarded) => Sizing::Fragmentable(guarded),
+        Err(denial) => Sizing::Denied(denial),
+    }
 }
 
 pub trait Sink {
     /// Takes every packet of one logical datagram together, or refuses all of them.
-    fn datagram(&mut self, packets: Vec<Vec<u8>>) -> bool;
+    fn datagram(&mut self, batch: Batch) -> bool;
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Emitted {
-    Written { written: usize, refused: usize },
+    /// Whole-batch handoff result. Exactly one packet count is zero; neither records TUN writes.
+    Handed {
+        queued: usize,
+        refused: usize,
+    },
+    /// Oversized IPv4 dropped because no Identification could be issued safely.
+    Denied(Denial),
     Unbuildable(WriterError),
 }
 
@@ -189,16 +212,17 @@ pub fn emit<S: Sink>(
     build: impl FnOnce(Option<u16>) -> Result<Vec<u8>, WriterError>,
     sink: &mut S,
 ) -> Emitted {
-    let identification = match size_policy(identifications, sizing) {
+    let guarded = match size_policy(identifications, sizing) {
         Sizing::Atomic => None,
-        Sizing::Fragmentable(identification) => Some(identification),
+        Sizing::Fragmentable(guarded) => Some(guarded),
+        Sizing::Denied(denial) => return Emitted::Denied(denial),
     };
-    let packet = match build(identification) {
+    // Every non-handoff path returns its reserved sequence position.
+    let packet = match build(guarded.map(|guarded| guarded.identification())) {
         Ok(packet) => packet,
-        Err(e) => return Emitted::Unbuildable(e),
+        Err(e) => return unissued(identifications, guarded, Emitted::Unbuildable(e)),
     };
-    // Finish packetization before handing anything over. The sink therefore admits either the complete
-    // logical datagram or none of it, and the serial writer cannot interleave another datagram's fragments.
+    // Packetize first so the sink admits the complete datagram or none of it.
     let mut packets = Vec::new();
     if packet.len() <= mtu {
         packets.push(packet);
@@ -212,21 +236,41 @@ pub fn emit<S: Sink>(
             fragment_ipv4(&packet, mtu, |packet| packets.push(packet))
         };
         if let Err(e) = fragmented {
-            return Emitted::Unbuildable(e);
+            return unissued(identifications, guarded, Emitted::Unbuildable(e));
         }
     }
     let count = packets.len();
-    if sink.datagram(packets) {
-        Emitted::Written {
-            written: count,
+    if sink.datagram(Batch::new(packets, guarded)) {
+        // Register only after the synchronous handoff accepts the batch.
+        if let Some(guarded) = guarded {
+            identifications.accepted(guarded);
+        }
+        Emitted::Handed {
+            queued: count,
             refused: 0,
         }
     } else {
-        Emitted::Written {
-            written: 0,
-            refused: count,
-        }
+        unissued(
+            identifications,
+            guarded,
+            Emitted::Handed {
+                queued: 0,
+                refused: count,
+            },
+        )
     }
+}
+
+/// Gives a guarded datagram's sequence position back, for the ways out where no packet of it was accepted.
+fn unissued(
+    identifications: &mut Ipv4Identifications,
+    guarded: Option<Guarded>,
+    emitted: Emitted,
+) -> Emitted {
+    if let Some(guarded) = guarded {
+        identifications.unissued(guarded);
+    }
+    emitted
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -245,20 +289,26 @@ pub struct Emitter {
     mtu: usize,
     identifications: Ipv4Identifications,
     fragment_identification: u32,
-    written: u64,
-    refused: u64,
-    unwritable: u64,
+    /// Packets admitted by the interface handoff; the serial writer separately counts TUN writes.
+    queued: u64,
+    /// Packets of a datagram the interface queue would not take, dropped whole with it.
+    handoff_refused: u64,
+    /// Datagrams the daemon could not build or fragment.
+    unbuildable: u64,
+    denied: u64,
 }
 
 impl Emitter {
-    pub fn new(mtu: usize) -> Self {
+    /// `opened` starts the Identification allocator's opening quarantine.
+    pub fn new(mtu: usize, opened: Instant) -> Self {
         Self {
             mtu,
-            identifications: Ipv4Identifications::new(),
+            identifications: Ipv4Identifications::new(opened),
             fragment_identification: 0,
-            written: 0,
-            refused: 0,
-            unwritable: 0,
+            queued: 0,
+            handoff_refused: 0,
+            unbuildable: 0,
+            denied: 0,
         }
     }
 
@@ -266,37 +316,53 @@ impl Emitter {
         self.mtu
     }
 
-    pub fn written(&self) -> u64 {
-        self.written
+    /// Packets admitted by the handoff, not written to the TUN.
+    pub fn queued(&self) -> u64 {
+        self.queued
     }
 
-    pub fn refused(&self) -> u64 {
-        self.refused
+    /// Packets dropped because the interface queue was full or closed.
+    pub fn handoff_refused(&self) -> u64 {
+        self.handoff_refused
     }
 
-    pub fn unwritable(&self) -> u64 {
-        self.unwritable
+    pub fn unbuildable(&self) -> u64 {
+        self.unbuildable
+    }
+
+    /// Oversized IPv4 datagrams dropped because their tuple had no Identification to give.
+    pub fn denied(&self) -> u64 {
+        self.denied
     }
 
     pub fn identifications(&self) -> &Ipv4Identifications {
         &self.identifications
     }
 
-    pub fn wrote(&mut self, accepted: bool) {
-        if accepted {
-            self.written += 1;
-        } else {
-            self.refused += 1;
-        }
+    /// Applies one guarded datagram's ending, which is what lets its tuple's sequence start again.
+    pub fn terminal(&mut self, terminal: Terminal) {
+        self.identifications.terminal(terminal);
     }
 
+    /// Counts one already-formed packet's handoff, and answers what it was.
+    pub fn handed(&mut self, accepted: bool) -> bool {
+        if accepted {
+            self.queued += 1;
+        } else {
+            self.handoff_refused += 1;
+        }
+        accepted
+    }
+
+    /// Whether the complete datagram reached the interface queue.
     pub fn emit<S: Sink, R: Reporter>(
         &mut self,
+        now: Instant,
         addressed: Addressed,
         build: impl FnOnce(Option<u16>) -> Result<Vec<u8>, WriterError>,
         sink: &mut S,
         reporter: &mut R,
-    ) {
+    ) -> bool {
         let Addressed {
             source,
             destination,
@@ -312,19 +378,27 @@ impl Emitter {
             SizingInput {
                 tuple,
                 oversized: size > self.mtu,
+                now,
             },
             self.mtu,
             &mut self.fragment_identification,
             build,
             sink,
         )) {
-            Outcome::Wrote { written, refused } => {
-                self.written += written as u64;
-                self.refused += refused as u64;
+            Outcome::Handed { queued, refused } => {
+                self.queued += queued as u64;
+                self.handoff_refused += refused as u64;
+                queued > 0
+            }
+            // Denial is traffic-driven, so count it rather than emit one report per datagram.
+            Outcome::Counted => {
+                self.denied += 1;
+                false
             }
             Outcome::Reported(e) => {
-                self.unwritable += 1;
+                self.unbuildable += 1;
                 reporter.unbuildable(source, destination, &e);
+                false
             }
         }
     }
@@ -332,17 +406,18 @@ impl Emitter {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Outcome {
-    Wrote { written: usize, refused: usize },
+    Handed { queued: usize, refused: usize },
+    Counted,
     Reported(WriterError),
 }
 
 pub fn outcome(emitted: Emitted) -> Outcome {
     match emitted {
-        Emitted::Written { written, refused } => Outcome::Wrote { written, refused },
+        Emitted::Handed { queued, refused } => Outcome::Handed { queued, refused },
+        Emitted::Denied(_) => Outcome::Counted,
         Emitted::Unbuildable(e) => Outcome::Reported(e),
     }
 }
-
 #[cfg(test)]
 pub fn ipv6_header(
     source: Ipv6Addr,
@@ -367,10 +442,23 @@ mod tests {
 
     use std::cell::Cell;
     use std::net::Ipv4Addr;
+    use std::time::Duration;
+
+    use crate::shared::ipv4_identification::MDL;
 
     const MTU: usize = 1_500;
     const SOURCE: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 1, 0, 0, 0, 0, 1);
     const DESTINATION: Ipv6Addr = Ipv6Addr::new(0x2001, 0xdb8, 1, 0, 0, 0, 0, 2);
+    const TUPLE: Tuple = (
+        Ipv4Addr::new(198, 51, 100, 1),
+        Ipv4Addr::new(192, 0, 2, 2),
+        17,
+    );
+
+    fn issuing() -> (Ipv4Identifications, Instant) {
+        let opened = Instant::now();
+        (Ipv4Identifications::new(opened), opened + MDL)
+    }
 
     fn datagram(payload_length: usize) -> Vec<u8> {
         let mut packet = ipv6_header(SOURCE, DESTINATION, 17, 64, payload_length);
@@ -384,8 +472,8 @@ mod tests {
             dont_fragment: false,
             time_to_live: 64,
             protocol: etherparse::IpNumber::UDP,
-            source: [198, 51, 100, 1],
-            destination: [192, 0, 2, 2],
+            source: TUPLE.0.octets(),
+            destination: TUPLE.1.octets(),
             ..Default::default()
         };
         header.set_payload_len(payload_length).unwrap();
@@ -411,13 +499,13 @@ mod tests {
 
     #[derive(Default)]
     struct Observed {
-        batches: Vec<Vec<Vec<u8>>>,
+        batches: Vec<Batch>,
         refuse: bool,
     }
 
     impl Sink for Observed {
-        fn datagram(&mut self, packets: Vec<Vec<u8>>) -> bool {
-            self.batches.push(packets);
+        fn datagram(&mut self, batch: Batch) -> bool {
+            self.batches.push(batch);
             !self.refuse
         }
     }
@@ -429,6 +517,34 @@ mod tests {
         fn unbuildable(&mut self, _source: IpAddr, _destination: IpAddr, error: &WriterError) {
             self.0.push(format!("{error:?}"));
         }
+    }
+
+    fn oversized(
+        identifications: &mut Ipv4Identifications,
+        now: Instant,
+        sink: &mut Observed,
+    ) -> (Emitted, Option<u16>) {
+        let used = Cell::new(None);
+        let mut fragment_identification = 0;
+        let emitted = emit(
+            identifications,
+            SizingInput {
+                tuple: Some(TUPLE),
+                oversized: true,
+                now,
+            },
+            1_280,
+            &mut fragment_identification,
+            |value| {
+                used.set(value);
+                Ok(ipv4_datagram(
+                    4_000,
+                    value.expect("oversized IPv4 is guarded"),
+                ))
+            },
+            sink,
+        );
+        (emitted, used.get())
     }
 
     #[test]
@@ -562,19 +678,15 @@ mod tests {
     }
 
     #[test]
-    fn sizing_only_allocates_for_oversized_ipv4() {
-        let tuple = (
-            Ipv4Addr::new(192, 0, 2, 1),
-            Ipv4Addr::new(198, 51, 100, 1),
-            17,
-        );
-        let mut identifications = Ipv4Identifications::new();
+    fn only_oversized_ipv4_spends_an_identification() {
+        let (mut identifications, now) = issuing();
         assert_eq!(
             size_policy(
                 &mut identifications,
                 SizingInput {
-                    tuple: Some(tuple),
+                    tuple: Some(TUPLE),
                     oversized: false,
+                    now,
                 }
             ),
             Sizing::Atomic
@@ -585,145 +697,131 @@ mod tests {
                 SizingInput {
                     tuple: None,
                     oversized: true,
+                    now,
                 }
             ),
-            Sizing::Atomic
+            Sizing::Atomic,
+            "IPv6 carries a fragment identification of its own and never one of these"
+        );
+        assert!(
+            identifications.is_empty(),
+            "and neither creates a tuple row at all"
         );
         let Sizing::Fragmentable(first) = size_policy(
             &mut identifications,
             SizingInput {
-                tuple: Some(tuple),
+                tuple: Some(TUPLE),
                 oversized: true,
+                now,
             },
         ) else {
             panic!("oversized IPv4 must be fragmentable");
         };
-        assert_eq!(
-            size_policy(
-                &mut identifications,
-                SizingInput {
-                    tuple: Some(tuple),
-                    oversized: true,
-                }
-            ),
-            Sizing::Fragmentable(first.wrapping_add(1))
-        );
+        assert_eq!(first.identification(), 1);
+        assert_eq!(identifications.len(), 1);
     }
 
     #[test]
-    fn packetization_hands_all_ipv4_fragments_over_once() {
-        let tuple = (
-            Ipv4Addr::new(192, 0, 2, 1),
-            Ipv4Addr::new(198, 51, 100, 1),
-            17,
-        );
-        let mut identifications = Ipv4Identifications::new();
-        let identification = Cell::new(None);
+    fn an_atomic_ipv4_datagram_is_emitted_without_asking_for_a_value() {
+        let (mut identifications, now) = issuing();
         let mut fragment_identification = 0;
         let mut sink = Observed::default();
         let emitted = emit(
             &mut identifications,
             SizingInput {
-                tuple: Some(tuple),
-                oversized: true,
+                tuple: Some(TUPLE),
+                oversized: false,
+                now,
             },
             1_280,
             &mut fragment_identification,
-            |value| {
-                identification.set(value);
-                Ok(ipv4_datagram(4_000, value.unwrap()))
+            |identification| {
+                assert_eq!(identification, None, "an atomic datagram is not guarded");
+                Ok(ipv4_datagram(64, 0))
             },
             &mut sink,
         );
+        assert_eq!(
+            emitted,
+            Emitted::Handed {
+                queued: 1,
+                refused: 0,
+            }
+        );
+        assert_eq!(sink.batches[0].guarded(), None);
+        assert!(identifications.is_empty());
+    }
+
+    #[test]
+    fn packetization_hands_all_ipv4_fragments_over_once() {
+        let (mut identifications, now) = issuing();
+        let mut sink = Observed::default();
+        let (emitted, identification) = oversized(&mut identifications, now, &mut sink);
 
         assert_eq!(sink.batches.len(), 1);
-        let packets = &sink.batches[0];
+        let packets = sink.batches[0].packets();
         assert!(packets.len() > 1);
         assert_eq!(
             emitted,
-            Emitted::Written {
-                written: packets.len(),
+            Emitted::Handed {
+                queued: packets.len(),
                 refused: 0,
             }
         );
         assert!(packets.iter().all(|packet| packet.len() <= 1_280));
         assert!(packets.iter().all(|packet| {
-            Ipv4Header::from_slice(packet).unwrap().0.identification
-                == identification.get().unwrap()
+            Ipv4Header::from_slice(packet).unwrap().0.identification == identification.unwrap()
         }));
+        assert_eq!(
+            sink.batches[0].guarded().map(|guarded| guarded.tuple()),
+            Some(TUPLE),
+            "the batch carries the identity the writer settles against"
+        );
+        assert_eq!(identifications.outstanding(), 1);
     }
 
     #[test]
-    fn sink_refusal_refuses_the_whole_batch_and_does_not_reuse_its_id() {
-        let tuple = (
-            Ipv4Addr::new(192, 0, 2, 1),
-            Ipv4Addr::new(198, 51, 100, 1),
-            17,
-        );
-        let mut identifications = Ipv4Identifications::new();
-        let first = Cell::new(None);
-        let mut fragment_identification = 0;
+    fn sink_refusal_refuses_the_whole_batch_and_gives_its_value_back() {
+        let (mut identifications, now) = issuing();
         let mut sink = Observed {
             refuse: true,
             ..Observed::default()
         };
-        let emitted = emit(
-            &mut identifications,
-            SizingInput {
-                tuple: Some(tuple),
-                oversized: true,
-            },
-            1_280,
-            &mut fragment_identification,
-            |value| {
-                first.set(value);
-                Ok(ipv4_datagram(4_000, value.unwrap()))
-            },
-            &mut sink,
-        );
+        let (emitted, first) = oversized(&mut identifications, now, &mut sink);
         assert_eq!(sink.batches.len(), 1);
         assert_eq!(
             emitted,
-            Emitted::Written {
-                written: 0,
-                refused: sink.batches[0].len(),
+            Emitted::Handed {
+                queued: 0,
+                refused: sink.batches[0].packets().len(),
             }
         );
-
-        let second = Cell::new(None);
-        emit(
-            &mut identifications,
-            SizingInput {
-                tuple: Some(tuple),
-                oversized: true,
-            },
-            1_280,
-            &mut fragment_identification,
-            |value| {
-                second.set(value);
-                Ok(ipv4_datagram(4_000, value.unwrap()))
-            },
-            &mut sink,
+        assert_eq!(
+            identifications.outstanding(),
+            0,
+            "a refused datagram is not one the writer owes an ending for"
         );
-        assert_eq!(second.get(), Some(first.get().unwrap().wrapping_add(1)));
+
+        sink.refuse = false;
+        let (_, second) = oversized(&mut identifications, now, &mut sink);
+        assert_eq!(
+            second, first,
+            "nothing carrying it reached the wire, so the value is issued again"
+        );
     }
 
     #[test]
-    fn unbuildable_packet_hands_nothing_to_the_sink() {
-        let tuple = (
-            Ipv4Addr::new(192, 0, 2, 1),
-            Ipv4Addr::new(198, 51, 100, 1),
-            17,
-        );
-        let mut identifications = Ipv4Identifications::new();
+    fn unbuildable_packet_hands_nothing_to_the_sink_and_gives_its_value_back() {
+        let (mut identifications, now) = issuing();
         let mut fragment_identification = 0;
         let mut sink = Observed::default();
         let used = Cell::new(None);
         let emitted = emit(
             &mut identifications,
             SizingInput {
-                tuple: Some(tuple),
+                tuple: Some(TUPLE),
                 oversized: true,
+                now,
             },
             1_280,
             &mut fragment_identification,
@@ -740,16 +838,88 @@ mod tests {
             Emitted::Unbuildable(WriterError::Unfragmentable("DF is set"))
         );
         assert!(sink.batches.is_empty());
+        let (_, next) = oversized(&mut identifications, now, &mut sink);
         assert_eq!(
-            identifications.next(tuple),
-            used.get().unwrap().wrapping_add(1),
-            "failure does not roll the tuple sequence back"
+            next,
+            used.get(),
+            "a datagram that was never built cannot be on the wire under that value"
         );
     }
 
     #[test]
+    fn a_quarantined_session_drops_oversized_ipv4_rather_than_guessing_a_value() {
+        let opened = Instant::now();
+        let mut identifications = Ipv4Identifications::new(opened);
+        let mut sink = Observed::default();
+        let mut fragment_identification = 0;
+        let emitted = emit(
+            &mut identifications,
+            SizingInput {
+                tuple: Some(TUPLE),
+                oversized: true,
+                now: opened,
+            },
+            1_280,
+            &mut fragment_identification,
+            |_| panic!("a denied datagram is never built"),
+            &mut sink,
+        );
+        assert_eq!(emitted, Emitted::Denied(Denial::Quarantined));
+        assert_eq!(outcome(emitted), Outcome::Counted);
+        assert!(sink.batches.is_empty());
+
+        // Atomic output of the same tuple is unaffected, because it carries no value to collide.
+        let emitted = emit(
+            &mut identifications,
+            SizingInput {
+                tuple: Some(TUPLE),
+                oversized: false,
+                now: opened,
+            },
+            1_280,
+            &mut fragment_identification,
+            |_| Ok(ipv4_datagram(64, 0)),
+            &mut sink,
+        );
+        assert_eq!(
+            emitted,
+            Emitted::Handed {
+                queued: 1,
+                refused: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn an_exhausted_tuple_denies_only_oversized_output_until_its_window_passes() {
+        let (mut identifications, now) = issuing();
+        let mut sink = Observed::default();
+        let mut last = None;
+        for _ in 0..(1u32 << 16) {
+            last = Some(
+                identifications
+                    .next(TUPLE, now)
+                    .expect("a fresh cycle issues the whole space"),
+            );
+        }
+        let last = last.expect("the cycle issued something");
+        identifications.accepted(last);
+        let wrote = now + Duration::from_secs(1);
+        identifications.terminal(Terminal::wrote(last, wrote));
+
+        let (emitted, _) = oversized(&mut identifications, wrote, &mut sink);
+        assert_eq!(emitted, Emitted::Denied(Denial::Exhausted));
+        assert!(sink.batches.is_empty());
+        assert_eq!(identifications.exhausted(), 1);
+
+        let (emitted, value) = oversized(&mut identifications, wrote + MDL, &mut sink);
+        assert!(matches!(emitted, Emitted::Handed { refused: 0, .. }));
+        assert_eq!(value, Some(1), "the new cycle starts at the beginning");
+    }
+
+    #[test]
     fn oversized_ipv6_is_one_batch_with_one_fragment_id() {
-        let mut identifications = Ipv4Identifications::new();
+        let (mut identifications, now) = issuing();
         let mut fragment_identification = 0;
         let mut sink = Observed::default();
         let emitted = emit(
@@ -757,6 +927,7 @@ mod tests {
             SizingInput {
                 tuple: None,
                 oversized: true,
+                now,
             },
             1_280,
             &mut fragment_identification,
@@ -770,12 +941,13 @@ mod tests {
         assert_eq!(sink.batches.len(), 1);
         assert_eq!(
             emitted,
-            Emitted::Written {
-                written: sink.batches[0].len(),
+            Emitted::Handed {
+                queued: sink.batches[0].packets().len(),
                 refused: 0,
             }
         );
-        assert!(sink.batches[0].iter().all(|packet| {
+        assert_eq!(sink.batches[0].guarded(), None);
+        assert!(sink.batches[0].packets().iter().all(|packet| {
             u32::from_be_bytes(
                 packet[IPV6_HEADER_LEN + 4..IPV6_HEADER_LEN + 8]
                     .try_into()
@@ -785,46 +957,119 @@ mod tests {
     }
 
     #[test]
-    fn emitter_counts_packets_and_reports_packetization_failures() {
-        let source: IpAddr = Ipv4Addr::new(192, 0, 2, 1).into();
-        let destination: IpAddr = Ipv4Addr::new(198, 51, 100, 1).into();
-        let mut emitter = Emitter::new(1_280);
+    fn emitter_counts_packets_denials_and_reports_packetization_failures() {
+        let opened = Instant::now();
+        let now = opened + MDL;
+        let source: IpAddr = TUPLE.0.into();
+        let destination: IpAddr = TUPLE.1.into();
+        let mut emitter = Emitter::new(1_280, opened);
         let mut sink = Observed::default();
         let mut reports = Reports::default();
-        emitter.emit(
-            Addressed {
-                source,
-                destination,
-                protocol: 17,
-                size: 4_020,
-            },
-            |identification| Ok(ipv4_datagram(4_000, identification.unwrap())),
-            &mut sink,
-            &mut reports,
+        assert!(
+            emitter.emit(
+                now,
+                Addressed {
+                    source,
+                    destination,
+                    protocol: 17,
+                    size: 4_020,
+                },
+                |identification| Ok(ipv4_datagram(4_000, identification.unwrap())),
+                &mut sink,
+                &mut reports,
+            ),
+            "the whole datagram reached the interface queue"
         );
-        assert_eq!(emitter.written(), sink.batches[0].len() as u64);
-        assert_eq!(emitter.refused(), 0);
+        assert_eq!(emitter.queued(), sink.batches[0].packets().len() as u64);
+        assert_eq!(emitter.handoff_refused(), 0);
+        let guarded = sink.batches[0].guarded().expect("guarded");
+        assert_eq!(emitter.identifications().outstanding(), 1);
+        emitter.terminal(Terminal::wrote(guarded, now));
+        assert_eq!(emitter.identifications().outstanding(), 0);
 
-        emitter.emit(
-            Addressed {
-                source,
-                destination,
-                protocol: 17,
-                size: 4_020,
-            },
-            |identification| {
-                let mut packet = ipv4_datagram(4_000, identification.unwrap());
-                packet[6] |= 0x40;
-                Ok(packet)
-            },
-            &mut sink,
-            &mut reports,
+        assert!(
+            !emitter.emit(
+                now,
+                Addressed {
+                    source,
+                    destination,
+                    protocol: 17,
+                    size: 4_020,
+                },
+                |identification| {
+                    let mut packet = ipv4_datagram(4_000, identification.unwrap());
+                    packet[6] |= 0x40;
+                    Ok(packet)
+                },
+                &mut sink,
+                &mut reports,
+            ),
+            "a datagram the daemon could not split reached nothing"
         );
-        assert_eq!(emitter.unwritable(), 1);
+        assert_eq!(emitter.unbuildable(), 1);
         assert_eq!(reports.0.len(), 1);
         assert!(reports.0[0].contains("DF is set"));
 
-        emitter.wrote(false);
-        assert_eq!(emitter.refused(), 1);
+        // Inside the opening quarantine nothing oversized is issued a value, and that is counted apart.
+        assert!(
+            !emitter.emit(
+                opened,
+                Addressed {
+                    source,
+                    destination,
+                    protocol: 17,
+                    size: 4_020,
+                },
+                |_| panic!("a denied datagram is never built"),
+                &mut sink,
+                &mut reports,
+            ),
+            "a denied datagram reached nothing either"
+        );
+        assert_eq!(emitter.denied(), 1);
+        assert_eq!(reports.0.len(), 1, "a denial is not a daemon defect");
+        assert_eq!(
+            emitter.queued(),
+            sink.batches[0].packets().len() as u64,
+            "and neither of them was counted as queued"
+        );
+
+        assert!(!emitter.handed(false));
+        assert_eq!(emitter.handoff_refused(), 1);
+        assert!(emitter.handed(true));
+    }
+
+    #[test]
+    fn a_refused_handoff_is_not_reported_as_queued() {
+        let opened = Instant::now();
+        let now = opened + MDL;
+        let mut emitter = Emitter::new(1_280, opened);
+        let mut sink = Observed {
+            refuse: true,
+            ..Observed::default()
+        };
+        let mut reports = Reports::default();
+        assert!(
+            !emitter.emit(
+                now,
+                Addressed {
+                    source: TUPLE.0.into(),
+                    destination: TUPLE.1.into(),
+                    protocol: 17,
+                    size: 4_020,
+                },
+                |identification| Ok(ipv4_datagram(4_000, identification.unwrap())),
+                &mut sink,
+                &mut reports,
+            ),
+            "a datagram the interface queue would not take reached nothing"
+        );
+        assert_eq!(emitter.queued(), 0);
+        assert_eq!(
+            emitter.handoff_refused(),
+            sink.batches[0].packets().len() as u64,
+            "every fragment of the one datagram is counted refused, and none queued"
+        );
+        assert_eq!(emitter.identifications().outstanding(), 0);
     }
 }

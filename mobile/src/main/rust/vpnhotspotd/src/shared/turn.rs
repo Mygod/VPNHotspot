@@ -12,9 +12,14 @@
 //! acknowledgement before reading another, but it is the app's authenticated control stream that produces
 //! them, so metered dataplane work does not make a run of config calls finite and no ordinary source is
 //! promised a turn against one. The UDP, Echo and virtual-DNS completion arms are resource-bounded instead:
-//! each one's readiness is produced by the metered sources, so it drains once those stop being served. Either
-//! way this is a bound on turns among the metered sources and not a wall-clock bound - an unmetered arm can
-//! legitimately run several times between two turns of a metered one.
+//! each one's readiness is produced by the metered sources, so it drains once those stop being served. The
+//! TUN writer's two arms are the same kind, and the order between them matters: a guarded-datagram
+//! settlement exists only for a datagram this owner itself handed over, and the interface-drain wait is ready
+//! only while the owner has already filled the one-deep handoff. The settlement arm sits above the drain
+//! wait, which is what keeps the settlement handoff from deadlocking - the writer may block handing an ending
+//! over, and the owner takes it even while parked waiting for that same writer to free interface capacity.
+//! Either way this is a bound on turns among the metered sources and not a wall-clock bound - an unmetered
+//! arm can legitimately run several times between two turns of a metered one.
 //!
 //! The pass has to end on *readiness* rather than on having served everyone, because most of these sources
 //! are idle most of the time and one that never becomes ready must not be able to hold a pass open. The owner
@@ -40,6 +45,18 @@
 //! attention the owner still owes it and add a second when the restriction lifted, so that reset opens the
 //! whole select at once instead. The carried stage therefore always leaves attention inactive, which is the
 //! whole of what it is for.
+//!
+//! One group of arms is outside all of this. A pass is frozen while the interface handoff cannot take another
+//! datagram - see [Pass::started] - and that freeze is about the sources that *produce* output. The owner's
+//! four recurring deadline arms are enabled regardless of what a frozen pass owes and record no turn while it
+//! is frozen, because each of them rearms its own table on a later deadline every time it runs: metering them
+//! with the pass would serve the first deadline of a stall and none of the ones behind it, leaving expired
+//! rows for a reply to be authorized against once capacity returned. Recording no turn is what keeps them out
+//! of the fairness state entirely - [Pass] is left exactly as the producer that filled the slot left it,
+//! carried cohort included - and nothing spins, because each firing consumes the entries that were really due
+//! and its index moves on.
+//!
+//! Being outside the metering is exactly why such an arm must not emit. See [Expiry].
 
 /// One metered select arm.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -62,6 +79,49 @@ const _: () = assert!((Source::TunIngress as u32) < u16::BITS);
 impl Source {
     fn bit(self) -> u16 {
         1 << self as u16
+    }
+}
+
+/// What a due-deadline turn may do about output.
+///
+/// The owner reads the interface handoff once per turn, and every gate on that turn - the reply arms, TUN
+/// readability, the stack's own poll delay and the arm that ends a pass - uses that one answer. The reading
+/// can go stale in the owner's favour while the select is pending, because the serial writer frees a slot
+/// whenever it takes what was queued. That release is what [Pass] hands to the producer next in the biased
+/// order, and the arm that wakes for it sits below every deadline arm: a deadline that is due at the same
+/// moment therefore wins the race and runs with a slot free that no metered producer was offered.
+///
+/// A turn that recorded no turn must not be able to take that slot. Repeated deadlines otherwise become an
+/// unmetered producer that can keep winning releases ahead of replies already waiting in their bounded
+/// mailboxes - the very starvation [Pass::started] exists to prevent. So the *snapshot* decides what a
+/// deadline arm may do, not what the handoff happens to hold by the time it runs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Expiry {
+    /// The handoff had room when the turn read it, so this arm also took its turn in the pass. Whatever
+    /// retiring a row produces goes to the client as usual.
+    Delivering,
+    /// The handoff was full when the turn read it, so this arm records no turn. Rows that are due are still
+    /// retired - that is what keeps successive deadlines actionable through a stall - but nothing is emitted.
+    /// Anything a retirement would have put in front of a client is either dropped as the best-effort
+    /// notification it already was, or left where a later metered turn produces it.
+    Maintaining,
+}
+
+impl Expiry {
+    /// Whether a retirement performed in this mode may also emit.
+    pub fn delivering(self) -> bool {
+        matches!(self, Self::Delivering)
+    }
+}
+
+impl From<bool> for Expiry {
+    /// From the turn's one reading of the interface handoff, and from nothing sampled later.
+    fn from(accepting: bool) -> Self {
+        if accepting {
+            Self::Delivering
+        } else {
+            Self::Maintaining
+        }
     }
 }
 
@@ -108,9 +168,22 @@ impl Pass {
         };
     }
 
-    /// Whether the ready reset arm must remain enabled.
-    pub fn started(&self) -> bool {
-        matches!(self.phase, Phase::Carried) || self.served != 0
+    /// Whether the ready reset arm must remain enabled. `accepting` is whether the interface handoff can
+    /// take another datagram.
+    ///
+    /// While it cannot, the owner holds its output-producing sources inactive, and a pass must not end: the
+    /// sources it gated off still owe a turn, and forgetting that would let the next release open a fresh
+    /// biased pass that a continuously ready TCP stack wins every time, indefinitely starving replies already
+    /// waiting in their bounded mailboxes. Freezing the pass instead is what makes a release re-enter the
+    /// ordinary order at the point it interrupted. Nothing spins on it: while the pass is frozen the only
+    /// thing that can make the gated sources runnable again is the interface handoff draining, which the
+    /// owner has its own arm for.
+    ///
+    /// What is frozen is producing, not maintaining. The owner runs its recurring deadline arms throughout a
+    /// stall and records no turn for them, so this state stays exactly what the interrupted producer left -
+    /// see the module documentation.
+    pub fn started(&self, accepting: bool) -> bool {
+        accepting && (matches!(self.phase, Phase::Carried) || self.served != 0)
     }
 
     /// Resets the pass, because nothing that still owed a turn was ready to take one. When
@@ -182,8 +255,7 @@ mod tests {
         }
     }
 
-    /// Reduced form of the owner's biased select. `scanned` counts owner turns and `flows.walked` counts
-    /// polls of the expensive arm.
+    /// Reduced owner select; separately counts turns and TCP scans.
     async fn owner_turn(
         pass: &mut Pass,
         scanned: &mut usize,
@@ -211,7 +283,8 @@ mod tests {
                     pass.take(Source::TunIngress);
                     break Turned::Ingress;
                 }
-                () = std::future::ready(()), if pass.started() => pass.end(),
+                // This model never fills the interface handoff.
+                () = std::future::ready(()), if pass.started(true) => pass.end(),
             }
         }
     }
@@ -219,11 +292,11 @@ mod tests {
     #[test]
     fn each_source_takes_one_turn_per_pass() {
         let mut pass = Pass::default();
-        assert!(!pass.started());
+        assert!(!pass.started(true));
         for (taken, source) in SOURCES.iter().enumerate() {
             assert!(pass.owed(*source), "{source:?}");
             pass.take(*source);
-            assert!(pass.started(), "{source:?}");
+            assert!(pass.started(true), "{source:?}");
             for (index, other) in SOURCES.iter().enumerate() {
                 assert_eq!(
                     pass.owed(*other),
@@ -233,7 +306,7 @@ mod tests {
             }
         }
         pass.end();
-        assert!(!pass.started());
+        assert!(!pass.started(true));
         for source in SOURCES {
             assert!(pass.owed(source), "{source:?}");
         }
@@ -245,20 +318,20 @@ mod tests {
         pass.take(Source::UdpReply);
         pass.take(Source::EchoReply);
         pass.end();
-        assert!(pass.started());
+        assert!(pass.started(true));
         assert!(pass.owed(Source::UdpReply));
         assert!(pass.owed(Source::EchoReply));
         assert!(!pass.owed(Source::TcpAttention));
         assert!(!pass.owed(Source::TunIngress));
         pass.end();
-        assert!(!pass.started());
+        assert!(!pass.started(true));
         assert!(pass.owed(Source::TcpAttention));
         assert!(pass.owed(Source::TunIngress));
         pass.take(Source::UdpReply);
         pass.end();
         assert!(pass.owed(Source::UdpReply));
         pass.take(Source::UdpReply);
-        assert!(pass.started());
+        assert!(pass.started(true));
         assert!(!pass.owed(Source::UdpReply));
         assert!(pass.owed(Source::TcpAttention));
         assert!(pass.owed(Source::TunIngress));
@@ -269,17 +342,288 @@ mod tests {
         let mut pass = Pass::default();
         pass.take(Source::TcpAttention);
         pass.end();
-        assert!(!pass.started());
+        assert!(!pass.started(true));
         for source in SOURCES {
             assert!(pass.owed(source), "{source:?}");
         }
         pass.take(Source::TcpAttention);
         pass.take(Source::UdpReply);
         pass.end();
-        assert!(!pass.started());
+        assert!(!pass.started(true));
         for source in SOURCES {
             assert!(pass.owed(source), "{source:?}");
         }
+    }
+
+    /// Metered output sources in biased order.
+    const EMITTING: [Source; 4] = [
+        Source::TcpAttention,
+        Source::UdpReply,
+        Source::EchoReply,
+        Source::TunIngress,
+    ];
+
+    fn gated(source: Source) -> bool {
+        matches!(
+            source,
+            Source::UdpReply | Source::EchoReply | Source::TunIngress
+        )
+    }
+
+    /// Models ready producers across one-slot capacity releases.
+    fn served_across_releases(releases: usize, tcp_ready_while_stalled: bool) -> Vec<Source> {
+        let mut pass = Pass::default();
+        let mut accepting = true;
+        let mut served = Vec::new();
+        let mut left = releases;
+        loop {
+            let ready = |source: Source| {
+                accepting || source != Source::TcpAttention || tcp_ready_while_stalled
+            };
+            let next = EMITTING.into_iter().find(|source| {
+                pass.owed(*source) && ready(*source) && (accepting || !gated(*source))
+            });
+            match next {
+                Some(source) => {
+                    pass.take(source);
+                    // An accepting turn fills the slot.
+                    if accepting {
+                        served.push(source);
+                        accepting = false;
+                    }
+                }
+                None if pass.started(accepting) => pass.end(),
+                None if !accepting => {
+                    // Model `output.accepted()`.
+                    let Some(remaining) = left.checked_sub(1) else {
+                        break;
+                    };
+                    left = remaining;
+                    accepting = true;
+                }
+                // The real owner would block here.
+                None => break,
+            }
+        }
+        served
+    }
+
+    #[test]
+    fn sustained_tcp_output_cannot_starve_queued_replies_across_capacity_releases() {
+        for tcp_ready_while_stalled in [true, false] {
+            let served = served_across_releases(31, tcp_ready_while_stalled);
+            assert_eq!(
+                served.len(),
+                32,
+                "every release placed exactly one datagram (stalled-ready {tcp_ready_while_stalled})"
+            );
+            // Every group must contain each producer once.
+            for (index, group) in served
+                .as_chunks::<{ EMITTING.len() }>()
+                .0
+                .iter()
+                .enumerate()
+            {
+                let mut seen = group.to_vec();
+                seen.sort_by_key(|source| *source as u16);
+                let mut all = EMITTING.to_vec();
+                all.sort_by_key(|source| *source as u16);
+                assert_eq!(
+                    seen, all,
+                    "release group {index} served {group:?} (stalled-ready {tcp_ready_while_stalled})"
+                );
+            }
+            for source in EMITTING {
+                assert_eq!(
+                    served.iter().filter(|served| **served == source).count(),
+                    8,
+                    "{source:?} (stalled-ready {tcp_ready_while_stalled})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ending_a_pass_while_the_interface_is_full_would_hand_every_release_to_one_source() {
+        // Counterexample: resetting while producers are gated starves them.
+        let mut pass = Pass::default();
+        let mut served = Vec::new();
+        let mut accepting = true;
+        for _ in 0..10 {
+            let next = EMITTING
+                .into_iter()
+                .find(|source| pass.owed(*source) && (accepting || !gated(*source)));
+            match next {
+                Some(source) => {
+                    pass.take(source);
+                    served.push(source);
+                    accepting = false;
+                }
+                None => {
+                    pass.end();
+                    accepting = true;
+                }
+            }
+        }
+        assert!(
+            served.iter().all(|source| *source == Source::TcpAttention),
+            "without the rule the first emitting source takes every release: {served:?}"
+        );
+    }
+
+    /// Recurring deadlines in biased order.
+    const RECURRING: [Source; 4] = [
+        Source::MappingDeadline,
+        Source::EchoDeadline,
+        Source::FragmentDeadline,
+        Source::TcpDeadline,
+    ];
+
+    /// Arms that can emit toward the client.
+    const TOWARD_CLIENT: [Source; 5] = [
+        Source::TcpAttention,
+        Source::UdpReply,
+        Source::EchoReply,
+        Source::TcpDeadline,
+        Source::TunIngress,
+    ];
+
+    /// Models the owner's deadline gating rule.
+    fn deadline_arm(pass: &mut Pass, source: Source, accepting: bool) -> bool {
+        if accepting && !pass.owed(source) {
+            return false;
+        }
+        if accepting {
+            pass.take(source);
+        }
+        true
+    }
+
+    /// First owed output arm in biased order.
+    fn offered(pass: &Pass) -> Option<Source> {
+        SOURCES
+            .into_iter()
+            .find(|source| TOWARD_CLIENT.contains(source) && pass.owed(*source))
+    }
+
+    #[test]
+    fn a_stall_serves_successive_deadlines_without_disturbing_the_pass_it_interrupted() {
+        // TCP filled the slot; other producers remain owed.
+        let mut pass = Pass::default();
+        pass.take(Source::TcpAttention);
+        assert!(!pass.started(false), "a frozen pass may not end");
+
+        // Successive deadlines run through one continuous stall.
+        for round in 0..4 {
+            for source in RECURRING {
+                assert!(
+                    deadline_arm(&mut pass, source, false),
+                    "{source:?} in round {round}"
+                );
+            }
+        }
+
+        // Maintenance leaves the pass unchanged.
+        assert!(
+            !pass.owed(Source::TcpAttention),
+            "TCP output has had its turn"
+        );
+        for source in SOURCES {
+            assert_eq!(
+                pass.owed(source),
+                source != Source::TcpAttention,
+                "{source:?} after the stall"
+            );
+        }
+        assert!(!pass.started(false), "and the pass still may not end");
+        assert_eq!(
+            EMITTING
+                .into_iter()
+                .find(|source| pass.owed(*source) && !gated(*source)),
+            None
+        );
+
+        // Capacity returns to the previously owed producers before TCP.
+        assert_eq!(offered(&pass), Some(Source::UdpReply));
+        pass.take(Source::UdpReply);
+        assert_eq!(offered(&pass), Some(Source::EchoReply));
+        pass.take(Source::EchoReply);
+        assert_eq!(
+            offered(&pass),
+            Some(Source::TcpDeadline),
+            "and only then does the stack get one"
+        );
+    }
+
+    #[test]
+    fn maintenance_cannot_take_a_slot_the_writer_freed_after_the_turn_read_the_handoff() {
+        let mut pass = Pass::default();
+        pass.take(Source::TcpAttention);
+        // Capacity returns after the turn snapshots a full handoff.
+        let accepting = false;
+        let freed = true;
+        let mut placed = Vec::new();
+        for round in 0..2 {
+            for source in RECURRING {
+                assert!(
+                    deadline_arm(&mut pass, source, accepting),
+                    "{source:?} in round {round}"
+                );
+                if freed && Expiry::from(accepting).delivering() {
+                    placed.push(source);
+                }
+            }
+        }
+        assert!(
+            placed.is_empty(),
+            "a turn that recorded no turn emitted into the freed slot: {placed:?}"
+        );
+        // The released slot remains owed to the gated producers.
+        for source in SOURCES {
+            assert_eq!(
+                pass.owed(source),
+                source != Source::TcpAttention,
+                "{source:?}"
+            );
+        }
+        assert_eq!(offered(&pass), Some(Source::UdpReply));
+    }
+
+    #[test]
+    fn a_delivering_deadline_turn_is_the_one_that_took_a_turn() {
+        let mut pass = Pass::default();
+        assert_eq!(Expiry::from(true), Expiry::Delivering);
+        assert!(Expiry::from(true).delivering());
+        assert_eq!(Expiry::from(false), Expiry::Maintaining);
+        assert!(!Expiry::from(false).delivering());
+        for source in RECURRING {
+            assert!(deadline_arm(&mut pass, source, true), "{source:?}");
+            assert!(!pass.owed(source), "{source:?} took its turn");
+        }
+        for source in RECURRING {
+            assert!(deadline_arm(&mut pass, source, false), "{source:?}");
+            assert!(!pass.owed(source), "and a maintaining turn records none");
+        }
+    }
+
+    #[test]
+    fn metering_a_deadline_arm_with_a_frozen_pass_would_strand_every_deadline_after_the_first() {
+        // Counterexample: metered maintenance strands later deadlines.
+        let mut pass = Pass::default();
+        pass.take(Source::TcpAttention);
+        for source in RECURRING {
+            assert!(deadline_arm(&mut pass, source, true), "{source:?}");
+        }
+        for source in RECURRING {
+            assert!(
+                !deadline_arm(&mut pass, source, true),
+                "a second {source:?} is refused for the rest of the stall"
+            );
+        }
+        assert!(
+            !pass.started(false),
+            "and no arm can end the pass to re-enable it while the interface is full"
+        );
     }
 
     #[tokio::test]

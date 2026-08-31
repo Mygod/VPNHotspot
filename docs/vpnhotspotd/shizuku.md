@@ -220,16 +220,11 @@ separately permits explicit selection of other networks
 ## App-UID Dataplane
 
 TUN input has no physical-client identity and is validated before transport
-dispatch. Exact virtual destinations are classified before reassembly; IPv6
-extension chains and non-initial fragments addressed to virtual DNS are
-unwrapped or reassembled, then classified again. Processing continues only
-while a successful step removes an extension chain or completes reassembly and
-removes a Fragment header, so the finite encoded packet bounds the work without
-a transformation quota. Only TCP or UDP port 53 is accepted. Supported IPv6
-extension headers are walked until transport or Fragment. Malformed or truncated
-chains, unsupported headers including AH and ESP, source routing, other
-transports and other ports are dropped rather than relayed from the reserved
-address.
+dispatch. Virtual destinations are classified before and after any required IPv6
+normalization or reassembly. Each successful round removes headers from the
+finite packet; no transformation quota is needed. Virtual DNS accepts only TCP
+or UDP port 53. Malformed, unsupported, source-routed, or differently addressed
+traffic is dropped.
 
 | Traffic | Handling | Owned state |
 | --- | --- | --- |
@@ -248,17 +243,24 @@ One task owns TUN ingress and selects on every dataplane source at once, biased:
 | Configuration | prioritized and unmetered |
 | UDP/Echo completions and virtual DNS settlement | unmetered; bounded by metered producers |
 | TCP attention: traffic, terminals, DNS transactions and client closes | one turn per pass |
-| UDP/Echo replies, TCP DNS handoffs, deadlines and TUN readability | one turn per pass |
+| TCP DNS handoffs | one turn per pass |
+| UDP/Echo replies and TUN readability | one turn per pass, and only while the interface handoff accepts |
+| UDP mapping, Echo session, fragment and TCP idle deadlines | one turn per pass while the interface handoff accepts; unmetered and non-emitting while it is full |
 
 A metered source takes at most one turn per pass. When all remaining sources are
-pending, the pass resets without rescanning owner deadlines. If the pending set
-included TCP attention (the only O(N) poll), a carried retry first offers only
-the sources already served and keeps attention disabled; otherwise all sources
-reopen immediately. Configuration is deliberately unmetered because it is
-authenticated, limited to one in-flight call and updates state used by later
-arms. Settlement and completion arms are unmetered because their work is bounded
-by metered producers. An indefinitely ready configuration stream can still delay
-ordinary work; fairness is a bound among metered turns, not wall-clock time.
+pending, the pass resets in place. A carried retry avoids immediately repeating
+the O(N) TCP-attention scan. Configuration is prioritized and limited to one
+in-flight call; completion arms are bounded by metered producers. Fairness is
+therefore among metered turns, not a wall-clock guarantee against control work.
+
+While the interface handoff is full, output-producing arms are gated and the
+pass cannot reset. Recurring deadlines still retire due rows without taking a
+turn or emitting, preserving both expiry and the interrupted fairness state.
+This mode comes from the turn's capacity snapshot, so a deadline cannot steal a
+slot the writer frees concurrently. Fragment expiry counts suppressed
+best-effort errors as `fragments-stalled`; TCP expiry leaves resets for the first
+accepting TCP turn. UDP and Echo also check deadlines when consuming a reply or
+error, independent of sweep order.
 
 Android applies the app UID's routing and access policy to every unbound egress
 socket; the daemon adds no network or ingress-interface authorization of its
@@ -291,70 +293,92 @@ persistent state to remove and cannot close that child's descriptors.
 
 Resource admission is descriptor-only. At session start the daemon reads the
 soft `RLIMIT_NOFILE`, counts the descriptors already visible in `/proc/self/fd`
-(including the directory handle used to count them, conservatively), and admits
-against the difference. An unrepresentable difference or a result that does not
-contain the DNS floor fails session startup. A total of exactly one runs with
-DNS capacity and no general descriptor capacity rather than imposing another
-minimum. Counting the directory handle leaves one descriptor below the soft
-limit at full admission. A TCP candidate is opened synchronously, then either
-charged immediately or closed on denial before another owner turn; admission
-therefore never retains a lease for a socket that failed to open.
+(including the counting directory handle), and admits against the difference.
+Invalid arithmetic or a total below the one-unit DNS floor fails startup; a
+total of one permits DNS only. The conservative count leaves one descriptor
+below the soft limit at full admission. A TCP candidate is opened and either
+charged or closed within the same owner turn.
 
 Exactly one unit inside that measured total is protected for a DNS resolver
-descriptor. The floor is capacity, not a descriptor opened in advance and not a
-DNS concurrency ceiling: DNS may use any remaining capacity, while general work
-cannot consume the last unit. One general unit is held for each live UDP mapping
-socket, opened TCP upstream-flow socket and opened Echo ping/reply family socket.
-A virtual-DNS TCP transport and its client-facing smoltcp state are memory-only;
-only a query accepted for resolver submission holds one DNS unit, which can
-authorize at most its one returned resolver descriptor. TCP DNS takes this unit
-when the framed length is accepted, before allocating the body, and releases it
-if submission never returns a descriptor. A denied general request drops or
-refuses only the new mapping, flow or family socket; an answerable denied DNS
-query receives SERVFAIL. Existing owners are untouched.
-A descriptor-owning worker is joined and its descriptor is closed before its
-lease is released. In particular, TCP releases the upstream lease at that worker
-terminal even when the memory-only client-facing state remains for a closing
-handshake. See [`dns.md`](dns.md).
+descriptor. It is neither pre-opened nor a DNS concurrency cap: DNS may use
+other free units, while general work cannot take the last one. UDP mappings, TCP
+upstreams, Echo family sockets, and submitted resolver descriptors each hold one
+unit. TCP DNS reserves before allocating an admitted body and releases the unit
+if submission returns no descriptor. Denial affects only the new owner; an
+answerable DNS query receives SERVFAIL. A worker's descriptor is closed and the
+worker joined before release, although memory-only client TCP state may remain.
+See [`dns.md`](dns.md).
 
 There is no daemon aggregate memory share, `MemAvailable` fraction, modeled byte
-ledger or byte precharge. UDP contacted-remotes and endpoint hop-limit histories,
-Echo sessions, queued TUN datagrams, client-facing TCP flows, virtual-DNS TCP
-transports, DNS transaction tables, aggregate TCP-DNS owner requests, queued
-UDP/Echo reply events, fragment-reassembly contexts and IPv4 Identification
-tuples grow on demand without prepared counts or independent per-client limits.
-Some owning rows still have a descriptor and are therefore indirectly limited
-by descriptor admission; the memory-only rows are not. Real allocator or
-Android process-memory exhaustion may terminate the app-UID child. Disconnecting
-the downstream, stopping or restarting the session, killing the child, or
-rebooting drops all of this process-local state, so this trusted-downstream mode
-deliberately prefers that recovery boundary to arbitrary table quotas.
+ledger or byte precharge. Memory-only flow, DNS, fragment, Echo, UDP-history and
+IPv4 Identification state grows on demand; descriptor-owning rows remain
+indirectly bounded by admission. Exhaustion may terminate the recoverable child,
+and disconnecting the downstream or restarting the session/process clears the
+state. This trusted-downstream boundary is preferred to arbitrary table quotas.
+
+That trusted-downstream recovery boundary covers state a *downstream client*
+creates, not queues an Internet peer can fill before owner authorization. UDP
+and Echo reply mailboxes and the TUN datagram handoff are therefore one-slot;
+producers wait before reading or refuse a complete datagram. See [Bounded
+Buffers And Handoffs](#bounded-buffers-and-handoffs).
+
+Timed rows are indexed by deadline rather than scanned. UDP mappings and their
+contacted-remote histories, Echo sessions, fragment-reassembly contexts and TCP
+flow idle floors each keep one ordered entry per armed row. Earliest-deadline
+queries and updates are logarithmic, while expiry removes only due rows. UDP and
+Echo still validate the row's deadline when consuming a reply or error, so
+liveness does not depend on the sweep running first.
+
+Echo additionally indexes live remotes by family and rewritten sequence, which
+lets a quoted ICMP error resolve to exactly one request or report ambiguity
+without a table scan. It expires due rows before reading that cardinality. The
+client-facing stack caches its absolute next-poll deadline and recomputes it only
+after stack activity, socket-set changes, bridge progress, or abort. Pinned
+smoltcp 0.13.1's
+[`Interface::poll_delay`](https://github.com/smoltcp-rs/smoltcp/blob/v0.13.1/src/iface/interface/mod.rs)
+walks the socket set's high-water backing store, including removed-socket holes;
+the round-robin bridge pump remains linear in live flows.
 
 UDP remote ICMP translation first requires the contacted-destination
 authorization. That is sufficient for route-level Packet Too Big, Fragmentation
-Needed and transit-timeout errors. For a Destination Unreachable, Linux has
-already looked up this mapping's socket from the offending UDP tuple before
-putting the error in its queue. In the pinned Android 15 6.6 kernel, IPv4 does
-the [`udp_err` lookup](https://android.googlesource.com/kernel/common/+/refs/tags/android15-6.6-2025-09_r7/net/ipv4/udp.c#735)
-before [`ip_icmp_error`](https://android.googlesource.com/kernel/common/+/refs/tags/android15-6.6-2025-09_r7/net/ipv4/udp.c#808),
-and IPv6 does the [`udpv6_err` lookup](https://android.googlesource.com/kernel/common/+/refs/tags/android15-6.6-2025-09_r7/net/ipv6/udp.c#588)
-before [`ipv6_icmp_error`](https://android.googlesource.com/kernel/common/+/refs/tags/android15-6.6-2025-09_r7/net/ipv6/udp.c#643).
-[`IP_RECVERR`](https://man7.org/linux/man-pages/man7/ip.7.html) also
-returns the original destination that caused the error. The
-mapping therefore retains no per-packet row or payload. It keeps one hop-limit
-state per successfully contacted destination socket: repeated sends with the
-same value stay exact, while observing a different value makes that endpoint
-ambiguous. Only an exact endpoint supplies `Datagram` correlation; ambiguous or
-untracked endpoints drop the datagram-specific error rather than inventing the
-original hop limit. The endpoint map has no count or aggregate-byte limit and no
-separate timer. When an IP's existing 300-second remote authorization expires,
-its endpoint evidence is dropped with it; mapping end releases the whole table.
-Allocator exhaustion has the recoverable process behavior above. IPv4
-Identification state likewise has no timeout, cap, quarantine or refusal: each
-`(source, destination, protocol)` tuple gets a freshly keyed initial `u16` and a wrapping sequence, following Linux's
-[`__ip_select_ident`](https://github.com/torvalds/linux/blob/master/net/ipv4/route.c)
-model without Linux's finite shared bucket table. The tuple map is dropped with
-the session.
+Needed and transit-timeout errors. Destination Unreachable also requires exact
+per-endpoint hop-limit evidence. Linux identifies the mapping socket before
+queueing the error ([IPv4 lookup](https://android.googlesource.com/kernel/common/+/refs/tags/android15-6.6-2025-09_r7/net/ipv4/udp.c#735),
+[IPv6 lookup](https://android.googlesource.com/kernel/common/+/refs/tags/android15-6.6-2025-09_r7/net/ipv6/udp.c#588)), and
+[`IP_RECVERR`](https://man7.org/linux/man-pages/man7/ip.7.html) supplies the
+original destination, so no per-packet payload is retained. Repeated equal hop
+limits remain exact; differing values make the endpoint ambiguous and suppress
+datagram-specific translation. Endpoint rows share their IP's 300-second
+authorization deadline and have no separate count or byte limit.
+
+IPv4 Identification state has no count, byte or tuple cap: a
+`(source, destination, protocol)` row is created the first time that tuple needs
+one and all rows are dropped with the session. [RFC 6864 section
+4.3](https://www.rfc-editor.org/rfc/rfc6864.html#section-4.3) forbids reuse within
+one maximum datagram lifetime because it can cause mis-reassembly. Each tuple
+therefore issues all 65,536 values once and starts another cycle only after all
+issued datagrams settle and 120 seconds pass after its last successful fragment
+write. RFC 6864 [section
+5.2](https://www.rfc-editor.org/rfc/rfc6864.html#section-5.2) calls 120 seconds a
+typical interpretation of the otherwise undefined lifetime; [RFC 1122 section
+3.3.2](https://www.rfc-editor.org/rfc/rfc1122.html#page-58) gives a 60–120 second
+reassembly range, so the daemon uses its conservative upper endpoint.
+
+A value is only issued for output the daemon is about to fragment, which is
+oversized IPv4 output alone: [RFC 6864 section
+4.1](https://www.rfc-editor.org/rfc/rfc6864.html#section-4.1) places no reuse
+constraint on atomic datagrams, and IPv6 uses a separate 32-bit field. A value is
+returned when no fragment can reach the wire; a partial write consumes it and
+dates the window from the last successful write. Because predecessor wire state
+is unavailable, a new session also quarantines issuance for 120 seconds. A
+quarantined or exhausted tuple silently drops and counts only oversized IPv4
+output as `identification-denied`; atomic IPv4 and all IPv6 output continue.
+
+Output counters say what really happened to a datagram and stop where this
+owner can know. `tun output` distinguishes queued, refused, unbuildable and
+Identification-denied packets; only `tun egress` counts successful descriptor
+writes. UDP and Echo `queued`/`unqueued` counters likewise describe handoff
+admission, not delivery.
 
 ### Bounded Buffers And Handoffs
 
@@ -372,35 +396,29 @@ are not shares of an aggregate memory budget:
 | Socket/DNS TCP read scratch | 8,192 bytes per read direction, the `DEFAULT_BUF_SIZE` used by pinned Tokio 1.53.1's [`copy` utilities](https://github.com/tokio-rs/tokio/blob/tokio-1.53.1/tokio/src/io/util/mod.rs#L88) | Filling it completes that read and the readiness loop continues; it is not a queued-byte limit. |
 | Socket error-queue quote scratch | 8 bytes per owner, exactly one ICMP Echo header. Android/Linux [`ping_err`](https://android.googlesource.com/kernel/common/+/e8c92d268b8b8feb550ca8d24a92c1c98ed65ace/net/ipv4/ping.c#483) starts the queued payload at that header, which contains the rewritten sequence the Echo owner matches. | Later payload bytes are truncated because they cannot affect Echo correlation. A shorter Echo quote cannot identify a live session and is dropped; UDP uses the socket and original destination metadata, not the quoted payload. |
 | Per-flow DNS control handoffs | One message in each direction because a transport processes exactly one framed query at a time | The protocol never legitimately needs a second slot. A refused query-to-owner handoff ends the transport. A second owner-to-transport control is discarded and counted unreachable; closure means that transport has already ended. No channel grows. |
-| TUN writer handoff | Unbounded session-owned FIFO of complete logical datagrams awaiting the sole serial writer; each item owns all packets/fragments of one datagram. | Enqueue has no capacity refusal and fails only after the writer receiver closes, when the session is already ending. The writer validates each complete batch before its first write and drains it serially, so datagrams cannot interleave; session stop drops the receiver and every queued batch. |
+| UDP/Echo reply mailboxes | One event per subsystem, the minimum Tokio `mpsc` capacity, because the owner consumes at most one UDP and one Echo reply per fair pass. With one event being processed and both slots refilled, at most three remote payloads are daemon-owned. | Workers reserve after readiness but before reading or allocating. When full, data remains in the socket receive queue under kernel drop policy. Cancellation or owner closure releases the reservation wait without a read. |
+| TUN writer handoff | One complete logical datagram, the minimum Tokio `mpsc` capacity. The serial writer may own one additional in-progress datagram, so at most two are daemon-owned. | A full handoff drops and counts the entire non-TCP datagram, never a fragment prefix. Reply events remain queued while full. TCP instead stops polling smoltcp, retaining data and resets in its sockets. Writer closure ends the session; accepted batches are written serially without interleaving. |
+| Client-facing stack device slots | One inbound and one outbound packet, each at most the interface MTU. Ingress pushes and settles synchronously; pinned smoltcp 0.13.1 can fill at most the one transmit slot before the loop drains it. | Known output exhaustion gates the TUN read. A post-read ingress refusal drops and counts `unconsumed`, unwinding tentative state; this covers a stale occupied input slot or a reset pre-settlement consuming the last output slot. A busy output slot makes smoltcp retain and retry the packet. |
+| IPv4 Identification settlement handoff | One queued ending, because the writer settles each datagram before receiving the next; at most one additional ending can be blocked in the writer. | A full slot backpressures the writer. The owner prioritizes settlement even while waiting for writer capacity, avoiding deadlock; cancellation or closure ends the wait. Losing an ending would prevent tuple reuse for the session. |
 
-Aggregate TCP-DNS requests and UDP/Echo replies use unbounded session-owned
-owner handoffs rather than daemon-selected queue depths. Each DNS transport
-remains sequential; cancellation is checked before each request publication, a
-closed owner ends the transport, and the shared owner consumes at most one
-request per fair scheduler pass. Each socket worker waits for readiness, checks
-cancellation and owner closure, then reads and publishes at most one datagram or
-one error per turn. The owner likewise consumes at most one UDP event and one
-Echo event per fair pass, and each socket worker yields between completed turns
-so continuously ready sockets cannot monopolize the runtime. Socket-worker
-closure or cancellation stops further reads; session stop cancels and joins the
-workers and drops any queued events.
+Aggregate TCP-DNS requests use an unbounded session-owned owner handoff rather
+than an arbitrary queue depth. It carries no remote payload, each descriptor-
+admitted transport is sequential, and the owner consumes one request per fair
+pass. Cancellation is checked before publication; owner closure ends transport.
 
-The TUN writer can own one in-progress datagram in addition to queued batches.
-Invalid packetization rejects the whole next batch and reports the packet index,
-size and batch size. Cancellation or a fatal TUN write may put a prefix of one
-batch on the wire, but the sole writer cannot interleave another datagram with
-that prefix.
+Reply workers reserve their mailbox before reading. The TUN writer validates and
+serializes whole batches; a partial final batch settles IPv4 Identification from
+its last successful write. TUN ingress and smoltcp polling require handoff
+capacity, and a reset candidate rechecks after its pre-settlement poll. The owner
+prioritizes Identification settlements even while waiting for that capacity.
 
 ### Fragment And Protocol Bounds
 
 Incomplete IPv4 and IPv6 fragment contexts grow on demand without a separate
 byte or context-count ceiling. The Linux fragment thresholds are not reused:
 Linux accounts `sk_buff` truesize and queue structures that this Rust
-representation does not own, so copying the numeric threshold would not bound
-the same resource. Completion, malformed or overlapping rejection, expiry and
-session stop remove the affected retained context. Real allocator exhaustion
-has the process-recovery behavior described above.
+representation does not own. Completion, rejection, expiry or session stop
+removes a context; allocator exhaustion follows the process-recovery policy.
 
 Fragment lifetime follows Linux by family: IPv4 expires after 30 seconds from
 [`IP_FRAG_TIME`](https://android.googlesource.com/kernel/common/+/refs/tags/android15-6.6-2025-09_r7/include/net/ip.h#146),
@@ -412,50 +430,48 @@ daemon may return the corresponding reassembly-timeout ICMP error.
 Protocol field widths bound each context. IPv6 reassembly accepts no fragment
 whose body ends past 65,535 bytes, the widest value of the 16-bit Payload Length
 field in [RFC 8200 section 3](https://www.rfc-editor.org/rfc/rfc8200.html#section-3);
-[section 4.5](https://www.rfc-editor.org/rfc/rfc8200.html#section-4.5)
-requires discarding a fragment whose reassembled payload would be larger. IPv4
-accepts no context whose actual header plus reassembled body exceeds its 65,535-
-byte Total Length field. A headless context reserves space for IPv4's minimum
-20-byte header; if fragment zero later supplies options, its larger actual header
-applies and may discard the context. Conflicting final lengths, or a non-final
-fragment claiming more data at an already declared end, likewise discard the
-context rather than truncating the reconstruction. [RFC 791 section
-3.1](https://www.rfc-editor.org/rfc/rfc791.html#section-3.1) defines both the
-16-bit Total Length and the four-bit IHL in 32-bit words, making 60 bytes the
-largest IPv4 header retained for reassembly; a larger claimed header is
-malformed. Ping sockets retain
-one 65,535-byte receive buffer per opened family so a protocol-valid reply
-payload cannot be truncated; IPv6 jumbograms are unsupported. UDP sockets
-instead peek and allocate the exact pending datagram length. DNS messages are
-at most 65,535 bytes because TCP DNS uses a 16-bit length prefix. Generated ICMP
-errors truncate their quote so the
-complete IPv4 error is at most 576 bytes as required by
+[section 4.5](https://www.rfc-editor.org/rfc/rfc8200.html#section-4.5) requires
+discarding larger results. IPv4 header plus body must fit its 65,535-byte Total
+Length; before fragment zero, the context reserves the 20-byte minimum header.
+The four-bit IHL permits at most 60 bytes ([RFC 791 section
+3.1](https://www.rfc-editor.org/rfc/rfc791.html#section-3.1)). A later header that
+no longer fits, inconsistent final length, overlap, or data beyond the declared
+end discards the context rather than truncating it.
+
+Each opened ping family has one 65,535-byte receive buffer; IPv6 jumbograms are
+unsupported. UDP peeks and allocates the exact datagram length. TCP DNS is
+limited by its 16-bit length prefix. Generated ICMP errors truncate their quote
+so the full IPv4 packet is at most 576 bytes under
 [RFC 1812 section 4.3.2.3](https://www.rfc-editor.org/rfc/rfc1812.html#section-4.3.2.3),
-or the complete IPv6 error is at most the 1,280-byte IPv6 minimum MTU required by
+and the full IPv6 packet is at most the 1,280-byte minimum MTU under
 [RFC 4443 section 2.4](https://www.rfc-editor.org/rfc/rfc4443.html#section-2.4).
-Malformed inputs that cannot satisfy these structural bounds are dropped rather
-than allocated beyond them.
+Inputs outside these structural bounds are dropped.
 
 Each Echo remote has 65,536 rewritten sequence values, exactly the complete
 16-bit ICMP Echo Sequence Number space. If every value for that remote is still
-live, the new request is dropped without disturbing existing sessions; a reply
-or the 60-second expiry makes its value reusable.
+live, a new request is dropped until a reply or the 60-second expiry releases one.
 
 IPv6 extension processing has no header- or transformation-count cap. [RFC 8200
 section 4.1](https://www.rfc-editor.org/rfc/rfc8200.html#section-4.1) requires a
 destination to accept and attempt extension headers in any order and number,
-except that Hop-by-Hop Options must immediately follow an IPv6 header. Every
-successful continuation removes at least one eight-byte extension or Fragment
-header from a finite encoded packet. Processing therefore continues until
-delivery, pending reassembly or rejection of malformed or unsupported input.
+subject to protocol ordering. One scan validates and measures the prefix, then
+one allocation copies the retained packet, making work linear in encoded bytes.
+Atomic Fragment headers are consumed in that scan so [RFC 6946 section
+4](https://www.rfc-editor.org/rfc/rfc6946.html#section-4) isolation is preserved.
+
+Only a Fragment header that really fragments stops the scan, and only that one
+creates a context. Nested genuine fragments therefore proceed one reassembly and
+normalization round at a time; every successful round removes at least one
+eight-byte header. These downstream-created contexts have no count cap and use
+their family expiry. `extension-headers` counts consumed prefix headers.
 
 ### Lifetimes
 
 | State | Lifetime and source | Expiry behavior |
 | --- | --- | --- |
-| UDP mapping, contacted remotes and endpoint hop-limit history | 300 seconds idle, the five-minute default recommended by [RFC 4787 section 4.3](https://www.rfc-editor.org/rfc/rfc4787.html#section-4.3); endpoint rows share their IP authorization deadline and have no separate timer | Expiring an IP drops its endpoint evidence. Mapping expiry closes the socket and drops all remaining authorization and endpoint rows; later replies or errors cannot match it. |
-| Echo session | 60 seconds from allocation, the minimum ICMP query mapping timer in [RFC 5508 section 3.2](https://www.rfc-editor.org/rfc/rfc5508.html#section-3.2) | The session row is removed; a later reply cannot match it. The shared family socket remains until its owner no longer needs it. |
-| IPv4 Identification tuple | Full dataplane session; there is deliberately no timeout or reuse quarantine | The `u16` sequence wraps without denial, and all tuple rows are dropped together at session end. |
+| UDP mapping, contacted remotes and endpoint history | 300 seconds idle, the [RFC 4787 section 4.3](https://www.rfc-editor.org/rfc/rfc4787.html#section-4.3) default; endpoint rows share their IP deadline | Expiry removes authorization and endpoint evidence; mapping expiry also closes the socket. Point-of-use checks reject overdue replies before sweep. |
+| Echo session | 60 seconds from allocation, the [RFC 5508 section 3.2](https://www.rfc-editor.org/rfc/rfc5508.html#section-3.2) minimum | Expiry or a point-of-use check removes the session, so later replies and errors cannot match it. The family socket remains while otherwise needed. |
+| IPv4 Identification tuple | The row lasts for the session. Each 65,536-value cycle waits for settlement plus 120 seconds since the last fragment write, the conservative upper endpoint from [RFC 6864 section 5.2](https://www.rfc-editor.org/rfc/rfc6864.html#section-5.2) and [RFC 1122 section 3.3.2](https://www.rfc-editor.org/rfc/rfc1122.html#page-58); a new session also waits 120 seconds. | Quarantine or exhaustion drops and counts oversized IPv4 output only. Rows disappear at session end. |
 | IPv4 incomplete reassembly | 30 seconds, Linux `IP_FRAG_TIME` | The context is discarded and may produce ICMP Time Exceeded only when fragment zero was retained. |
 | IPv6 incomplete reassembly | 60 seconds, Linux `IPV6_FRAG_TIMEOUT` | The context is discarded and may produce ICMPv6 Time Exceeded only when fragment zero was retained. |
 | TCP established or able to carry data | 7,440 seconds idle, the two-hour-four-minute minimum in [RFC 5382 REQ-5](https://www.rfc-editor.org/rfc/rfc5382.html#section-5) | The expired flow is torn down; any upstream descriptor and lease, plus its buffers, are released. |
@@ -465,10 +481,10 @@ delivery, pending reassembly or rejection of malformed or unsupported input.
 TCP half-close preserves byte order and backpressure. After upstream I/O
 completes normally, the daemon joins the worker, closes the upstream socket and
 immediately releases its descriptor lease, but retains the memory-only
-client-facing TCP state until its closing handshake completes. Expiry,
-explicit flow teardown or session shutdown may still end it abortively. A reset
-is acted on only after the TCP stack accepts it; flow identity is socket handle
-plus incarnation so handle reuse cannot tear down a successor.
+client-facing state through its closing handshake. An aborted socket is likewise
+retained until its reset is emitted if the interface was full. Expiry, explicit
+teardown or session shutdown may end it sooner. Resets take effect only after
+stack acceptance; handle plus incarnation prevents stale teardown after reuse.
 
 ## External State And Cleanup
 
@@ -511,8 +527,10 @@ not have. The dataplane treats packet bytes as untrusted for parser and protocol
 correctness and bounds each fragment context by protocol size and its family
 expiry. It does not impose per-client or aggregate quotas on ordinary
 downstream-created table memory; that state uses the disconnect/session-restart
-recovery boundary described above. Root mode does not have the
-interface-injection limitation.
+recovery boundary described above. Queues an Internet peer fills are not in that
+class and are bounded structurally instead, because the owner authorizes a reply
+only after the handoff and disconnecting a client does not stop a remote sending.
+Root mode does not have the interface-injection limitation.
 
 ## Failure Semantics
 

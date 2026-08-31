@@ -101,12 +101,13 @@ impl Handoff {
     pub(crate) fn submit(
         &mut self,
         datagram: Relayed<'_>,
+        now: Instant,
         output: &mut Output,
         admission: &mut Admission,
     ) -> io::Result<()> {
         let Ok(lease) = admission.reserve(Class::Reserved) else {
             self.counters.denied += 1;
-            self.refuse(datagram, output);
+            self.refuse(datagram, now, output);
             return Ok(());
         };
         let answers = self.answers.clone();
@@ -115,7 +116,7 @@ impl Handoff {
         let Ok(identity) = self.queries.identity() else {
             admission.release(lease);
             self.counters.denied += 1;
-            self.refuse(datagram, output);
+            self.refuse(datagram, now, output);
             return Ok(());
         };
         let cancel = identity.cancel.clone();
@@ -200,7 +201,7 @@ impl Handoff {
             drop(query);
             admission.release(lease);
             self.counters.denied += 1;
-            self.refuse(datagram, output);
+            self.refuse(datagram, now, output);
             return Ok(());
         }
         // Install the debt owner before synchronous submission so no returned descriptor is orphaned.
@@ -222,6 +223,7 @@ impl Handoff {
     pub(crate) fn settle(
         &mut self,
         terminal: Terminal<u64>,
+        now: Instant,
         output: &mut Output,
         admission: &mut Admission,
     ) -> io::Result<()> {
@@ -272,7 +274,7 @@ impl Handoff {
             drop(query);
             return drained;
         };
-        output.datagram(endpoint, client, LOCAL_ORIGIN_HOP_LIMIT, &response);
+        output.datagram(now, endpoint, client, LOCAL_ORIGIN_HOP_LIMIT, &response);
         drop(response);
         drop(query);
         drained
@@ -320,6 +322,7 @@ impl Handoff {
 
     pub(crate) async fn shutdown(
         &mut self,
+        now: Instant,
         output: &mut Output,
         admission: &mut Admission,
     ) -> io::Result<()> {
@@ -327,7 +330,11 @@ impl Handoff {
         let mut ended = Ok(());
         while self.queries.working() {
             let terminal = self.queries.finished().await;
-            ended = report::keep_first(UNROUTED, ended, self.settle(terminal, output, admission));
+            ended = report::keep_first(
+                UNROUTED,
+                ended,
+                self.settle(terminal, now, output, admission),
+            );
         }
         ended
     }
@@ -345,11 +352,12 @@ impl Handoff {
         }
     }
 
-    fn refuse(&mut self, datagram: Relayed<'_>, output: &mut Output) {
+    fn refuse(&mut self, datagram: Relayed<'_>, now: Instant, output: &mut Output) {
         let Some(response) = self.servfail(datagram.payload) else {
             return;
         };
         output.datagram(
+            now,
             datagram.destination,
             datagram.source,
             LOCAL_ORIGIN_HOP_LIMIT,

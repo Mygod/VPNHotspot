@@ -14,6 +14,7 @@ use vpnhotspotd::shared::udp_wire::Relayed;
 use vpnhotspotd::shared::workers::{Ended, Terminal, Workers};
 
 use vpnhotspotd::shared::admission::{Admission, Class, Lease};
+use vpnhotspotd::shared::deadlines::Deadlines;
 use vpnhotspotd::shared::egress_socket;
 
 use crate::report;
@@ -45,13 +46,18 @@ struct Mapping {
     socket: Arc<AsyncFd<Socket>>,
     history: History,
     deadline: Instant,
+    /// This mapping's indexed deadline, absent while provisional or cancelled.
+    armed: Option<Instant>,
     lease: Lease,
 }
 
 #[derive(Default)]
 struct Counters {
     sent: u64,
-    written: u64,
+    /// Replies admitted by the interface queue, not written to the TUN.
+    queued: u64,
+    /// Replies not admitted; `tun output` records the reason.
+    unqueued: u64,
     denied: u64,
     expired: u64,
     too_big: u64,
@@ -77,12 +83,13 @@ struct Counters {
 impl Counters {
     fn describe(&self) -> String {
         format!(
-            "sent {} written {} denied {} expired {} too-big {} blocked {} \
+            "sent {} queued {} unqueued {} denied {} expired {} too-big {} blocked {} \
              unreachable {} send-failed {} reported {} unreported {} df-failed {} open-failed {} \
              unpermitted {} translated {} untranslated {} ambiguous {} untracked {} implausible {} stale {} \
              swept {} short {} unavailable {}",
             self.sent,
-            self.written,
+            self.queued,
+            self.unqueued,
             self.denied,
             self.expired,
             self.too_big,
@@ -109,8 +116,10 @@ impl Counters {
 
 pub(crate) struct Relay {
     mappings: Workers<SocketAddr, Mapping>,
+    /// Each live mapping's earliest idle or remote-history deadline.
+    deadlines: Deadlines<SocketAddr>,
     errors: egress::ErrorQueue,
-    events: mpsc::UnboundedSender<Event<SocketAddr>>,
+    events: mpsc::Sender<Event<SocketAddr>>,
     counters: Counters,
 }
 
@@ -123,11 +132,12 @@ struct FirstSend<'a> {
 }
 
 impl Relay {
-    pub(crate) fn new() -> (Self, mpsc::UnboundedReceiver<Event<SocketAddr>>) {
+    pub(crate) fn new() -> (Self, mpsc::Receiver<Event<SocketAddr>>) {
         let (events, receiver) = reply_channel::<SocketAddr>();
         (
             Self {
                 mappings: Workers::new("shizuku.udp_mapping"),
+                deadlines: Deadlines::default(),
                 errors: egress::ErrorQueue::new(),
                 events,
                 counters: Counters::default(),
@@ -136,11 +146,40 @@ impl Relay {
         )
     }
 
-    pub(crate) fn release(self, events: mpsc::UnboundedReceiver<Event<SocketAddr>>) {
+    pub(crate) fn release(self, events: mpsc::Receiver<Event<SocketAddr>>) {
         drop(self.mappings);
+        drop(self.deadlines);
         drop(self.events);
         drop(events);
         drop(self.errors);
+    }
+
+    /// Re-indexes one mapping after its deadline or armed state changes.
+    fn rearm(&mut self, key: SocketAddr) {
+        let Relay {
+            mappings,
+            deadlines,
+            ..
+        } = self;
+        let Some(held) = mappings.get_mut(&key) else {
+            return;
+        };
+        // Provisional and cancelled mappings are not expiry candidates.
+        let due = (!held.cancel.is_cancelled() && held.record.state == State::Live).then(|| {
+            match held.record.history.next_deadline() {
+                Some(history) => history.min(held.record.deadline),
+                None => held.record.deadline,
+            }
+        });
+        match due {
+            Some(due) => deadlines.arm(key, held.record.armed, due),
+            None => {
+                if let Some(armed) = held.record.armed {
+                    deadlines.disarm(key, armed);
+                }
+            }
+        }
+        held.record.armed = due;
     }
 
     pub(crate) async fn shutdown(&mut self, admission: &mut Admission) {
@@ -216,6 +255,7 @@ impl Relay {
                 mapping
                     .history
                     .record(datagram.destination, hop_limit, mapping.deadline);
+                self.rearm(datagram.source);
             }
             Ok(_) => self.counters.short += 1,
             Err(e) => {
@@ -340,6 +380,7 @@ impl Relay {
             socket: Arc::clone(&socket),
             history: History::default(),
             deadline: Instant::now() + MAPPING_TIMEOUT,
+            armed: None,
             lease,
         };
         if let Err((provisional, _)) = self.mappings.admit(key, &identity, provisional, worker) {
@@ -418,6 +459,8 @@ impl Relay {
         if let Some(commit) = mapping.commit.take() {
             let _ = commit.send(());
         }
+        // Arm only after the provisional mapping commits.
+        self.rearm(key);
     }
 
     fn roll_back(&mut self, key: SocketAddr) {
@@ -426,6 +469,8 @@ impl Relay {
             held.record.commit = None;
         }
         self.mappings.cancel(&key);
+        // Rollback removes the mapping from expiry scheduling.
+        self.rearm(key);
     }
 
     fn discard(&mut self, provisional: Mapping, admission: &mut Admission) {
@@ -488,7 +533,7 @@ impl Relay {
         AsyncFd::with_interest(socket, ERROR_OR_READABLE)
     }
 
-    fn translate(&mut self, key: SocketAddr, error: &Reported, output: &mut Output) {
+    fn translate(&mut self, key: SocketAddr, error: &Reported, now: Instant, output: &mut Output) {
         let Some(mapping) = self
             .mappings
             .get(&key)
@@ -501,7 +546,7 @@ impl Relay {
             self.counters.implausible += 1;
             return;
         };
-        if !mapping.record.history.authorizes(destination.ip()) {
+        if !mapping.record.history.authorizes(destination.ip(), now) {
             self.counters.unpermitted += 1;
             return;
         }
@@ -550,14 +595,14 @@ impl Relay {
         }
     }
 
-    pub(crate) fn handle(&mut self, event: Event<SocketAddr>, output: &mut Output) {
+    pub(crate) fn handle(&mut self, event: Event<SocketAddr>, now: Instant, output: &mut Output) {
         let (key, id, remote, hop_limit, payload) = match event {
             Event::Error { key, id, error } => {
                 if !self.mappings.current(&key, id) {
                     self.counters.stale += 1;
                     return;
                 }
-                self.translate(key, &error, output);
+                self.translate(key, &error, now, output);
                 return;
             }
             Event::Reply {
@@ -570,7 +615,7 @@ impl Relay {
         };
         match self.mappings.get(&key) {
             Some(mapping) if mapping.id == id && mapping.record.state == State::Live => {
-                if !mapping.record.history.authorizes(remote.ip()) {
+                if !mapping.record.history.authorizes(remote.ip(), now) {
                     self.counters.unpermitted += 1;
                     return;
                 }
@@ -584,8 +629,12 @@ impl Relay {
             self.counters.expired += 1;
             return;
         };
-        output.datagram(remote, key, hop_limit, &payload);
-        self.counters.written += 1;
+        // Count actual handoff admission, not an attempted reply.
+        if output.datagram(now, remote, key, hop_limit, &payload) {
+            self.counters.queued += 1;
+        } else {
+            self.counters.unqueued += 1;
+        }
     }
 
     pub(crate) fn close(&mut self, terminal: Terminal<SocketAddr>, admission: &mut Admission) {
@@ -604,8 +653,12 @@ impl Relay {
                     history,
                     lease,
                     commit,
+                    armed,
                     ..
                 } = mapping;
+                if let Some(armed) = armed {
+                    self.deadlines.disarm(key, armed);
+                }
                 drop(commit);
                 drop(socket);
                 drop(history);
@@ -620,35 +673,31 @@ impl Relay {
         self.mappings.finished().await
     }
 
+    /// Settles due mappings and re-arms any surviving state.
     pub(crate) fn sweep(&mut self) {
         let now = Instant::now();
-        for mapping in self.mappings.values_mut() {
-            if mapping.cancel.is_cancelled() || mapping.record.state != State::Live {
+        while let Some(key) = self.deadlines.due(now) {
+            let Relay {
+                mappings, counters, ..
+            } = self;
+            let Some(held) = mappings.get_mut(&key) else {
                 continue;
-            }
-            let expired = mapping.record.history.expire(now);
+            };
+            // The entry this loop took is gone, so the re-arm below inserts rather than replaces.
+            held.record.armed = None;
+            let expired = held.record.history.expire(now);
             if expired > 0 {
-                self.counters.swept += expired as u64;
+                counters.swept += expired as u64;
             }
-            if mapping.record.deadline <= now {
-                mapping.cancel.cancel();
+            if held.record.deadline <= now {
+                held.cancel.cancel();
             }
+            self.rearm(key);
         }
     }
 
     pub(crate) fn next_deadline(&self) -> Option<Instant> {
-        self.mappings
-            .values()
-            .filter(|mapping| !mapping.cancel.is_cancelled() && mapping.record.state == State::Live)
-            .flat_map(|mapping| {
-                [
-                    Some(mapping.record.deadline),
-                    mapping.record.history.next_deadline(),
-                ]
-                .into_iter()
-                .flatten()
-            })
-            .min()
+        self.deadlines.next()
     }
 
     pub(crate) fn describe(&self) -> String {

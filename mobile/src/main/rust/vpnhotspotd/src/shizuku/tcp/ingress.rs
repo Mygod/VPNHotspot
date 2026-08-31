@@ -67,6 +67,13 @@ impl ingress::Owner for Engine {
     fn reclaim_closed(&mut self) {
         Engine::reclaim_closed(self);
     }
+
+    fn rearmed(&mut self, handle: SocketHandle) {
+        self.rearm_index(handle);
+        // The same paths that move a flow's idle floor can also abort its socket - a refused opening, a
+        // terminal tail that would not take an ending - which leaves the stack a reset to send.
+        self.stack_changed();
+    }
 }
 
 /// One `accept` call's borrow of the engine and of everything that call may write to.
@@ -101,17 +108,20 @@ impl ingress::Owner for Handling<'_> {
     fn reclaim_closed(&mut self) {
         ingress::Owner::reclaim_closed(self.engine);
     }
+
+    fn rearmed(&mut self, handle: SocketHandle) {
+        ingress::Owner::rearmed(self.engine, handle);
+    }
 }
 
 impl ingress::Ingress for Handling<'_> {
     fn settle(&mut self) {
-        // The pure primitive: the stack, the device and the output, and nothing of any flow's - see
-        // [Engine::quiesce].
         self.engine.quiesce(self.at, self.output);
     }
 
     fn push(&mut self, packet: &[u8]) -> bool {
-        self.engine.device.push(packet)
+        // Reset pre-settlement may have consumed capacity since the TUN read was admitted.
+        self.output.accepting() && self.engine.device.push(packet)
     }
 
     fn endpoints(&self) -> impl Iterator<Item = (SocketHandle, SocketAddr, SocketAddr)> + '_ {

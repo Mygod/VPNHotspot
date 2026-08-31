@@ -9,8 +9,10 @@ use tokio::io::unix::AsyncFd;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::sleep_until;
 use tokio_util::sync::CancellationToken;
+use vpnhotspotd::shared::ipv4_identification::Terminal;
 use vpnhotspotd::shared::protocol::{IoErrorReportExt, IoResultReportExt};
 use vpnhotspotd::shared::reassembly;
+use vpnhotspotd::shared::tun_handoff;
 
 use vpnhotspotd::shared::admission::Admission;
 
@@ -22,10 +24,9 @@ use crate::shizuku::gateway::Gateways;
 use crate::shizuku::output::Output;
 use crate::shizuku::tcp;
 
-use crate::shizuku::tun_writer;
 use crate::shizuku::udp;
 use crate::shizuku::virtual_dns;
-use vpnhotspotd::shared::turn::{Pass, Source};
+use vpnhotspotd::shared::turn::{Expiry, Pass, Source};
 
 pub(crate) struct Applied {
     pub(crate) admitting: bool,
@@ -38,10 +39,12 @@ pub(crate) struct Dataplane {
     buffer: Vec<u8>,
     fragments: reassembly::Table,
     relay: udp::Relay,
-    events: mpsc::UnboundedReceiver<crate::shizuku::reply::Event<SocketAddr>>,
+    events: mpsc::Receiver<crate::shizuku::reply::Event<SocketAddr>>,
     echo: echo::Relay,
-    echoes:
-        mpsc::UnboundedReceiver<crate::shizuku::reply::Event<crate::shizuku::echo_socket::Family>>,
+    echoes: mpsc::Receiver<crate::shizuku::reply::Event<crate::shizuku::echo_socket::Family>>,
+    /// Guarded-datagram endings the serial TUN writer sends back, which is what lets an IPv4 Identification
+    /// tuple's sequence start again once its last fragment has aged out.
+    settled: mpsc::Receiver<Terminal>,
     dns: virtual_dns::Handoff,
     tcp: tcp::Engine,
     asking: mpsc::UnboundedReceiver<crate::shizuku::tcp_dns::Ask>,
@@ -50,7 +53,7 @@ pub(crate) struct Dataplane {
 pub(crate) async fn prepare(
     measured: Measured,
     mtu: usize,
-) -> io::Result<(Dataplane, tun_writer::Queue)> {
+) -> io::Result<(Dataplane, tun_handoff::Queue)> {
     let mut seed_bytes = [0u8; 8];
     let filled = rustix::rand::getrandom(&mut seed_bytes, rustix::rand::GetRandomFlags::empty())
         .map_err(io::Error::from)
@@ -75,8 +78,10 @@ pub(crate) async fn prepare(
     let admission = Admission::new(measured.totals)
         .map_err(io::Error::other)
         .with_report_context("shizuku.dataplane.admission")?;
-    let (writer, queue) = tun_writer::channel();
-    let output = Output::new(mtu, writer);
+    let (writer, queue, settled) = tun_handoff::channel();
+    // The Identification allocator's opening reuse quarantine is measured from here, which is the earliest
+    // moment this session could put anything on the wire.
+    let output = Output::new(mtu, now(), writer);
     let buffer = vec![0u8; mtu];
     let fragments = reassembly::Table::new();
     let (relay, events) = udp::Relay::new();
@@ -93,6 +98,7 @@ pub(crate) async fn prepare(
             events,
             echo,
             echoes,
+            settled,
             dns,
             tcp,
             asking,
@@ -118,6 +124,7 @@ pub(crate) async fn run(
         mut events,
         mut echo,
         mut echoes,
+        mut settled,
         mut dns,
         mut tcp,
         mut asking,
@@ -133,11 +140,24 @@ pub(crate) async fn run(
         let mapping_deadline = relay.next_deadline();
         let echo_deadline = echo.next_deadline();
         let fragment_deadline = fragments.next_deadline();
-        let tcp_deadline = tcp.next_deadline();
+        // One snapshot controls every output gate and the matching capacity wait.
+        let accepting = output.accepting();
+        // Maintenance cannot consume capacity that returns after this snapshot.
+        let expiry = Expiry::from(accepting);
+        let tcp_deadline = tcp.next_deadline(accepting);
         let readable = loop {
             tokio::select! {
                 biased;
                 () = cancel.cancelled() => break 'owner Ok(()),
+                // Settlement precedes every arm that could leave its writer blocked.
+                terminal = settled.recv() => {
+                    match terminal {
+                        Some(terminal) => output.settle(terminal),
+                        // The writer task is gone, which already ends this session through its own result.
+                        None => break 'owner Ok(()),
+                    }
+                    continue 'owner;
+                }
                 config = configs.recv() => {
                     let Some(config) = config else {
                         break 'owner Ok(());
@@ -175,10 +195,10 @@ pub(crate) async fn run(
                     }
                     continue 'owner;
                 }
-                settled = dns.settled() => {
-                    match settled {
+                answered = dns.settled() => {
+                    match answered {
                         virtual_dns::Settled::Terminal(terminal) => {
-                            if let Err(e) = dns.settle(terminal, &mut output, &mut admission) {
+                            if let Err(e) = dns.settle(terminal, now(), &mut output, &mut admission) {
                                 break 'owner Err(e);
                             }
                         }
@@ -186,18 +206,19 @@ pub(crate) async fn run(
                     }
                     continue 'owner;
                 }
-                event = events.recv(), if pass.owed(Source::UdpReply) => {
+                // Leave replies queued while there is no output capacity.
+                event = events.recv(), if accepting && pass.owed(Source::UdpReply) => {
                     pass.take(Source::UdpReply);
                     match event {
-                        Some(event) => relay.handle(event, &mut output),
+                        Some(event) => relay.handle(event, now(), &mut output),
                         None => break 'owner Ok(()),
                     }
                     continue 'owner;
                 }
-                event = echoes.recv(), if pass.owed(Source::EchoReply) => {
+                event = echoes.recv(), if accepting && pass.owed(Source::EchoReply) => {
                     pass.take(Source::EchoReply);
                     match event {
-                        Some(event) => echo.handle(event, &mut output),
+                        Some(event) => echo.handle(event, now(), &mut output),
                         None => break 'owner Ok(()),
                     }
                     continue 'owner;
@@ -214,18 +235,32 @@ pub(crate) async fn run(
                     }
                     continue 'owner;
                 }
-                () = sleep_until_deadline(mapping_deadline), if pass.owed(Source::MappingDeadline) => {
-                    pass.take(Source::MappingDeadline);
+                // During a stall, recurring deadlines maintain state without taking a pass turn or emitting.
+                // This preserves later deadlines and the interrupted producer order; see [Expiry].
+                () = sleep_until_deadline(mapping_deadline),
+                    if !accepting || pass.owed(Source::MappingDeadline) =>
+                {
+                    if accepting {
+                        pass.take(Source::MappingDeadline);
+                    }
                     relay.sweep();
                     continue 'owner;
                 }
-                () = sleep_until_deadline(echo_deadline), if pass.owed(Source::EchoDeadline) => {
-                    pass.take(Source::EchoDeadline);
+                () = sleep_until_deadline(echo_deadline),
+                    if !accepting || pass.owed(Source::EchoDeadline) =>
+                {
+                    if accepting {
+                        pass.take(Source::EchoDeadline);
+                    }
                     echo.sweep();
                     continue 'owner;
                 }
-                () = sleep_until_deadline(fragment_deadline), if pass.owed(Source::FragmentDeadline) => {
-                    pass.take(Source::FragmentDeadline);
+                () = sleep_until_deadline(fragment_deadline),
+                    if !accepting || pass.owed(Source::FragmentDeadline) =>
+                {
+                    if accepting {
+                        pass.take(Source::FragmentDeadline);
+                    }
                     Dispatch {
                         counters: &mut counters,
                         relay: &mut relay,
@@ -237,23 +272,33 @@ pub(crate) async fn run(
                         admission: &mut admission,
                         gateways: &gateways,
                         virtual_addresses: &virtual_addresses,
-                    }.expire(now());
+                    }.expire(now(), expiry);
                     continue 'owner;
                 }
-                () = sleep_until_deadline(tcp_deadline), if pass.owed(Source::TcpDeadline) => {
-                    pass.take(Source::TcpDeadline);
-                    let now = now();
-                    tcp.poll(&mut output);
-                    tcp.expire(now, &mut output);
+                // Under a stall only idle expiry is scheduled. Abort now; poll its reset only on a metered
+                // delivering turn.
+                () = sleep_until_deadline(tcp_deadline),
+                    if !accepting || pass.owed(Source::TcpDeadline) =>
+                {
+                    if accepting {
+                        pass.take(Source::TcpDeadline);
+                    }
+                    tcp.expire(now());
+                    if expiry.delivering() {
+                        tcp.poll(&mut output);
+                    }
                     continue 'owner;
                 }
-                readable = fd.readable(), if pass.owed(Source::TunIngress) => {
+                // TCP ingress settles synchronously; without output capacity its device packet has no wake.
+                readable = fd.readable(), if accepting && pass.owed(Source::TunIngress) => {
                     pass.take(Source::TunIngress);
                     break readable;
                 }
-                // Ready only while a pass is partially served. Reset in place so cached deadlines survive;
-                // `Pass` suppresses a redundant TCP flow scan during the carried retry.
-                () = std::future::ready(()), if pass.started() => pass.end(),
+                // Capacity return restarts arbitration without emitting or resetting the interrupted pass.
+                // This prevents TCP from taking every released slot.
+                () = output.accepted(), if !accepting => continue 'owner,
+                // Reset only with producers enabled; retry in place to retain cached deadlines.
+                () = std::future::ready(()), if pass.started(accepting) => pass.end(),
             }
         };
         let mut guard = match readable {
@@ -274,6 +319,11 @@ pub(crate) async fn run(
             counters.unadmitted += 1;
             continue;
         }
+        // This sole producer has not consumed the capacity that admitted the read.
+        debug_assert!(
+            output.accepting(),
+            "a client packet was read without interface capacity to settle it"
+        );
         if let Err(e) = (Dispatch {
             counters: &mut counters,
             relay: &mut relay,
@@ -302,12 +352,15 @@ pub(crate) async fn run(
     result = report::keep_first(
         "shizuku.tun_ingress.dns_shutdown",
         result,
-        dns.shutdown(&mut output, &mut admission).await,
+        dns.shutdown(now(), &mut output, &mut admission).await,
     );
     report::stdout!("tun ingress {}", counters.describe());
     report_owners(&relay, &echo, &fragments, &dns, &tcp, &output, &admission);
     relay.release(events);
     echo.release(echoes);
+    // Explicitly, and here: this is the fence a writer still waiting to hand an ending back is released by,
+    // and nothing above it needs the writer to have finished.
+    drop(settled);
     dns.release();
     tcp.release(asking);
     fragments.retire();
@@ -337,7 +390,8 @@ fn report_owners(
     report::stdout!("admission {}", admission.describe());
 }
 
-fn now() -> Instant {
+/// The one clock this session dates everything by, including the wire times its writer reports.
+pub(crate) fn now() -> Instant {
     tokio::time::Instant::now().into_std()
 }
 

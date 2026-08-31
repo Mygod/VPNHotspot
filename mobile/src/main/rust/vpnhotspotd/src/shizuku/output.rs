@@ -1,78 +1,81 @@
 use std::net::{IpAddr, SocketAddr};
+use std::time::Instant;
 
 use etherparse::{IpNumber, UdpHeader};
 use vpnhotspotd::shared::echo_wire::{self, Identity, ECHO_HEADER_LEN};
+use vpnhotspotd::shared::ipv4_identification::Terminal;
 use vpnhotspotd::shared::packet_writer::{
     Addressed, Emitter, Reporter, Sink, WriterError, IPV4_HEADER_LEN, IPV6_HEADER_LEN,
 };
+use vpnhotspotd::shared::tcp_device::Handoff;
+use vpnhotspotd::shared::tun_handoff::{Batch, Writer};
 use vpnhotspotd::shared::udp_wire::build_reply;
 
 use crate::report;
-use crate::shizuku::tun_writer::Writer;
 
 pub(crate) struct Output {
-    /// The size policy, the identification table and every packet handoff counter. One owner, because the
-    /// size comparison, the identification decision and which counter moves are one decision - see
-    /// [vpnhotspotd::shared::packet_writer::Emitter].
+    /// Owns sizing, Identification allocation, and handoff counters as one decision.
     emitter: Emitter,
     writer: Writer,
 }
 
 impl Output {
-    pub(crate) fn new(mtu: usize, writer: Writer) -> Self {
+    /// `opened` starts the Identification allocator's opening quarantine.
+    pub(crate) fn new(mtu: usize, opened: Instant, writer: Writer) -> Self {
         Self {
-            emitter: Emitter::new(mtu),
+            emitter: Emitter::new(mtu, opened),
             writer,
         }
     }
 
-    /// Emits one UDP datagram toward a client, splitting it only if the interface cannot carry it whole.
+    /// Emits one UDP datagram and reports whole-datagram handoff admission.
     pub(crate) fn datagram(
         &mut self,
+        now: Instant,
         source: SocketAddr,
         destination: SocketAddr,
         hop_limit: u8,
         payload: &[u8],
-    ) {
+    ) -> bool {
         let size = header_len(source.is_ipv6()) + UdpHeader::LEN + payload.len();
         self.emit(
+            now,
             source.ip(),
             destination.ip(),
             IpNumber::UDP.0,
             size,
             |identification| build_reply(source, destination, hop_limit, identification, payload),
-        );
+        )
     }
 
-    /// Emits one Echo Reply toward a client, under the identifier and sequence it originally chose.
+    /// Emits one Echo Reply and reports whole-datagram handoff admission.
     pub(crate) fn echo(
         &mut self,
+        now: Instant,
         remote: IpAddr,
         client: IpAddr,
         hop_limit: u8,
         identity: Identity,
         payload: &[u8],
-    ) {
+    ) -> bool {
         let size = header_len(remote.is_ipv6()) + ECHO_HEADER_LEN + payload.len();
-        self.emit(remote, client, IpNumber::ICMP.0, size, |id| {
+        self.emit(now, remote, client, IpNumber::ICMP.0, size, |id| {
             echo_wire::build_reply(remote, client, hop_limit, id, identity, payload)
-        });
+        })
     }
 
-    /// The size policy, which is otherwise the easiest thing in the design to get subtly different in two
-    /// places: the DF decision, then the source fragmentation it authorizes.
+    /// Applies the shared size/Identification policy and reports whole-datagram admission.
     fn emit(
         &mut self,
+        now: Instant,
         source: IpAddr,
         destination: IpAddr,
         protocol: u8,
         size: usize,
         build: impl FnOnce(Option<u16>) -> Result<Vec<u8>, WriterError>,
-    ) {
-        // One call, and the owner decides everything: the size comparison, whether an Identification can be
-        // issued, which counter moves, and whether anything is reported. A caller that passed its own idea of
-        // "oversized" or incremented its own counter would be deciding what this exists to decide.
+    ) -> bool {
         self.emitter.emit(
+            now,
             Addressed {
                 source,
                 destination,
@@ -84,32 +87,54 @@ impl Output {
                 writer: &self.writer,
             },
             &mut Structured,
-        );
+        )
     }
 
-    /// Emits one already-formed IP packet: bytes whose size was settled by whoever built them, so there is no
-    /// size decision left to make and no fragmentation to consider.
-    pub(crate) fn packet(&mut self, packet: Vec<u8>) {
-        self.enqueue(packet);
+    /// Hands off one already-formed IP packet and counts any refusal.
+    pub(crate) fn packet(&mut self, packet: Vec<u8>) -> bool {
+        // Only [Output::emit] can attach a daemon-issued Identification.
+        self.emitter
+            .handed(self.writer.enqueue(Batch::new(vec![packet], None)).is_ok())
     }
 
-    /// The unbounded handoff refuses only after its writer receiver has closed. This packet is then dropped;
-    /// it owns no descriptor lease or persistent state to unwind, and the writer task's end is already a
-    /// session-ending dataplane event.
-    fn enqueue(&mut self, packet: Vec<u8>) {
-        let accepted = self.writer.enqueue(vec![packet]).is_ok();
-        self.emitter.wrote(accepted);
+    /// Whether the handoff can take another complete datagram.
+    pub(crate) fn accepting(&self) -> bool {
+        self.writer.accepting()
     }
 
+    /// Waits for handoff capacity without spinning.
+    pub(crate) async fn accepted(&self) {
+        self.writer.accepted().await
+    }
+
+    /// Applies one guarded datagram's Identification settlement.
+    pub(crate) fn settle(&mut self, terminal: Terminal) {
+        self.emitter.terminal(terminal);
+    }
+
+    /// Describes handoff results; the serial writer reports TUN writes separately.
     pub(crate) fn describe(&self) -> String {
         format!(
-            "mtu {} queued-packets {} writer-closed-packets {} unwritable {}; {}",
+            "mtu {} queued-packets {} handoff-refused-packets {} unbuildable {} \
+             identification-denied {}; {}",
             self.emitter.mtu(),
-            self.emitter.written(),
-            self.emitter.refused(),
-            self.emitter.unwritable(),
+            self.emitter.queued(),
+            self.emitter.handoff_refused(),
+            self.emitter.unbuildable(),
+            self.emitter.denied(),
             self.emitter.identifications().describe(),
         )
+    }
+}
+
+/// The interface handoff as the client-facing TCP stack sees it.
+impl Handoff for Output {
+    fn accepting(&self) -> bool {
+        Output::accepting(self)
+    }
+
+    fn packet(&mut self, packet: Vec<u8>) -> bool {
+        Output::packet(self, packet)
     }
 }
 
@@ -133,8 +158,8 @@ impl Reporter for Structured {
 }
 
 impl Sink for Queue<'_> {
-    fn datagram(&mut self, packets: Vec<Vec<u8>>) -> bool {
-        self.writer.enqueue(packets).is_ok()
+    fn datagram(&mut self, batch: Batch) -> bool {
+        self.writer.enqueue(batch).is_ok()
     }
 }
 

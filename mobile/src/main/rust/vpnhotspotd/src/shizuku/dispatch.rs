@@ -14,6 +14,7 @@ use crate::shizuku::tcp;
 use crate::shizuku::udp;
 use crate::shizuku::virtual_dns;
 use vpnhotspotd::shared::admission::Admission;
+use vpnhotspotd::shared::turn::Expiry;
 
 /// Session counters avoid attacker-controlled per-packet reporting.
 #[derive(Default)]
@@ -28,7 +29,10 @@ pub(crate) struct Counters {
     fragments_overlapping: u64,
     fragments_expired: u64,
     fragments_unreported: u64,
+    /// Expired while the interface handoff was full, so the best-effort Time Exceeded was not built.
+    fragments_stalled: u64,
     extended: u64,
+    extension_headers: u64,
     chain_refused: u64,
     unparseable: u64,
     reserved: u64,
@@ -42,8 +46,8 @@ impl Counters {
         format!(
             "dns {} undeliverable-dns {} relayed {} tcp {} echo {} unsupported {} \
              fragmented {} fragments-overlapping {} fragments-expired {} \
-             fragments-unreported {} extended {} chain-refused {} unparseable {} reserved {} \
-             unroutable {} malformed {} unadmitted {}",
+             fragments-unreported {} fragments-stalled {} extended {} extension-headers {} \
+             chain-refused {} unparseable {} reserved {} unroutable {} malformed {} unadmitted {}",
             self.dns,
             self.undeliverable_dns,
             self.relayed,
@@ -54,7 +58,9 @@ impl Counters {
             self.fragments_overlapping,
             self.fragments_expired,
             self.fragments_unreported,
+            self.fragments_stalled,
             self.extended,
+            self.extension_headers,
             self.chain_refused,
             self.unparseable,
             self.reserved,
@@ -63,6 +69,13 @@ impl Counters {
             self.unadmitted
         )
     }
+}
+
+/// Which transport rejection brought a packet to extension normalization.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Rejected {
+    Fragmented,
+    Extended,
 }
 
 /// The owners one datagram may reach, borrowed together.
@@ -82,9 +95,8 @@ pub(crate) struct Dispatch<'a> {
 impl Dispatch<'_> {
     /// Only daemon-owned resolver-wrapper failures escape as `Err`; packet failures are handled locally.
     pub(crate) fn accept(&mut self, packet: &[u8], now: Instant) -> io::Result<()> {
-        // Continue while each step makes structural progress by stripping an extension chain or completing and
-        // removing a Fragment header. Both come from a finite protocol packet, so no transform-count cap is
-        // needed.
+        // Each pass removes an extension prefix or completes one genuine reassembly; encoded packet length
+        // therefore bounds the loop without a transformation cap.
         let mut rewritten: Option<Vec<u8>> = None;
         loop {
             let produced = match rewritten.as_deref() {
@@ -98,9 +110,7 @@ impl Dispatch<'_> {
         }
     }
 
-    /// Dispatches one whole datagram, or holds one fragment, or unwraps one extension chain. Returns a packet
-    /// that still has to be dispatched, which is either the datagram a fragment completed or one with its
-    /// extension headers removed.
+    /// Dispatches one datagram, returning only a normalized or reassembled packet that needs another pass.
     fn deliver(&mut self, packet: &[u8], now: Instant) -> io::Result<Option<Vec<u8>>> {
         match classify(packet, self.virtual_addresses) {
             // Answered rather than relayed, and it must never reach the relay: the destination is an
@@ -112,12 +122,17 @@ impl Dispatch<'_> {
                 self.counters.dns += 1;
                 match udp_wire::parse(packet) {
                     Ok(datagram) if !provisional => {
-                        self.dns.submit(datagram, self.output, self.admission)?
+                        self.dns
+                            .submit(datagram, now, self.output, self.admission)?
                     }
                     // A provisional fragment carries no ports yet, so it is not known to be DNS at all and goes
                     // to reassembly to find out.
-                    Err(Reject::Fragmented) => return Ok(self.fragment(packet, now)),
-                    Err(Reject::Extended) => return Ok(self.unwrap(packet)),
+                    Err(Reject::Fragmented) => {
+                        return Ok(self.rewrite(packet, now, Rejected::Fragmented))
+                    }
+                    Err(Reject::Extended) => {
+                        return Ok(self.rewrite(packet, now, Rejected::Extended))
+                    }
                     // TCP port 53 to a virtual address is the same principal over the terminating engine, which
                     // answers it from the resolver rather than from an upstream connection.
                     Err(Reject::NotUdp) => match tcp_wire::peek(packet) {
@@ -170,13 +185,19 @@ impl Dispatch<'_> {
                         // handles the packet: an ICMP type Android's own downstream link control owns, or a
                         // protocol this mode does not carry.
                         Err(Reject::NotUdp) => self.counters.unsupported += 1,
-                        Err(Reject::Fragmented) => return Ok(self.fragment(packet, now)),
-                        Err(Reject::Extended) => return Ok(self.unwrap(packet)),
+                        Err(Reject::Fragmented) => {
+                            return Ok(self.rewrite(packet, now, Rejected::Fragmented))
+                        }
+                        Err(Reject::Extended) => {
+                            return Ok(self.rewrite(packet, now, Rejected::Extended))
+                        }
                         Err(Reject::Malformed(_)) => self.counters.unparseable += 1,
                     },
                 },
-                Err(Reject::Fragmented) => return Ok(self.fragment(packet, now)),
-                Err(Reject::Extended) => return Ok(self.unwrap(packet)),
+                Err(Reject::Fragmented) => {
+                    return Ok(self.rewrite(packet, now, Rejected::Fragmented))
+                }
+                Err(Reject::Extended) => return Ok(self.rewrite(packet, now, Rejected::Extended)),
                 Err(Reject::Malformed(_)) => self.counters.unparseable += 1,
             },
             Classified::Dropped(Drop::Reserved) => self.counters.reserved += 1,
@@ -186,23 +207,34 @@ impl Dispatch<'_> {
         Ok(None)
     }
 
-    /// Removes one packet's IPv6 extension chain, and hands back what is left for the transports to parse.
-    fn unwrap(&mut self, packet: &[u8]) -> Option<Vec<u8>> {
-        self.counters.extended += 1;
-        match extension::walk(packet) {
-            Ok(extension::Walked::Stripped(stripped)) => Some(stripped),
-            // Nothing to remove after a transport already refused it as extended, which means the chain is one
-            // the walk does not recognise as one.
-            Ok(extension::Walked::None) => {
-                self.counters.unsupported += 1;
-                None
-            }
-            // A chain refused rather than walked: source routing, a misplaced hop-by-hop header, or an
-            // unsupported header. Counted apart from a malformed packet because it is well formed and unwelcome.
+    /// Normalizes one IPv6 packet's header prefix in a single scan and hands what is left to whoever owns it:
+    /// the transports, or reassembly when a Fragment header really does fragment.
+    fn rewrite(&mut self, packet: &[u8], now: Instant, rejected: Rejected) -> Option<Vec<u8>> {
+        let normalized = match extension::walk(packet) {
+            Ok(normalized) => normalized,
+            // Well-formed but unsupported or disallowed extension chain.
             Err(_) => {
                 self.counters.chain_refused += 1;
-                None
+                return None;
             }
+        };
+        if matches!(normalized.walked, extension::Walked::Stripped(_)) {
+            self.counters.extended += 1;
+            self.counters.extension_headers += normalized.consumed as u64;
+        }
+        match normalized.walked {
+            extension::Walked::Stripped(stripped) if normalized.fragmenting => {
+                self.fragment(&stripped, now)
+            }
+            extension::Walked::Stripped(stripped) => Some(stripped),
+            // Nothing was consumed, so which of the two rejections brought this here is what says who owns it.
+            extension::Walked::None => match rejected {
+                Rejected::Fragmented => self.fragment(packet, now),
+                Rejected::Extended => {
+                    self.counters.unsupported += 1;
+                    None
+                }
+            },
         }
     }
 
@@ -224,16 +256,22 @@ impl Dispatch<'_> {
     }
 
     /// Answers the reassembly timeouts a router owes, from the interface's own address.
-    pub(crate) fn expire(&mut self, now: Instant) {
-        // Reassembly yields one expired quote at a time; each resulting ICMP error is handed off as its own
-        // logical datagram.
+    pub(crate) fn expire(&mut self, now: Instant, expiry: Expiry) {
         let counters = &mut self.counters;
         let gateways = &self.gateways;
         let output = &mut self.output;
         self.fragments.sweep(now, |quote| {
             counters.fragments_expired += 1;
+            // Expiry still retires state while output is gated; its optional ICMP error is suppressed.
+            if !expiry.delivering() {
+                counters.fragments_stalled += 1;
+                return;
+            }
             match gateways.report(&quote, Reason::ReassemblyExpired) {
-                Some(error) => output.packet(error),
+                // A refused error is already counted by the output's own handoff counters.
+                Some(error) => {
+                    output.packet(error);
+                }
                 None => counters.fragments_unreported += 1,
             }
         });

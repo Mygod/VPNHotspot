@@ -13,6 +13,38 @@ use crate::shared::udp_wire::Reject;
 
 pub const ECHO_HEADER_LEN: usize = 8;
 
+/// Which IP family an Echo socket, session or error belongs to. Named rather than a positional `bool`,
+/// because it keys tables where getting the two the wrong way round matches one family's traffic against the
+/// other's - see [crate::shared::echo_session::Sessions].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Family {
+    V4,
+    V6,
+}
+
+impl Family {
+    pub fn of(address: IpAddr) -> Self {
+        if address.is_ipv6() {
+            Self::V6
+        } else {
+            Self::V4
+        }
+    }
+
+    pub fn ipv6(self) -> bool {
+        self == Self::V6
+    }
+}
+
+impl std::fmt::Display for Family {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::V4 => "IPv4",
+            Self::V6 => "IPv6",
+        })
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Request<'a> {
     pub client: IpAddr,

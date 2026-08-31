@@ -344,7 +344,11 @@ mod tests {
                     },
                     "{chain:?} {protocol}"
                 );
-                let Ok(extension::Walked::Stripped(stripped)) = extension::walk(&packet) else {
+                let Ok(extension::Normalized {
+                    walked: extension::Walked::Stripped(stripped),
+                    ..
+                }) = extension::walk(&packet)
+                else {
                     panic!("{chain:?} should strip");
                 };
                 assert_eq!(
@@ -376,7 +380,11 @@ mod tests {
                 },
                 "{protocol} {port}"
             );
-            let Ok(extension::Walked::Stripped(stripped)) = extension::walk(&packet) else {
+            let Ok(extension::Normalized {
+                walked: extension::Walked::Stripped(stripped),
+                ..
+            }) = extension::walk(&packet)
+            else {
                 panic!("{protocol} {port} should strip");
             };
             assert_eq!(

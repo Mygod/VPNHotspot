@@ -13,9 +13,7 @@ use vpnhotspotd::shared::workers::Terminal;
 /// What this engine needs its owner to do next.
 pub(crate) enum Attention {
     Flow(Terminal<SocketHandle>),
-    /// A flow whose transport task completed cleanly earlier and whose client side has now finished too. Its
-    /// exact identity rather than a terminal, because there is no task left to produce one - see
-    /// [Engine::finish_client_close].
+    /// A retained client-only flow whose close or reset has finished.
     ClientClosed {
         handle: SocketHandle,
         incarnation: u64,
@@ -23,9 +21,7 @@ pub(crate) enum Attention {
     /// A resolver transaction settlement independent of flow lifetime, or a terminal table-invariant
     /// failure.
     Transaction(io::Result<tcp_dns::Settlement>),
-    /// Bytes crossed a bridge in one direction or the other, or a half-close did, so the stack has something
-    /// to do about it. Payload-free and flow-free on purpose: the pass has already moved everything it could,
-    /// and what is left is to run the stack and refresh the lifetimes that saw traffic.
+    /// Bridge progress requires a stack poll and lifetime refresh.
     Traffic,
 }
 
@@ -45,8 +41,7 @@ impl Engine {
         if let Poll::Ready(settlement) = self.queries.poll_finished(cx) {
             return Poll::Ready(Attention::Transaction(settlement));
         }
-        // Client closure is owner-local state with no waker. Check it after finite readiness batches and
-        // before pumping bridges.
+        // Client-only closure has no separate waker.
         if let Some(closed) = self.next_client_closed() {
             return Poll::Ready(closed);
         }
@@ -64,9 +59,7 @@ impl Engine {
             "the round-robin order indexes exactly the live flows"
         );
         let mut moved = false;
-        // Every live flow exactly once, and the order's own cursor is what says which - so the pass cannot
-        // reach one twice, cannot skip one, and cannot start at the same flow for ever. Running it to `None`
-        // is what ends it and moves the starting position on; see [vpnhotspotd::shared::flow::Turns::turn].
+        // `Turns` visits each live flow once and rotates the next starting point.
         while let Some(handle) = self.outgoing.turn() {
             moved |= self.cross(handle, cx);
         }
@@ -75,31 +68,30 @@ impl Engine {
 
     /// One flow's turn, and what this engine records about it.
     fn cross(&mut self, handle: SocketHandle, cx: &mut Context<'_>) -> bool {
-        // The crossing, and any terminal-tail failure it finds, are both
-        // [vpnhotspotd::shared::ingress::crossed]'s - the same answer an ingress gives, from the same code,
-        // so a flow does not care which path noticed. The stack is polled by [Engine::traffic] straight after
-        // this pass, which is what puts the resulting reset on the wire.
+        // Share ingress crossing and terminal-tail handling.
         let Some(crossing) = vpnhotspotd::shared::ingress::crossed(self, handle, cx) else {
             // Unreachable while the order indexes the live flows, and answered rather than asserted because
             // the pass must not stop on it.
             self.counters.ingress.stale += 1;
             return false;
         };
+        if crossing.moved {
+            // Record stack mutation before this cancellable select arm returns.
+            self.stack_changed();
+        }
         self.counters.to_client += crossing.to_client as u64;
         self.counters.ingress.to_upstream += crossing.to_upstream as u64;
         if crossing.stranded {
             self.counters.ingress.stale += 1;
         }
-        // Only the direction this owner performs refreshes an idle floor. A client that stops acknowledging
-        // fills its send buffer, which stops that direction and lets the flow expire - see [lifetime::rearm].
+        // Only actual progress refreshes the idle floor.
         if let Some(held) = self.flows.get_mut(&handle) {
             held.record.refresh |= crossing.delivered;
         }
         crossing.moved
     }
 
-    /// What the owner does about a pass that moved something: run the stack for it, and refresh the idle
-    /// floor of every flow that was delivered to.
+    /// Polls after bridge progress and refreshes affected idle floors.
     pub(crate) fn traffic(&mut self, admitting: bool, now: Instant, output: &mut Output) {
         self.poll(output);
         // After the poll, because the end of stream this pass may have taken is what makes this owner close
@@ -108,6 +100,7 @@ impl Engine {
             flows,
             sockets,
             outgoing,
+            idle,
             ..
         } = self;
         for handle in outgoing.iter() {
@@ -119,7 +112,7 @@ impl Engine {
             }
             let incarnation = held.id;
             if admitting {
-                lifetime::rearm(flows, sockets, *handle, incarnation, now);
+                lifetime::rearm(flows, sockets, idle, *handle, incarnation, now);
             }
         }
     }

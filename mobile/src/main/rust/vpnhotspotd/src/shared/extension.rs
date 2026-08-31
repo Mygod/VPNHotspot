@@ -1,30 +1,64 @@
-use etherparse::{IpNumber, Ipv6HeaderSlice, Ipv6RawExtHeaderSlice};
+//! One-pass normalization of an IPv6 packet's header prefix.
+//!
+//! [RFC 8200 section 4.1](https://www.rfc-editor.org/rfc/rfc8200.html#section-4.1) supplies no header-count
+//! limit, so one scan validates and measures the prefix before one allocation and copy. Atomic Fragment
+//! headers are consumed here to preserve [RFC 6946 section
+//! 4](https://www.rfc-editor.org/rfc/rfc6946.html#section-4) isolation; only genuine fragmentation reaches
+//! [crate::shared::reassembly].
+use etherparse::{IpNumber, Ipv6FragmentHeaderSlice, Ipv6HeaderSlice, Ipv6RawExtHeaderSlice};
 
 use crate::shared::packet_writer::IPV6_HEADER_LEN;
 use crate::shared::udp_wire::Reject;
 
-/// What walking a chain produced.
+/// What the one scan left of the packet.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Walked {
-    /// There was no chain, so the packet is already the shape a transport parse expects.
+    /// Nothing consumed; the caller retains the original bytes.
     None,
-    /// The chain was removed and the header that followed it promoted.
+    /// The whole consumed prefix is gone and the header that followed it is promoted.
     Stripped(Vec<u8>),
 }
 
-/// Walks one IPv6 packet's extension chain and removes it.
-pub fn walk(packet: &[u8]) -> Result<Walked, Reject> {
+/// One packet's normalized prefix, and where the scan stopped.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Normalized {
+    pub walked: Walked,
+    /// Whether the result begins with a genuine or too-truncated-to-classify Fragment header.
+    pub fragmenting: bool,
+    /// Prefix headers consumed by this scan.
+    pub consumed: usize,
+}
+
+/// Walks one IPv6 packet's header prefix and removes it.
+pub fn walk(packet: &[u8]) -> Result<Normalized, Reject> {
     let Ok(header) = Ipv6HeaderSlice::from_slice(packet) else {
-        return Ok(Walked::None);
+        return Ok(Normalized {
+            walked: Walked::None,
+            fragmenting: false,
+            consumed: 0,
+        });
     };
     let mut next = header.next_header();
     let mut offset = IPV6_HEADER_LEN;
-    loop {
+    let mut consumed = 0usize;
+    let fragmenting = loop {
         match next {
-            // Kept rather than removed: reassembly owns everything from here, and it is what promotes whatever
-            // the Fragment header points at once the datagram is whole. Breaking here also means its reserved
-            // byte is never mistaken for a generic extension-header length.
-            IpNumber::IPV6_FRAGMENTATION_HEADER => break,
+            IpNumber::IPV6_FRAGMENTATION_HEADER => {
+                let Ok(fragment) = Ipv6FragmentHeaderSlice::from_slice(&packet[offset..]) else {
+                    // Leave truncated fragments to reassembly's common rejection path.
+                    break true;
+                };
+                if fragment.more_fragments() || fragment.fragment_offset().value() != 0 {
+                    // Reassembly owns genuine fragmentation from here.
+                    break true;
+                }
+                // Consume atomic headers without touching reassembly state.
+                next = fragment.next_header();
+                // The validated eight-byte slice strictly advances the walk.
+                offset += fragment.slice().len();
+                consumed += 1;
+                continue;
+            }
             IpNumber::IPV6_HEADER_HOP_BY_HOP
             | IpNumber::IPV6_DESTINATION_OPTIONS
             | IpNumber::IPV6_ROUTE_HEADER => {}
@@ -39,15 +73,13 @@ pub fn walk(packet: &[u8]) -> Result<Walked, Reject> {
             _ if next.is_ipv6_ext_header_value() => {
                 return Err(Reject::Malformed("unsupported IPv6 extension header"));
             }
-            _ => break,
+            _ => break false,
         }
-        // Hop-by-Hop is only ever the first, per RFC 8200. Anywhere else and the chain is one whose meaning two
-        // readers could disagree about, which is not a chain to repeat.
+        // RFC 8200 permits Hop-by-Hop only immediately after the IPv6 header.
         if next == IpNumber::IPV6_HEADER_HOP_BY_HOP && offset != IPV6_HEADER_LEN {
             return Err(Reject::Malformed("IPv6 hop-by-hop header is not first"));
         }
-        // This typed slice applies the eight-octet length format only to the three header types above. AH has
-        // a different formula and ESP has no leading next-header field, which is why both were rejected first.
+        // AH and ESP were rejected before applying this extension-length format.
         let extension = Ipv6RawExtHeaderSlice::from_slice(&packet[offset..]).map_err(|_| {
             if packet.len() < offset + 2 {
                 Reject::Malformed("IPv6 extension header does not fit")
@@ -56,21 +88,25 @@ pub fn walk(packet: &[u8]) -> Result<Walked, Reject> {
             }
         })?;
         if next == IpNumber::IPV6_ROUTE_HEADER {
-            // Segments left is the third byte. Non-zero means the client is asking to be routed through
-            // somewhere of its choosing, which RFC 5095 deprecates and which a relay must not perform for it.
+            // A nonzero Segments Left requests source routing.
             if extension.slice()[3] != 0 {
                 return Err(Reject::Malformed("IPv6 source routing is not carried"));
             }
         }
         next = extension.next_header();
-        // The typed extension slice is at least eight bytes and lies wholly inside `packet`, so this strictly
-        // advances and the packet's finite length bounds the walk.
+        // The validated slice strictly advances the finite packet walk.
         offset += extension.slice().len();
-    }
+        consumed += 1;
+    };
     if offset == IPV6_HEADER_LEN {
-        // Nothing was removed, which for a fragment means reassembly should see it exactly as it arrived.
-        return Ok(Walked::None);
+        // Preserve an untouched fragment exactly.
+        return Ok(Normalized {
+            walked: Walked::None,
+            fragmenting,
+            consumed,
+        });
     }
+    // Allocate once after the scan determines the retained bytes.
     let payload = packet.len() - offset;
     let length = u16::try_from(payload)
         .map_err(|_| Reject::Malformed("IPv6 payload length is impossible"))?;
@@ -79,12 +115,16 @@ pub fn walk(packet: &[u8]) -> Result<Walked, Reject> {
     stripped[6] = next.0;
     stripped[4..6].copy_from_slice(&length.to_be_bytes());
     stripped.extend_from_slice(&packet[offset..]);
-    Ok(Walked::Stripped(stripped))
+    Ok(Normalized {
+        walked: Walked::Stripped(stripped),
+        fragmenting,
+        consumed,
+    })
 }
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, SocketAddr};
+    use std::net::SocketAddr;
     use std::time::Instant;
 
     use super::*;
@@ -92,6 +132,14 @@ mod tests {
     use crate::shared::reassembly;
     use crate::shared::udp_wire::{self, build_reply};
 
+    const HOP_BY_HOP: u8 = 0;
+    const ROUTING: u8 = 43;
+    const FRAGMENT: u8 = 44;
+    const DESTINATION: u8 = 60;
+    const AH: u8 = 51;
+    const ESP: u8 = 50;
+
+    /// Prepends `(kind, length units, third byte)` headers to UDP.
     fn wrapped(chain: &[(u8, usize, u8)]) -> Vec<u8> {
         let packet = build_reply(
             "[2001:db8:1::2]:40000".parse().unwrap(),
@@ -119,18 +167,11 @@ mod tests {
         out
     }
 
-    const HOP_BY_HOP: u8 = 0;
-    const ROUTING: u8 = 43;
-    const FRAGMENT: u8 = 44;
-    const DESTINATION: u8 = 60;
-    const AH: u8 = 51;
-    const ESP: u8 = 50;
-
     fn options(next: u8) -> [u8; 8] {
         [next, 0, 0, 0, 0, 0, 0, 0]
     }
 
-    /// Builds outer options, a Fragment header, and inner options. `nested` adds another Fragment header.
+    /// Builds outer options, fragmentation, and inner options; optionally nested.
     fn doubly_wrapped(destination: SocketAddr, payload: &[u8], nested: bool) -> Vec<Vec<u8>> {
         let datagram = build_reply(
             "[2001:db8:1::2]:40000".parse().unwrap(),
@@ -173,102 +214,78 @@ mod tests {
         reassembly::Table::new()
     }
 
-    /// Applies the same structurally finite rewrite sequence as `Dispatch::accept`.
-    fn rewritten(
-        fragments: &[Vec<u8>],
-        virtual_addresses: &[IpAddr],
+    /// Builds one Fragment-header packet with the common test endpoints.
+    fn fragmented(identification: u32, offset: usize, more: bool, body: &[u8]) -> Vec<u8> {
+        let datagram = build_reply(
+            "[2001:db8:1::2]:40000".parse().unwrap(),
+            "[2606:4700::1111]:443".parse().unwrap(),
+            64,
+            None,
+            b"unused",
+        )
+        .unwrap();
+        let mut packet = datagram[..IPV6_HEADER_LEN].to_vec();
+        packet[6] = FRAGMENT;
+        packet[4..6].copy_from_slice(&((8 + body.len()) as u16).to_be_bytes());
+        packet.push(datagram[6]);
+        packet.push(0);
+        packet.extend_from_slice(&(((offset as u16) & !7) | u16::from(more)).to_be_bytes());
+        packet.extend_from_slice(&identification.to_be_bytes());
+        packet.extend_from_slice(body);
+        packet
+    }
+
+    /// Work performed by one rewrite lineage.
+    #[derive(Default, Debug, PartialEq, Eq)]
+    struct Cost {
+        /// One scan per surviving rewrite round.
+        scans: usize,
+        /// How many prefix headers those scans consumed between them.
+        consumed: usize,
+        /// How many times reassembly was asked to hold or complete something.
+        reassemblies: usize,
+    }
+
+    /// Models the parse/normalize/reassemble loop in `Dispatch::accept`.
+    fn deliver(
+        packet: &[u8],
         table: &mut reassembly::Table,
         now: Instant,
-    ) -> Vec<u8> {
-        let provisional = Classified::Accepted {
-            principal: Principal::Dns,
-            provisional: true,
-        };
-        let mut whole = None;
-        // Each fragment is a separate read; only the completing fragment continues the lineage.
-        for fragment in fragments {
-            assert_eq!(classify(fragment, virtual_addresses), provisional);
-            assert_eq!(udp_wire::parse(fragment), Err(Reject::Extended));
-            let Ok(Walked::Stripped(unwrapped)) = walk(fragment) else {
-                panic!("the chain in front of the Fragment header strips");
+        cost: &mut Cost,
+    ) -> Option<Vec<u8>> {
+        let mut current = packet.to_vec();
+        loop {
+            let fragmented = match udp_wire::parse(&current) {
+                Ok(_) => return Some(current),
+                Err(Reject::Fragmented) => true,
+                Err(Reject::Extended) => false,
+                Err(e) => panic!("a transport rejected the packet as {e:?}"),
             };
-            assert_eq!(classify(&unwrapped, virtual_addresses), provisional);
-            assert_eq!(udp_wire::parse(&unwrapped), Err(Reject::Fragmented));
-            match table.accept(&unwrapped, now) {
-                Ok(reassembly::Accepted::Pending) => {}
-                Ok(reassembly::Accepted::Complete(assembled)) => whole = Some(assembled),
-                refused => panic!("reassembly refused a conforming fragment: {refused:?}"),
-            }
+            cost.scans += 1;
+            let normalized = walk(&current).expect("the chain walks");
+            cost.consumed += normalized.consumed;
+            let produced = match normalized.walked {
+                Walked::Stripped(stripped) if normalized.fragmenting => {
+                    cost.reassemblies += 1;
+                    held(table, &stripped, now)
+                }
+                Walked::Stripped(stripped) => Some(stripped),
+                Walked::None if fragmented => {
+                    cost.reassemblies += 1;
+                    held(table, &current, now)
+                }
+                Walked::None => return None,
+            };
+            current = produced?;
         }
-        let whole = whole.expect("the last fragment completes the datagram");
-        assert_eq!(classify(&whole, virtual_addresses), provisional);
-        assert_eq!(udp_wire::parse(&whole), Err(Reject::Extended));
-        let Ok(Walked::Stripped(bare)) = walk(&whole) else {
-            panic!("the chain behind the Fragment header strips");
-        };
-        bare
     }
 
-    #[test]
-    fn a_chain_on_both_sides_of_a_fragment_header_still_delivers() {
-        let destination: SocketAddr = "[fd00::53]:53".parse().unwrap();
-        let mut table = table();
-        let bare = rewritten(
-            &doubly_wrapped(destination, b"a query for the resolver", false),
-            &[destination.ip()],
-            &mut table,
-            Instant::now(),
-        );
-        assert_eq!(
-            classify(&bare, &[destination.ip()]),
-            Classified::Accepted {
-                principal: Principal::Dns,
-                provisional: false
-            }
-        );
-        assert_eq!(
-            udp_wire::parse(&bare).expect("the datagram parses").payload,
-            b"a query for the resolver"
-        );
-    }
-
-    #[test]
-    fn a_chain_on_both_sides_of_a_fragment_header_is_still_no_route_past_the_resolver() {
-        let destination: SocketAddr = "[fd00::53]:443".parse().unwrap();
-        let mut table = table();
-        let bare = rewritten(
-            &doubly_wrapped(destination, b"not a query", false),
-            &[destination.ip()],
-            &mut table,
-            Instant::now(),
-        );
-        assert_eq!(
-            classify(&bare, &[destination.ip()]),
-            Classified::Dropped(Drop::Reserved)
-        );
-    }
-
-    #[test]
-    fn a_nested_fragment_reaches_reassembly() {
-        let destination: SocketAddr = "[fd00::53]:53".parse().unwrap();
-        let now = Instant::now();
-        let mut table = table();
-        let bare = rewritten(
-            &doubly_wrapped(destination, b"a query for the resolver", true),
-            &[destination.ip()],
-            &mut table,
-            now,
-        );
-        assert_eq!(
-            classify(&bare, &[destination.ip()]),
-            Classified::Accepted {
-                principal: Principal::Dns,
-                provisional: false
-            }
-        );
-        assert_eq!(udp_wire::parse(&bare), Err(Reject::Fragmented));
-        assert_eq!(table.accept(&bare, now), Ok(reassembly::Accepted::Pending));
-        assert!(table.next_deadline().is_some());
+    fn held(table: &mut reassembly::Table, packet: &[u8], now: Instant) -> Option<Vec<u8>> {
+        match table.accept(packet, now) {
+            Ok(reassembly::Accepted::Pending) => None,
+            Ok(reassembly::Accepted::Complete(whole)) => Some(whole),
+            refused => panic!("reassembly refused a conforming fragment: {refused:?}"),
+        }
     }
 
     #[test]
@@ -281,7 +298,10 @@ mod tests {
         ] {
             let packet = wrapped(&chain);
             assert_eq!(udp_wire::parse(&packet), Err(Reject::Extended), "{chain:?}");
-            let Ok(Walked::Stripped(stripped)) = walk(&packet) else {
+            let normalized = walk(&packet).expect("the chain walks");
+            assert_eq!(normalized.consumed, chain.len(), "{chain:?}");
+            assert!(!normalized.fragmenting, "{chain:?}");
+            let Walked::Stripped(stripped) = normalized.walked else {
                 panic!("{chain:?} should strip");
             };
             let datagram = udp_wire::parse(&stripped).expect("stripped parses");
@@ -300,20 +320,304 @@ mod tests {
             b"payload",
         )
         .unwrap();
-        assert_eq!(walk(&packet), Ok(Walked::None));
-        assert_eq!(walk(&[0x45, 0, 0, 20]), Ok(Walked::None));
-        assert_eq!(walk(&[]), Ok(Walked::None));
+        for bytes in [packet.as_slice(), &[0x45, 0, 0, 20], &[]] {
+            assert_eq!(
+                walk(bytes),
+                Ok(Normalized {
+                    walked: Walked::None,
+                    fragmenting: false,
+                    consumed: 0,
+                })
+            );
+        }
     }
 
     #[test]
-    fn a_fragment_header_ends_the_walk_and_stays() {
-        let packet = wrapped(&[(DESTINATION, 0, 0), (FRAGMENT, 0, 0)]);
-        let Ok(Walked::Stripped(stripped)) = walk(&packet) else {
+    fn a_genuine_fragment_header_ends_the_scan_and_stays() {
+        let packet = wrapped(&[(DESTINATION, 0, 0), (FRAGMENT, 0, 1)]);
+        let normalized = walk(&packet).expect("the part before it strips");
+        assert!(normalized.fragmenting);
+        assert_eq!(
+            normalized.consumed, 1,
+            "the Fragment header is not consumed"
+        );
+        let Walked::Stripped(stripped) = normalized.walked else {
             panic!("should strip the part before the fragment header");
         };
         assert_eq!(stripped[6], FRAGMENT);
         assert_eq!(udp_wire::parse(&stripped), Err(Reject::Fragmented));
-        assert_eq!(walk(&wrapped(&[(FRAGMENT, 0, 0)])), Ok(Walked::None));
+
+        assert_eq!(
+            walk(&wrapped(&[(FRAGMENT, 0, 1)])),
+            Ok(Normalized {
+                walked: Walked::None,
+                fragmenting: true,
+                consumed: 0,
+            }),
+            "a fragment with nothing in front of it is handed to reassembly untouched"
+        );
+    }
+
+    #[test]
+    fn an_atomic_fragment_header_is_consumed_rather_than_reassembled() {
+        let mut table = table();
+        let mut cost = Cost::default();
+        let delivered = deliver(
+            &wrapped(&[(FRAGMENT, 0, 0)]),
+            &mut table,
+            Instant::now(),
+            &mut cost,
+        )
+        .expect("an atomic fragment is already a whole datagram");
+        assert_eq!(
+            udp_wire::parse(&delivered)
+                .expect("the promoted datagram parses")
+                .payload,
+            b"payload"
+        );
+        assert_eq!(
+            cost,
+            Cost {
+                scans: 1,
+                consumed: 1,
+                reassemblies: 0,
+            },
+            "RFC 6946 says process it as unfragmented, so reassembly never sees it"
+        );
+    }
+
+    #[test]
+    fn a_long_atomic_chain_is_one_scan_with_one_copy_and_no_count_refusal() {
+        for depth in [2usize, 64, 1_000] {
+            let chain: Vec<_> = std::iter::repeat_n((FRAGMENT, 0, 0), depth).collect();
+            let mut table = table();
+            let mut cost = Cost::default();
+            let delivered = deliver(&wrapped(&chain), &mut table, Instant::now(), &mut cost)
+                .unwrap_or_else(|| panic!("a {depth}-deep atomic chain delivers its transport"));
+            assert_eq!(
+                udp_wire::parse(&delivered)
+                    .expect("the promoted datagram parses")
+                    .payload,
+                b"payload",
+                "depth {depth}"
+            );
+            assert_eq!(
+                cost,
+                Cost {
+                    scans: 1,
+                    consumed: depth,
+                    reassemblies: 0,
+                },
+                "depth {depth}: one scan for the whole chain, whatever its depth"
+            );
+            assert!(
+                table.describe().starts_with("0 contexts"),
+                "depth {depth}: reassembly holds nothing"
+            );
+        }
+    }
+
+    #[test]
+    fn atomic_headers_mixed_into_a_chain_are_consumed_by_the_same_scan() {
+        let chain: Vec<_> = std::iter::repeat_n(
+            [(DESTINATION, 0, 0), (FRAGMENT, 0, 0), (ROUTING, 0, 0)],
+            128,
+        )
+        .flatten()
+        .collect();
+        let mut table = table();
+        let mut cost = Cost::default();
+        let delivered = deliver(&wrapped(&chain), &mut table, Instant::now(), &mut cost)
+            .expect("a mixed chain delivers its transport");
+        assert_eq!(
+            udp_wire::parse(&delivered)
+                .expect("the promoted datagram parses")
+                .payload,
+            b"payload"
+        );
+        assert_eq!(
+            cost,
+            Cost {
+                scans: 1,
+                consumed: chain.len(),
+                reassemblies: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn a_chain_on_both_sides_of_a_fragment_header_still_delivers() {
+        let destination: SocketAddr = "[fd00::53]:53".parse().unwrap();
+        let mut table = table();
+        let now = Instant::now();
+        let mut cost = Cost::default();
+        let mut delivered = None;
+        // Only the completing fragment continues the lineage.
+        for fragment in doubly_wrapped(destination, b"a query for the resolver", false) {
+            assert_eq!(
+                classify(&fragment, &[destination.ip()]),
+                Classified::Accepted {
+                    principal: Principal::Dns,
+                    provisional: true
+                }
+            );
+            if let Some(whole) = deliver(&fragment, &mut table, now, &mut cost) {
+                delivered = Some(whole);
+            }
+        }
+        let bare = delivered.expect("the last fragment completes the datagram");
+        assert_eq!(
+            classify(&bare, &[destination.ip()]),
+            Classified::Accepted {
+                principal: Principal::Dns,
+                provisional: false
+            }
+        );
+        assert_eq!(
+            udp_wire::parse(&bare).expect("the datagram parses").payload,
+            b"a query for the resolver"
+        );
+        assert_eq!(
+            cost,
+            Cost {
+                // Two fragments plus the completed inner scan.
+                scans: 3,
+                consumed: 3,
+                reassemblies: 2,
+            },
+            "genuine fragmentation is the only thing that costs a reassembly round"
+        );
+    }
+
+    #[test]
+    fn a_chain_on_both_sides_of_a_fragment_header_is_still_no_route_past_the_resolver() {
+        let destination: SocketAddr = "[fd00::53]:443".parse().unwrap();
+        let mut table = table();
+        let now = Instant::now();
+        let mut cost = Cost::default();
+        let mut delivered = None;
+        for fragment in doubly_wrapped(destination, b"not a query", false) {
+            if let Some(whole) = deliver(&fragment, &mut table, now, &mut cost) {
+                delivered = Some(whole);
+            }
+        }
+        assert_eq!(
+            classify(
+                &delivered.expect("the last fragment completes the datagram"),
+                &[destination.ip()]
+            ),
+            Classified::Dropped(Drop::Reserved)
+        );
+    }
+
+    #[test]
+    fn a_nested_genuine_fragment_reaches_reassembly() {
+        let destination: SocketAddr = "[fd00::53]:53".parse().unwrap();
+        let now = Instant::now();
+        let mut table = table();
+        let mut cost = Cost::default();
+        let mut delivered = None;
+        for fragment in doubly_wrapped(destination, b"a query for the resolver", true) {
+            if let Some(whole) = deliver(&fragment, &mut table, now, &mut cost) {
+                delivered = Some(whole);
+            }
+        }
+        assert_eq!(
+            delivered, None,
+            "the inner fragment is a first fragment with more to come, so nothing is whole yet"
+        );
+        assert!(
+            table.next_deadline().is_some(),
+            "and the inner reassembly context is retained"
+        );
+        assert_eq!(
+            cost.reassemblies, 3,
+            "two outer fragments and the inner one they completed"
+        );
+    }
+
+    #[test]
+    fn an_atomic_fragment_cannot_disturb_a_context_sharing_its_identification() {
+        // Atomic and genuine fragments deliberately share a reassembly key.
+        const SHARED: u32 = 0x0bad_1dea;
+        let whole = build_reply(
+            "[2001:db8:1::2]:40000".parse().unwrap(),
+            "[2606:4700::1111]:443".parse().unwrap(),
+            64,
+            None,
+            b"the genuinely fragmented datagram",
+        )
+        .unwrap();
+        let body = &whole[IPV6_HEADER_LEN..];
+        let split = 16;
+        assert!(split < body.len() && split.is_multiple_of(8));
+
+        let atomic = build_reply(
+            "[2001:db8:1::2]:40000".parse().unwrap(),
+            "[2606:4700::1111]:443".parse().unwrap(),
+            64,
+            None,
+            b"an atomic datagram",
+        )
+        .unwrap();
+
+        let now = Instant::now();
+        let mut table = table();
+        let mut cost = Cost::default();
+
+        // Genuine fragmentation opens a context.
+        assert_eq!(
+            deliver(
+                &fragmented(SHARED, 0, true, &body[..split]),
+                &mut table,
+                now,
+                &mut cost
+            ),
+            None,
+            "the datagram is not whole yet"
+        );
+        assert_eq!(cost.reassemblies, 1);
+        let held = table.describe();
+
+        // The atomic packet bypasses that context.
+        let delivered = deliver(
+            &fragmented(SHARED, 0, false, &atomic[IPV6_HEADER_LEN..]),
+            &mut table,
+            now,
+            &mut cost,
+        )
+        .expect("an atomic fragment is already a whole datagram");
+        assert_eq!(
+            udp_wire::parse(&delivered)
+                .expect("the promoted datagram parses")
+                .payload,
+            b"an atomic datagram"
+        );
+        assert_eq!(
+            cost.reassemblies, 1,
+            "the atomic packet reached no reassembly context"
+        );
+        assert_eq!(
+            table.describe(),
+            held,
+            "and left the genuine one exactly as it was"
+        );
+
+        // The genuine datagram still completes.
+        let completed = deliver(
+            &fragmented(SHARED, split, false, &body[split..]),
+            &mut table,
+            now,
+            &mut cost,
+        )
+        .expect("the last genuine fragment completes its datagram");
+        assert_eq!(
+            udp_wire::parse(&completed)
+                .expect("the reassembled datagram parses")
+                .payload,
+            b"the genuinely fragmented datagram"
+        );
+        assert!(table.describe().starts_with("0 contexts"));
     }
 
     #[test]
@@ -336,14 +640,42 @@ mod tests {
     }
 
     #[test]
-    fn fragment_body_is_not_parsed_by_the_extension_walker() {
+    fn a_truncated_fragment_header_is_left_to_reassembly() {
         let mut packet = wrapped(&[(DESTINATION, 0, 0), (FRAGMENT, 0, 0)]);
         packet.truncate(IPV6_HEADER_LEN + 8 + 1);
-        let Ok(Walked::Stripped(stripped)) = walk(&packet) else {
+        let normalized = walk(&packet).expect("the part before it strips");
+        assert!(
+            normalized.fragmenting,
+            "too short to tell whether it is atomic, so the one owner of that decision gets it"
+        );
+        let Walked::Stripped(stripped) = normalized.walked else {
             panic!("should stop at the fragment boundary");
         };
         assert_eq!(stripped[6], FRAGMENT);
         assert_eq!(stripped.len(), IPV6_HEADER_LEN + 1);
+        assert!(matches!(
+            table().accept(&stripped, Instant::now()),
+            Err(reassembly::Reject::Malformed(_))
+        ));
+    }
+
+    #[test]
+    fn the_fragment_header_reserved_byte_is_not_read_as_a_length() {
+        let mut packet = wrapped(&[(DESTINATION, 0, 0), (FRAGMENT, 0, 0)]);
+        // A Fragment header's second byte is reserved, not a generic extension length.
+        packet[IPV6_HEADER_LEN + 8 + 1] = 0xff;
+        let normalized = walk(&packet).expect("the chain walks");
+        assert_eq!(normalized.consumed, 2);
+        assert!(!normalized.fragmenting);
+        let Walked::Stripped(stripped) = normalized.walked else {
+            panic!("both headers should be consumed");
+        };
+        assert_eq!(
+            udp_wire::parse(&stripped)
+                .expect("the promoted datagram parses")
+                .payload,
+            b"payload"
+        );
     }
 
     #[test]
@@ -354,7 +686,10 @@ mod tests {
         );
         assert!(matches!(
             walk(&wrapped(&[(ROUTING, 0, 0)])),
-            Ok(Walked::Stripped(_))
+            Ok(Normalized {
+                walked: Walked::Stripped(_),
+                ..
+            })
         ));
     }
 
@@ -368,8 +703,10 @@ mod tests {
 
     #[test]
     fn a_long_chain_is_bounded_by_the_packet_and_reaches_its_transport() {
-        let chain: Vec<_> = std::iter::repeat_n((DESTINATION, 0, 0), 128).collect();
-        let Ok(Walked::Stripped(stripped)) = walk(&wrapped(&chain)) else {
+        let chain: Vec<_> = std::iter::repeat_n((DESTINATION, 0, 0), 1_000).collect();
+        let normalized = walk(&wrapped(&chain)).expect("a complete chain is walked");
+        assert_eq!(normalized.consumed, 1_000, "no count refuses a chain");
+        let Walked::Stripped(stripped) = normalized.walked else {
             panic!("a complete chain should be walked to its transport");
         };
         assert_eq!(
@@ -394,16 +731,5 @@ mod tests {
             walk(&packet[..IPV6_HEADER_LEN + 1]),
             Err(Reject::Malformed("IPv6 extension header does not fit"))
         );
-    }
-
-    #[test]
-    fn the_fragment_header_length_is_never_read() {
-        let mut packet = wrapped(&[(DESTINATION, 0, 0), (FRAGMENT, 0, 0)]);
-        packet[IPV6_HEADER_LEN + 8 + 1] = 0xff;
-        let Ok(Walked::Stripped(stripped)) = walk(&packet) else {
-            panic!("should strip the chain before the fragment header");
-        };
-        assert_eq!(stripped[6], FRAGMENT);
-        assert_eq!(udp_wire::parse(&stripped), Err(Reject::Fragmented));
     }
 }

@@ -1,4 +1,26 @@
-//! Reply-owner turn ordering and error-queue drains.
+//! Bounded handoff from Internet-facing reply sockets to the dataplane owner.
+//!
+//! Authorization occurs after handoff, so workers reserve owner capacity before reading or allocating.
+//! When full, remote-controlled data remains in the kernel receive queue.
+
+/// Capacity of each subsystem's reply handoff.
+///
+/// **Resource:** one unread-by-owner reply event, including at most one 65,535-byte protocol payload.
+///
+/// **Derivation:** one is the minimum [tokio::sync::mpsc::channel] capacity and matches the owner's one event
+/// per subsystem per fair pass. UDP and Echo have separate mailboxes; including an event under processing,
+/// the session can own at most three remote reply payloads.
+///
+/// **Failure mode:** an Internet peer can otherwise grow daemon memory faster than the owner consumes it.
+///
+/// **Exhaustion:** the worker waits before reading; the kernel queues or drops incoming data. Cancellation
+/// and owner closure release the wait without a read.
+pub const MAILBOX: usize = 1;
+
+/// One subsystem's reply handoff: the sender each of its workers clones, and the receiver the owner keeps.
+pub fn mailbox<E>() -> (tokio::sync::mpsc::Sender<E>, tokio::sync::mpsc::Receiver<E>) {
+    tokio::sync::mpsc::channel(MAILBOX)
+}
 
 /// What one message off a socket's error queue is, as far as the decision below is concerned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,7 +76,7 @@ pub enum Turned {
     Reported,
     /// Stale readiness, or an empty or unreportable error queue.
     Released,
-    /// Cancelled while waiting for readiness or before a ready socket was read.
+    /// Cancelled while waiting for readiness, for owner capacity, or before a ready socket was read.
     Cancelled,
     /// The owner is gone, so there is nobody left to hand a reply to.
     Closed,
@@ -65,7 +87,7 @@ pub enum Turned {
 /// Everything one reply worker needs to take a turn, held together so the turn owns the whole order rather
 /// than being handed a step someone else already took.
 pub struct Turn<'a, X: std::os::fd::AsRawFd, S: ?Sized, E> {
-    pub sender: &'a tokio::sync::mpsc::UnboundedSender<E>,
+    pub sender: &'a tokio::sync::mpsc::Sender<E>,
     pub cancel: &'a tokio_util::sync::CancellationToken,
     pub fd: &'a tokio::io::unix::AsyncFd<X>,
     pub interest: tokio::io::Interest,
@@ -78,7 +100,7 @@ where
     X: std::os::fd::AsRawFd,
     S: ErrorSource + ?Sized,
 {
-    /// One whole turn: wait for readiness, read at most one unit, then publish at most one owner event.
+    /// One whole turn: wait for readiness, take one owner slot, then read at most one unit and publish it.
     pub async fn run<T>(
         self,
         read: impl FnOnce(&X) -> std::io::Result<T>,
@@ -93,7 +115,7 @@ where
             interest,
             errors,
         } = self;
-        // Readiness first: no buffer is allocated while the socket has nothing to contribute.
+        // Do not hold shared owner capacity while the socket is idle.
         let mut guard = tokio::select! {
             biased;
             () = cancel.cancelled() => return Turned::Cancelled,
@@ -102,35 +124,34 @@ where
                 Err(error) => return Turned::Failed(error),
             },
         };
-        // A ready worker does not read once retirement or owner closure is already observable. No queue permit
-        // is needed: the session-owned handoff is unbounded, and each worker still reads only one unit here.
-        if cancel.is_cancelled() {
-            return Turned::Cancelled;
-        }
-        if sender.is_closed() {
-            return Turned::Closed;
-        }
+        // Reserve before reading; cancellation or closure leaves the datagram in the kernel queue.
+        let permit = tokio::select! {
+            biased;
+            () = cancel.cancelled() => return Turned::Cancelled,
+            reserved = sender.reserve() => match reserved {
+                Ok(permit) => permit,
+                Err(_) => return Turned::Closed,
+            },
+        };
         let attempt = guard.try_io(|inner| read(inner.get_ref()));
         match classify_readiness(attempt, kernel_error) {
-            Readiness::Received(payload) => match sender.send(datagram(payload)) {
-                Ok(()) => Turned::Sent,
-                Err(_) => Turned::Closed,
-            },
+            Readiness::Received(payload) => {
+                permit.send(datagram(payload));
+                Turned::Sent
+            }
             Readiness::Stale => Turned::Released,
             Readiness::Failed(e) => Turned::Failed(e),
             Readiness::Errored => match errors.next() {
                 Err(e) => Turned::Failed(e),
-                // Exactly one message, whatever kind. The socket stays error-readable while any remain, so
-                // the next worker turn handles the next one with a cancellation check in between.
+                // One error per turn; remaining errors keep the socket readable.
                 Ok(Drained::Remote) => match reported(errors) {
-                    Some(event) => match sender.send(event) {
-                        Ok(()) => Turned::Reported,
-                        Err(_) => Turned::Closed,
-                    },
+                    Some(event) => {
+                        permit.send(event);
+                        Turned::Reported
+                    }
                     None => Turned::Released,
                 },
-                // A local refusal belongs to the send that provoked it, which the owner's send path reads for
-                // itself. A message naming neither, or an empty queue, has nothing to publish.
+                // The send path handles local refusals; the other cases have nothing to publish.
                 Ok(Drained::Local | Drained::Neither | Drained::Empty) => Turned::Released,
             },
         }
@@ -139,6 +160,10 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::future::Future;
+    use std::pin::pin;
+    use std::task::Poll;
+
     use super::*;
 
     struct Scripted {
@@ -214,11 +239,19 @@ mod tests {
         }
     }
 
+    /// Polls one turn exactly once, which is how a worker parked on owner capacity is observed without
+    /// letting it make progress it should not be able to make.
+    async fn polled<F: Future<Output = Turned>>(turn: std::pin::Pin<&mut F>) -> Poll<Turned> {
+        let mut turn = Some(turn);
+        std::future::poll_fn(move |cx| Poll::Ready(turn.take().expect("polled once").poll(cx)))
+            .await
+    }
+
     #[tokio::test]
     async fn the_production_turn_orders_readiness_and_allocation() {
         let pipe = Pipe::new();
         let built = std::rc::Rc::new(std::cell::Cell::new(0usize));
-        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        let (sender, mut receiver) = mailbox::<Vec<u8>>();
         let cancel = tokio_util::sync::CancellationToken::new();
         let kernel = |e: &std::io::Error| e.kind() == std::io::ErrorKind::ConnectionRefused;
         let allocations = std::cell::Cell::new(0usize);
@@ -263,34 +296,174 @@ mod tests {
         );
         assert_eq!(allocations.get(), 1);
         assert_eq!(source.asked, 0);
+        assert_eq!(built.get(), 1);
+    }
 
-        // Owner delay does not impose an arbitrary shared capacity: workers can publish their sequential
-        // turns, and the owner observes them in channel order when it resumes.
-        for byte in [11, 13] {
-            pipe.feed(byte);
-            let turned = Turn {
+    #[tokio::test]
+    async fn a_full_mailbox_stops_the_next_read_until_the_owner_takes_one() {
+        let pipe = Pipe::new();
+        let built = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let (sender, mut receiver) = mailbox::<Vec<u8>>();
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let kernel = |_: &std::io::Error| false;
+        let allocations = std::cell::Cell::new(0usize);
+        let mut source = Scripted::new(Vec::new(), &built);
+
+        // One reply fills the whole handoff, because its capacity is one.
+        pipe.feed(11);
+        let turned = Turn {
+            sender: &sender,
+            cancel: &cancel,
+            fd: &pipe.read,
+            interest: tokio::io::Interest::READABLE,
+            errors: &mut source,
+        }
+        .run(read_one(&allocations), kernel, |payload| payload, |_| None)
+        .await;
+        assert!(matches!(turned, Turned::Sent), "{turned:?}");
+        assert_eq!(allocations.get(), 1);
+
+        // A second datagram is waiting on the socket and the owner has not taken the first.
+        pipe.feed(13);
+        // Scoped so the parked turn releases its borrows before the counters below are read.
+        {
+            let mut second = pin!(Turn {
                 sender: &sender,
                 cancel: &cancel,
                 fd: &pipe.read,
                 interest: tokio::io::Interest::READABLE,
                 errors: &mut source,
             }
-            .run(read_one(&allocations), kernel, |payload| payload, |_| None)
-            .await;
+            .run(read_one(&allocations), kernel, |payload| payload, |_| None));
+            assert!(
+                polled(second.as_mut()).await.is_pending(),
+                "a full handoff parks the worker"
+            );
+            assert_eq!(
+                allocations.get(),
+                1,
+                "and it parks before the read, so nothing was allocated for the second datagram"
+            );
+
+            // The owner takes the first, which is what frees the capacity for the second.
+            assert_eq!(receiver.recv().await, Some(vec![11]));
+            let turned = second.await;
             assert!(matches!(turned, Turned::Sent), "{turned:?}");
         }
-        assert_eq!(allocations.get(), 3);
+        assert_eq!(allocations.get(), 2);
         assert_eq!(source.asked, 0);
-        assert_eq!(receiver.recv().await, Some(vec![11]));
         assert_eq!(receiver.recv().await, Some(vec![13]));
         assert_eq!(built.get(), 1);
+    }
+
+    #[tokio::test]
+    async fn owner_closure_releases_a_worker_waiting_for_capacity() {
+        let pipe = Pipe::new();
+        let built = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let (sender, mut receiver) = mailbox::<Vec<u8>>();
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let allocations = std::cell::Cell::new(0usize);
+        let mut source = Scripted::new(Vec::new(), &built);
+
+        pipe.feed(17);
+        let turned = Turn {
+            sender: &sender,
+            cancel: &cancel,
+            fd: &pipe.read,
+            interest: tokio::io::Interest::READABLE,
+            errors: &mut source,
+        }
+        .run(
+            read_one(&allocations),
+            |_| false,
+            |payload| payload,
+            |_| None,
+        )
+        .await;
+        assert!(matches!(turned, Turned::Sent), "{turned:?}");
+
+        pipe.feed(19);
+        // Scoped so the parked turn - and the borrows it holds - are gone before the counters are read.
+        {
+            let mut waiting = pin!(Turn {
+                sender: &sender,
+                cancel: &cancel,
+                fd: &pipe.read,
+                interest: tokio::io::Interest::READABLE,
+                errors: &mut source,
+            }
+            .run(
+                read_one(&allocations),
+                |_| false,
+                |payload| payload,
+                |_| None
+            ));
+            assert!(polled(waiting.as_mut()).await.is_pending());
+            receiver.close();
+            drop(receiver);
+            let turned = waiting.await;
+            assert!(matches!(turned, Turned::Closed), "{turned:?}");
+        }
+        assert_eq!(allocations.get(), 1, "the released worker read nothing");
+        assert_eq!(source.asked, 0);
+    }
+
+    #[tokio::test]
+    async fn cancellation_releases_a_worker_waiting_for_capacity() {
+        let pipe = Pipe::new();
+        let built = std::rc::Rc::new(std::cell::Cell::new(0usize));
+        let (sender, _receiver) = mailbox::<Vec<u8>>();
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let allocations = std::cell::Cell::new(0usize);
+        let mut source = Scripted::new(Vec::new(), &built);
+
+        pipe.feed(23);
+        let turned = Turn {
+            sender: &sender,
+            cancel: &cancel,
+            fd: &pipe.read,
+            interest: tokio::io::Interest::READABLE,
+            errors: &mut source,
+        }
+        .run(
+            read_one(&allocations),
+            |_| false,
+            |payload| payload,
+            |_| None,
+        )
+        .await;
+        assert!(matches!(turned, Turned::Sent), "{turned:?}");
+
+        pipe.feed(29);
+        // Scoped for the same reason as above: the parked turn borrows both counters.
+        {
+            let mut waiting = pin!(Turn {
+                sender: &sender,
+                cancel: &cancel,
+                fd: &pipe.read,
+                interest: tokio::io::Interest::READABLE,
+                errors: &mut source,
+            }
+            .run(
+                read_one(&allocations),
+                |_| false,
+                |payload| payload,
+                |_| None
+            ));
+            assert!(polled(waiting.as_mut()).await.is_pending());
+            cancel.cancel();
+            let turned = waiting.await;
+            assert!(matches!(turned, Turned::Cancelled), "{turned:?}");
+        }
+        assert_eq!(allocations.get(), 1);
+        assert_eq!(source.asked, 0);
     }
 
     #[tokio::test]
     async fn the_production_turn_takes_one_error_per_turn() {
         let pipe = Pipe::new();
         let built = std::rc::Rc::new(std::cell::Cell::new(0usize));
-        let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel::<&'static str>();
+        let (sender, mut receiver) = mailbox::<&'static str>();
         let cancel = tokio_util::sync::CancellationToken::new();
         let kernel = |e: &std::io::Error| e.kind() == std::io::ErrorKind::ConnectionRefused;
         let errored = |_: &std::os::fd::OwnedFd| -> std::io::Result<Vec<u8>> {
@@ -356,7 +529,7 @@ mod tests {
     async fn owner_closure_prevents_a_ready_socket_read() {
         let pipe = Pipe::new();
         let built = std::rc::Rc::new(std::cell::Cell::new(0usize));
-        let (sender, receiver) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        let (sender, receiver) = mailbox::<Vec<u8>>();
         drop(receiver);
         let cancel = tokio_util::sync::CancellationToken::new();
         let allocations = std::cell::Cell::new(0usize);

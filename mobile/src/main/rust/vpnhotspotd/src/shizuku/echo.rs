@@ -4,6 +4,7 @@ use std::time::Instant;
 
 use socket2::Socket;
 use tokio::sync::mpsc;
+use vpnhotspotd::shared::echo_session::{Found, Sessions};
 use vpnhotspotd::shared::echo_wire::{self, Request, ECHO_HEADER_LEN};
 use vpnhotspotd::shared::icmp_error::{self, Reason};
 use vpnhotspotd::shared::icmp_nat::{nat66_hop_limit, Nat66HopLimit};
@@ -11,7 +12,6 @@ use vpnhotspotd::shared::icmp_translate::{self, Correlation, Reported, Untransla
 use vpnhotspotd::shared::workers::{Ended, Terminal};
 
 use crate::report;
-use crate::shizuku::echo_session::{Found, Sessions};
 use crate::shizuku::echo_socket::{Family, Refused, Sockets};
 use crate::shizuku::egress::{self, Fragmentation};
 use crate::shizuku::gateway::Gateways;
@@ -26,7 +26,10 @@ use vpnhotspotd::shared::admission::Admission;
 #[derive(Default)]
 struct Counters {
     sent: u64,
-    written: u64,
+    /// Replies admitted by the interface queue, not written to the TUN.
+    queued: u64,
+    /// Replies not admitted; `tun output` records the reason.
+    unqueued: u64,
     denied: u64,
     expired: u64,
     too_big: u64,
@@ -51,12 +54,13 @@ struct Counters {
 impl Counters {
     fn describe(&self) -> String {
         format!(
-            "sent {} written {} denied {} expired {} too-big {} blocked {} \
+            "sent {} queued {} unqueued {} denied {} expired {} too-big {} blocked {} \
              unreachable {} send-failed {} reported {} unreported {} df-failed {} open-failed {} \
              exhausted {} unmatched {} unparseable {} translated {} untranslated {} ambiguous {} \
              implausible {} stale {} swept {}",
             self.sent,
-            self.written,
+            self.queued,
+            self.unqueued,
             self.denied,
             self.expired,
             self.too_big,
@@ -90,7 +94,7 @@ pub(crate) struct Relay {
 }
 
 impl Relay {
-    pub(crate) fn new() -> (Self, mpsc::UnboundedReceiver<Event<Family>>) {
+    pub(crate) fn new() -> (Self, mpsc::Receiver<Event<Family>>) {
         let (sockets, receiver) = Sockets::new();
         (
             Self {
@@ -104,7 +108,7 @@ impl Relay {
     }
 
     /// Releases every memory-only session after the family sockets have been settled.
-    pub(crate) fn release(self, echoes: mpsc::UnboundedReceiver<Event<Family>>) {
+    pub(crate) fn release(self, echoes: mpsc::Receiver<Event<Family>>) {
         self.sockets.release(echoes);
         drop(self.sessions);
         drop(self.errors);
@@ -267,14 +271,14 @@ impl Relay {
         }
     }
 
-    pub(crate) fn handle(&mut self, event: Event<Family>, output: &mut Output) {
+    pub(crate) fn handle(&mut self, event: Event<Family>, now: Instant, output: &mut Output) {
         let (family, id, remote, hop_limit, message) = match event {
             Event::Error { key, id, error } => {
                 if !self.sockets.current(key, id) {
                     self.counters.stale += 1;
                     return;
                 }
-                self.repeat(key, &error, output);
+                self.repeat(key, &error, now, output);
                 return;
             }
             Event::Reply {
@@ -315,7 +319,7 @@ impl Relay {
                 return;
             }
         };
-        let Some(session) = self.sessions.take(remote.ip(), reply.sequence) else {
+        let Some(session) = self.sessions.take(remote.ip(), reply.sequence, now) else {
             // A duplicate of a reply already restored, one for a session that timed out, or one from a remote
             // this daemon never sent to. Consuming the session on the first reply is what makes the second of
             // those indistinguishable from the third, which is the safe direction to be wrong in.
@@ -328,14 +332,19 @@ impl Relay {
             self.counters.expired += 1;
             return;
         };
-        output.echo(
+        // Count actual handoff admission, not an attempted reply.
+        if output.echo(
+            now,
             remote.ip(),
             session.client,
             hop_limit,
             session.identity,
             payload,
-        );
-        self.counters.written += 1;
+        ) {
+            self.counters.queued += 1;
+        } else {
+            self.counters.unqueued += 1;
+        }
     }
 
     /// The next ping socket to have finished, which is the only thing that removes one.
@@ -360,13 +369,16 @@ impl Relay {
     }
 
     /// Repeats one ICMP error a router sent about a relayed ping.
-    fn repeat(&mut self, family: Family, error: &Reported, output: &mut Output) {
+    fn repeat(&mut self, family: Family, error: &Reported, now: Instant, output: &mut Output) {
         let Ok((quoted, _)) = echo_wire::peek_request(error.quoted.as_slice(), family.ipv6())
         else {
             self.counters.unparseable += 1;
             return;
         };
-        let (remote, session) = match self.sessions.take_by_sequence(quoted.sequence) {
+        // Socket family scopes sequence reuse; lookup first expires rows that could create stale ambiguity.
+        let (swept, found) = self.sessions.take_by_sequence(family, quoted.sequence, now);
+        self.counters.swept += swept as u64;
+        let (remote, session) = match found {
             Found::One { remote, session } => (remote, session),
             Found::Ambiguous => {
                 self.counters.ambiguous += 1;
@@ -377,7 +389,8 @@ impl Relay {
                 return;
             }
         };
-        if remote.is_ipv6() != family.ipv6() || error.remote.is_ipv6() != family.ipv6() {
+        // The indexed session already matches this socket family; validate the reporting router.
+        if error.remote.is_ipv6() != family.ipv6() {
             self.counters.implausible += 1;
             return;
         }

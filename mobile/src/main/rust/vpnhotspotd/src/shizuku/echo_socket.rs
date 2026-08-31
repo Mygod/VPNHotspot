@@ -1,4 +1,3 @@
-use std::fmt::{self, Display, Formatter};
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
@@ -6,6 +5,7 @@ use std::sync::Arc;
 use socket2::{SockAddr, Socket};
 use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc;
+pub(crate) use vpnhotspotd::shared::echo_wire::Family;
 use vpnhotspotd::shared::workers::{Terminal, Workers};
 
 use vpnhotspotd::shared::admission::{Admission, Class, Lease};
@@ -13,36 +13,6 @@ use vpnhotspotd::shared::egress_socket;
 
 use crate::report;
 use crate::shizuku::reply::{receive, reply_channel, Event, Gate, Sizing, ERROR_OR_READABLE};
-
-/// Which family's ping socket something belongs to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) enum Family {
-    V4,
-    V6,
-}
-
-impl Family {
-    pub(crate) fn of(address: IpAddr) -> Self {
-        if address.is_ipv6() {
-            Self::V6
-        } else {
-            Self::V4
-        }
-    }
-
-    pub(crate) fn ipv6(self) -> bool {
-        self == Self::V6
-    }
-}
-
-impl Display for Family {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::V4 => "IPv4",
-            Self::V6 => "IPv6",
-        })
-    }
-}
 
 /// Why a family has no socket to send on. Both are ordinary refusals rather than failures, because Echo is
 /// optional independently per family: a family whose ping socket will not open is a family without Echo, and
@@ -65,11 +35,11 @@ pub(crate) struct Sockets {
     /// One share of each descriptor, beside the task that holds the other. A socket comes back out of here
     /// only once its task has been joined, which is what the release below is keyed to.
     sockets: Workers<Family, Held>,
-    events: mpsc::UnboundedSender<Event<Family>>,
+    events: mpsc::Sender<Event<Family>>,
 }
 
 impl Sockets {
-    pub(crate) fn new() -> (Self, mpsc::UnboundedReceiver<Event<Family>>) {
+    pub(crate) fn new() -> (Self, mpsc::Receiver<Event<Family>>) {
         let (events, receiver) = reply_channel::<Family>();
         (
             Self {
@@ -80,7 +50,7 @@ impl Sockets {
         )
     }
 
-    pub(crate) fn release(self, echoes: mpsc::UnboundedReceiver<Event<Family>>) {
+    pub(crate) fn release(self, echoes: mpsc::Receiver<Event<Family>>) {
         drop(self.sockets);
         drop(self.events);
         drop(echoes);

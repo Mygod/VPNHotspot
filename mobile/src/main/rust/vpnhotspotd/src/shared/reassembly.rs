@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use etherparse::{IpNumber, Ipv4Header, Ipv6FragmentHeaderSlice};
 
+use crate::shared::deadlines::Deadlines;
 use crate::shared::ip_wire::Packet;
 #[cfg(test)]
 use crate::shared::packet_writer::{IPV4_HEADER_LEN, IPV6_FRAGMENT_HEADER_LEN, IPV6_HEADER_LEN};
@@ -57,7 +58,7 @@ struct Fragment<'a> {
     payload: &'a [u8],
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct Key {
     source: IpAddr,
     destination: IpAddr,
@@ -129,6 +130,8 @@ struct Counters {
 #[derive(Default)]
 pub struct Table {
     contexts: HashMap<Key, Context>,
+    /// Contexts indexed by expiry, avoiding full-table scans.
+    deadlines: Deadlines<Key>,
     counters: Counters,
 }
 
@@ -182,17 +185,22 @@ impl Table {
         }
         let context = match self.contexts.entry(fragment.key) {
             Entry::Occupied(entry) => entry.into_mut(),
-            Entry::Vacant(entry) => entry.insert(Context {
-                payload: Vec::new(),
-                received: Vec::new(),
-                header: None,
-                total: None,
-                deadline: now
+            Entry::Vacant(entry) => {
+                // Later fragments do not extend the context deadline.
+                let deadline = now
                     + match fragment.key.source {
                         IpAddr::V4(_) => IPV4_REASSEMBLY_TIMEOUT,
                         IpAddr::V6(_) => IPV6_REASSEMBLY_TIMEOUT,
-                    },
-            }),
+                    };
+                self.deadlines.arm(fragment.key, None, deadline);
+                entry.insert(Context {
+                    payload: Vec::new(),
+                    received: Vec::new(),
+                    header: None,
+                    total: None,
+                    deadline,
+                })
+            }
         };
         if !insert(context, fragment.offset, fragment.payload) {
             self.discard(fragment.key);
@@ -209,7 +217,7 @@ impl Table {
             self.counters.held += 1;
             return Ok(Accepted::Pending);
         }
-        let context = self.contexts.remove(&fragment.key).expect("just held");
+        let context = self.take(fragment.key).expect("just held");
         let Some(header) = context.header else {
             self.counters.headless += 1;
             return Err(Reject::Malformed("reassembled without fragment zero"));
@@ -221,33 +229,47 @@ impl Table {
 
     pub fn retire(&mut self) {
         self.contexts = HashMap::new();
+        self.deadlines.clear();
     }
 
     fn discard(&mut self, key: Key) {
-        self.contexts.remove(&key);
+        self.take(key);
     }
 
+    /// Removes a context and its deadline entry together.
+    fn take(&mut self, key: Key) -> Option<Context> {
+        let context = self.contexts.remove(&key)?;
+        self.deadlines.disarm(key, context.deadline);
+        Some(context)
+    }
+
+    /// Retires only due contexts.
     pub fn sweep(&mut self, now: Instant, mut quote: impl FnMut(Vec<u8>)) -> u64 {
         let mut retired = 0u64;
         let mut quoted = 0u64;
-        self.contexts.retain(|_, context| {
-            if context.deadline > now {
-                return true;
-            }
+        while let Some(key) = self.deadlines.due(now) {
+            let Some(context) = self.contexts.remove(&key) else {
+                // Unreachable while context and index removal remain coupled in [Table::take].
+                continue;
+            };
             retired += 1;
             if let Some(header) = &context.header {
                 quoted += 1;
                 quote(assemble(header.as_slice(), &context.payload));
             }
-            false
-        });
+        }
         self.counters.expired += retired;
         self.counters.headless += retired - quoted;
         retired
     }
 
     pub fn next_deadline(&self) -> Option<Instant> {
-        self.contexts.values().map(|context| context.deadline).min()
+        debug_assert_eq!(
+            self.deadlines.len(),
+            self.contexts.len(),
+            "every retained context is armed exactly once"
+        );
+        self.deadlines.next()
     }
 
     pub fn describe(&self) -> String {
@@ -828,6 +850,73 @@ mod tests {
         assert_eq!(u16::from_be_bytes([quote[6], quote[7]]) & 0x3fff, 0);
         assert!(table.table.contexts.is_empty());
         assert_eq!(table.table.next_deadline(), None);
+    }
+
+    #[test]
+    fn every_way_a_context_leaves_takes_its_deadline_with_it() {
+        let now = Instant::now();
+        // The families have different timeout lengths.
+        let four = fragments(&datagram(false, 3000), 1280);
+        let six = fragments(&datagram(true, 3000), 1280);
+        let mut table = table();
+        assert_eq!(table.accept(&six[0], now), Ok(Accepted::Pending));
+        assert_eq!(table.accept(&four[0], now), Ok(Accepted::Pending));
+        assert_eq!(
+            table.table.next_deadline(),
+            Some(now + IPV4_REASSEMBLY_TIMEOUT),
+            "the earlier of the two, without walking the table"
+        );
+
+        // Completion removes its deadline entry too.
+        for piece in &four[1..] {
+            match table.accept(piece, now) {
+                Ok(Accepted::Pending) | Ok(Accepted::Complete(_)) => {}
+                refused => panic!("reassembly refused a conforming fragment: {refused:?}"),
+            }
+        }
+        assert!(table.table.contexts.len() == 1);
+        assert_eq!(
+            table.table.next_deadline(),
+            Some(now + IPV6_REASSEMBLY_TIMEOUT)
+        );
+
+        // Overlap discard does the same.
+        assert_eq!(table.accept(&six[0], now), Err(Reject::Overlap));
+        assert!(table.table.contexts.is_empty());
+        assert_eq!(table.table.next_deadline(), None);
+        assert_eq!(table.sweep(now + IPV6_REASSEMBLY_TIMEOUT, |_| {}), 0);
+    }
+
+    #[test]
+    fn staggered_contexts_expire_one_at_a_time_and_leave_the_rest_armed() {
+        let base = Instant::now();
+        let mut table = table();
+        let mut opened = Vec::new();
+        for step in 0..4u16 {
+            let packet = datagram(false, 3000);
+            let mut piece = fragments(&packet, 1280).swap_remove(0);
+            // Distinct Identifications create distinct contexts.
+            piece[4..6].copy_from_slice(&step.to_be_bytes());
+            let at = base + Duration::from_secs(u64::from(step));
+            assert_eq!(table.accept(&piece, at), Ok(Accepted::Pending));
+            opened.push(at + IPV4_REASSEMBLY_TIMEOUT);
+        }
+        assert_eq!(table.table.contexts.len(), 4);
+        assert_eq!(table.table.next_deadline(), Some(opened[0]));
+        for (index, due) in opened.iter().enumerate() {
+            assert_eq!(
+                table.sweep(*due - Duration::from_nanos(1), |_| {}),
+                0,
+                "context {index} is not due yet"
+            );
+            assert_eq!(table.sweep(*due, |_| {}), 1, "only context {index} is due");
+            assert_eq!(
+                table.table.next_deadline(),
+                opened.get(index + 1).copied(),
+                "and the rest stay armed"
+            );
+        }
+        assert!(table.table.contexts.is_empty());
     }
 
     #[test]

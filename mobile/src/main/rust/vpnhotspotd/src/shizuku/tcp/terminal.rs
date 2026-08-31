@@ -6,14 +6,15 @@ use super::bridge::Attention;
 use super::{lifetime, Engine, Flow};
 use crate::report;
 use crate::shizuku::output::Output;
+use vpnhotspotd::shared::lifetime::owes_reset;
 use vpnhotspotd::shared::workers::{Ended, Terminal};
 
 impl Engine {
-    /// The next flow closing client-side whose client has now finished, if any has.
+    /// Finds a retained client flow that is closed and no longer owes a reset.
     pub(super) fn next_client_closed(&self) -> Option<Attention> {
         self.flows.iter().find_map(|(handle, held)| {
-            (held.record.client_closing
-                && self.sockets.get::<Socket>(*handle).state() == State::Closed)
+            let socket = self.sockets.get::<Socket>(*handle);
+            (held.record.client_closing && socket.state() == State::Closed && !owes_reset(socket))
                 .then_some(Attention::ClientClosed {
                     handle: *handle,
                     incarnation: held.id,
@@ -49,9 +50,7 @@ impl Engine {
             self.counters.ingress.stale += 1;
             return;
         }
-        // `Terminal` is delivered only after the worker future has completed, so an upstream socket captured
-        // by that future is closed now. Refund its descriptor immediately; client-facing smoltcp state may
-        // remain for a clean closing handshake, but it owns no OS descriptor.
+        // Worker completion closes the upstream descriptor; client-only state may remain.
         if let Some(lease) = self
             .flows
             .get_mut(&key)
@@ -70,9 +69,7 @@ impl Engine {
         ) {
             if let Some(held) = self.flows.get_mut(&key) {
                 held.record.client_closing = true;
-                // Nothing reads this owner's write half any more - it went with the completed transport - so
-                // the bridge reports a broken pipe for it, and the crossing that sees one stops draining the
-                // receive buffer for a flow with nowhere to put it.
+                // Stop draining client bytes after the upstream writer is gone.
                 held.record.bridge.stop_sending();
             }
             self.counters.client_closing += 1;
@@ -100,17 +97,21 @@ impl Engine {
                 self.reset(key)
             }
         };
-        // Emitted before the socket is removed, because a reset is a packet the stack has not sent yet and a
-        // smoltcp socket only advances when polled: removing it first would abort the connection and tell the
-        // client nothing. Only when there was one, so session shutdown does not poll once per flow.
+        // Poll a reset before considering socket removal.
         if reset {
             self.poll(output);
+        }
+        // A full handoff leaves the reset in its socket; retain the flow until it is emitted.
+        if owes_reset(self.sockets.get::<Socket>(key)) {
+            if let Some(held) = self.flows.get_mut(&key) {
+                held.record.client_closing = true;
+            }
+            return;
         }
         self.reclaim(key, id, admission);
     }
 
-    /// Gives back everything one flow owns, once the task that served it has completed and its socket, bridge
-    /// and channel endpoints can go.
+    /// Releases one joined flow's socket, buffers and accounting.
     fn reclaim(&mut self, key: SocketHandle, id: u64, admission: &mut Admission) {
         self.outgoing.forget(key);
         let Some(flow) = self.flows.retire(&key, id) else {
@@ -119,20 +120,26 @@ impl Engine {
             return;
         };
         self.sockets.remove(key);
+        // The set the stack's poll time is taken over just lost a member.
+        self.stack_changed();
         // Submitted resolver transactions outlive their flow.
         let submitted = self.queries.len();
         let Flow {
             upstream_lease,
             bridge,
             serving,
+            armed,
             ..
         } = flow;
+        // Remove the retired flow's deadline entry.
+        if let Some(armed) = armed {
+            self.idle.disarm(key, armed);
+        }
         // Drop bridge bytes before refunding the DNS delivery they may contain.
         drop(bridge);
         // Release flow-owned DNS state before the flow's buffers; submitted transactions remain table-owned.
         serving.close(admission);
-        // Normally taken at the joined worker terminal above. Retain this fallback so an invariant violation
-        // cannot leak descriptor capacity if a future caller reclaims a row through another joined path.
+        // Fallback against leaking a lease on an unexpected reclaim path.
         if let Some(lease) = upstream_lease {
             admission.release(lease);
         }

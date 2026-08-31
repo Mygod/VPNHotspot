@@ -19,6 +19,8 @@ use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
 
+use crate::shared::deadlines::Deadlines;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Evidence {
     Exact { hop_limit: u8 },
@@ -47,6 +49,8 @@ pub struct History {
     /// stale hop limits that would poison a later authorization. Both maps grow without a quota as distinct
     /// remotes and endpoints arrive during the mapping lifetime.
     remotes: HashMap<IpAddr, Remote>,
+    /// Remote rows indexed by deadline, avoiding full-table scans.
+    deadlines: Deadlines<IpAddr>,
 }
 
 impl History {
@@ -54,6 +58,12 @@ impl History {
     /// value leaves one exact row; observing a different value makes the endpoint permanently ambiguous for
     /// this mapping generation.
     pub fn record(&mut self, destination: SocketAddr, hop_limit: u8, deadline: Instant) {
+        // Read before the row is touched, because the index replaces exactly the entry the row is leaving.
+        let previous = self
+            .remotes
+            .get(&destination.ip())
+            .map(|remote| remote.deadline);
+        self.deadlines.arm(destination.ip(), previous, deadline);
         let remote = self
             .remotes
             .entry(destination.ip())
@@ -89,20 +99,33 @@ impl History {
         }
     }
 
-    pub fn authorizes(&self, remote: IpAddr) -> bool {
-        self.remotes.contains_key(&remote)
+    /// Checks the deadline directly so authorization does not depend on sweep order.
+    pub fn authorizes(&self, remote: IpAddr, now: Instant) -> bool {
+        self.remotes
+            .get(&remote)
+            .is_some_and(|row| now < row.deadline)
     }
 
     /// Drops an IP's endpoint evidence at the same caller-owned deadline as its existing reply authorization;
     /// there is no history-specific timeout.
     pub fn expire(&mut self, now: Instant) -> usize {
-        let before = self.remotes.len();
-        self.remotes.retain(|_, remote| remote.deadline > now);
-        before - self.remotes.len()
+        let mut expired = 0;
+        while let Some(remote) = self.deadlines.due(now) {
+            // The index yields only due rows.
+            if self.remotes.remove(&remote).is_some() {
+                expired += 1;
+            }
+        }
+        expired
     }
 
     pub fn next_deadline(&self) -> Option<Instant> {
-        self.remotes.values().map(|remote| remote.deadline).min()
+        debug_assert_eq!(
+            self.deadlines.len(),
+            self.remotes.len(),
+            "every retained remote is armed exactly once"
+        );
+        self.deadlines.next()
     }
 }
 
@@ -191,14 +214,69 @@ mod tests {
     }
 
     #[test]
+    fn an_expired_authorization_is_refused_before_any_sweep_removes_it() {
+        let remote = destination(443);
+        let expires = Instant::now() + Duration::from_secs(300);
+        let mut history = History::default();
+        history.record(remote, 57, expires);
+        assert!(history.authorizes(remote.ip(), expires - Duration::from_nanos(1)));
+        // Point-of-use expiry does not wait for the sweep arm.
+        assert!(!history.authorizes(remote.ip(), expires));
+        assert!(!history.authorizes(remote.ip(), expires + Duration::from_secs(60)));
+        // Only the sweep removes the expired row.
+        assert_eq!(history.next_deadline(), Some(expires));
+        assert_eq!(history.expire(expires), 1);
+        assert_eq!(history.next_deadline(), None);
+    }
+
+    #[test]
+    fn the_earliest_deadline_is_answered_without_walking_the_table() {
+        let now = Instant::now();
+        let mut history = History::default();
+        for (last, seconds) in [(1u8, 300), (2, 100), (3, 200)] {
+            history.record(
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, last)), 443),
+                64,
+                now + Duration::from_secs(seconds),
+            );
+        }
+        assert_eq!(
+            history.next_deadline(),
+            Some(now + Duration::from_secs(100))
+        );
+
+        // A refreshed row replaces its own entry rather than leaving a stale one behind it.
+        history.record(
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::new(198, 51, 100, 2)), 443),
+            64,
+            now + Duration::from_secs(400),
+        );
+        assert_eq!(
+            history.next_deadline(),
+            Some(now + Duration::from_secs(200))
+        );
+
+        // Only what is due goes, earliest first, and the rest stay armed.
+        assert_eq!(history.expire(now + Duration::from_secs(200)), 1);
+        assert_eq!(
+            history.next_deadline(),
+            Some(now + Duration::from_secs(300))
+        );
+        assert_eq!(history.expire(now + Duration::from_secs(250)), 0);
+        assert_eq!(history.expire(now + Duration::from_secs(400)), 2);
+        assert_eq!(history.next_deadline(), None);
+        assert_eq!(history.expire(now + Duration::from_secs(500)), 0);
+    }
+
+    #[test]
     fn remote_expiry_drops_its_endpoint_evidence_before_recontact() {
         let remote = destination(443);
         let expires = Instant::now() + Duration::from_secs(300);
         let mut history = History::default();
         history.record(remote, 57, expires);
-        assert!(history.authorizes(remote.ip()));
+        assert!(history.authorizes(remote.ip(), expires - Duration::from_secs(1)));
         assert_eq!(history.expire(expires), 1);
-        assert!(!history.authorizes(remote.ip()));
+        assert!(!history.authorizes(remote.ip(), expires - Duration::from_secs(1)));
         assert_eq!(history.resolve(remote), Resolution::Untracked);
 
         history.record(remote, 42, expires + Duration::from_secs(300));

@@ -33,7 +33,9 @@ owning document.
   teardown or session shutdown.
 - Flow teardown and every descriptor-lease release happen exactly once, although
   an upstream lease may end before its memory-only client flow. Accepted resets
-  are determined by the TCP stack, not by inspecting a header bit alone.
+  are determined by the TCP stack, not by inspecting a header bit alone. A flow
+  whose own reset the interface handoff had no room for is retained rather than
+  reclaimed, because its socket is the only thing that can still send it.
 - Android resolver work cannot be joined. Each submitted DNS-over-TCP
   transaction, not its transport, owns its resolver descriptor and query buffer
   until settlement; transport closure does not cancel it. Resolver terminal
@@ -58,29 +60,44 @@ owning document.
 
 - Admission accounts descriptors only. Its ceiling is the soft
   `RLIMIT_NOFILE` less the descriptors measured open at session start. Exactly
-  one unit within that ceiling is protected for DNS resolver work; it is a
-  floor general traffic cannot enter, not a DNS concurrency ceiling or an
-  eagerly opened descriptor.
-- Every admitted unit is capacity for at most one traffic-created descriptor: a
-  UDP mapping socket, TCP upstream-flow socket, opened Echo family socket or
-  submitted resolver descriptor. TCP DNS may reserve its unit while receiving
-  the admitted framed body, but releases it if submission never returns a
-  descriptor. Denial refuses the new owner only; after a descriptor exists, its
-  lease is released after descriptor close and, where a worker owns it, worker
-  join. A virtual-DNS TCP transport and retained client-closing state own no
-  descriptor lease.
-- The daemon has no aggregate memory-share calculation, byte ledger or
-  byte-precharge model. Memory-only downstream state, including UDP send
-  histories, queued TUN datagrams, UDP/Echo reply events and aggregate TCP-DNS
-  owner requests, grows dynamically and is dropped on session stop/restart or
-  process exit. Real memory exhaustion may terminate the recoverable app-UID
-  child.
-- Fixed TCP buffers, protocol-size buffers, depth-one per-flow DNS control
-  handoffs, the descriptor-derived virtual-UDP DNS completion handoff, protocol
-  maximums, and their exact full/expiry behavior are catalogued in
+  one unit is a DNS floor that general traffic cannot consume; it is neither an
+  open descriptor nor a DNS concurrency ceiling.
+- Each admitted unit covers at most one traffic-created descriptor. Denial
+  affects only the new owner; release follows descriptor close and worker join
+  where applicable. Memory-only TCP state owns no descriptor lease.
+- There is no aggregate memory budget or byte ledger. Downstream-created tables
+  grow dynamically and disappear with the session or process; allocator
+  exhaustion may terminate the recoverable app-UID child.
+- Internet-controlled buffering is bounded instead: UDP and Echo each have a
+  one-event reply mailbox, and TUN output has one queued logical datagram. Reply
+  workers reserve before reading; a full TUN handoff refuses the complete
+  datagram, never a fragment prefix.
+- The one-ending settlement handoff uses backpressure. Its arm precedes all
+  owner work except cancellation, including the wait for TUN capacity, so the
+  writer cannot deadlock while returning an IPv4 Identification settlement.
+- A fair pass stays frozen while output producers are gated. Deadlines continue
+  retiring due state without emitting or taking a turn; capacity return resumes
+  the interrupted order rather than favoring a continuously ready producer.
+- TUN ingress and smoltcp polling require output capacity. The owner delivers a
+  poll's packet before polling again, so unsent data and resets remain in their
+  sockets during a stall. A reset candidate rechecks capacity after its required
+  pre-settlement poll.
+- Timed tables use exact ordered deadline indexes, and Echo errors use an exact
+  family/sequence index. Point-of-use deadline checks prevent an overdue row
+  from authorizing a reply before its sweep runs. smoltcp's next-poll deadline is
+  recomputed only after stack state changes.
+- Fragmented IPv4 output does not reuse an Identification for the same tuple
+  within the documented 120-second maximum-datagram-lifetime window. Exhaustion
+  and the opening quarantine affect only oversized IPv4 output.
+- Output counters distinguish queue admission and refusal from actual TUN
+  writes, which only the serial writer counts.
+- IPv6 extension prefixes, including atomic Fragment headers, are normalized in
+  one linear scan and one copy. Only genuine fragmentation enters reassembly;
+  nested fragmentation proceeds one reassembly round at a time.
+- Every fixed buffer, handoff, protocol maximum, timeout, and its exact
+  derivation and exhaustion behavior is catalogued in
   [`shizuku.md`](shizuku.md#bounded-buffers-and-handoffs) and
-  [`dns.md`](dns.md). No table capacity may be inferred from traffic counter
-  classes.
+  [`dns.md`](dns.md).
 
 ## Interception
 

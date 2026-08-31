@@ -9,7 +9,7 @@ use tokio::io::Interest;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use vpnhotspotd::shared::icmp_translate::Reported;
-use vpnhotspotd::shared::reply_turn::{Drained, ErrorSource, Turn, Turned};
+use vpnhotspotd::shared::reply_turn::{self, Drained, ErrorSource, Turn, Turned};
 use vpnhotspotd::shared::workers::Ended;
 
 use crate::shizuku::egress;
@@ -60,14 +60,12 @@ impl ErrorSource for Errors<'_> {
 }
 
 /// One reply channel: the sender the owner clones per worker, and the receiver it keeps.
-pub(crate) type ReplyChannel<K> = (
-    mpsc::UnboundedSender<Event<K>>,
-    mpsc::UnboundedReceiver<Event<K>>,
-);
+pub(crate) type ReplyChannel<K> = (mpsc::Sender<Event<K>>, mpsc::Receiver<Event<K>>);
 
-/// Builds the session-owned reply handoff without an arbitrary aggregate event cap.
+/// Builds the session-owned reply handoff. Its capacity, and why it is that and not a depth chosen here,
+/// live with the turn that takes it - see [vpnhotspotd::shared::reply_turn::MAILBOX].
 pub(crate) fn reply_channel<K>() -> ReplyChannel<K> {
-    mpsc::unbounded_channel()
+    reply_turn::mailbox()
 }
 
 /// What the task waits for: a datagram to forward, or an error to translate. Both, because they are separate
@@ -100,7 +98,7 @@ pub(crate) async fn receive<K: Copy>(
     id: u64,
     sizing: Sizing,
     gate: Gate,
-    events: mpsc::UnboundedSender<Event<K>>,
+    events: mpsc::Sender<Event<K>>,
     cancel: CancellationToken,
 ) -> Ended {
     if let Gate::Pending(commit) = gate {
@@ -127,8 +125,8 @@ pub(crate) async fn receive<K: Copy>(
     // readiness would allocate as often as a remote chose to send errors.
     let mut errors = egress::ErrorQueue::new();
     loop {
-        // One turn, and the whole ordering is inside it: readiness, closure/cancellation, then one read and
-        // only then an allocation. See [vpnhotspotd::shared::reply_turn::Turn::run].
+        // One turn, and the whole ordering is inside it: readiness, cancellation and owner capacity, then one
+        // read and only then an allocation. See [vpnhotspotd::shared::reply_turn::Turn::run].
         let mut source = Errors {
             queue: &mut errors,
             socket: socket.get_ref(),

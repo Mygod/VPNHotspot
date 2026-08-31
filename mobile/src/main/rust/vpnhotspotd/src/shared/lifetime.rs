@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use smoltcp::socket::tcp::State;
+use smoltcp::socket::tcp::{Socket, State};
 
 /// RFC 5382 REQ-5's floor for an established connection: two hours four minutes. Once idle for
 /// this long, the flow and its upstream descriptor are retired; new traffic creates a new flow.
@@ -52,6 +52,20 @@ pub fn opened(state: State) -> bool {
         | State::LastAck
         | State::TimeWait => true,
     }
+}
+
+/// Whether this socket still has the single reset an abort owes.
+///
+/// smoltcp 0.13.1 clears an aborted socket's remote only when it dispatches the `RST`
+/// ([`Socket::dispatch`]) and returns `PollAt::Now` until then ([`Socket::poll_at`]). Thus `Closed` plus a
+/// remote endpoint means the socket must be retained and polled. A completed handshake clears the endpoint
+/// in [`Socket::process`].
+///
+/// [`Socket::dispatch`]: https://github.com/smoltcp-rs/smoltcp/blob/v0.13.1/src/socket/tcp.rs#L2669-L2671
+/// [`Socket::poll_at`]: https://github.com/smoltcp-rs/smoltcp/blob/v0.13.1/src/socket/tcp.rs#L2692-L2694
+/// [`Socket::process`]: https://github.com/smoltcp-rs/smoltcp/blob/v0.13.1/src/socket/tcp.rs#L1982-L1985
+pub fn owes_reset(socket: &Socket) -> bool {
+    socket.state() == State::Closed && socket.remote_endpoint().is_some()
 }
 
 /// Whether this phase proves the *client's* FIN has reached the stack.

@@ -252,13 +252,14 @@ the entry and closes the socket.
 
 A reply socket remains a nonblocking IPv6 UDP socket with `SO_REUSEADDR`, the
 daemon `SO_MARK`, and `IPV6_TRANSPARENT`, bound to the exact original destination
-address and port that must appear as the downstream reply source. A downstream
-send is attempted once on that leased descriptor: unlike an upstream connected
-socket's error queue, this path has no state refresh that could justify repeating
-the same send. Host- or network-unreachable sends are treated as client
-reachability churn and logged. Reply socket acquisition and other unexpected
-send failures remain structured nonfatals; neither failure creates a second exact
-bind while the original socket is still live.
+address and port that must appear as the downstream reply source. The socket is
+unconnected and does not enable `IPV6_RECVERR`, so Android's
+[UDPv6 error path](https://android.googlesource.com/kernel/common/+/refs/tags/android16-6.12-2025-07_r3/net/ipv6/udp.c#690)
+does not place remote ICMP errors in `sk_err` for a later send to consume. Each
+downstream send is attempted once. Host- or network-unreachable sends are treated
+as client reachability churn and logged. Reply socket acquisition and other
+unexpected send failures remain structured nonfatals; neither failure creates a
+second exact bind while the original socket is still live.
 
 UDP hop-limit behavior is part of the NAT66 contract. Missing hop-limit
 metadata is reported and the datagram is dropped. Expired hop limit produces a

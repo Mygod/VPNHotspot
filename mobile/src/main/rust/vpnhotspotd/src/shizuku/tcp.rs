@@ -3,7 +3,7 @@ use std::io;
 use std::net::SocketAddr;
 use std::time::Instant;
 
-use smoltcp::iface::{Config, Interface, PollResult, SocketHandle};
+use smoltcp::iface::{Config, Interface, SocketHandle};
 use smoltcp::socket::tcp::Socket;
 use smoltcp::time::Instant as SmolInstant;
 use smoltcp::wire::{HardwareAddress, IpAddress, IpCidr, IpEndpoint, IpListenEndpoint};
@@ -14,7 +14,8 @@ use vpnhotspotd::shared::workers::{Ended, Identity, Workers};
 
 use crate::shizuku::flow_setup;
 use vpnhotspotd::shared::admission::{Admission, Class, Lease};
-use vpnhotspotd::shared::bridge::{Bridge, Worker};
+use vpnhotspotd::shared::bridge::{Bridge, Teardown, Worker};
+use vpnhotspotd::shared::deadlines::Deadlines;
 use vpnhotspotd::shared::failure::Failure;
 use vpnhotspotd::shared::flow::{self, FlowId, Turns};
 use vpnhotspotd::shared::flow_budget;
@@ -23,9 +24,9 @@ use vpnhotspotd::shared::ingress as boundary;
 use crate::report;
 use crate::shizuku::output::Output;
 use crate::shizuku::owned::Owned;
-use crate::shizuku::tcp_device::Shim;
 use crate::shizuku::tcp_dns::{self, Serving, Transactions};
 use crate::shizuku::tcp_flow;
+use vpnhotspotd::shared::tcp_device::Shim;
 
 mod bridge;
 mod dns;
@@ -51,7 +52,11 @@ struct Flow {
     refresh: bool,
     serving: Serving,
     deadline: Option<Instant>,
-    // Keep the client-facing socket until its closing handshake finishes after upstream I/O completes.
+    /// What [Engine::idle] currently holds for this flow, so a refresh replaces exactly that entry. `None`
+    /// once the flow is no longer one this owner expires - it has no floor, or it is already cancelled.
+    armed: Option<Instant>,
+    // Keep the client-facing socket until it has finished: a closing handshake after upstream I/O completes,
+    // or the single reset an abort owes and the interface handoff had no room for.
     client_closing: bool,
 }
 
@@ -100,6 +105,13 @@ pub(crate) struct Engine {
     sockets: flow_setup::Sockets,
     device: Shim,
     flows: Workers<SocketHandle, Flow>,
+    /// Ordered idle deadlines, updated per flow only by [lifetime::reindex] and cleared wholesale at shutdown.
+    idle: Deadlines<SocketHandle>,
+    /// Cached absolute `Interface::poll_delay`; computing it scans smoltcp's high-water socket store.
+    stack: Option<Instant>,
+    /// Cache invalidation bit. Quiesce, open, expire, reclaim, bridge progress and ingress rearming set it;
+    /// owner turns that do not touch TCP avoid the socket-store scan. See [Engine::stack_changed].
+    stack_stale: bool,
     queries: Transactions,
     sweep: CancellationToken,
     asks: mpsc::UnboundedSender<tcp_dns::Ask>,
@@ -145,6 +157,10 @@ impl Engine {
                 sockets: flow_setup::Sockets::new(),
                 device,
                 flows: Workers::new("shizuku.tcp_flow"),
+                idle: Deadlines::default(),
+                stack: None,
+                // Nothing has been asked yet, so the first schedule answers it.
+                stack_stale: true,
                 queries,
                 sweep: CancellationToken::new(),
                 asks,
@@ -159,6 +175,7 @@ impl Engine {
     pub(crate) fn release(self, asking: mpsc::UnboundedReceiver<tcp_dns::Ask>) {
         self.queries.release();
         drop(self.flows);
+        drop(self.idle);
         drop(self.outgoing);
         drop(self.sockets);
         drop(self.asks);
@@ -195,6 +212,8 @@ impl Engine {
                 let Some(held) = flows.get_mut(handle) else {
                     continue;
                 };
+                // Nothing here is expired on a deadline any more, so every flow leaves the index below.
+                held.record.armed = None;
                 if held.cancel.is_cancelled() {
                     continue;
                 }
@@ -206,19 +225,19 @@ impl Engine {
                 socket.abort();
             }
         }
+        self.idle.clear();
         self.poll(output);
-        loop {
-            let Some((handle, incarnation)) = self
+        // Reclaim retained client-only flows; join each remaining worker before `close`.
+        while !self.flows.is_empty() {
+            let retained = self
                 .flows
                 .iter()
                 .find(|(_, held)| held.record.client_closing)
-                .map(|(handle, held)| (*handle, held.id))
-            else {
-                break;
-            };
-            self.finish_client_close(handle, incarnation, admission);
-        }
-        while self.flows.values().any(|held| !held.record.client_closing) {
+                .map(|(handle, held)| (*handle, held.id));
+            if let Some((handle, incarnation)) = retained {
+                self.finish_client_close(handle, incarnation, admission);
+                continue;
+            }
             // Joining is the descriptor-close fence; accounting is released only from `close` afterwards.
             let terminal = self.flows.finished().await;
             self.close(terminal, admission, output);
@@ -277,6 +296,9 @@ impl Engine {
                 if resolver {
                     self.counters.resolved += 1;
                 }
+                // Add the new flow to both deadline schedules.
+                self.rearm_index(handle);
+                self.stack_changed();
                 Some(handle)
             }
             Err(flow::Refused::Unadmitted) => {
@@ -292,19 +314,28 @@ impl Engine {
         self.reclaim_closed();
     }
 
+    /// Invalidates the cached stack deadline for recomputation on the next owner turn.
+    pub(super) fn stack_changed(&mut self) {
+        self.stack_stale = true;
+    }
+
+    /// Runs smoltcp only while its output can be delivered; see shared `tcp_device::quiesce`.
     fn quiesce(&mut self, at: SmolInstant, output: &mut Output) {
-        loop {
-            let progressed = self.interface.poll(at, &mut self.device, &mut self.sockets);
-            let emitted = match self.device.drain() {
-                Some(packet) => {
-                    output.packet(packet);
-                    true
-                }
-                None => false,
-            };
-            if matches!(progressed, PollResult::None) && !emitted {
-                break;
-            }
+        self.stack_changed();
+        let Engine {
+            interface,
+            device,
+            sockets,
+            ..
+        } = self;
+        vpnhotspotd::shared::tcp_device::quiesce(interface, device, sockets, at, output);
+    }
+
+    /// Keeps [Engine::idle] on exactly what one flow record says.
+    pub(super) fn rearm_index(&mut self, handle: SocketHandle) {
+        let Engine { flows, idle, .. } = self;
+        if let Some(held) = flows.get_mut(&handle) {
+            lifetime::reindex(held, idle, handle);
         }
     }
 
@@ -313,6 +344,7 @@ impl Engine {
             flows,
             sockets,
             outgoing,
+            idle,
             ..
         } = self;
         debug_assert_eq!(
@@ -321,12 +353,14 @@ impl Engine {
             "the round-robin order indexes exactly the live flows"
         );
         for handle in outgoing.iter() {
-            let Some(held) = flows.get(handle) else {
+            let Some(held) = flows.get_mut(handle) else {
                 continue;
             };
-            held.record
-                .bridge
-                .teardown(sockets.get::<Socket>(*handle).state(), &held.cancel);
+            let state = sockets.get::<Socket>(*handle).state();
+            // Cancellation removes the flow's idle deadline immediately.
+            if held.record.bridge.teardown(state, &held.cancel) == Teardown::Cancelled {
+                lifetime::reindex(held, idle, *handle);
+            }
         }
     }
 
@@ -427,6 +461,7 @@ impl Admit<'_> {
                     bridge,
                     refresh: false,
                     serving,
+                    armed: None,
                     client_closing: false,
                     deadline: lifetime::deadline(
                         self.now,

@@ -16,7 +16,8 @@ use crate::shared::tcp_wire::Segment;
 /// one and no two callers can disagree about which.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Counters {
-    /// The device still held a packet an earlier poll should have taken. This owner's bug, not a client's.
+    /// Packets refused before stack delivery because the device was occupied or output capacity vanished.
+    /// Any tentative state is unwound.
     pub unconsumed: u64,
     /// Resets the stack accepted from clients.
     pub reset: u64,
@@ -56,6 +57,9 @@ pub trait Owner {
     /// Asks every flow whose client-side socket the stack has finished with what that means for the worker
     /// still attached to it - [crate::shared::bridge::Bridge::teardown]'s decision, applied.
     fn reclaim_closed(&mut self);
+
+    /// Notifies the owner that this flow's idle deadline or armed state changed.
+    fn rearmed(&mut self, handle: Self::Handle);
 }
 
 /// What [accept] needs beyond the table: the stack, and the ability to open a flow.
@@ -63,7 +67,7 @@ pub trait Ingress: Owner {
     /// Runs the stack to quiescence **at the instant this call pinned**, emitting whatever it produces.
     fn settle(&mut self);
 
-    /// Offers the packet to the stack. `false` means the device still held an untaken one.
+    /// Offers the packet to the stack. On `false`, [accept] unwinds tentative state without stack delivery.
     fn push(&mut self, packet: &[u8]) -> bool;
 
     /// Every live flow's slot and the endpoints it is keyed by. Which one a segment *names* is decided here,
@@ -184,7 +188,10 @@ fn arm_and_seal<I: Ingress>(owner: &mut I, handle: I::Handle) -> Option<Sealed> 
     if !held.cancel.is_cancelled() {
         *held.deadline = rearmed(*held.deadline, state, held.bridge.ending(state), now);
     }
-    Some(held.bridge.seal(held.socket))
+    let sealed = held.bridge.seal(held.socket);
+    // Sealing is the only packet path that moves this flow's idle deadline.
+    owner.rearmed(handle);
+    Some(sealed)
 }
 
 /// Ends one flow abortively: its socket first, then its worker.
@@ -194,6 +201,8 @@ fn fence<O: Owner>(owner: &mut O, handle: O::Handle) {
     };
     held.socket.abort();
     held.cancel.cancel();
+    // A cancelled flow is no longer one its owner expires, which is a change to what it schedules on.
+    owner.rearmed(handle);
 }
 
 /// One flow's turn on the **traffic pass**: the crossing, and what a refused terminal tail there means.
@@ -219,6 +228,8 @@ pub fn tail_failed<O: Owner>(owner: &mut O, handle: O::Handle, why: &'static str
     let report = tail_failure(why, held.client, held.destination);
     held.socket.abort();
     held.cancel.cancel();
+    // Same as [fence]: cancelling stops this flow being one its owner expires.
+    owner.rearmed(handle);
     owner.deliver(report);
 }
 
@@ -408,6 +419,8 @@ mod tests {
         tail: Option<usize>,
         main: usize,
         buffer: usize,
+        /// Whether output from settling this packet can be handed off.
+        settling: bool,
     }
 
     impl Owner for TestOwner {
@@ -456,6 +469,9 @@ mod tests {
                     .teardown(sockets.get::<Socket>(flow.handle).state(), &flow.cancel);
             }
         }
+
+        /// Tests read deadlines directly rather than maintaining an index.
+        fn rearmed(&mut self, _handle: SocketHandle) {}
     }
 
     impl Ingress for TestOwner {
@@ -473,7 +489,7 @@ mod tests {
         }
 
         fn push(&mut self, packet: &[u8]) -> bool {
-            if self.wire.inbound.is_some() {
+            if !self.settling || self.wire.inbound.is_some() {
                 return false;
             }
             self.wire.inbound = Some(packet.to_vec());
@@ -555,6 +571,7 @@ mod tests {
         fn sized(buffer: usize, tail: Option<usize>, main: usize) -> Self {
             let (interface, wire, sockets) = stack(SERVER, 24);
             let owner = TestOwner {
+                settling: true,
                 interface,
                 wire,
                 sockets,
@@ -1155,6 +1172,34 @@ mod tests {
             wired.counters().reset,
             1,
             "and it is not counted a second time"
+        );
+    }
+
+    #[test]
+    fn a_reset_the_device_refuses_leaves_its_flow_exactly_as_it_was() {
+        let mut wired = Wired::new(1024, None);
+        wired.established();
+        let reset = abort_packet(&mut wired);
+        let segment = peek(&reset).expect("parses");
+        assert!(segment.rst);
+        // The reset's pre-settlement poll consumed the last output slot. Refusal must leave the flow and
+        // device unchanged because the stack never saw the reset.
+        wired.owner.settling = false;
+        let openings = wired.owner.openings;
+
+        accept(&mut wired.owner, &reset, &segment);
+
+        assert_eq!(wired.counters().unconsumed, 1);
+        assert_eq!(wired.counters().reset, 0, "a reset the stack never saw");
+        assert_eq!(wired.owner_state(), State::Established);
+        assert!(!wired.cancelled());
+        assert_eq!(
+            wired.owner.openings, openings,
+            "and nothing was opened for it"
+        );
+        assert!(
+            wired.owner.wire.inbound.is_none(),
+            "the segment was refused rather than left where nothing would consume it"
         );
     }
 
