@@ -1,10 +1,5 @@
-/// Bytes in each direction of one terminated client-side TCP socket. The 16-bit Window field in
-/// RFC 9293 section 3.1 makes `u16::MAX` the largest window TCP can advertise without negotiating
-/// window scaling, and pinned smoltcp 0.13.1 uses the same capacity for both directions of its
-/// streaming server sockets:
-/// <https://www.rfc-editor.org/rfc/rfc9293.html#section-3.1>,
-/// <https://github.com/smoltcp-rs/smoltcp/blob/v0.13.1/examples/server.rs>.
-/// A full smoltcp buffer applies TCP backpressure; it does not evict queued bytes.
+/// Matches pinned smoltcp's streaming-server buffers. Full buffers apply TCP backpressure.
+/// <https://github.com/smoltcp-rs/smoltcp/blob/v0.13.1/examples/server.rs>
 pub const FLOW_BUFFER: usize = u16::MAX as usize;
 
 /// Bytes in one upstream-socket or DNS-over-TCP scratch read. This matches pinned Tokio 1.53.1's
@@ -13,9 +8,7 @@ pub const FLOW_BUFFER: usize = u16::MAX as usize;
 /// Filling the scratch limits that read only; the readiness-driven loop immediately continues.
 pub const READ_CHUNK: usize = 8 * 1024;
 
-/// Bytes one direction of the Tokio bridge may hold. Matching the adjacent smoltcp direction avoids
-/// introducing a narrower handoff than its 65,535-byte TCP buffer. A full bridge suspends its writer
-/// and propagates backpressure without dropping bytes.
+/// Matches the adjacent smoltcp direction; a full bridge propagates backpressure.
 pub const BRIDGE_BUFFER: usize = FLOW_BUFFER;
 
 /// One slot in each DNS-over-TCP control direction. A transport processes one framed query at a time, so one

@@ -27,9 +27,8 @@ use vpnhotspotd::shared::icmp_wire::{
 use vpnhotspotd::shared::model::Network;
 use vpnhotspotd::shared::nat66_counter::Nat66CounterSource;
 
-/// Buffer for one standard IPv6 payload. The ordinary IPv6 Payload Length field is 16 bits; the NAT66
-/// dataplane does not support RFC 2675 jumbograms, so a supported Echo reply or ICMP error needs no larger
-/// retained receive allocation. <https://www.rfc-editor.org/rfc/rfc8200.html#section-3>
+/// Retained by each active upstream-network task for one non-jumbogram ICMPv6 packet because a truncated raw
+/// receive cannot be resumed. Failure to retain a buffer terminates the root daemon.
 const MAX_IPV6_PAYLOAD: usize = u16::MAX as usize;
 
 #[derive(Clone, Copy)]

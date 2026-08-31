@@ -5,7 +5,7 @@
 
 /// Capacity of each subsystem's reply handoff.
 ///
-/// **Resource:** one unread-by-owner reply event, including at most one 65,535-byte protocol payload.
+/// **Resource:** one unread-by-owner reply event and its payload.
 ///
 /// **Derivation:** one is the minimum [tokio::sync::mpsc::channel] capacity and matches the owner's one event
 /// per subsystem per fair pass. UDP and Echo have separate mailboxes; including an event under processing,

@@ -20,7 +20,6 @@ use vpnhotspotd::shared::tasks::{combine, Tasks, Watched};
 use crate::control_wire::{connect_control_socket, spawn_writer};
 use crate::report::{self, ControllerSender, ControllerSenderExt};
 use crate::shizuku::app_config::{self, Ended};
-use crate::shizuku::budget;
 use crate::shizuku::handoff;
 use crate::shizuku::tun_reader;
 use crate::shizuku::tun_writer;
@@ -145,13 +144,8 @@ impl Session {
         let gateway_addresses = start.gateway_addresses;
         // Reader and writer share one AsyncFd so exactly one owner closes the TUN descriptor.
         let fd = Arc::new(AsyncFd::new(tun).with_report_context("shizuku.control.tun_register")?);
-        // Measure after opening the control socket and TUN so both count against this session's budget.
-        let measured = budget::measure()
-            .await
-            .with_report_context("shizuku.control.budget")?;
         let mtu = start.mtu as usize;
-        // Measure descriptor headroom before building owners whose structural depths derive from it.
-        let (dataplane, queue) = tun_reader::prepare(measured, mtu).await?;
+        let (dataplane, queue) = tun_reader::prepare(mtu)?;
         // One config in flight at a time, which is all the app ever sends: it coalesces to a single pending
         // slot and waits for the reply before sending the next.
         let (configs, requests) = mpsc::channel(1);

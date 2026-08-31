@@ -30,8 +30,8 @@ pub(crate) enum Event<K> {
     Error { key: K, id: u64, error: Reported },
 }
 
-/// Largest standard IP datagram representable by the IPv4 total-length or IPv6 payload-length field. The
-/// fixed ping-socket buffer therefore cannot truncate a supported reply; IPv6 jumbograms are unsupported.
+/// Retained by each ping-family task because its socket cannot size the next reply before reading, so fixed
+/// storage must hold a complete supported reply. Failure to retain it terminates the recoverable app-UID child.
 const MAX_DATAGRAM: usize = u16::MAX as usize;
 
 /// One socket's error queue, as the shared turn sees it.

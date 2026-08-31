@@ -13,7 +13,6 @@ use vpnhotspotd::shared::icmp_nat::{nat66_hop_limit, Nat66HopLimit};
 use vpnhotspotd::shared::workers::{Ended, Identity, Workers};
 
 use crate::shizuku::flow_setup;
-use vpnhotspotd::shared::admission::{Admission, Class, Lease};
 use vpnhotspotd::shared::bridge::{Bridge, Teardown, Worker};
 use vpnhotspotd::shared::deadlines::Deadlines;
 use vpnhotspotd::shared::failure::Failure;
@@ -45,9 +44,6 @@ enum Source {
 struct Flow {
     client: SocketAddr,
     destination: SocketAddr,
-    /// Present exactly while this flow's upstream descriptor exists. Virtual-DNS flows never have one, and a
-    /// cleanly completed upstream drops it before client-facing TCP closing state is retained.
-    upstream_lease: Option<Lease>,
     bridge: Bridge,
     refresh: bool,
     serving: Serving,
@@ -188,11 +184,7 @@ impl Engine {
     }
 
     /// Retires all flows, then drains transactions, returning the first local failure.
-    pub(crate) async fn shutdown(
-        &mut self,
-        admission: &mut Admission,
-        output: &mut Output,
-    ) -> io::Result<()> {
+    pub(crate) async fn shutdown(&mut self, output: &mut Output) -> io::Result<()> {
         // Cancel the shared flow sweep before per-flow tokens so workers choose abortive shutdown.
         self.sweep.cancel();
         {
@@ -235,12 +227,11 @@ impl Engine {
                 .find(|(_, held)| held.record.client_closing)
                 .map(|(handle, held)| (*handle, held.id));
             if let Some((handle, incarnation)) = retained {
-                self.finish_client_close(handle, incarnation, admission);
+                self.finish_client_close(handle, incarnation);
                 continue;
             }
-            // Joining is the descriptor-close fence; accounting is released only from `close` afterwards.
             let terminal = self.flows.finished().await;
-            self.close(terminal, admission, output);
+            self.close(terminal, output);
         }
         debug_assert_eq!(
             self.sockets.iter().count(),
@@ -248,7 +239,7 @@ impl Engine {
             "every socket belongs to exactly one live flow"
         );
         // Flows may still settle deliveries, so drain transactions last.
-        self.queries.shutdown(admission)
+        self.queries.shutdown()
     }
 
     fn open(
@@ -258,7 +249,6 @@ impl Engine {
         hop_limit: u8,
         resolver: bool,
         now: Instant,
-        admission: &mut Admission,
     ) -> Option<SocketHandle> {
         let source = if resolver {
             Source::Resolver
@@ -283,7 +273,6 @@ impl Engine {
             asks,
             sweep,
             counters,
-            admission,
             client,
             destination,
             hop_limit,
@@ -386,7 +375,6 @@ struct Admit<'a> {
     asks: &'a mpsc::UnboundedSender<tcp_dns::Ask>,
     sweep: &'a CancellationToken,
     counters: &'a mut Counters,
-    admission: &'a mut Admission,
     client: SocketAddr,
     destination: SocketAddr,
     hop_limit: u8,
@@ -437,7 +425,6 @@ impl Admit<'_> {
     fn assemble(
         &self,
         prepared: flow_setup::Prepared,
-        upstream_lease: Option<Lease>,
         transport: Transport,
     ) -> (SocketHandle, u64, Built) {
         let flow_setup::Prepared {
@@ -457,7 +444,6 @@ impl Admit<'_> {
                 flow: Flow {
                     client: self.client,
                     destination: self.destination,
-                    upstream_lease,
                     bridge,
                     refresh: false,
                     serving,
@@ -499,44 +485,13 @@ impl flow::FlowOps for Admit<'_> {
                 return Err(());
             }
         };
-        let (upstream_lease, transport) = match self.source {
-            Source::Resolver => (None, Transport::Resolver),
-            Source::Upstream => match crate::shizuku::egress::open_tcp(self.destination) {
-                Err(failure) => (None, Transport::Upstream(Err(failure))),
-                Ok(socket) => {
-                    let Ok(lease) = self.admission.reserve(Class::General) else {
-                        // Admission follows the synchronous open, so denial closes the candidate before any
-                        // other owner turn and retains neither a descriptor nor client-side flow state.
-                        drop(socket);
-                        let flow_setup::Prepared {
-                            handle,
-                            identity,
-                            bridge,
-                            stream,
-                            serving,
-                            control,
-                            filled,
-                        } = prepared;
-                        drop(identity);
-                        drop(serving);
-                        flow_setup::release(
-                            self.sockets,
-                            handle,
-                            flow_setup::Leftovers {
-                                bridge,
-                                stream: Some(stream),
-                                control: Some(control),
-                                filled: Some(filled),
-                            },
-                        );
-                        self.counters.denied += 1;
-                        return Err(());
-                    };
-                    (Some(lease), Transport::Upstream(Ok(socket)))
-                }
-            },
+        let transport = match self.source {
+            Source::Resolver => Transport::Resolver,
+            Source::Upstream => {
+                Transport::Upstream(crate::shizuku::egress::open_tcp(self.destination))
+            }
         };
-        let (handle, incarnation, built) = self.assemble(prepared, upstream_lease, transport);
+        let (handle, incarnation, built) = self.assemble(prepared, transport);
         Ok((handle, incarnation, built))
     }
 
@@ -550,14 +505,10 @@ impl flow::FlowOps for Admit<'_> {
             ..
         } = record;
         let Flow {
-            upstream_lease,
-            bridge,
-            serving,
-            ..
+            bridge, serving, ..
         } = flow;
-        // If admission refused after build, its unspawned worker future has already dropped the open socket.
         drop(transport);
-        serving.close(self.admission);
+        serving.close();
         flow_setup::release(
             self.sockets,
             handle,
@@ -568,9 +519,6 @@ impl flow::FlowOps for Admit<'_> {
                 filled,
             },
         );
-        if let Some(lease) = upstream_lease {
-            self.admission.release(lease);
-        }
     }
 
     fn admit(

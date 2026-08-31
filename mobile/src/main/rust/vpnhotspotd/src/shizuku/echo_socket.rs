@@ -8,7 +8,6 @@ use tokio::sync::mpsc;
 pub(crate) use vpnhotspotd::shared::echo_wire::Family;
 use vpnhotspotd::shared::workers::{Terminal, Workers};
 
-use vpnhotspotd::shared::admission::{Admission, Class, Lease};
 use vpnhotspotd::shared::egress_socket;
 
 use crate::report;
@@ -19,22 +18,16 @@ use crate::shizuku::reply::{receive, reply_channel, Event, Gate, Sizing, ERROR_O
 /// the rest of the dataplane is unaffected.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Refused {
-    /// Descriptor admission is full, so no socket was created.
-    Denied,
+    /// The owner could not install a new family socket.
+    Unavailable,
     /// The kernel refused the socket itself.
     OpenFailed,
-}
-
-/// One family socket and the descriptor grant released only after its receive task is joined.
-struct Held {
-    socket: Arc<AsyncFd<Socket>>,
-    lease: Lease,
 }
 
 pub(crate) struct Sockets {
     /// One share of each descriptor, beside the task that holds the other. A socket comes back out of here
     /// only once its task has been joined, which is what the release below is keyed to.
-    sockets: Workers<Family, Held>,
+    sockets: Workers<Family, Arc<AsyncFd<Socket>>>,
     events: mpsc::Sender<Event<Family>>,
 }
 
@@ -57,20 +50,9 @@ impl Sockets {
     }
 
     /// The socket to send this family's requests on, opening it if this is the first.
-    pub(crate) fn acquire(
-        &mut self,
-        family: Family,
-        admission: &mut Admission,
-    ) -> Result<Arc<AsyncFd<Socket>>, Refused> {
+    pub(crate) fn acquire(&mut self, family: Family) -> Result<Arc<AsyncFd<Socket>>, Refused> {
         if let Some(held) = self.sockets.get(&family) {
-            return Ok(Arc::clone(&held.record.socket));
-        }
-        // A duplicate family is checked before taking a descriptor grant or opening anything.
-        if self.sockets.admits(&family).is_err() {
-            return Err(Refused::Denied);
-        }
-        let Ok(lease) = admission.reserve(Class::General) else {
-            return Err(Refused::Denied);
+            return Ok(Arc::clone(&held.record));
         };
         let socket = match self.bind(family) {
             Ok(socket) => Arc::new(socket),
@@ -78,27 +60,20 @@ impl Sockets {
                 // Reported because this is the shape the mode's one remaining unprivileged-capability
                 // question would arrive in.
                 report::io_with_details("shizuku.echo_socket", e, [("family", family.to_string())]);
-                admission.release(lease);
                 return Err(Refused::OpenFailed);
             }
         };
-        // Issued *after* the socket exists, under its one-descriptor grant. One socket, one identity, one
-        // task: an Echo socket's opaque runtime cells are the `AsyncFd` registration inside the `Arc` above,
-        // this identity's cancellation node, and the task admitted below. There is no oneshot on this path.
+        // Issued after the socket exists. One socket, one identity, one task: an Echo socket's opaque runtime
+        // cells are the `AsyncFd` registration inside the `Arc` above, this identity's cancellation node, and
+        // the task admitted below. There is no oneshot on this path.
         let Ok(identity) = self.sockets.identity() else {
-            // The socket goes before the grant that pays for its record does. Left to fall out of scope it
-            // would be a descriptor still open while its capacity had already been handed back.
             drop(socket);
-            admission.release(lease);
-            return Err(Refused::Denied);
+            return Err(Refused::Unavailable);
         };
         let admitted = self.sockets.admit(
             family,
             &identity,
-            Held {
-                socket: Arc::clone(&socket),
-                lease,
-            },
+            Arc::clone(&socket),
             // The task's own share of the socket, dropped by returning: joining it and dropping the record
             // above is what closes the descriptor.
             receive(
@@ -114,24 +89,13 @@ impl Sockets {
                 identity.cancel.clone(),
             ),
         );
-        if let Err((
-            Held {
-                socket: held,
-                lease,
-            },
-            _,
-        )) = admitted
-        {
-            // Unreachable: the capacity was checked above and this is the only admitter. Unwound anyway,
-            // because the alternative is a descriptor nothing owns and a grant nothing releases. Every owner
-            // of the socket goes first - the record's share, this scope's own share, and the candidate
-            // identity whose cancellation node is the third of this record's runtime cells. The worker future
-            // is already gone: `admit` drops it rather than spawning when it refuses.
+        if let Err((held, _)) = admitted {
+            // Unreachable: this owner checked that the family was absent and has not yielded. Unwind every
+            // socket owner anyway; `admit` already dropped the unspawned worker future.
             drop(held);
             drop(socket);
             drop(identity);
-            admission.release(lease);
-            return Err(Refused::Denied);
+            return Err(Refused::Unavailable);
         }
         Ok(socket)
     }
@@ -177,18 +141,10 @@ impl Sockets {
         self.sockets.finished().await
     }
 
-    /// Takes one finished socket out and refunds it, in that order: the task is complete, so dropping this
-    /// share closes the descriptor and only then is the budget told. `false` means the terminal was for a
-    /// socket whose family has already been reopened, which its successor must survive.
-    pub(crate) fn close(&mut self, family: Family, id: u64, admission: &mut Admission) -> bool {
-        match self.sockets.retire(&family, id) {
-            Some(Held { socket, lease }) => {
-                drop(socket);
-                admission.release(lease);
-                true
-            }
-            None => false,
-        }
+    /// Takes one finished socket out. `false` means the terminal was for a socket whose family has already
+    /// been reopened, which its successor must survive.
+    pub(crate) fn close(&mut self, family: Family, id: u64) -> bool {
+        self.sockets.retire(&family, id).is_some()
     }
 
     pub(crate) fn len(&self) -> usize {

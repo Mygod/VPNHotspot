@@ -1,15 +1,12 @@
 //! Per-tuple IPv4 Identification issue, wire settlement and reuse quarantine.
 //!
-//! Identifications are issued only for fragmented IPv4 output. Each tuple spends the complete 16-bit space,
-//! then waits for all writes to settle and [MDL] to pass. Tuple rows are dynamic and uncapped; [MDL] is a
-//! protocol reuse rule, not a memory quota.
+//! Identifications are issued only for fragmented IPv4 output. A tuple cannot reuse values until all writes
+//! settle and [MDL] passes. Tuple rows are dynamic and uncapped.
 use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::time::{Duration, Instant};
 
 /// Assumed maximum datagram lifetime for Identification reuse.
-///
-/// **Resource:** one tuple's 16-bit wire Identification space, not daemon memory.
 ///
 /// **Derivation:** [RFC 6864 section
 /// 5.2](https://www.rfc-editor.org/rfc/rfc6864.html#section-5.2) describes 120 seconds as a typical maximum;
@@ -18,11 +15,11 @@ use std::time::{Duration, Instant};
 ///
 /// **Failure mode:** reuse inside a receiver's reassembly window can combine different datagrams.
 ///
-/// **Exhaustion:** after 65,536 issues, oversized IPv4 output is dropped and counted until all settlements
-/// arrive and [MDL] passes after the last successful fragment write. Atomic IPv4 and IPv6 are unaffected.
+/// **Exhaustion:** when the field is exhausted, oversized IPv4 output is dropped until all settlements arrive
+/// and [MDL] passes after the last fragment write. Atomic IPv4 and IPv6 are unaffected.
 pub const MDL: Duration = Duration::from_secs(120);
 
-/// How many Identifications one tuple's cycle has. Exactly the 16-bit field, issued once each.
+/// Values issued before a tuple must wait for reuse.
 const CYCLE: u32 = 1 << 16;
 
 /// What a receiver reassembles on, minus the Identification this hands out.
@@ -85,7 +82,7 @@ impl Terminal {
 pub enum Denial {
     /// The session cannot know a predecessor's still-live wire Identifications.
     Quarantined,
-    /// This tuple has issued all 65,536 of its Identifications and may not start again yet.
+    /// This tuple cannot start another cycle yet.
     Exhausted,
 }
 
@@ -117,7 +114,6 @@ impl Entry {
             self.issued = 0;
         }
         self.issued += 1;
-        // Issue 1..=65535, then 0, while retaining an explicit spent count.
         Some(self.issued as u16)
     }
 

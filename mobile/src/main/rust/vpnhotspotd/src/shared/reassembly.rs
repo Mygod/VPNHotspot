@@ -24,18 +24,10 @@ const IPV4_REASSEMBLY_TIMEOUT: Duration = Duration::from_secs(30);
 /// https://android.googlesource.com/kernel/common/+/refs/tags/android15-6.6-2025-09_r7/include/net/ipv6.h#548
 const IPV6_REASSEMBLY_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Widest length representable by IPv4's 16-bit Total Length or IPv6's 16-bit Payload Length field. IPv4
-/// reassembly also subtracts its actual header length before accepting that many body bytes. A fragment beyond
-/// the applicable bound is rejected without growing its context; an IPv4 fragment-zero header that makes
-/// already-retained body bytes exceed Total Length discards that context.
-/// <https://www.rfc-editor.org/rfc/rfc791.html#section-3.1>
-/// <https://www.rfc-editor.org/rfc/rfc8200.html#section-3>
-/// <https://www.rfc-editor.org/rfc/rfc8200.html#section-4.5>
+/// A fragment beyond the encodable packet length is rejected without growing its context.
 const MAX_ENCODED_LENGTH: usize = u16::MAX as usize;
 
-/// Largest IPv4 header representable by the four-bit IHL field: 15 32-bit words. A larger claimed header is
-/// malformed and no reassembly context is retained.
-/// <https://www.rfc-editor.org/rfc/rfc791.html#section-3.1>
+/// A larger claimed IPv4 header is malformed and retains no context.
 const MAX_HEADER: usize = 60;
 
 #[derive(Debug, PartialEq, Eq)]

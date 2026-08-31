@@ -13,10 +13,8 @@ use crate::report;
 use crate::shizuku::output::Output;
 use crate::shizuku::owned::Owned;
 use crate::shizuku::resolver;
-use vpnhotspotd::shared::admission::{Admission, Class, Lease};
 
 const UNROUTED: &str = "shizuku.virtual_dns.unrouted";
-const COMPLETION_FULL: &str = "shizuku.virtual_dns.completion_full";
 
 const LOCAL_ORIGIN_HOP_LIMIT: u8 = 64;
 
@@ -67,23 +65,20 @@ impl Counters {
 }
 
 pub(crate) struct Handoff {
-    answers: mpsc::Sender<Arrival>,
-    arrivals: mpsc::Receiver<Arrival>,
+    answers: mpsc::UnboundedSender<Arrival>,
+    arrivals: mpsc::UnboundedReceiver<Arrival>,
     queries: Workers<u64, Debt>,
     counters: Counters,
 }
 
 struct Debt {
-    lease: Lease,
     answer: Option<Answer>,
 }
 
 impl Handoff {
-    pub(crate) fn new(admission: &Admission) -> Self {
-        // One completion slot per descriptor admission unit, so every admitted resolver can publish one
-        // terminal result without a second arbitrary query-count ceiling.
-        let depth = admission.descriptor_total() as usize;
-        let (answers, arrivals) = mpsc::channel(depth);
+    pub(crate) fn new() -> Self {
+        // Each downstream-created resolver publishes one terminal result without a second query-count limit.
+        let (answers, arrivals) = mpsc::unbounded_channel();
         Self {
             answers,
             arrivals,
@@ -103,18 +98,11 @@ impl Handoff {
         datagram: Relayed<'_>,
         now: Instant,
         output: &mut Output,
-        admission: &mut Admission,
     ) -> io::Result<()> {
-        let Ok(lease) = admission.reserve(Class::Reserved) else {
-            self.counters.denied += 1;
-            self.refuse(datagram, now, output);
-            return Ok(());
-        };
         let answers = self.answers.clone();
         let endpoint = datagram.destination;
         let client = datagram.source;
         let Ok(identity) = self.queries.identity() else {
-            admission.release(lease);
             self.counters.denied += 1;
             self.refuse(datagram, now, output);
             return Ok(());
@@ -125,81 +113,59 @@ impl Handoff {
         let query = Owned::new(datagram.payload.to_vec());
         type Handed = (Result<resolver::Resolving, Failure>, Owned);
         let (handoff, accepted) = tokio::sync::oneshot::channel::<Handed>();
-        let admitted = self.queries.admit(
-            identity.id,
-            &identity,
-            Debt {
-                lease,
-                answer: None,
-            },
-            async move {
-                let Ok((submission, query)) = accepted.await else {
-                    return Ended::Expected;
-                };
-                let result = match submission {
-                    Ok(resolving) => tokio::select! {
-                        biased;
-                        () = cancel.cancelled() => return Ended::Expected,
-                        completed = resolving.read() => completed,
-                    },
-                    Err(failure) => Err(failure),
-                };
-                let outcome = match result.map(Owned::new) {
-                    Ok(response) => Ok(Ok(response)),
-                    Err(failure) => failure
-                        .ending([("client", client), ("endpoint", endpoint)])
-                        .map(Err),
-                };
-                let arrival = match outcome {
-                    Ok(result) => Arrival::Answer(Answer {
-                        transaction,
-                        endpoint,
-                        client,
-                        query,
-                        result,
-                        submitted,
-                    }),
-                    Err(ending) => {
-                        drop(query);
-                        Arrival::Ending(ending)
+        let admitted =
+            self.queries
+                .admit(identity.id, &identity, Debt { answer: None }, async move {
+                    let Ok((submission, query)) = accepted.await else {
+                        return Ended::Expected;
+                    };
+                    let result = match submission {
+                        Ok(resolving) => tokio::select! {
+                            biased;
+                            () = cancel.cancelled() => return Ended::Expected,
+                            completed = resolving.read() => completed,
+                        },
+                        Err(failure) => Err(failure),
+                    };
+                    let outcome = match result.map(Owned::new) {
+                        Ok(response) => Ok(Ok(response)),
+                        Err(failure) => failure
+                            .ending([("client", client), ("endpoint", endpoint)])
+                            .map(Err),
+                    };
+                    let arrival = match outcome {
+                        Ok(result) => Arrival::Answer(Answer {
+                            transaction,
+                            endpoint,
+                            client,
+                            query,
+                            result,
+                            submitted,
+                        }),
+                        Err(ending) => {
+                            drop(query);
+                            Arrival::Ending(ending)
+                        }
+                    };
+                    let undelivered = match answers.send(arrival) {
+                        Ok(()) => return Ended::Expected,
+                        Err(mpsc::error::SendError(arrival)) => arrival,
+                    };
+                    match undelivered {
+                        Arrival::Answer(_) => report::stdout!(
+                            "virtual dns answer for {client} arrived after the session ended"
+                        ),
+                        Arrival::Ending(ending) => report::io_with_details(
+                            UNROUTED,
+                            ending,
+                            [("client", client), ("endpoint", endpoint)],
+                        ),
                     }
-                };
-                let undelivered = match answers.try_send(arrival) {
-                    Ok(()) => return Ended::Expected,
-                    Err(mpsc::error::TrySendError::Closed(arrival)) => arrival,
-                    Err(mpsc::error::TrySendError::Full(arrival)) => {
-                        let error = match arrival {
-                            Arrival::Answer(_) => io::Error::other(format!(
-                                "virtual DNS completion handoff for {client} -> {endpoint} was full despite \
-                                 one slot per admitted descriptor"
-                            )),
-                            // Preserve the already-structured local failure as primary; the terminal context
-                            // below still identifies the independent handoff invariant.
-                            Arrival::Ending(ending) => ending,
-                        };
-                        return Ended::Failed {
-                            context: COMPLETION_FULL,
-                            error,
-                        };
-                    }
-                };
-                match undelivered {
-                    Arrival::Answer(_) => report::stdout!(
-                        "virtual dns answer for {client} arrived after the session ended"
-                    ),
-                    Arrival::Ending(ending) => report::io_with_details(
-                        UNROUTED,
-                        ending,
-                        [("client", client), ("endpoint", endpoint)],
-                    ),
-                }
-                Ended::Expected
-            },
-        );
-        if let Err((Debt { lease, .. }, _)) = admitted {
+                    Ended::Expected
+                });
+        if admitted.is_err() {
             drop(handoff);
             drop(query);
-            admission.release(lease);
             self.counters.denied += 1;
             self.refuse(datagram, now, output);
             return Ok(());
@@ -225,7 +191,6 @@ impl Handoff {
         terminal: Terminal<u64>,
         now: Instant,
         output: &mut Output,
-        admission: &mut Admission,
     ) -> io::Result<()> {
         let Terminal { key, id, ended } = terminal;
         if let Ended::Failed { context, error } = ended {
@@ -238,13 +203,10 @@ impl Handoff {
                 drained = report::keep_first(UNROUTED, drained, Err(ending));
             }
         }
-        let Some(Debt { lease, answer }) = self.queries.retire(&key, id) else {
+        let Some(Debt { answer }) = self.queries.retire(&key, id) else {
             self.counters.unsettled += 1;
             return drained;
         };
-        // The worker terminal means its resolver descriptor and future are gone. Userspace answer buffers do
-        // not extend descriptor debt.
-        admission.release(lease);
         let Some(answer) = answer else {
             return drained;
         };
@@ -320,21 +282,12 @@ impl Handoff {
         }
     }
 
-    pub(crate) async fn shutdown(
-        &mut self,
-        now: Instant,
-        output: &mut Output,
-        admission: &mut Admission,
-    ) -> io::Result<()> {
+    pub(crate) async fn shutdown(&mut self, now: Instant, output: &mut Output) -> io::Result<()> {
         self.queries.cancel_all();
         let mut ended = Ok(());
         while self.queries.working() {
             let terminal = self.queries.finished().await;
-            ended = report::keep_first(
-                UNROUTED,
-                ended,
-                self.settle(terminal, now, output, admission),
-            );
+            ended = report::keep_first(UNROUTED, ended, self.settle(terminal, now, output));
         }
         ended
     }

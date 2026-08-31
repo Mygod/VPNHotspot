@@ -6,10 +6,7 @@ use socket2::{SockAddr, Socket};
 use tokio::io::unix::AsyncFd;
 use vpnhotspotd::shared::protocol::error_errno;
 
-/// Requests the full Linux accept queue instead of imposing a daemon-local connection cap.
-/// `listen(2)` clamps values above the runtime `net.core.somaxconn`; once that kernel queue is full,
-/// normal TCP retry/drop behavior applies before Rust allocates connection state.
-/// See <https://man7.org/linux/man-pages/man2/listen.2.html>.
+/// Lets Linux clamp accept backpressure to `net.core.somaxconn`.
 pub(crate) const TCP_LISTEN_BACKLOG: i32 = i32::MAX;
 
 pub(crate) async fn await_connect(socket: &Socket) -> io::Result<()> {

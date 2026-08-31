@@ -20,27 +20,23 @@ owning document.
   joins both dataplane tasks, and ends when either task completes.
 - An app-UID TCP flow is identified by socket handle plus incarnation because
   smoltcp reuses handles.
-- App-UID workers are never detached. Cancellation is followed by join. For an
-  upstream TCP worker, its terminal proves the captured descriptor is closed and
-  releases its lease immediately; the memory-only flow record may remain for the
-  client closing handshake.
+- App-UID workers are never detached. Cancellation is followed by join. An
+  upstream TCP worker's terminal proves its descriptor is closed; the memory-only
+  flow record may remain for the client closing handshake.
 - Client TCP bytes cross a bounded per-flow stream. Backpressure is lossless;
   readiness comes from that stream and packet/timer events, not capacity polling
   or a second wake protocol.
 - A client FIN is delivered after all preceding bytes. Clean transport completion
-  closes the upstream socket and releases its lease but retains client-facing TCP
-  state until its close handshake finishes, or until expiry, explicit flow
-  teardown or session shutdown.
-- Flow teardown and every descriptor-lease release happen exactly once, although
-  an upstream lease may end before its memory-only client flow. Accepted resets
-  are determined by the TCP stack, not by inspecting a header bit alone. A flow
-  whose own reset the interface handoff had no room for is retained rather than
-  reclaimed, because its socket is the only thing that can still send it.
+  closes the upstream socket but retains client-facing TCP state until its close
+  handshake finishes, or until expiry, explicit flow teardown or session shutdown.
+- Flow teardown happens exactly once. Accepted resets are determined by the TCP
+  stack, not by inspecting a header bit alone. A flow whose own reset the
+  interface handoff had no room for is retained rather than reclaimed, because
+  its socket is the only thing that can still send it.
 - Android resolver work cannot be joined. Each submitted DNS-over-TCP
   transaction, not its transport, owns its resolver descriptor and query buffer
-  until settlement; transport closure does not cancel it. Resolver terminal
-  settlement releases descriptor capacity before answer delivery. Daemon
-  admission is independent of Android's per-UID query limit.
+  until settlement; transport closure does not cancel it. Daemon operation is
+  independent of Android's per-UID query limit.
 - DNS-over-TCP resolver waits are readiness-driven and transaction-table-owned.
   Every wait has one row while the table is live; ownership mismatches are
   reported and the affected delivery is discarded. See [`dns.md`](dns.md).
@@ -58,13 +54,8 @@ owning document.
 
 ## App-UID Resource Policy
 
-- Admission accounts descriptors only. Its ceiling is the soft
-  `RLIMIT_NOFILE` less the descriptors measured open at session start. Exactly
-  one unit is a DNS floor that general traffic cannot consume; it is neither an
-  open descriptor nor a DNS concurrency ceiling.
-- Each admitted unit covers at most one traffic-created descriptor. Denial
-  affects only the new owner; release follows descriptor close and worker join
-  where applicable. Memory-only TCP state owns no descriptor lease.
+- The daemon does not pre-account descriptors. Kernel or platform refusal to
+  create one affects only the new flow, mapping, family socket or resolver query.
 - There is no aggregate memory budget or byte ledger. Downstream-created tables
   grow dynamically and disappear with the session or process; allocator
   exhaustion may terminate the recoverable app-UID child.
@@ -94,10 +85,6 @@ owning document.
 - IPv6 extension prefixes, including atomic Fragment headers, are normalized in
   one linear scan and one copy. Only genuine fragmentation enters reassembly;
   nested fragmentation proceeds one reassembly round at a time.
-- Every fixed buffer, handoff, protocol maximum, timeout, and its exact
-  derivation and exhaustion behavior is catalogued in
-  [`shizuku.md`](shizuku.md#bounded-buffers-and-handoffs) and
-  [`dns.md`](dns.md).
 
 ## Interception
 

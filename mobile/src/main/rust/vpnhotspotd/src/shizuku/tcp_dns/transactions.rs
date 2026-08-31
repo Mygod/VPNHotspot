@@ -12,7 +12,6 @@ use std::task::{Context, Poll};
 use futures_util::stream::FuturesUnordered;
 use futures_util::{FutureExt, StreamExt};
 
-use vpnhotspotd::shared::admission::Admission;
 use vpnhotspotd::shared::dns_debt::{self, QueryDebt};
 use vpnhotspotd::shared::dns_wire::resolved;
 use vpnhotspotd::shared::failure::Failure;
@@ -74,14 +73,6 @@ struct Pending {
     flow: Event,
 }
 
-impl Pending {
-    fn drain(self, admission: &mut Admission) {
-        let Self { debt, message, .. } = self;
-        drop(message);
-        dns_debt::abandon(admission, debt);
-    }
-}
-
 /// Builds the terminal error for a missing transaction row or wait.
 fn mismatched(transaction: u64, missing: &str) -> io::Error {
     io::Error::other(format!(
@@ -115,12 +106,8 @@ pub(crate) struct Reserved {
 }
 
 impl Reserved {
-    pub(crate) fn settle(self, admission: &mut Admission) -> dns_debt::Delivery {
-        dns_debt::settle(admission, self.debt)
-    }
-
-    pub(crate) fn end(self, admission: &mut Admission) {
-        dns_debt::abandon(admission, self.debt);
+    pub(crate) fn settle(self) -> dns_debt::Delivery {
+        dns_debt::settle(self.debt)
     }
 }
 
@@ -166,22 +153,14 @@ impl Transactions {
         drop(self.rows);
         drop(self.completions);
     }
-    pub(crate) fn reserve(
-        &mut self,
-        length: usize,
-        admission: &mut Admission,
-    ) -> Option<(Reserved, Owned)> {
+    pub(crate) fn reserve(&mut self, length: usize) -> Option<(Reserved, Owned)> {
         // One checked identity names both the transaction and its eventual delivery.
         let Some(next) = self.next.checked_add(1) else {
             self.skipped += 1;
             return None;
         };
         let id = self.next;
-        // Reserve one resolver descriptor before allocating the query.
-        let Some(debt) = dns_debt::submit(admission, id).ok() else {
-            self.skipped += 1;
-            return None;
-        };
+        let debt = dns_debt::submit(id);
         self.next = next;
         let query = Owned::with_capacity(length);
         Some((Reserved { id, debt }, query))
@@ -192,7 +171,6 @@ impl Transactions {
         flow: Event,
         reserved: Reserved,
         query: Owned,
-        admission: &mut Admission,
     ) -> io::Result<Submitted> {
         // Reservation and insertion are separate owner turns.
         // Shutdown has taken the completion collection, so no platform work can start.
@@ -207,7 +185,6 @@ impl Transactions {
                 Ok(expected) => Awaiting::Refused(Some(expected)),
                 Err(ending) => {
                     drop(query);
-                    dns_debt::abandon(admission, debt);
                     return Err(ending);
                 }
             },
@@ -265,30 +242,24 @@ impl Transactions {
         }))
     }
 
-    pub(crate) fn settle(
-        &mut self,
-        settlement: Settlement,
-        admission: &mut Admission,
-    ) -> io::Result<Delivered> {
+    pub(crate) fn settle(&mut self, settlement: Settlement) -> io::Result<Delivered> {
         let Settlement {
             key,
             pending,
             result,
         } = settlement;
         let Pending { debt, message, .. } = pending;
-        // Removing the completion closes its descriptor before debt is released.
         let result = match result {
             Ok(answer) => Ok(answer),
             Err(failure) => match failure.ending([("transaction", key)]) {
                 Ok(expected) => Err(expected),
                 Err(ending) => {
                     drop(message);
-                    dns_debt::abandon(admission, debt);
                     return Err(ending);
                 }
             },
         };
-        let delivery = dns_debt::settle(admission, debt);
+        let delivery = dns_debt::settle(debt);
         Ok(Delivered::new(dns_debt::Settled::delivering(
             delivery,
             Resolved::new(result, Some(message)),
@@ -298,19 +269,17 @@ impl Transactions {
     /// Ends every transaction without waiting, returning the first observable local failure.
     ///
     /// Takes and polls each stored future once so one aggregate `Pending` cannot hide another ready future,
-    /// while avoiding `FuturesUnordered::clear`'s replacement allocation. Descriptors and buffers are dropped
-    /// before their debts; missing rows or waits are reported.
-    pub(crate) fn shutdown(&mut self, admission: &mut Admission) -> io::Result<()> {
+    /// while avoiding `FuturesUnordered::clear`'s replacement allocation. Missing rows or waits are reported.
+    pub(crate) fn shutdown(&mut self) -> io::Result<()> {
         let mut ended = Ok(());
         for completion in self.completions.take().into_iter().flatten() {
             let id = completion.id;
-            // Consume one direct poll; dropping the future closes its descriptor before debt release.
+            // Consume one direct poll before dropping the resolver future.
             let completed = completion.now_or_never();
             let row = self.rows.remove(&id);
             if row.is_none() {
                 ended = report::keep_first(MISMATCH, ended, Err(mismatched(id, "row")));
             }
-            // Consume any answer before releasing its resolver-descriptor lease.
             let carried = match completed {
                 Some((_, Err(failure))) => failure.ending([("transaction", id)]).err(),
                 Some((_, Ok(_))) | None => None,
@@ -318,14 +287,12 @@ impl Transactions {
             if let Some(ending) = carried {
                 ended = report::keep_first(INCOMPLETE, ended, Err(ending));
             }
-            if let Some(pending) = row {
-                pending.drain(admission);
-            }
+            drop(row);
         }
         // Remaining rows have no waits; report before draining them.
         for (id, pending) in self.rows.drain() {
             ended = report::keep_first(MISMATCH, ended, Err(mismatched(id, "wait")));
-            pending.drain(admission);
+            drop(pending);
         }
         ended
     }

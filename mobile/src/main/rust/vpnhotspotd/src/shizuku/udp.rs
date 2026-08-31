@@ -13,7 +13,6 @@ use vpnhotspotd::shared::send_history::{History, Resolution};
 use vpnhotspotd::shared::udp_wire::Relayed;
 use vpnhotspotd::shared::workers::{Ended, Terminal, Workers};
 
-use vpnhotspotd::shared::admission::{Admission, Class, Lease};
 use vpnhotspotd::shared::deadlines::Deadlines;
 use vpnhotspotd::shared::egress_socket;
 
@@ -48,7 +47,6 @@ struct Mapping {
     deadline: Instant,
     /// This mapping's indexed deadline, absent while provisional or cancelled.
     armed: Option<Instant>,
-    lease: Lease,
 }
 
 #[derive(Default)]
@@ -76,7 +74,6 @@ struct Counters {
     implausible: u64,
     stale: u64,
     swept: u64,
-    short: u64,
     unavailable: u64,
 }
 
@@ -86,7 +83,7 @@ impl Counters {
             "sent {} queued {} unqueued {} denied {} expired {} too-big {} blocked {} \
              unreachable {} send-failed {} reported {} unreported {} df-failed {} open-failed {} \
              unpermitted {} translated {} untranslated {} ambiguous {} untracked {} implausible {} stale {} \
-             swept {} short {} unavailable {}",
+             swept {} unavailable {}",
             self.sent,
             self.queued,
             self.unqueued,
@@ -108,7 +105,6 @@ impl Counters {
             self.implausible,
             self.stale,
             self.swept,
-            self.short,
             self.unavailable
         )
     }
@@ -182,11 +178,11 @@ impl Relay {
         held.record.armed = due;
     }
 
-    pub(crate) async fn shutdown(&mut self, admission: &mut Admission) {
+    pub(crate) async fn shutdown(&mut self) {
         self.mappings.cancel_all();
         while self.mappings.working() {
             let terminal = self.mappings.finished().await;
-            self.close(terminal, admission);
+            self.close(terminal);
         }
     }
 
@@ -196,7 +192,6 @@ impl Relay {
         datagram: Relayed<'_>,
         gateways: &Gateways,
         output: &mut Output,
-        admission: &mut Admission,
     ) {
         let Nat66HopLimit::Forward(hop_limit) = nat66_hop_limit(Some(datagram.hop_limit)) else {
             self.counters.expired += 1;
@@ -207,16 +202,13 @@ impl Relay {
                 self.counters.unavailable += 1;
                 return;
             }
-            return self.open(
-                FirstSend {
-                    packet,
-                    datagram,
-                    hop_limit,
-                    gateways,
-                    output,
-                },
-                admission,
-            );
+            return self.open(FirstSend {
+                packet,
+                datagram,
+                hop_limit,
+                gateways,
+                output,
+            });
         }
         let Some(mapping) = self
             .mappings
@@ -249,7 +241,7 @@ impl Relay {
             }
         }
         match egress::send_to(socket, datagram.destination, datagram.payload, hop_limit) {
-            Ok(sent) if sent == datagram.payload.len() => {
+            Ok(()) => {
                 self.counters.sent += 1;
                 mapping.deadline = Instant::now() + MAPPING_TIMEOUT;
                 mapping
@@ -257,7 +249,6 @@ impl Relay {
                     .record(datagram.destination, hop_limit, mapping.deadline);
                 self.rearm(datagram.source);
             }
-            Ok(_) => self.counters.short += 1,
             Err(e) => {
                 self.fail(e, packet, datagram, gateways, output);
             }
@@ -331,7 +322,7 @@ impl Relay {
         }
     }
 
-    fn open(&mut self, first: FirstSend<'_>, admission: &mut Admission) {
+    fn open(&mut self, first: FirstSend<'_>) {
         let FirstSend {
             packet,
             datagram,
@@ -340,21 +331,10 @@ impl Relay {
             output,
         } = first;
         let key = datagram.source;
-        if self.mappings.admits(&key).is_err() {
-            self.counters.unavailable += 1;
-            return;
-        }
-        // One mapping owns one upstream UDP socket. Its remote-address rows are memory-only state that grows
-        // with the mapping rather than pretending to consume descriptors.
-        let Ok(lease) = admission.reserve(Class::General) else {
-            self.counters.denied += 1;
-            return;
-        };
         let socket = match self.bind(datagram.destination.is_ipv6()) {
             Ok(socket) => Arc::new(socket),
             Err(e) => {
                 report::io_with_details("shizuku.udp_open", e, [("source", key)]);
-                admission.release(lease);
                 self.counters.open_failed += 1;
                 return;
             }
@@ -363,7 +343,7 @@ impl Relay {
         let Ok(identity) = self.mappings.identity() else {
             drop((socket, commit, gate));
             self.counters.denied += 1;
-            return admission.release(lease);
+            return;
         };
         let worker = receive(
             Arc::clone(&socket),
@@ -381,11 +361,9 @@ impl Relay {
             history: History::default(),
             deadline: Instant::now() + MAPPING_TIMEOUT,
             armed: None,
-            lease,
         };
         if let Err((provisional, _)) = self.mappings.admit(key, &identity, provisional, worker) {
-            drop(socket);
-            self.discard(provisional, admission);
+            drop((provisional, socket));
             self.counters.unavailable += 1;
             return;
         }
@@ -410,13 +388,13 @@ impl Relay {
                 return self.roll_back(key);
             }
         }
-        let sent = match egress::send_to(
+        match egress::send_to(
             socket.get_ref(),
             datagram.destination,
             datagram.payload,
             hop_limit,
         ) {
-            Ok(sent) => sent,
+            Ok(()) => {}
             Err(e) => {
                 let queued = match send_failure::classify(&e) {
                     Failure::TooBig => {
@@ -440,10 +418,6 @@ impl Relay {
                 self.roll_back(key);
                 return self.fail_unmapped(e, packet, datagram, queued, gateways, output);
             }
-        };
-        if sent != datagram.payload.len() {
-            self.counters.short += 1;
-            return self.roll_back(key);
         }
         self.counters.sent += 1;
         let Some(mapping) = self.mappings.get_mut(&key).map(|held| &mut held.record) else {
@@ -471,18 +445,6 @@ impl Relay {
         self.mappings.cancel(&key);
         // Rollback removes the mapping from expiry scheduling.
         self.rearm(key);
-    }
-
-    fn discard(&mut self, provisional: Mapping, admission: &mut Admission) {
-        let Mapping {
-            socket,
-            history,
-            lease,
-            ..
-        } = provisional;
-        drop(socket);
-        drop(history);
-        admission.release(lease);
     }
 
     fn fail_unmapped(
@@ -637,7 +599,7 @@ impl Relay {
         }
     }
 
-    pub(crate) fn close(&mut self, terminal: Terminal<SocketAddr>, admission: &mut Admission) {
+    pub(crate) fn close(&mut self, terminal: Terminal<SocketAddr>) {
         let Terminal { key, id, ended } = terminal;
         match ended {
             Ended::Expected => {}
@@ -651,7 +613,6 @@ impl Relay {
                 let Mapping {
                     socket,
                     history,
-                    lease,
                     commit,
                     armed,
                     ..
@@ -662,8 +623,6 @@ impl Relay {
                 drop(commit);
                 drop(socket);
                 drop(history);
-                // The worker was joined before this terminal, so dropping the retained socket closes the fd.
-                admission.release(lease);
             }
             None => self.counters.stale += 1,
         }

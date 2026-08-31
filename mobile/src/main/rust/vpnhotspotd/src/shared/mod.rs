@@ -1,4 +1,3 @@
-pub mod admission;
 pub mod app_control;
 pub mod app_terminal;
 pub mod bridge;

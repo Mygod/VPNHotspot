@@ -13,10 +13,6 @@ const RCODE_SERVFAIL: u8 = 2;
 /// https://www.rfc-editor.org/rfc/rfc1035#section-4.2.2
 pub const PREFIX: usize = 2;
 
-/// Largest DNS message the RFC 1035 TCP framing field can represent. A larger body cannot be framed and is
-/// rejected before allocation; exactly this many bytes may still be read or returned.
-///
-/// <https://www.rfc-editor.org/rfc/rfc1035#section-4.2.2>
 pub const MAX_MESSAGE: usize = u16::MAX as usize;
 
 /// One framed header-only answer: the length prefix and the twelve bytes behind it, and nothing else.
@@ -28,10 +24,7 @@ pub trait Body {
     fn extend_within_capacity(&mut self, bytes: &[u8]) -> usize;
 }
 
-/// Fixed header-only sink for a query refused before body admission.
-///
-/// This is transport-owned storage and consumes no resolver-descriptor lease, so it remains available after
-/// admission refuses the body. It drains without allocating, preserving stream framing for a SERVFAIL.
+/// Fixed header-only sink that drains a refused body without allocating, preserving framing for SERVFAIL.
 #[derive(Debug, Default)]
 pub struct Refused {
     header: [u8; HEADER_LEN],

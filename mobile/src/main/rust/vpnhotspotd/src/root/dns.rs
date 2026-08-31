@@ -30,9 +30,8 @@ use vpnhotspotd::shared::protocol::daemon_io_error_report_with_details;
 pub(crate) const DNS_PORT: u16 = 53;
 // android/multinetwork.h: ResNsendFlags::ANDROID_RESOLV_NO_RETRY.
 const ANDROID_RESOLV_NO_RETRY: u32 = 1 << 0;
-/// Largest DNS message the RFC 1035 TCP framing field can represent. TCP cannot announce a larger frame;
-/// the UDP receive/result buffers retain the same protocol maximum without a daemon-local truncation cap.
-/// <https://www.rfc-editor.org/rfc/rfc1035#section-4.2.2>
+/// Retained by each root UDP listener and resolver result so either one-shot read can return a complete DNS
+/// message. Failure to retain a buffer terminates the root daemon.
 const DNS_MAX_PACKET: usize = u16::MAX as usize;
 
 pub(crate) struct Runtime {

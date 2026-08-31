@@ -4,7 +4,6 @@ use std::time::Instant;
 use smoltcp::iface::SocketHandle;
 use smoltcp::socket::tcp::Socket;
 use smoltcp::time::Instant as SmolInstant;
-use vpnhotspotd::shared::admission::Admission;
 use vpnhotspotd::shared::ingress::{self, Counters, Held};
 use vpnhotspotd::shared::proto::daemon::DaemonErrorReport;
 use vpnhotspotd::shared::tcp_wire::Segment;
@@ -22,14 +21,12 @@ impl Engine {
         resolver: bool,
         now: Instant,
         output: &mut Output,
-        admission: &mut Admission,
     ) {
         // Pinned once, so every settle in that call polls the stack at one instant.
         let at = self.now();
         let mut handling = Handling {
             engine: self,
             output,
-            admission,
             resolver,
             now,
             at,
@@ -80,7 +77,6 @@ impl ingress::Owner for Engine {
 struct Handling<'a> {
     engine: &'a mut Engine,
     output: &'a mut Output,
-    admission: &'a mut Admission,
     /// Whether this segment's destination is the session's virtual resolver address, which is what a `SYN`
     /// needs to know to open the right kind of flow.
     resolver: bool,
@@ -138,7 +134,6 @@ impl ingress::Ingress for Handling<'_> {
             segment.hop_limit,
             self.resolver,
             self.now,
-            self.admission,
         )
     }
 

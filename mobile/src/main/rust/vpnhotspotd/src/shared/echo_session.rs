@@ -55,7 +55,7 @@ pub struct Sessions {
 }
 
 impl Sessions {
-    /// Finds a free value in this remote's complete 16-bit sequence space.
+    /// Finds a free sequence value for this remote.
     pub fn allocate(&mut self, remote: IpAddr) -> Option<u16> {
         for _ in 0..=u16::MAX {
             let sequence = self.next_sequence;

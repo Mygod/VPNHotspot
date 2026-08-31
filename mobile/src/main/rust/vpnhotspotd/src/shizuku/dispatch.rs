@@ -13,7 +13,6 @@ use crate::shizuku::output::Output;
 use crate::shizuku::tcp;
 use crate::shizuku::udp;
 use crate::shizuku::virtual_dns;
-use vpnhotspotd::shared::admission::Admission;
 use vpnhotspotd::shared::turn::Expiry;
 
 /// Session counters avoid attacker-controlled per-packet reporting.
@@ -87,7 +86,6 @@ pub(crate) struct Dispatch<'a> {
     pub(crate) tcp: &'a mut tcp::Engine,
     pub(crate) fragments: &'a mut reassembly::Table,
     pub(crate) output: &'a mut Output,
-    pub(crate) admission: &'a mut Admission,
     pub(crate) gateways: &'a Gateways,
     pub(crate) virtual_addresses: &'a [IpAddr],
 }
@@ -121,10 +119,7 @@ impl Dispatch<'_> {
             } => {
                 self.counters.dns += 1;
                 match udp_wire::parse(packet) {
-                    Ok(datagram) if !provisional => {
-                        self.dns
-                            .submit(datagram, now, self.output, self.admission)?
-                    }
+                    Ok(datagram) if !provisional => self.dns.submit(datagram, now, self.output)?,
                     // A provisional fragment carries no ports yet, so it is not known to be DNS at all and goes
                     // to reassembly to find out.
                     Err(Reject::Fragmented) => {
@@ -138,14 +133,7 @@ impl Dispatch<'_> {
                     Err(Reject::NotUdp) => match tcp_wire::peek(packet) {
                         Ok(segment) => {
                             self.counters.tcp += 1;
-                            self.tcp.accept(
-                                packet,
-                                segment,
-                                true,
-                                now,
-                                self.output,
-                                self.admission,
-                            );
+                            self.tcp.accept(packet, segment, true, now, self.output);
                         }
                         Err(_) => self.counters.undeliverable_dns += 1,
                     },
@@ -159,7 +147,7 @@ impl Dispatch<'_> {
                 Ok(datagram) => {
                     self.counters.relayed += 1;
                     self.relay
-                        .relay(packet, datagram, self.gateways, self.output, self.admission);
+                        .relay(packet, datagram, self.gateways, self.output);
                 }
                 // Each transport gets its own strict parse rather than one dispatch on the protocol byte,
                 // because what "well formed" means differs per transport and the reason a packet was refused
@@ -167,19 +155,12 @@ impl Dispatch<'_> {
                 Err(Reject::NotUdp) => match tcp_wire::peek(packet) {
                     Ok(segment) => {
                         self.counters.tcp += 1;
-                        self.tcp
-                            .accept(packet, segment, false, now, self.output, self.admission);
+                        self.tcp.accept(packet, segment, false, now, self.output);
                     }
                     Err(_) => match echo_wire::parse(packet) {
                         Ok(request) => {
                             self.counters.echo += 1;
-                            self.echo.relay(
-                                packet,
-                                request,
-                                self.gateways,
-                                self.output,
-                                self.admission,
-                            );
+                            self.echo.relay(packet, request, self.gateways, self.output);
                         }
                         // The last parse in the chain, so this is the only place that can conclude nothing
                         // handles the packet: an ICMP type Android's own downstream link control owns, or a

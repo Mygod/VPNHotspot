@@ -34,6 +34,8 @@ struct ResolverQuery {
 impl ResolverQuery {
     fn finish(mut self) -> io::Result<Vec<u8>> {
         let mut rcode = 0;
+        // Bionic returns the complete answer into caller-owned storage. Failure to retain this buffer
+        // terminates the recoverable app-UID child.
         let mut response = vec![0u8; MAX_MESSAGE];
         // SAFETY: the descriptor is owned here and taken, so nresult closes it exactly once, and the
         // buffer's length is what the reader is told it may write.

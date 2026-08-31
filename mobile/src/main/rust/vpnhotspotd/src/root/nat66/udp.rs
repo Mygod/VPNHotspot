@@ -34,9 +34,8 @@ pub(super) use reply_socket::ReplySocketPool;
 use reply_socket::{report_send_response_error, send_response, ReplySocketLease};
 use socket_io::{enable_recv_hop_limit, forward_udp_datagram, recv_packet, UdpForwardResult};
 
-/// Buffer for one standard IP datagram. IPv6's ordinary Payload Length field is 16 bits; this NAT66
-/// dataplane does not support RFC 2675 jumbograms, so a supported UDP payload cannot require more retained
-/// receive storage. <https://www.rfc-editor.org/rfc/rfc8200.html#section-3>
+/// Retained by each listener and association for one non-jumbogram datagram because a truncated receive
+/// cannot be resumed. Failure to retain a buffer terminates the root daemon.
 const MAX_DATAGRAM: usize = u16::MAX as usize;
 
 /// Bounds one NAT66 UDP association's upstream socket, ICMP registration, and reply-socket lease.

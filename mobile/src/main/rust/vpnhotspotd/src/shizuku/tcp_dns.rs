@@ -1,8 +1,8 @@
 //! DNS-over-TCP transport.
 //!
 //! Submitted transactions are table-owned and may outlive their flow; results go only to the exact
-//! originating flow identity. Admission refusals return SERVFAIL, while invalid messages and transport
-//! failures end the stream.
+//! originating flow identity. Refused queries return SERVFAIL, while invalid messages and transport failures
+//! end the stream.
 use std::io;
 
 use tokio::io::AsyncReadExt;
@@ -12,7 +12,6 @@ use vpnhotspotd::shared::dns_wire::{self, frame, Body, DnsStream, Framed, Refuse
 use vpnhotspotd::shared::failure::Failure;
 use vpnhotspotd::shared::preempt::{hand_over, shutdown, write_all, Written};
 
-use vpnhotspotd::shared::admission::Admission;
 use vpnhotspotd::shared::bridge::Worker;
 use vpnhotspotd::shared::dns_debt::{self, DeliveryId, Parked};
 
@@ -171,11 +170,10 @@ impl Serving {
     }
 
     /// Releases only DNS state still owned by this flow; submitted transactions remain table-owned.
-    pub(crate) fn close(self, admission: &mut Admission) {
+    pub(crate) fn close(self) {
         let Self {
             control,
             mut filled,
-            reserved,
             mut delivery,
             ..
         } = self;
@@ -184,9 +182,6 @@ impl Serving {
         while filled.try_recv().is_ok() {}
         drop(filled);
         drop(control);
-        if let Some(reserved) = reserved {
-            reserved.end(admission);
-        }
     }
 }
 
@@ -195,7 +190,6 @@ pub(crate) fn answered_here(
     reserved: Reserved,
     query: Owned,
     serving: &mut Serving,
-    admission: &mut Admission,
 ) -> Option<Answering> {
     let servfail = dns_wire::servfail_response(&query).map(Owned::new);
     drop(query);
@@ -203,10 +197,9 @@ pub(crate) fn answered_here(
         serving.answer(Answered::Refused(Failure::Expected(io::Error::other(
             "a DNS-over-TCP message that is not an answerable query",
         ))));
-        reserved.end(admission);
         return None;
     };
-    let delivery = reserved.settle(admission);
+    let delivery = reserved.settle();
     Some(Answering {
         settled: dns_debt::Settled::delivering(
             delivery,

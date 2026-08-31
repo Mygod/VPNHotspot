@@ -12,39 +12,26 @@ and details. Context names the owner and operation. Details include the
 identifiers needed to reproduce the failure, such as downstream/upstream,
 session, client, destination, protocol, listener or queue.
 
-Rust does not impose a second detail-count or field-length policy. The Android
-consumer passes details to Crashlytics, whose
+Rust does not truncate report details. The Android consumer passes them to
+Crashlytics, whose
 [event contract](https://firebase.google.com/docs/reference/kotlin/com/google/firebase/crashlytics/FirebaseCrashlytics#recordException(kotlin.Throwable,com.google.firebase.crashlytics.CustomKeysAndValues))
 retains at most 64 combined app/event key-value pairs and truncates keys or
 values beyond 1,024 characters. Crashlytics also retains only the
 [eight most recent recorded nonfatal exceptions](https://firebase.google.com/docs/crashlytics/android/customize-crash-reports#report-non-fatal-exceptions).
-Additional or longer diagnostic data is therefore handled at the consumer
-boundary rather than silently discarded on the daemon wire.
+Those limits are applied at the consumer boundary, not on the daemon wire.
 
 ## Control Framing And Diagnostic Bounds
 
-Control protobufs use a four-byte length prefix. Both peers accept payloads up
-to 2,147,483,643 bytes: `Int.MAX_VALUE` minus the four-byte prefix that the
-app-UID descriptor handoff places in the same `ByteArray`. This is the largest
-combined frame size arithmetically representable by `Int`. It remains below
-[protobuf's portable 2 GiB ceiling](https://protobuf.dev/programming-guides/proto-limits/#total-size-of-the-message)
-and is a structural framing maximum, not a daemon memory budget. Zero, negative
-app-side lengths, and larger unsigned daemon-side lengths end the conversation
-before payload allocation; allocation failure below the maximum remains Android
-process-memory pressure.
+Control protobufs use a four-byte length prefix and reject payload lengths that
+cannot fit Android's signed-`Int` frame allocation or protobuf's
+[portable size limit](https://protobuf.dev/programming-guides/proto-limits/#total-size-of-the-message).
+This is wire validation, not a daemon memory budget; invalid lengths end the
+conversation before payload allocation.
 
-Failed `iptables-restore`, `ip6tables-restore`, and `dumpsys ipsec` children can
-write without bound even though one report cannot use unbounded diagnostics.
-The daemon therefore retains the first 1,024 bytes from each stdout/stderr
-stream. This is a conservative way to remain within Crashlytics' 1,024-character
-value limit above: converting 1,024 source bytes cannot produce more than 1,024
-Unicode characters, although multibyte UTF-8 may use fewer. Fixed 1,024-byte read
-scratch buffers drain both child pipes concurrently. Firewall line consumers see
-at most the same 1,024-byte prefix of any one line; `dumpsys ipsec` is passed to
-its streaming parser in bounded chunks instead of first accumulating a complete
-line. Bytes beyond a sample or line prefix are consumed and discarded, so hitting
-the bound truncates only diagnostics/line inspection; the child cannot block on a
-full pipe and command completion and status handling are unchanged.
+The daemon fully drains `iptables-restore`, `ip6tables-restore`, and `dumpsys
+ipsec` output while retaining only the first 1,024 bytes of each stream or line
+for diagnostics, matching Crashlytics' value limit. Later bytes are discarded;
+command completion and status handling are unchanged.
 
 Preserve the first useful context when wrapping `io::Error`; generic layers must
 not overwrite the failing site's context or source location.
@@ -97,7 +84,7 @@ source, destination and family. `platform_dns`, `platform_ipv4` and
 `platform_ipv6` are traffic classes, not physical clients.
 
 Only unexpected daemon/platform failures become app-UID reports. Malformed TUN
-input, refused admission, expiry, unreachable peers and other ordinary
+input, refused work, expiry, unreachable peers and other ordinary
 traffic-controlled outcomes are counted or logged, not reported per packet. A
 ping socket delivering bytes that do not have the promised Echo-reply framing,
 or returning `EMSGSIZE` without an attributable local path MTU, violates the
@@ -147,10 +134,9 @@ messages.
 
 Cancellation and `Interrupted` during cancellation are not errors. Tasks tied to
 a stop token exit quietly. Report only unexpected cleanup/channel failures that
-affect daemon-owned state or break an invariant. An app-UID worker that owns a
-descriptor releases its descriptor lease only after it completes, is joined and
-the descriptor closes; clean TCP completion releases that upstream lease while
-it may retain memory-only client-facing state as documented in
+affect daemon-owned state or break an invariant. App-UID worker completion closes
+its descriptors, and the owner joins it before retiring its record. Clean TCP
+completion may retain memory-only client-facing state as documented in
 [`shizuku.md`](shizuku.md#app-uid-dataplane).
 
 ## Best-Effort Cleanup

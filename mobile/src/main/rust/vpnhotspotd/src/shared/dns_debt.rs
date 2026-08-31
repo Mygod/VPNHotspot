@@ -1,28 +1,15 @@
-//! DNS descriptor ownership from query admission through resolver settlement.
-//!
-//! A submitted query owns one DNS-class descriptor unit while the platform resolver may retain a returned
-//! descriptor. Once its terminal arrives, descriptor debt ends immediately. Answer parking has no separate
-//! admission lifetime because it owns ordinary userspace buffers rather than descriptors.
-use crate::shared::admission::{Admission, Class, Denied, Lease};
+//! DNS delivery identity from resolver submission through transport acknowledgement.
 
 #[derive(Debug)]
 pub struct QueryDebt {
     id: u64,
-    lease: Lease,
 }
 
-/// Admits one submitted query under the DNS descriptor class.
-pub fn submit(admission: &mut Admission, id: u64) -> Result<QueryDebt, Denied> {
-    let lease = admission.reserve(Class::Reserved)?;
-    Ok(QueryDebt { id, lease })
+pub fn submit(id: u64) -> QueryDebt {
+    QueryDebt { id }
 }
 
-/// Ends a query before its resolver terminal is consumed.
-pub fn abandon(admission: &mut Admission, debt: QueryDebt) {
-    admission.release(debt.lease);
-}
-
-/// Delivery identity retained after resolver descriptor debt has ended.
+/// Delivery identity retained after resolver settlement.
 #[derive(Debug)]
 pub struct Delivery {
     id: DeliveryId,
@@ -121,34 +108,19 @@ impl Parked {
     }
 }
 
-/// Ends resolver descriptor debt and creates the identity used to match a later delivery acknowledgment.
-pub fn settle(admission: &mut Admission, debt: QueryDebt) -> Delivery {
-    let QueryDebt { id, lease } = debt;
-    admission.release(lease);
+/// Creates the identity used to match a later delivery acknowledgment.
+pub fn settle(debt: QueryDebt) -> Delivery {
+    let QueryDebt { id } = debt;
     Delivery { id: DeliveryId(id) }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shared::admission::Totals;
-
-    fn admission() -> Admission {
-        Admission::new(Totals {
-            admission_id: 1,
-            descriptor_total: 3,
-            dns_descriptor_floor: 1,
-        })
-        .expect("valid totals")
-    }
 
     #[test]
-    fn query_debt_owns_a_descriptor_until_settlement() {
-        let mut admission = admission();
-        let debt = submit(&mut admission, 7).expect("DNS descriptor");
-        assert_eq!(admission.descriptors_charged(), 1);
-        let delivery = settle(&mut admission, debt);
-        assert_eq!(admission.descriptors_charged(), 0);
+    fn query_identity_survives_until_delivery_acknowledgement() {
+        let delivery = settle(submit(7));
 
         let mut parked = Parked::default();
         let parking = parked.park(Settled::delivering(delivery, "answer"));
@@ -159,28 +131,9 @@ mod tests {
     }
 
     #[test]
-    fn general_work_cannot_consume_the_dns_floor() {
-        let mut admission = admission();
-        let first = admission
-            .reserve(Class::General)
-            .expect("first general descriptor");
-        let second = admission
-            .reserve(Class::General)
-            .expect("second general descriptor");
-        let debt = submit(&mut admission, 1).expect("reserved DNS descriptor");
-        assert_eq!(admission.descriptors_charged(), 3);
-        abandon(&mut admission, debt);
-        admission.release(first);
-        admission.release(second);
-    }
-
-    #[test]
     fn parking_replacement_and_identity_matching_are_structural() {
-        let mut admission = admission();
-        let first = submit(&mut admission, 1).expect("first");
-        let first = settle(&mut admission, first);
-        let second = submit(&mut admission, 2).expect("second");
-        let second = settle(&mut admission, second);
+        let first = settle(submit(1));
+        let second = settle(submit(2));
         let mut parked = Parked::default();
         let first = parked
             .park(Settled::delivering(first, 1))

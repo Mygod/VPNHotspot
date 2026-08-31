@@ -11,7 +11,7 @@
 //! below it reads: one call is in flight at a time, since the config reader waits for the owner's
 //! acknowledgement before reading another, but it is the app's authenticated control stream that produces
 //! them, so metered dataplane work does not make a run of config calls finite and no ordinary source is
-//! promised a turn against one. The UDP, Echo and virtual-DNS completion arms are resource-bounded instead:
+//! promised a turn against one. The UDP, Echo and virtual-DNS completion arms are producer-bounded instead:
 //! each one's readiness is produced by the metered sources, so it drains once those stop being served. The
 //! TUN writer's two arms are the same kind, and the order between them matters: a guarded-datagram
 //! settlement exists only for a datagram this owner itself handed over, and the interface-drain wait is ready

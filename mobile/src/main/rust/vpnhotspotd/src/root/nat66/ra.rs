@@ -48,10 +48,7 @@ const URGENT_RA_RETENTION: Duration =
 /// <https://www.rfc-editor.org/rfc/rfc8200.html#section-5>
 const IPV6_MINIMUM_MTU: u32 = 1280;
 const ROUTER_SOLICITATION_TYPE: u8 = 133;
-/// Retains exactly the fixed Router Solicitation header needed to validate its type and code.
-/// `recvfrom(MSG_TRUNC)` consumes the complete datagram while the unparsed options are discarded.
-/// RFC 4861 section 4.1 defines this header as eight octets and permits options after it:
-/// https://www.rfc-editor.org/rfc/rfc4861.html#section-4.1.
+/// Router Solicitation options are consumed but ignored.
 const ROUTER_SOLICITATION_HEADER_LEN: usize = 8;
 
 enum RaRequest {

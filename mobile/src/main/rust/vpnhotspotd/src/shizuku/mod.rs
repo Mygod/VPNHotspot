@@ -1,6 +1,5 @@
 mod app_config;
 mod app_session;
-mod budget;
 mod dispatch;
 mod echo;
 mod echo_socket;

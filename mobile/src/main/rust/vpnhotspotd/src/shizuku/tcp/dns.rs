@@ -1,6 +1,5 @@
 use std::io;
 
-use vpnhotspotd::shared::admission::Admission;
 use vpnhotspotd::shared::dns_debt;
 
 use super::{Engine, Flow};
@@ -11,17 +10,10 @@ use vpnhotspotd::shared::workers::Held;
 
 impl Engine {
     /// Answers one thing a DNS-over-TCP transport asked its owner for.
-    pub(crate) fn ask(
-        &mut self,
-        ask: tcp_dns::Ask,
-        admitting: bool,
-        admission: &mut Admission,
-    ) -> io::Result<()> {
+    pub(crate) fn ask(&mut self, ask: tcp_dns::Ask, admitting: bool) -> io::Result<()> {
         match ask {
-            tcp_dns::Ask::Reserve { flow, length } => {
-                self.reserve_query(flow, length, admitting, admission)
-            }
-            tcp_dns::Ask::Query(flow) => return self.commit_query(flow, admitting, admission),
+            tcp_dns::Ask::Reserve { flow, length } => self.reserve_query(flow, length, admitting),
+            tcp_dns::Ask::Query(flow) => return self.commit_query(flow, admitting),
             // The transport has written the whole answer into its bridge and dropped both of its own
             // buffers, so its delivery identity may be cleared. Validated on both halves first: a report naming a
             // handle whose flow has been replaced would end the successor's delivery instead of its
@@ -58,13 +50,7 @@ impl Engine {
     }
 
     /// Admits one query at the length its client announced, before a byte of it has been stored.
-    fn reserve_query(
-        &mut self,
-        flow: Event,
-        length: usize,
-        admitting: bool,
-        admission: &mut Admission,
-    ) {
+    fn reserve_query(&mut self, flow: Event, length: usize, admitting: bool) {
         if self.serving(flow).is_none() {
             self.counters.ingress.stale += 1;
             return;
@@ -86,7 +72,7 @@ impl Engine {
             self.grant(flow, tcp_dns::Granted::Denied);
             return;
         }
-        let Some((reserved, query)) = self.queries.reserve(length, admission) else {
+        let Some((reserved, query)) = self.queries.reserve(length) else {
             self.counters.denied += 1;
             self.grant(flow, tcp_dns::Granted::Denied);
             return;
@@ -96,8 +82,7 @@ impl Engine {
         let Some(held) = self.flows.get_mut(&flow.handle) else {
             // Unreachable: the pair was validated above and nothing since has awaited.
             self.counters.ingress.stale += 1;
-            drop(query);
-            reserved.end(admission);
+            drop((reserved, query));
             return;
         };
         held.record.serving.reserve(reserved);
@@ -113,12 +98,7 @@ impl Engine {
     }
 
     /// Accepts one exact validated query from the transport that framed it, and publishes it.
-    fn commit_query(
-        &mut self,
-        flow: Event,
-        admitting: bool,
-        admission: &mut Admission,
-    ) -> io::Result<()> {
+    fn commit_query(&mut self, flow: Event, admitting: bool) -> io::Result<()> {
         let Some(held) = self.serving(flow) else {
             self.counters.ingress.stale += 1;
             return Ok(());
@@ -129,25 +109,23 @@ impl Engine {
             return Ok(());
         };
         let Some(query) = query else {
-            // Unreachable: the transport hands the buffer over before it says so. Ended rather than assumed
-            // away, because a reservation nobody consumes is capacity nothing gives back.
+            // Unreachable: the transport hands the buffer over before it says so.
             self.counters.ingress.stale += 1;
-            reserved.end(admission);
             return Ok(());
         };
         if !admitting {
             // Keep the stream alive and answer this reserved query locally.
-            return self.answer_here(flow, reserved, query, admission);
+            return self.answer_here(flow, reserved, query);
         }
         // Only local wrapper failures escape via `?`; platform outcomes, including `EBUSY`, settle as query
         // failures.
-        match self.queries.submit(flow, reserved, query, admission)? {
+        match self.queries.submit(flow, reserved, query)? {
             // Ownership transferred to the table; flow closure will not cancel it.
             Submitted::Outstanding => self.counters.resolved += 1,
             // No platform work started; return the reservation and answer locally.
             Submitted::Refused(reserved, query) => {
                 self.counters.unadmitted += 1;
-                self.answer_here(flow, reserved, query, admission)?;
+                self.answer_here(flow, reserved, query)?;
             }
         }
         Ok(())
@@ -159,19 +137,16 @@ impl Engine {
         flow: Event,
         reserved: tcp_dns::Reserved,
         query: Owned,
-        admission: &mut Admission,
     ) -> io::Result<()> {
         self.counters.answered_here += 1;
         let Some(held) = self.flows.get_mut(&flow.handle) else {
-            // Unreachable: validated by the caller with nothing awaited since. Drop the query before ending
-            // the resolver-descriptor reservation that covered its submission.
+            // Unreachable: validated by the caller with nothing awaited since.
             self.counters.ingress.stale += 1;
-            drop(query);
-            reserved.end(admission);
+            drop((reserved, query));
             return Ok(());
         };
         let serving = &mut held.record.serving;
-        let Some(answering) = tcp_dns::answered_here(reserved, query, serving, admission) else {
+        let Some(answering) = tcp_dns::answered_here(reserved, query, serving) else {
             // The transport was notified and will terminate the invalid message.
             return Ok(());
         };
@@ -182,11 +157,7 @@ impl Engine {
     }
 
     /// Settles one completed transaction; table-invariant failures end the session.
-    pub(crate) fn settle(
-        &mut self,
-        settlement: io::Result<tcp_dns::Settlement>,
-        admission: &mut Admission,
-    ) -> io::Result<()> {
+    pub(crate) fn settle(&mut self, settlement: io::Result<tcp_dns::Settlement>) -> io::Result<()> {
         let settlement = settlement?;
         // Exact identity, both halves, rather than a scan for whichever flow claims this transaction id.
         // smoltcp reuses handles, so a predecessor's answer must never reach the flow that took its place -
@@ -194,7 +165,7 @@ impl Engine {
         // delivery below, because the delivery does not exist for a settlement that ends the session.
         let asked = settlement.flow();
         let live = self.flows.current(&asked.handle, asked.incarnation);
-        let delivered = self.queries.settle(settlement, admission)?;
+        let delivered = self.queries.settle(settlement)?;
         // A flow that is absent, closed or reused is one there is nobody left to answer: the transport that
         // asked is gone, and a handle that has been handed to a successor belongs to a different client. Not
         // reported: an answer nobody is waiting for says nothing about this daemon, and what would have been

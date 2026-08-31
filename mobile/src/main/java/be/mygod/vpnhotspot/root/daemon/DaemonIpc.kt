@@ -9,9 +9,7 @@ import io.ktor.utils.io.writeInt
 import java.io.IOException
 
 object DaemonIpc {
-    /**
-     * Largest payload whose four-byte-prefixed app-UID handoff size is arithmetically representable by `Int`.
-     */
+    /** Keeps the length-prefixed frame representable by `ByteArray`. */
     const val MAX_FRAME_SIZE = Int.MAX_VALUE - Int.SIZE_BYTES
 
     suspend fun readFrame(input: ByteReadChannel): ByteArray {

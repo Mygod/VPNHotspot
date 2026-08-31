@@ -1,11 +1,9 @@
-use smoltcp::iface::SocketHandle;
-use smoltcp::socket::tcp::{Socket, State};
-use vpnhotspotd::shared::admission::Admission;
-
 use super::bridge::Attention;
 use super::{lifetime, Engine, Flow};
 use crate::report;
 use crate::shizuku::output::Output;
+use smoltcp::iface::SocketHandle;
+use smoltcp::socket::tcp::{Socket, State};
 use vpnhotspotd::shared::lifetime::owes_reset;
 use vpnhotspotd::shared::workers::{Ended, Terminal};
 
@@ -23,27 +21,17 @@ impl Engine {
     }
 
     /// Finishes one flow's client-side close, once that client has reached `Closed`.
-    pub(crate) fn finish_client_close(
-        &mut self,
-        handle: SocketHandle,
-        incarnation: u64,
-        admission: &mut Admission,
-    ) {
+    pub(crate) fn finish_client_close(&mut self, handle: SocketHandle, incarnation: u64) {
         if !self.flows.current(&handle, incarnation) {
             self.counters.ingress.stale += 1;
             return;
         }
-        self.reclaim(handle, incarnation, admission);
+        self.reclaim(handle, incarnation);
     }
 
     /// Takes one finished transport task's terminal, which either leaves its flow closing client-side or ends
     /// it.
-    pub(crate) fn close(
-        &mut self,
-        terminal: Terminal<SocketHandle>,
-        admission: &mut Admission,
-        output: &mut Output,
-    ) {
+    pub(crate) fn close(&mut self, terminal: Terminal<SocketHandle>, output: &mut Output) {
         let Terminal { key, id, ended } = terminal;
         // Validate both handle and incarnation before a stale terminal can touch a successor flow.
         if !self.flows.current(&key, id) {
@@ -51,13 +39,6 @@ impl Engine {
             return;
         }
         // Worker completion closes the upstream descriptor; client-only state may remain.
-        if let Some(lease) = self
-            .flows
-            .get_mut(&key)
-            .and_then(|held| held.record.upstream_lease.take())
-        {
-            admission.release(lease);
-        }
         // Keep a clean client-facing close until its remaining bytes and FIN are acknowledged.
         let cancelled = self
             .flows
@@ -108,11 +89,11 @@ impl Engine {
             }
             return;
         }
-        self.reclaim(key, id, admission);
+        self.reclaim(key, id);
     }
 
-    /// Releases one joined flow's socket, buffers and accounting.
-    fn reclaim(&mut self, key: SocketHandle, id: u64, admission: &mut Admission) {
+    /// Releases one joined flow's socket and buffers.
+    fn reclaim(&mut self, key: SocketHandle, id: u64) {
         self.outgoing.forget(key);
         let Some(flow) = self.flows.retire(&key, id) else {
             // Unreachable: every caller has validated this exact pair and nothing since has awaited.
@@ -125,7 +106,6 @@ impl Engine {
         // Submitted resolver transactions outlive their flow.
         let submitted = self.queries.len();
         let Flow {
-            upstream_lease,
             bridge,
             serving,
             armed,
@@ -135,14 +115,10 @@ impl Engine {
         if let Some(armed) = armed {
             self.idle.disarm(key, armed);
         }
-        // Drop bridge bytes before refunding the DNS delivery they may contain.
+        // Drop bridge bytes before the DNS delivery they may contain.
         drop(bridge);
-        // Release flow-owned DNS state before the flow's buffers; submitted transactions remain table-owned.
-        serving.close(admission);
-        // Fallback against leaking a lease on an unexpected reclaim path.
-        if let Some(lease) = upstream_lease {
-            admission.release(lease);
-        }
+        // Release flow-owned DNS state; submitted transactions remain table-owned.
+        serving.close();
         debug_assert_eq!(
             self.queries.len(),
             submitted,

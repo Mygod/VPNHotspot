@@ -71,7 +71,7 @@ pub(crate) fn send_to(
     destination: SocketAddr,
     payload: &[u8],
     hop_limit: u8,
-) -> io::Result<usize> {
+) -> io::Result<()> {
     let fd = socket.as_raw_fd();
     let slices = [io::IoSlice::new(payload)];
     let hops = hop_limit as c_int;
@@ -96,6 +96,7 @@ pub(crate) fn send_to(
             Some(&SockaddrIn6::from(address)),
         ),
     }
+    .map(|_| ())
     .map_err(io::Error::from)
 }
 
@@ -155,8 +156,7 @@ const CONNECT_SOCKET: &str = "shizuku.tcp_connect_socket";
 const CONNECT_NONBLOCK: &str = "shizuku.tcp_connect_nonblock";
 const CONNECT_REGISTER: &str = "shizuku.tcp_connect_register";
 
-/// Opens one nonblocking TCP socket. Kept synchronous so descriptor admission immediately follows a
-/// successful open, before any other owner turn can retain or admit another descriptor.
+/// Opens one nonblocking TCP socket.
 pub(crate) fn open_tcp(destination: SocketAddr) -> Result<Socket, Failure> {
     let socket = Socket::new(
         if destination.is_ipv6() {

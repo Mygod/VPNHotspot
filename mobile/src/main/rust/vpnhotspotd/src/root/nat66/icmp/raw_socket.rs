@@ -23,11 +23,6 @@ const ICMPV6_ERROR_HEADER_LEN: usize = 8;
 const ERROR_QUEUE_QUOTE_LIMIT: usize =
     ICMPV6_MINIMUM_MTU - IPV6_HEADER_LEN - ICMPV6_ERROR_HEADER_LEN;
 
-/// Queued packets retained by Linux while userspace owes verdicts. This deliberately matches the directly
-/// analogous `NFQNL_QMAX_DEFAULT`; once all 1,024 entries are occupied, fail-closed NFQUEUE drops each new
-/// packet before Rust receives it and increments the kernel queue-drop counter. Existing entries are unchanged.
-/// <https://android.googlesource.com/kernel/common/+/afea13f9ff7137797a2858fc973c226ec93866aa/net/netfilter/nfnetlink_queue.c#51>
-const NFQUEUE_MAX_LEN: u32 = 1024;
 /// Requests the largest packet copy that nfnetlink can structurally carry: the 16-bit netlink-attribute
 /// length minus its four-byte header, or 65,531 bytes. Larger queued packets arrive with `NFQA_CAP_LEN`; the
 /// consumer detects that condition and drops the packet rather than parsing an incomplete IPv6 datagram.
@@ -142,8 +137,6 @@ pub(super) fn create_downstream_queue() -> io::Result<Queue> {
     let mut queue = Queue::open()?;
     queue.bind(DAEMON_ICMP_NFQUEUE_NUM)?;
     queue.set_copy_range(DAEMON_ICMP_NFQUEUE_NUM, NFQUEUE_COPY_RANGE)?;
-    queue.set_queue_max_len(DAEMON_ICMP_NFQUEUE_NUM, NFQUEUE_MAX_LEN)?;
-    queue.set_fail_open(DAEMON_ICMP_NFQUEUE_NUM, false)?;
     // `Queue::open` normally suppresses netlink ENOBUFS notifications. Receiving them lets the existing
     // structured receive-error path report userspace socket overruns; kernel NFQUEUE-full drops remain visible
     // only through the kernel queue counters/log because no userspace message exists for those packets.

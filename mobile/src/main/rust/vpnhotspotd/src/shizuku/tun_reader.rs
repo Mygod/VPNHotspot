@@ -1,4 +1,4 @@
-//! Owns client-keyed dataplane state and applies admission updates.
+//! Owns client-keyed dataplane state and applies configuration updates.
 use std::io;
 use std::net::{IpAddr, SocketAddr};
 use std::os::fd::OwnedFd;
@@ -14,10 +14,7 @@ use vpnhotspotd::shared::protocol::{IoErrorReportExt, IoResultReportExt};
 use vpnhotspotd::shared::reassembly;
 use vpnhotspotd::shared::tun_handoff;
 
-use vpnhotspotd::shared::admission::Admission;
-
 use crate::report;
-use crate::shizuku::budget::Measured;
 use crate::shizuku::dispatch::{Counters, Dispatch};
 use crate::shizuku::echo;
 use crate::shizuku::gateway::Gateways;
@@ -34,7 +31,6 @@ pub(crate) struct Applied {
 }
 
 pub(crate) struct Dataplane {
-    admission: Admission,
     output: Output,
     buffer: Vec<u8>,
     fragments: reassembly::Table,
@@ -50,10 +46,7 @@ pub(crate) struct Dataplane {
     asking: mpsc::UnboundedReceiver<crate::shizuku::tcp_dns::Ask>,
 }
 
-pub(crate) async fn prepare(
-    measured: Measured,
-    mtu: usize,
-) -> io::Result<(Dataplane, tun_handoff::Queue)> {
+pub(crate) fn prepare(mtu: usize) -> io::Result<(Dataplane, tun_handoff::Queue)> {
     let mut seed_bytes = [0u8; 8];
     let filled = rustix::rand::getrandom(&mut seed_bytes, rustix::rand::GetRandomFlags::empty())
         .map_err(io::Error::from)
@@ -75,9 +68,6 @@ pub(crate) async fn prepare(
         }
         seed => seed,
     };
-    let admission = Admission::new(measured.totals)
-        .map_err(io::Error::other)
-        .with_report_context("shizuku.dataplane.admission")?;
     let (writer, queue, settled) = tun_handoff::channel();
     // The Identification allocator's opening reuse quarantine is measured from here, which is the earliest
     // moment this session could put anything on the wire.
@@ -86,11 +76,10 @@ pub(crate) async fn prepare(
     let fragments = reassembly::Table::new();
     let (relay, events) = udp::Relay::new();
     let (echo, echoes) = echo::Relay::new();
-    let dns = virtual_dns::Handoff::new(&admission);
+    let dns = virtual_dns::Handoff::new();
     let (tcp, asking) = tcp::Engine::new(mtu, seed);
     Ok((
         Dataplane {
-            admission,
             output,
             buffer,
             fragments,
@@ -116,7 +105,6 @@ pub(crate) async fn run(
     cancel: CancellationToken,
 ) -> io::Result<()> {
     let Dataplane {
-        mut admission,
         mut output,
         mut buffer,
         mut fragments,
@@ -170,27 +158,27 @@ pub(crate) async fn run(
                     continue 'owner;
                 }
                 terminal = relay.finished() => {
-                    relay.close(terminal, &mut admission);
+                    relay.close(terminal);
                     continue 'owner;
                 }
                 terminal = echo.finished() => {
-                    echo.closed(terminal, &mut admission);
+                    echo.closed(terminal);
                     continue 'owner;
                 }
                 // Bridge traffic can keep this combined attention source continuously ready.
                 attention = tcp.attention(), if pass.owed(Source::TcpAttention) => {
                     pass.take(Source::TcpAttention);
                     match attention {
-                        tcp::Attention::Flow(terminal) => tcp.close(terminal, &mut admission, &mut output),
+                        tcp::Attention::Flow(terminal) => tcp.close(terminal, &mut output),
                         tcp::Attention::Transaction(terminal) => {
-                            if let Err(e) = tcp.settle(terminal, &mut admission) {
+                            if let Err(e) = tcp.settle(terminal) {
                                 break 'owner Err(e);
                             }
                         }
                         tcp::Attention::ClientClosed {
                             handle,
                             incarnation,
-                        } => tcp.finish_client_close(handle, incarnation, &mut admission),
+                        } => tcp.finish_client_close(handle, incarnation),
                         tcp::Attention::Traffic => tcp.traffic(admitting, now(), &mut output),
                     }
                     continue 'owner;
@@ -198,7 +186,7 @@ pub(crate) async fn run(
                 answered = dns.settled() => {
                     match answered {
                         virtual_dns::Settled::Terminal(terminal) => {
-                            if let Err(e) = dns.settle(terminal, now(), &mut output, &mut admission) {
+                            if let Err(e) = dns.settle(terminal, now(), &mut output) {
                                 break 'owner Err(e);
                             }
                         }
@@ -227,7 +215,7 @@ pub(crate) async fn run(
                     pass.take(Source::TcpDnsAsk);
                     match ask {
                         Some(ask) => {
-                            if let Err(e) = tcp.ask(ask, admitting, &mut admission) {
+                            if let Err(e) = tcp.ask(ask, admitting) {
                                 break 'owner Err(e);
                             }
                         }
@@ -269,7 +257,6 @@ pub(crate) async fn run(
                         tcp: &mut tcp,
                         fragments: &mut fragments,
                         output: &mut output,
-                        admission: &mut admission,
                         gateways: &gateways,
                         virtual_addresses: &virtual_addresses,
                     }.expire(now(), expiry);
@@ -332,7 +319,6 @@ pub(crate) async fn run(
             tcp: &mut tcp,
             fragments: &mut fragments,
             output: &mut output,
-            admission: &mut admission,
             gateways: &gateways,
             virtual_addresses: &virtual_addresses,
         })
@@ -341,21 +327,21 @@ pub(crate) async fn run(
             break Err(e);
         }
     };
-    relay.shutdown(&mut admission).await;
-    echo.shutdown(&mut admission).await;
-    // Drain owners before releasing their leases; keep the first failure and report later ones.
+    relay.shutdown().await;
+    echo.shutdown().await;
+    // Drain owners before releasing them; keep the first failure and report later ones.
     result = report::keep_first(
         "shizuku.tun_ingress.tcp_shutdown",
         result,
-        tcp.shutdown(&mut admission, &mut output).await,
+        tcp.shutdown(&mut output).await,
     );
     result = report::keep_first(
         "shizuku.tun_ingress.dns_shutdown",
         result,
-        dns.shutdown(now(), &mut output, &mut admission).await,
+        dns.shutdown(now(), &mut output).await,
     );
     report::stdout!("tun ingress {}", counters.describe());
-    report_owners(&relay, &echo, &fragments, &dns, &tcp, &output, &admission);
+    report_owners(&relay, &echo, &fragments, &dns, &tcp, &output);
     relay.release(events);
     echo.release(echoes);
     // Explicitly, and here: this is the fence a writer still waiting to hand an ending back is released by,
@@ -368,7 +354,6 @@ pub(crate) async fn run(
     drop(buffer);
     drop(fragments);
     cancel.cancel();
-    report::stdout!("admission {}", admission.describe());
     result
 }
 
@@ -379,7 +364,6 @@ fn report_owners(
     dns: &virtual_dns::Handoff,
     tcp: &tcp::Engine,
     output: &Output,
-    admission: &Admission,
 ) {
     report::stdout!("udp relay {}", relay.describe());
     report::stdout!("echo relay {}", echo.describe());
@@ -387,7 +371,6 @@ fn report_owners(
     report::stdout!("virtual dns {}", dns.describe());
     report::stdout!("tcp engine {}", tcp.describe());
     report::stdout!("tun output {}", output.describe());
-    report::stdout!("admission {}", admission.describe());
 }
 
 /// The one clock this session dates everything by, including the wire times its writer reports.

@@ -18,7 +18,6 @@ use crate::shizuku::gateway::Gateways;
 use crate::shizuku::output::Output;
 use crate::shizuku::reply::Event;
 use crate::shizuku::send_failure::{self, Failure};
-use vpnhotspotd::shared::admission::Admission;
 
 /// Expected client and path outcomes are counters because whoever puts packets on the interface chooses them.
 /// Every unexpected daemon-owned failure is handed to the shared reporter; its source-site coalescer bounds
@@ -115,12 +114,12 @@ impl Relay {
     }
 
     /// Drops every session, cancels every socket, and joins every receive task.
-    pub(crate) async fn shutdown(&mut self, admission: &mut Admission) {
+    pub(crate) async fn shutdown(&mut self) {
         self.sessions.clear();
         self.sockets.cancel();
         while self.sockets.working() {
             let terminal = self.sockets.finished().await;
-            self.closed(terminal, admission);
+            self.closed(terminal);
         }
     }
 
@@ -132,7 +131,6 @@ impl Relay {
         request: Request<'_>,
         gateways: &Gateways,
         output: &mut Output,
-        admission: &mut Admission,
     ) {
         let Nat66HopLimit::Forward(hop_limit) = nat66_hop_limit(Some(request.hop_limit)) else {
             self.counters.expired += 1;
@@ -141,9 +139,9 @@ impl Relay {
             return self.report(packet, Reason::Expired, gateways, output);
         };
         let family = Family::of(request.remote);
-        let socket = match self.sockets.acquire(family, admission) {
+        let socket = match self.sockets.acquire(family) {
             Ok(socket) => socket,
-            Err(Refused::Denied) => {
+            Err(Refused::Unavailable) => {
                 self.counters.denied += 1;
                 return;
             }
@@ -179,7 +177,7 @@ impl Relay {
             }
         }
         // Chosen before the send because it is what goes on the wire. Sessions are memory-only and grow
-        // dynamically; descriptor admission belongs only to the family socket acquired above.
+        // dynamically.
         let Some(sequence) = self.sessions.allocate(request.remote) else {
             self.counters.exhausted += 1;
             return;
@@ -193,7 +191,7 @@ impl Relay {
             &message,
             hop_limit,
         ) {
-            Ok(_) => {
+            Ok(()) => {
                 self.counters.sent += 1;
                 self.sessions.insert(
                     request.remote,
@@ -353,7 +351,7 @@ impl Relay {
     }
 
     /// Settles one ping socket whose receive task has finished, whether it failed on its own or was cancelled.
-    pub(crate) fn closed(&mut self, terminal: Terminal<Family>, admission: &mut Admission) {
+    pub(crate) fn closed(&mut self, terminal: Terminal<Family>) {
         let Terminal { key, id, ended } = terminal;
         match ended {
             Ended::Expected => {}
@@ -363,7 +361,7 @@ impl Relay {
                 report::io_with_details(context, error, [("family", key)])
             }
         }
-        if !self.sockets.close(key, id, admission) {
+        if !self.sockets.close(key, id) {
             self.counters.stale += 1;
         }
     }
@@ -438,8 +436,7 @@ impl Relay {
         }
     }
 
-    /// Retires memory-only sessions that timed out. Unlike a UDP mapping, a session holds no descriptor and
-    /// therefore has no admission grant to refund.
+    /// Retires memory-only sessions that timed out.
     pub(crate) fn sweep(&mut self) {
         let expired = self.sessions.expire(Instant::now());
         if expired > 0 {

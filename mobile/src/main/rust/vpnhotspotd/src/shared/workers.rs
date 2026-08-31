@@ -56,8 +56,7 @@ pub enum Refused {
 }
 
 impl<K: Copy + Eq + Hash, R> Workers<K, R> {
-    /// Builds an owner whose tables grow with admitted records. Resource admission, when a record owns a
-    /// bounded external resource, remains with the caller.
+    /// Builds an owner whose tables grow with admitted records.
     pub fn new(context: &'static str) -> Self {
         Self {
             context,

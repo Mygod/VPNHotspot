@@ -138,12 +138,8 @@ context for accepted connections. The TCP runtime:
 - connects an upstream TCP socket on that network;
 - relays bytes bidirectionally, preserving TCP half-close semantics.
 
-The transparent listener requests an `i32::MAX` accept backlog rather than
-imposing a Rust connection quota. Linux clamps that request to the runtime
-`net.core.somaxconn`; when the kernel queue is full, normal TCP retry/drop
-behavior applies and no Rust connection state has been allocated. This is the
-same backlog ownership documented by
-[`listen(2)`](https://man7.org/linux/man-pages/man2/listen.2.html).
+TCP accept backpressure is kernel-owned through the runtime
+`net.core.somaxconn`; a full accept queue allocates no Rust connection state.
 
 Connection setup failures caused by the remote path are logged and consumed.
 When `android_setsocknetwork` reports `ENONET`, the selected upstream network
@@ -167,13 +163,6 @@ destination, selected network, role, direction, operation, and relay stage.
 Expected connection-close and route-unreachable errors remain log-only;
 unexpected relay I/O errors become structured daemon nonfatals with that relay
 context preserved.
-
-Each direction uses pinned Tokio 1.53.1's maintained 8,192-byte
-[`io::copy` scratch buffer](https://github.com/tokio-rs/tokio/blob/tokio-1.53.1/tokio/src/io/util/mod.rs#L88).
-Filling that buffer completes one read/write iteration and the readiness-driven
-loop continues, so the value bounds temporary relay storage without truncating,
-dropping or refusing stream bytes. Each live association can therefore hold one
-such scratch buffer per direction until relay completion or teardown.
 
 TCP byte counters update during relay. NAT66 TCP also increments its sent packet
 counter once after a remote upstream socket is successfully opened; that counter
@@ -218,10 +207,10 @@ forbids a general timer shorter than two minutes. Expiry cancels and removes the
 association, late replies are dropped, and a later downstream datagram creates a
 new association.
 
-The listener and each association retain one 65,535-byte receive buffer, the
-largest payload length representable by an ordinary IPv6 header. RFC 2675
-jumbograms are outside this NAT66 dataplane; standard datagrams need no larger
-buffer and are relayed without a daemon-local size quota.
+Each per-MAC listener and live association retains one full non-jumbogram
+receive buffer because a truncated datagram cannot be resumed. The buffer is
+released with its owner; memory exhaustion terminates the root daemon. IPv6
+jumbograms are outside this NAT66 dataplane.
 
 Reply socket leases keep the daemon-wide pool aware of an exact reply-source
 bind while an association may send responses through it. Association teardown
@@ -300,26 +289,9 @@ when the registration exists. Ordinary local control-plane ICMPv6, neighbour
 discovery, router solicitation/advertisement, multicast, link-local, loopback,
 and unspecified destinations are outside the Echo proxy ownership boundary.
 
-Queue `30000` explicitly uses 1,024 kernel entries, the directly analogous
-`NFQNL_QMAX_DEFAULT` for the same NFQUEUE resource in Android's current
-[common kernel](https://android.googlesource.com/kernel/common/+/afea13f9ff7137797a2858fc973c226ec93866aa/net/netfilter/nfnetlink_queue.c#51).
-It is fail-closed. If all entries await userspace verdicts, Linux drops each new
-packet before Rust receives it, increments the kernel queue-drop counter, and
-leaves existing entries unchanged; there is therefore no Rust verdict or
-per-packet report for that exhaustion. Closing the dispatcher socket unbinds the
-queue and the kernel drops entries still awaiting verdicts. Netlink `ENOBUFS`
-notifications are enabled so a userspace socket-delivery overrun reaches the
-structured queue-receive error path; that notification is distinct from an
-NFQUEUE-full drop for which no userspace message exists.
-
-The daemon requests the maximum nfnetlink copy range, but the 16-bit netlink
-attribute length includes its four-byte header, so the current kernel can carry
-at most 65,531 packet bytes and marks longer packets with `NFQA_CAP_LEN` as
-[documented in the implementation](https://android.googlesource.com/kernel/common/+/afea13f9ff7137797a2858fc973c226ec93866aa/net/netfilter/nfnetlink_queue.c#55).
-Rust compares the original and retained lengths and drops an explicitly detected
-truncation without parsing or reporting the traffic-controlled event. This is a
-structural nfnetlink ceiling: it is four bytes below the largest non-jumbo IPv6
-packet, and raising the queue's copy-range request cannot remove it.
+Queue capacity, copy truncation, error delivery and unbind cleanup are documented
+with the canonical external state in
+[`routing.md`](routing.md#nat66-icmp-echo-nfqueue).
 
 For every packet Rust does receive, the NFQUEUE task supplies a verdict. Packets
 with no live session registration, no committed IPv6 NAT config, missing source
@@ -338,12 +310,15 @@ from allocation, matching RFC 5508 section 3.2 REQ-2's minimum ICMP Query
 mapping lifetime. A reply/error, client or session removal releases it earlier;
 an expired reply is dropped and a later request allocates a new mapping.
 For one `(network, destination, original sequence)` tuple, rewritten identifiers
-can use exactly all 65,536 values in ICMPv6's 16-bit Echo Identifier field. If all
-are live, the daemon refuses and reports only the new request; existing mappings
-remain intact until a reply, error, session/client removal, or the 60-second
-expiry releases an identifier.
-The upstream raw socket retains one 65,535-byte payload buffer, matching the
-ordinary IPv6 Payload Length field; RFC 2675 jumbograms are unsupported.
+use the complete Echo Identifier space. If it is fully occupied, the daemon
+refuses and reports only the new request; existing mappings remain intact until a
+reply, error, session/client removal, or expiry releases an identifier.
+
+Each active upstream-network receive task retains one full non-jumbogram ICMPv6
+buffer because a truncated raw receive cannot be resumed. The buffer is released
+with the task; memory exhaustion terminates the root daemon. IPv6 jumbograms are
+unsupported.
+
 The NFQUEUE path does not reassemble fragmented downstream Echo Requests, so an
 Echo Request whose Fragment header actually fragments the ICMPv6 payload is not
 proxied. Atomic fragments continue through the ordinary Echo path.
@@ -407,10 +382,8 @@ queued advertisements, so reaching the upper interval drops no state or traffic.
 Solicitations from a usable source address are answered to that source. A
 solicitation from the unspecified address `::` is answered with a
 downstream-scoped all-nodes multicast RA to `ff02::1`, because `::` is not a
-routable unicast reply target. Receive retains exactly RFC 4861 section 4.1's
-fixed eight-byte Router Solicitation header and uses `MSG_TRUNC` to consume the
-complete datagram without retaining options. A datagram shorter than eight
-bytes, with a nonzero code, or with a different ICMPv6 type is ignored.
+routable unicast reply target. Router Solicitation options are not retained;
+malformed solicitations are ignored.
 
 The task requires a downstream link-local router address. If the address is not
 available, it waits and logs that state instead of inventing a router source.
