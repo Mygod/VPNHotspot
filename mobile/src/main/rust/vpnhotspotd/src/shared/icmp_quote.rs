@@ -179,12 +179,13 @@ impl<'a> ParsedIpv6Quote<'a> {
 }
 
 fn update_checksum_words(sum: &mut u32, old: [u8; 16], new: [u8; 16]) {
-    for (old, new) in old.chunks_exact(2).zip(new.chunks_exact(2)) {
-        update_checksum_word(
-            sum,
-            u16::from_be_bytes([old[0], old[1]]),
-            u16::from_be_bytes([new[0], new[1]]),
-        );
+    // `as_chunks` rather than `chunks_exact`, because `clippy::chunks_exact_to_as_chunks` rejects a constant
+    // chunk size and CI runs clippy with `-D warnings`. Same arithmetic either way: sixteen bytes is eight
+    // whole words, so both remainders are empty by construction.
+    let (old, _) = old.as_chunks::<2>();
+    let (new, _) = new.as_chunks::<2>();
+    for (old, new) in old.iter().zip(new) {
+        update_checksum_word(sum, u16::from_be_bytes(*old), u16::from_be_bytes(*new));
     }
 }
 

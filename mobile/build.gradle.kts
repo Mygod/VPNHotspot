@@ -230,9 +230,8 @@ android {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 29
         targetSdk = 37
-        versionCode = 2011
-        versionName = "3.0.8"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        versionCode = 2020
+        versionName = "3.1.0"
     }
     splits {
         abi {
@@ -264,7 +263,6 @@ android {
     )
     lint.warning += "FullBackupContent"
     lint.warning += "UnsafeOptInUsageError"
-    sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
 }
 val hiddenApiStubAnnotations = configurations.create("hiddenApiStubAnnotations")
 val compileHiddenApiStubs = tasks.register<JavaCompile>("compileHiddenApiStubs") {
@@ -286,6 +284,9 @@ wire {
         enumMode = "sealed_class"
         rpcRole = "none"
     }
+}
+androidComponents.beforeVariants { variant ->
+    variant.enableAndroidTest = false
 }
 androidComponents.onVariants { variant ->
     val variantTitle = variant.name.replaceFirstChar(Char::titlecase)
@@ -378,6 +379,8 @@ dependencies {
     implementation(libs.navigation.compose)
     implementation(libs.play.services.oss.licenses)
     implementation(libs.room.ktx)
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
     implementation(libs.timber)
     implementation(libs.wire.runtime)
     implementation(libs.zxing.core)
@@ -385,9 +388,4 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     hiddenApiStubAnnotations(libs.annotation.jvm)
     testImplementation(libs.junit)
-    androidTestImplementation(platform(libs.compose.bom))
-    androidTestImplementation(libs.espresso.core)
-    androidTestImplementation(libs.junit.ktx)
-    androidTestImplementation(libs.room.testing)
-    androidTestImplementation(libs.test.runner)
 }

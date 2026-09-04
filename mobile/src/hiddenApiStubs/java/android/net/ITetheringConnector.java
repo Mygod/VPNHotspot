@@ -13,4 +13,5 @@ public interface ITetheringConnector extends IInterface {
      */
     void stopTethering(int type, String callerPkg, String callingAttributionTag, IIntResultListener listener)
             throws RemoteException;
+
 }

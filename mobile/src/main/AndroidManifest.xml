@@ -114,6 +114,15 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keep DNS servers alive while tethering services are active" />
         </service>
+        <service
+            android:name=".ShizukuTetheringService"
+            android:directBootAware="true"
+            android:foregroundServiceType="specialUse"
+            tools:targetApi="30">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keep the test network and packet daemon alive while rootless VPN tethering is active" />
+        </service>
 
         <service
             android:name=".manage.RepeaterTileService"
@@ -223,6 +232,12 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/log_paths" />
         </provider>
+
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"/>
 
         <provider android:name="com.google.firebase.provider.FirebaseInitProvider"
                   tools:node="remove"/>

@@ -12,15 +12,29 @@ const RDNSS_OPTION_TYPE: NdpOptionType = NdpOptionType(25);
 const RDNSS_OPTION_LENGTH_UNITS: u8 = 3;
 const ALL_NODES: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 0, 0, 1);
 
+/// Minimum periodic multicast-RA interval in Android 17's maintained `RouterAdvertisementDaemon` policy.
+/// Together with [`MAX_RA_INTERVAL_SECONDS`], this limits multicast wakeups rather than queued state.
+/// <https://android.googlesource.com/platform/packages/modules/Connectivity/+/347fbd34b368d19f0d87e908ea101eed3601a731/Tethering/src/android/net/ip/RouterAdvertisementDaemon.java#89>
+pub const MIN_RA_INTERVAL_SECONDS: u64 = 300;
+/// Exclusive upper bound for Android's uniformly selected periodic multicast-RA interval. Selecting the last
+/// representable interval (599 seconds) merely delays the next advertisement; no state or traffic is dropped.
+/// <https://android.googlesource.com/platform/packages/modules/Connectivity/+/347fbd34b368d19f0d87e908ea101eed3601a731/Tethering/src/android/net/ip/RouterAdvertisementDaemon.java#89>
+pub const MAX_RA_INTERVAL_SECONDS: u64 = 600;
+/// Android uses twelve times its 600-second maximum interval for router, prefix, and DNS lifetimes, allowing
+/// loss of several periodic multicasts. If no later RA or zero-lifetime withdrawal arrives, downstream client
+/// state expires after these 7,200 seconds.
+/// <https://android.googlesource.com/platform/packages/modules/Connectivity/+/347fbd34b368d19f0d87e908ea101eed3601a731/Tethering/src/android/net/ip/RouterAdvertisementDaemon.java#91>
+const DEFAULT_LIFETIME_SECONDS: u32 = 12 * MAX_RA_INTERVAL_SECONDS as u32;
+
 pub fn make_current_ra_packet(gateway: Ipv6Inet, mtu: u32) -> Vec<u8> {
     RaAdvertisement {
         dns_server: gateway.address(),
         advertised_prefix: gateway.network(),
         mtu,
-        router_lifetime: 1800,
-        valid_lifetime: 3600,
-        preferred_lifetime: 1800,
-        rdnss_lifetime: 600,
+        router_lifetime: DEFAULT_LIFETIME_SECONDS as u16,
+        valid_lifetime: DEFAULT_LIFETIME_SECONDS,
+        preferred_lifetime: DEFAULT_LIFETIME_SECONDS,
+        rdnss_lifetime: DEFAULT_LIFETIME_SECONDS,
     }
     .encode()
 }
@@ -30,7 +44,11 @@ pub fn make_zero_lifetime_ra_packet(prefix: Ipv6Inet, mtu: u32, keep_router: boo
         dns_server: prefix.address(),
         advertised_prefix: prefix.network(),
         mtu,
-        router_lifetime: if keep_router { 1800 } else { 0 },
+        router_lifetime: if keep_router {
+            DEFAULT_LIFETIME_SECONDS as u16
+        } else {
+            0
+        },
         valid_lifetime: 0,
         preferred_lifetime: 0,
         rdnss_lifetime: 0,
@@ -145,6 +163,13 @@ mod tests {
         let gateway = Ipv6Inet::new("fd47:6b7c:2186:b452::1".parse().unwrap(), 64).unwrap();
         let packet = make_current_ra_packet(gateway, 1500);
         assert_eq!(
+            &packet[6..8],
+            &(DEFAULT_LIFETIME_SECONDS as u16).to_be_bytes()
+        );
+        assert_eq!(&packet[20..24], &DEFAULT_LIFETIME_SECONDS.to_be_bytes());
+        assert_eq!(&packet[24..28], &DEFAULT_LIFETIME_SECONDS.to_be_bytes());
+        assert_eq!(&packet[60..64], &DEFAULT_LIFETIME_SECONDS.to_be_bytes());
+        assert_eq!(
             &packet[32..48],
             &"fd47:6b7c:2186:b452::"
                 .parse::<Ipv6Addr>()
@@ -152,6 +177,18 @@ mod tests {
                 .octets()
         );
         assert_eq!(&packet[64..80], &gateway.address().octets());
+    }
+
+    #[test]
+    fn prefix_only_withdrawal_keeps_android_router_lifetime() {
+        let gateway = Ipv6Inet::new("fd47:6b7c:2186:b452::1".parse().unwrap(), 64).unwrap();
+        let packet = make_zero_lifetime_ra_packet(gateway, 1280, true);
+        assert_eq!(
+            &packet[6..8],
+            &(DEFAULT_LIFETIME_SECONDS as u16).to_be_bytes()
+        );
+        assert_eq!(&packet[20..28], &[0; 8]);
+        assert_eq!(&packet[60..64], &[0; 4]);
     }
 
     #[test]

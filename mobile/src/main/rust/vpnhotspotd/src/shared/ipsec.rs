@@ -40,8 +40,25 @@ enum SectionKind {
 pub struct UpstreamTracker {
     sessions: HashMap<u64, SessionUpstreams>,
     refcounts: HashMap<String, usize>,
-    active_probe: bool,
+    /// Generation of the sole in-flight probe; only that probe may complete or extend the flight.
+    flight: Option<u64>,
+    /// Coalesces any updates during the flight into one successor scan.
+    pending_rescan: bool,
+    /// Advances whenever the session set changes, fencing stale probe results.
+    generation: u64,
     emitted_targets: HashSet<IpSecForwardPolicyTarget>,
+}
+
+/// Opaque generation token issued by the tracker.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Probe(u64);
+
+/// What one probe's completion leaves behind.
+pub struct Finished {
+    /// Whether the probe still matches the current session generation.
+    pub current: bool,
+    /// Successor probe owed to updates coalesced during this flight.
+    pub rescan: Option<Probe>,
 }
 
 #[derive(Clone, Default, Eq, PartialEq)]
@@ -65,11 +82,15 @@ impl SessionUpstreams {
 }
 
 impl UpstreamTracker {
-    pub fn update_session(&mut self, session_id: u64, config: &SessionConfig) -> bool {
+    /// Takes one session's upstreams and answers with the probe they call for, if any.
+    ///
+    /// `None` covers two different situations and neither loses the update: nothing changed that a scan could
+    /// answer, or a scan is already running and this update has been recorded as the rescan it owes.
+    pub fn update_session(&mut self, session_id: u64, config: &SessionConfig) -> Option<Probe> {
         let next = SessionUpstreams::from_config(config);
         let previous = self.sessions.get(&session_id).cloned().unwrap_or_default();
         if previous == next {
-            return false;
+            return None;
         }
         let upstream_changed = previous.interfaces != next.interfaces
             || previous.upstream_generation != next.upstream_generation;
@@ -87,10 +108,22 @@ impl UpstreamTracker {
         }
         self.emitted_targets
             .retain(|target| self.refcounts.contains_key(&target.interface));
-        let probe = upstream_changed && !next.interfaces.is_empty() && !self.active_probe;
-        if probe {
-            self.active_probe = true;
-        }
+        let probe = if !upstream_changed || next.interfaces.is_empty() {
+            // Nothing a scan could answer. The upstreams that went away took their refcounts and emitted
+            // targets with them above, and a probe already in flight is still answering for the sessions that
+            // are left - attribution and retention are both read from the tracker as it is when it commits.
+            None
+        } else {
+            // A replacement a scan has to answer for, so what any scan already in flight saw predates it.
+            self.generation = self.generation.wrapping_add(1);
+            if self.flight.is_some() {
+                self.pending_rescan = true;
+                None
+            } else {
+                self.flight = Some(self.generation);
+                Some(Probe(self.generation))
+            }
+        };
         if next.interfaces.is_empty() {
             self.sessions.remove(&session_id);
         } else {
@@ -115,15 +148,45 @@ impl UpstreamTracker {
             .retain(|target| self.refcounts.contains_key(&target.interface));
     }
 
+    /// Clears sessions, pending rescan, and the current flight while advancing the generation fence.
     pub fn clear(&mut self) {
         self.sessions.clear();
         self.refcounts.clear();
-        self.active_probe = false;
+        self.flight = None;
+        self.pending_rescan = false;
+        self.generation = self.generation.wrapping_add(1);
         self.emitted_targets.clear();
     }
 
-    pub fn finish_probe(&mut self) {
-        self.active_probe = false;
+    /// Ends `probe`'s flight and says what may be done with what it saw. See [Finished].
+    pub fn finish_probe(&mut self, probe: Probe) -> Finished {
+        if self.flight != Some(probe.0) {
+            // Started for sessions that have since been dropped wholesale. The flight it belonged to ended
+            // with them, so this does not end the current one either, and nothing is owed to it: whatever is
+            // owed belongs to the flight a later update started.
+            return Finished {
+                current: false,
+                rescan: None,
+            };
+        }
+        // Stale if anything replaced the sessions it was minted for, which is exactly what set the rescan
+        // below - so what it saw is discarded and the replay is what answers for the change.
+        let current = probe.0 == self.generation;
+        if self.pending_rescan {
+            // The flight continues rather than ending and being started again, so an update arriving now is
+            // still recorded as a rescan instead of racing a second probe into existence.
+            self.pending_rescan = false;
+            self.flight = Some(self.generation);
+            return Finished {
+                current,
+                rescan: Some(Probe(self.generation)),
+            };
+        }
+        self.flight = None;
+        Finished {
+            current,
+            rescan: None,
+        }
     }
 
     pub fn session_for_interface(&self, interface: &str) -> Option<u64> {
@@ -476,22 +539,35 @@ mUserResourceTracker:
             .contains("invalid tunnel resource id 999999999999"));
     }
 
+    fn probed(probe: Option<Probe>) -> Probe {
+        probe.expect("this update has to ask for a probe")
+    }
+
+    fn finish(tracker: &mut UpstreamTracker, probe: Probe) {
+        let finished = tracker.finish_probe(probe);
+        assert!(finished.current);
+        assert!(finished.rescan.is_none());
+    }
+
     #[test]
     fn tracker_rechecks_when_upstream_interfaces_change() {
         let mut tracker = UpstreamTracker::default();
-        assert!(tracker.update_session(1, &session_config(["ipsec1"], ["ipsec1"])));
-        tracker.finish_probe();
-        assert!(tracker.update_session(2, &session_config(["wlan0"], ["ipsec1"])));
-        assert!(!tracker.update_session(2, &session_config(["ipsec1"], ["wlan0"])));
-        tracker.finish_probe();
-        assert!(tracker.update_session(2, &session_config(["ipsec1"], ["wlan1"])));
-        tracker.finish_probe();
-        assert!(tracker.update_session(2, &session_config(["ipsec1"], ["wlan0"])));
-        tracker.finish_probe();
-        assert!(tracker.update_session(2, &session_config(["wlan0"], [])));
-        tracker.finish_probe();
+        let probe = probed(tracker.update_session(1, &session_config(["ipsec1"], ["ipsec1"])));
+        finish(&mut tracker, probe);
+        let probe = probed(tracker.update_session(2, &session_config(["wlan0"], ["ipsec1"])));
+        assert!(tracker
+            .update_session(2, &session_config(["ipsec1"], ["wlan0"]))
+            .is_none());
+        finish(&mut tracker, probe);
+        let probe = probed(tracker.update_session(2, &session_config(["ipsec1"], ["wlan1"])));
+        finish(&mut tracker, probe);
+        let probe = probed(tracker.update_session(2, &session_config(["ipsec1"], ["wlan0"])));
+        finish(&mut tracker, probe);
+        let probe = probed(tracker.update_session(2, &session_config(["wlan0"], [])));
+        finish(&mut tracker, probe);
         tracker.remove_session(1);
-        assert!(tracker.update_session(2, &session_config(["ipsec1"], ["wlan0"])));
+        let probe = probed(tracker.update_session(2, &session_config(["ipsec1"], ["wlan0"])));
+        finish(&mut tracker, probe);
         assert_eq!(tracker.session_for_interface("ipsec1"), Some(2));
         tracker.remove_session(2);
         assert_eq!(tracker.session_for_interface("ipsec1"), None);
@@ -502,41 +578,198 @@ mUserResourceTracker:
         let mut tracker = UpstreamTracker::default();
         let mut config = session_config(["ipsec1"], ["wlan0"]);
         config.upstream_generation = 1;
-        assert!(tracker.update_session(1, &config));
-        assert!(!tracker.update_session(1, &config));
+        let probe = probed(tracker.update_session(1, &config));
+        assert!(tracker.update_session(1, &config).is_none());
 
         config.upstream_generation = 2;
-        assert!(!tracker.update_session(1, &config));
+        assert!(tracker.update_session(1, &config).is_none());
         config.upstream_generation = 3;
-        assert!(!tracker.update_session(1, &config));
-        tracker.finish_probe();
+        assert!(tracker.update_session(1, &config).is_none());
+        let rescan = tracker
+            .finish_probe(probe)
+            .rescan
+            .expect("the generations that moved during the probe are owed a rescan");
+        finish(&mut tracker, rescan);
         config.upstream_generation = 4;
-        assert!(tracker.update_session(1, &config));
-        tracker.finish_probe();
+        let probe = probed(tracker.update_session(1, &config));
+        finish(&mut tracker, probe);
 
         let mut fallback = session_config([], ["ipsec1"]);
         fallback.upstream_generation = 1;
-        assert!(tracker.update_session(2, &fallback));
+        let probe = probed(tracker.update_session(2, &fallback));
         fallback.upstream_generation = 2;
-        assert!(!tracker.update_session(2, &fallback));
-        tracker.finish_probe();
+        assert!(tracker.update_session(2, &fallback).is_none());
+        let rescan = tracker
+            .finish_probe(probe)
+            .rescan
+            .expect("the generation that moved during the probe is owed a rescan");
+        finish(&mut tracker, rescan);
         fallback.upstream_generation = 3;
-        assert!(tracker.update_session(2, &fallback));
+        assert!(tracker.update_session(2, &fallback).is_some());
     }
 
     #[test]
     fn tracker_coalesces_to_one_global_probe() {
         let mut tracker = UpstreamTracker::default();
-        assert!(tracker.update_session(1, &session_config(["ipsec1"], [])));
-        assert!(!tracker.update_session(2, &session_config(["wlan0"], [])));
-        tracker.finish_probe();
-        assert!(tracker.update_session(2, &session_config(["wlan1"], [])));
+        let probe = probed(tracker.update_session(1, &session_config(["ipsec1"], [])));
+        assert!(tracker
+            .update_session(2, &session_config(["wlan0"], []))
+            .is_none());
+        let rescan = tracker
+            .finish_probe(probe)
+            .rescan
+            .expect("the second session's update is owed a rescan");
+        finish(&mut tracker, rescan);
+        assert!(tracker
+            .update_session(2, &session_config(["wlan1"], []))
+            .is_some());
+    }
+
+    #[test]
+    fn an_update_during_a_probe_discards_it_and_is_replayed_exactly_once() {
+        let mut tracker = UpstreamTracker::default();
+        let probe = probed(tracker.update_session(1, &session_config(["ipsec1"], [])));
+        for interface in ["ipsec2", "ipsec3", "ipsec4"] {
+            assert!(
+                tracker
+                    .update_session(2, &session_config([interface], []))
+                    .is_none(),
+                "{interface} must not start a second scan beside the one running"
+            );
+        }
+        let finished = tracker.finish_probe(probe);
+        assert!(
+            !finished.current,
+            "the sessions moved under this probe, so nothing it saw may be committed"
+        );
+        let rescan = finished
+            .rescan
+            .expect("the updates are owed exactly one rescan");
+        assert!(tracker
+            .update_session(3, &session_config(["ipsec5"], []))
+            .is_none());
+        let finished = tracker.finish_probe(rescan);
+        assert!(!finished.current);
+        let rescan = finished
+            .rescan
+            .expect("the update during the rescan is owed one of its own");
+        finish(&mut tracker, rescan);
+        assert!(tracker
+            .update_session(3, &session_config(["ipsec6"], []))
+            .is_some());
+    }
+
+    #[test]
+    fn a_probe_from_before_a_replacement_commits_nothing() {
+        let mut tracker = UpstreamTracker::default();
+        let stale = probed(tracker.update_session(1, &session_config(["ipsec1"], [])));
+        let target = expected_target();
+        assert_eq!(tracker.session_for_new_target(&target), Some(1));
+
+        assert!(tracker
+            .update_session(1, &session_config(["ipsec1", "ipsec2"], []))
+            .is_none());
+        let finished = tracker.finish_probe(stale);
+        assert!(
+            !finished.current,
+            "a probe from before a replacement speaks for the session set it predates"
+        );
+        assert_eq!(tracker.session_for_new_target(&target), None);
+
+        let rescan = finished.rescan.expect("the replacement is owed a rescan");
+        let finished = tracker.finish_probe(rescan);
+        assert!(
+            finished.current,
+            "the rescan speaks for the new session set"
+        );
+        assert!(
+            finished.rescan.is_none(),
+            "and nothing more is owed, so the flight ends here"
+        );
+        tracker.retain_observed_targets(std::slice::from_ref(&target));
+        assert_eq!(tracker.session_for_new_target(&target), None);
+    }
+
+    #[test]
+    fn an_upstream_that_goes_away_neither_discards_nor_replays() {
+        let mut tracker = UpstreamTracker::default();
+        let opening = probed(tracker.update_session(1, &session_config(["ipsec1"], [])));
+        finish(&mut tracker, opening);
+        let probe = probed(tracker.update_session(2, &session_config(["ipsec2"], [])));
+
+        tracker.remove_session(2);
+        let finished = tracker.finish_probe(probe);
+        assert!(
+            finished.current,
+            "a departure does not make an in-flight probe stale"
+        );
+        assert!(
+            finished.rescan.is_none(),
+            "and it does not ask for a scan of its own"
+        );
+        assert_eq!(tracker.session_for_interface("ipsec1"), Some(1));
+        assert_eq!(tracker.session_for_interface("ipsec2"), None);
+
+        let probe = probed(tracker.update_session(2, &session_config(["ipsec2"], [])));
+        assert!(
+            tracker.update_session(2, &session_config([], [])).is_none(),
+            "losing every upstream asks for no probe"
+        );
+        let finished = tracker.finish_probe(probe);
+        assert!(finished.current);
+        assert!(finished.rescan.is_none());
+        assert_eq!(tracker.session_for_interface("ipsec1"), Some(1));
+        assert_eq!(tracker.session_for_interface("ipsec2"), None);
+    }
+
+    #[test]
+    fn a_probe_from_before_a_clean_commits_nothing() {
+        let mut tracker = UpstreamTracker::default();
+        let stale = probed(tracker.update_session(1, &session_config(["ipsec1"], [])));
+        tracker.clear();
+        let current = probed(tracker.update_session(2, &session_config(["ipsec1"], [])));
+        let target = expected_target();
+        assert_eq!(tracker.session_for_new_target(&target), Some(2));
+
+        let finished = tracker.finish_probe(stale);
+        assert!(!finished.current);
+        assert!(finished.rescan.is_none());
+        assert_eq!(tracker.session_for_new_target(&target), None);
+        assert!(tracker
+            .update_session(2, &session_config(["ipsec1", "ipsec2"], []))
+            .is_none());
+        let rescan = tracker
+            .finish_probe(current)
+            .rescan
+            .expect("the update during the current probe is owed a rescan");
+        finish(&mut tracker, rescan);
+        assert_eq!(tracker.session_for_new_target(&target), None);
+    }
+
+    #[test]
+    fn a_clean_drops_the_rescan_it_found_owed() {
+        let mut tracker = UpstreamTracker::default();
+        let stale = probed(tracker.update_session(1, &session_config(["ipsec1"], [])));
+        assert!(tracker
+            .update_session(2, &session_config(["ipsec3"], []))
+            .is_none());
+        tracker.clear();
+        let current = probed(tracker.update_session(3, &session_config(["ipsec1"], [])));
+        let finished = tracker.finish_probe(stale);
+        assert!(!finished.current);
+        assert!(
+            finished.rescan.is_none(),
+            "and it schedules nothing: its flight ended with the sessions it spoke for"
+        );
+        finish(&mut tracker, current);
     }
 
     #[test]
     fn tracker_emits_each_observed_target_once() {
         let mut tracker = UpstreamTracker::default();
-        assert!(tracker.update_session(1, &session_config(["ipsec1"], [])));
+        assert!(tracker
+            .update_session(1, &session_config(["ipsec1"], []))
+            .is_some());
         let target = expected_target();
         tracker.retain_observed_targets(std::slice::from_ref(&target));
         assert_eq!(tracker.session_for_new_target(&target), Some(1));

@@ -10,6 +10,10 @@ pub use etherparse::icmpv6::TYPE_TIME_EXCEEDED as ICMPV6_TIME_EXCEEDED;
 
 use crate::shared::model::Network;
 
+/// If the wire identifier space is occupied, only the new request is refused; replies or mapping expiry
+/// release values without disturbing existing mappings.
+const ECHO_IDENTIFIER_COUNT: usize = u16::MAX as usize + 1;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Nat66Destination {
     Gateway,
@@ -141,7 +145,7 @@ impl EchoMap {
         allocation: EchoAllocation,
     ) -> io::Result<(u16, u16)> {
         self.expire(now, timeout);
-        for _ in 0..=u16::MAX {
+        for _ in 0..ECHO_IDENTIFIER_COUNT {
             let id = self.next_id;
             self.next_id = self.next_id.wrapping_add(1);
             let key = EchoKey {

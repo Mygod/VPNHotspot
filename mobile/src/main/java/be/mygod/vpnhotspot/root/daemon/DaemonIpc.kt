@@ -9,11 +9,8 @@ import io.ktor.utils.io.writeInt
 import java.io.IOException
 
 object DaemonIpc {
-    /**
-     * Matches Android's documented Binder transaction buffer size. AOSP's hidden
-     * `IBinder.MAX_IPC_SIZE` is only the smaller suggested per-call cap.
-     */
-    const val MAX_FRAME_SIZE = 1024 * 1024
+    /** Keeps the length-prefixed frame representable by `ByteArray`. */
+    const val MAX_FRAME_SIZE = Int.MAX_VALUE - Int.SIZE_BYTES
 
     suspend fun readFrame(input: ByteReadChannel): ByteArray {
         val length = input.readInt()

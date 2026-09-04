@@ -15,11 +15,34 @@ These additional reflected whitelisted/system API are listed below:
 * `Landroid/bluetooth/BluetoothProfile;->PAN:I,sdk,system-api,test-api`
 * (prior to API 30) `Landroid/net/ConnectivityManager;->startTethering(IZLandroid/net/ConnectivityManager$OnStartTetheringCallback;Landroid/os/Handler;)V,sdk,system-api,test-api`
 * (prior to API 30) `Landroid/net/ConnectivityManager;->stopTethering(I)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/IpPrefix;-><init>(Ljava/net/InetAddress;I)V,sdk,test-api`
 * `Landroid/net/LinkAddress;-><init>(Ljava/lang/String;)V,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/LinkAddress;-><init>(Ljava/net/InetAddress;I)V,sdk,test-api`
 * (since API 30) `Landroid/net/LinkAddress;->getDeprecationTime()J,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/LinkAddress;->getExpirationTime()J,sdk,system-api,test-api`
 * `Landroid/net/LinkProperties;->getAllInterfaceNames()Ljava/util/List;,sdk,system-api,test-api`
 * `Landroid/net/LinkProperties;->getAllRoutes()Ljava/util/List;,sdk,system-api,test-api`
+* (since API 30) `Landroid/net/NetworkAgent;-><init>(Landroid/content/Context;Landroid/os/Looper;Ljava/lang/String;Landroid/net/NetworkCapabilities;Landroid/net/LinkProperties;ILandroid/net/NetworkAgentConfig;Landroid/net/NetworkProvider;)V,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkAgent;->register()Landroid/net/Network;,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkAgent;->markConnected()V,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkAgent;->unregister()V,sdk,test-api`
+* (since API 31) `Landroid/net/NetworkAgent;->onNetworkCreated()V,sdk,test-api`
+* (since API 31) `Landroid/net/NetworkAgent;->onNetworkDestroyed()V,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkAgent;->onNetworkUnwanted()V,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkAgent;->getNetwork()Landroid/net/Network;,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkAgentConfig$Builder;-><init>()V,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkAgentConfig$Builder;->setLegacyType(I)Landroid/net/NetworkAgentConfig$Builder;,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkAgentConfig$Builder;->setLegacyTypeName(Ljava/lang/String;)Landroid/net/NetworkAgentConfig$Builder;,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkAgentConfig$Builder;->build()Landroid/net/NetworkAgentConfig;,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkCapabilities;->NET_CAPABILITY_NOT_VCN_MANAGED:I,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkCapabilities$Builder;-><init>()V,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkCapabilities$Builder;->addTransportType(I)Landroid/net/NetworkCapabilities$Builder;,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkCapabilities$Builder;->addCapability(I)Landroid/net/NetworkCapabilities$Builder;,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkCapabilities$Builder;->removeCapability(I)Landroid/net/NetworkCapabilities$Builder;,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkCapabilities$Builder;->setNetworkSpecifier(Landroid/net/NetworkSpecifier;)Landroid/net/NetworkCapabilities$Builder;,sdk,test-api`
+* (since API 30) `Landroid/net/NetworkCapabilities$Builder;->build()Landroid/net/NetworkCapabilities;,sdk,test-api`
+* (since API 30) `Landroid/net/RouteInfo;->RTN_UNICAST:I,sdk,test-api`
+* (since API 30) `Landroid/net/RouteInfo;-><init>(Landroid/net/IpPrefix;Ljava/net/InetAddress;Ljava/lang/String;I)V,sdk,test-api`
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onClientsChanged(Ljava/util/Collection;)V,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onError(Ljava/lang/String;I)V,sdk,system-api,test-api`
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onError(Landroid/net/TetheringInterface;I)V,sdk,system-api,test-api`

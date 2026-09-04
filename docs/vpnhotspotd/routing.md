@@ -5,11 +5,11 @@ ports and capabilities produced by DNS and NAT66 startup, then turns
 `SessionConfig` into concrete kernel, netfilter, and netd state.
 
 This document is a mutation catalog. Every route, rule, address, firewall, and
-`ndc` mutation made by `routing.rs` and `routing/` should be listed here.
+`ndc` mutation made under `root/routing/` should be listed here.
 
 ## Mutation Model
 
-[`routing.rs`](../../mobile/src/main/rust/vpnhotspotd/src/routing.rs)
+[`root/routing/mod.rs`](../../mobile/src/main/rust/vpnhotspotd/src/root/routing/mod.rs)
 represents session routing state as `RoutingMutation` values:
 
 | Mutation | External apply | Session rollback |
@@ -35,14 +35,14 @@ can retry the ensure later.
 The `applied` list is only the current process rollback list. It is not
 persisted and is not a Clean source of truth.
 
-`routing::Runtime` owns one rtnetlink request connection for the session
+`root::routing::Runtime` owns one rtnetlink request connection for the session
 lifetime. Startup transfers the connection used for downstream discovery;
 replacement and normal stop reuse it. Request failures are reported and later
 operations remain best effort; the runtime does not reconnect.
 
 ## Session Desired Mutations
 
-[`routing/desired.rs`](../../mobile/src/main/rust/vpnhotspotd/src/routing/desired.rs)
+[`root/routing/desired.rs`](../../mobile/src/main/rust/vpnhotspotd/src/root/routing/desired.rs)
 builds this desired state. The order below follows the producer order.
 
 ### IP Forwarding
@@ -106,7 +106,7 @@ Rollback:
 - no session rollback for the `vpnhotspot_dns_nat` chain itself.
 
 Routing only redirects packets. MAC ownership and DNS upstream selection belong
-to [`dns.rs`](../../mobile/src/main/rust/vpnhotspotd/src/dns.rs). A DNS
+to [`root/dns.rs`](../../mobile/src/main/rust/vpnhotspotd/src/root/dns.rs). A DNS
 listener is not committed unless both the listener and matching MAC redirect
 and direct-port guard rules exist.
 
@@ -405,9 +405,19 @@ External mutation:
 
 - `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p icmpv6 --icmpv6-type echo-request ! -d <nat66-gateway> -j NFQUEUE --queue-num 30000`
 
+The daemon leaves queue length and fail-open policy at the fresh kernel defaults.
+It requests the maximum packet copy and enables netlink `ENOBUFS` notifications.
+The nfnetlink attribute can retain 65,531 packet bytes; Rust detects
+`NFQA_CAP_LEN` and drops a truncated packet without parsing or a traffic-driven
+report. The fresh queue is fail-closed, so overflow drops new packets before
+userspace and produces no userspace message; `ENOBUFS` remains a structured
+receive failure.
+
 Rollback:
 
-- delete the same rule.
+- delete the same rule;
+- when the last dispatcher owner stops, close/unbind queue `30000`; the kernel
+  drops any packets still awaiting verdicts.
 
 Routing must omit this rule when ICMP registration failed. Packets must not be
 queued unless the process-wide ICMP dispatcher has a live session registration
@@ -598,7 +608,7 @@ MAC set before proxying or counting it.
 
 ## Process-Wide NAT66 Firewall Base
 
-[`control.rs`](../../mobile/src/main/rust/vpnhotspotd/src/control.rs) calls
+[`root/control/mod.rs`](../../mobile/src/main/rust/vpnhotspotd/src/root/control/mod.rs) calls
 `ensure_ipv6_nat_firewall_base` before starting the first session that requests
 NAT66. This is outside per-session desired state. Failure is reported as a
 structured nonfatal tied to the start-session call and disables NAT66 for that
@@ -633,7 +643,7 @@ Process/session cleanup:
 ## Static Address Replacement
 
 `ReplaceStaticAddressesCommand` is not session routing, but it is implemented
-under `routing/` and mutates interface addresses.
+under `root/routing/` and mutates interface addresses.
 
 External mutations:
 
@@ -749,6 +759,37 @@ The daemon uses these table conventions:
 Table 900 may be flushed by Clean because it is reserved by VPNHotspot. Table
 97 must not be flushed; delete only reconstructed VPNHotspot NAT66 routes from
 it.
+
+## Rootless Shizuku Mode
+
+This mode makes no root routing mutation. `CleanRoutingCommand` applies to none
+of the rows below. Android control calls use Shizuku identity; the dataplane
+child runs at the app UID. See [`shizuku.md`](shizuku.md#external-state-and-cleanup).
+
+| State | Trigger and shape | Normal stop or rollback | Process death, force stop, uninstall |
+| --- | --- | --- | --- |
+| `testtunN` TUN | `TestNetworkManager.createTunInterface`, never `setupTestNetwork` | close both the app descriptor and the child's duplicate | app descriptor closes; child descriptor closes on child exit, but a wedged child may survive |
+| `192.0.2.1/30` and `2001:db8:1::1/64` on it | assigned by `createTunInterface` | with the interface | with the interface |
+| Restricted native network | `NetworkAgent.register`: `TRANSPORT_TEST`, no `NOT_RESTRICTED` or `INTERNET`; API 31+ also has an empty allowed-UID set | unregister agent and await `onNetworkUnwanted` plus request `onLost` after availability; when the runtime exposes the created/destroyed pair (baseline API 31+), also await `onNetworkDestroyed` after creation; otherwise there is no exact native-destruction callback | agent Binder death removes it |
+| Its routes and DNS servers | the agent's immutable `LinkProperties`: one connected route per address, an IPv4 and an IPv6 default route, and `192.0.2.2`/`fd00::53` as resolvers | with the network | with the network |
+| Exact foreground request | privileged `requestNetwork` | `IConnectivityManager.releaseNetworkRequest(handle)` under the issuing effective UID | callback Binder death |
+| App-UID child | `ProcessBuilder`; start call transfers a duplicate TUN descriptor | close control; wait 10 s; SIGTERM; wait 5 s; SIGKILL; wait up to 5 s, failing withdrawal if exit is unconfirmed | EOF ends a healthy child; no ordered escalation runs for a wedged child |
+| Global preference | `ITetheringConnector.setPreferTestNetworks(true)` | owned retirement calls `setPreferTestNetworks(false)` | not cleared; tethering-service death or reboot resets it |
+
+Framework-owned consequences:
+
+| State | Trigger and shape | Owner | How it goes away |
+| --- | --- | --- | --- |
+| `TestNetworkService` singleton | first `startOrGetTestNetworkService` per boot | system server | system-server death or reboot |
+| Downstream forwarding, IPv4 MASQUERADE and delegated `/64` | tethering selects the TestNetwork | tethering | another upstream is selected or tethering stops |
+| `testtunN` rules in netd `tetherctrl_counters` | same selection | netd | observed to persist on Android 17 until reboot |
+
+The documentation prefixes cannot collide with a real client destination. If the
+app dies, the global preference may select the next test network, including a
+foreign one, until a later owned session clears it or tethering/reboot resets it.
+Stale Android 17 counter rules must not be removed from the shared netd chain.
+Losing the network makes tethering select an ordinary upstream, so clients
+continue unprotected.
 
 ## Guardrails
 

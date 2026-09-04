@@ -60,6 +60,19 @@ Routing, firewall, addresses, and daemon/service state managed by this app are c
 
 ### [No root?](https://github.com/Mygod/VPNHotspot/issues/62)
 
+Rootless Shizuku mode is in development
+([#789](https://github.com/Mygod/VPNHotspot/issues/789)) and is not equivalent to
+root mode:
+
+- It relays tethered traffic under this app UID's ordinary network policy,
+  including VPN split/excluded-route fallthrough. Other apps can inject
+  packets through the TUN interface. They cannot read tunnel traffic or receive
+  downstream-routed replies. A VPN-excluded app may therefore send through the
+  VPN anyway.
+- Stopping or losing the TestNetwork does not stop the hotspot. Android selects
+  an ordinary upstream and clients continue unprotected without a client-side
+  warning.
+
 ### Failed to create group due to internal error/repeater shuts down after a while?
 
 This could caused by the Wi-Fi channel you selected is no longer available, due to:
@@ -87,6 +100,29 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (prior to API 30) `Landroid/net/ConnectivityManager;->EXTRA_AVAILABLE_TETHER:Ljava/lang/String;,max-target-r`
 * (prior to API 30) `Landroid/net/ConnectivityManager;->ACTION_TETHER_STATE_CHANGED:Ljava/lang/String;,max-target-r`
 * (prior to API 30) `Landroid/net/ConnectivityManager;->EXTRA_ERRORED_TETHER:Ljava/lang/String;,max-target-r`
+* (since API 30) `Landroid/net/ConnectivityManager;->mContext:Landroid/content/Context;,max-target-o`
+* (since API 30) `Landroid/net/ConnectivityManager;->mService:Landroid/net/IConnectivityManager;,max-target-p`
+* (since API 30) `Landroid/net/ConnectivityManager;->sInstance:Landroid/net/ConnectivityManager;,max-target-o`
+* (since API 31) `Landroid/net/ConnectivityManager;->mEnabledConnectivityManagerFeatures:Ljava/lang/Long;,blocked`
+* (since API 31) `Landroid/net/ConnectivityManager;->mEnabledConnectivityManagerFeaturesLock:Ljava/lang/Object;,blocked`
+* (since API 30) `Landroid/net/ConnectivityManager;->mNetworkActivityListeners:Landroid/util/ArrayMap;,max-target-o`
+* (since API 31) `Landroid/net/ConnectivityManager;->mQosCallbackConnections:Ljava/util/List;,blocked`
+* (since API 30) `Landroid/net/ConnectivityManager;->mTetheringEventCallbacks:Landroid/util/ArrayMap;,blocked`
+* (since API 30) `Landroid/net/ConnectivityManager;->mTetheringManager:Landroid/net/TetheringManager;,blocked`
+* (since API 31) `Landroid/net/ConnectivityManager;->isFeatureEnabled(J)Z,blocked`
+* (since API 30) `Landroid/net/ConnectivityManager;->TYPE_TEST:I,blocked`
+* (since API 30) `Landroid/net/NetworkCapabilities;->TRANSPORT_TEST:I,blocked`
+* (since API 30) `Landroid/net/ConnectivityManager$NetworkCallback;->networkRequest:Landroid/net/NetworkRequest;,max-target-o`
+* (since API 30) `Landroid/net/IConnectivityManager;->releaseNetworkRequest(Landroid/net/NetworkRequest;)V,max-target-o`
+* (since API 30) `Landroid/net/IConnectivityManager;->startOrGetTestNetworkService()Landroid/os/IBinder;,blocked`
+* (since API 30) `Landroid/net/IConnectivityManager$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/IConnectivityManager;,unsupported`
+* (since API 30) `Landroid/net/ITestNetworkManager$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/ITestNetworkManager;,blocked`
+* (since API 31) `Landroid/net/connectivity/android/net/ITestNetworkManager$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/connectivity/android/net/ITestNetworkManager;,blocked`
+* (since API 30) `Landroid/net/TestNetworkManager;-><init>(Landroid/net/ITestNetworkManager;)V,blocked`
+* (since API 31) `Landroid/net/TestNetworkManager;-><init>(Landroid/net/connectivity/android/net/ITestNetworkManager;)V,blocked`
+* (since API 30) `Landroid/net/TestNetworkManager;->createTunInterface([Landroid/net/LinkAddress;)Landroid/net/TestNetworkInterface;,blocked`
+* (since API 30) `Landroid/net/TestNetworkInterface;->getFileDescriptor()Landroid/os/ParcelFileDescriptor;,blocked`
+* (since API 30) `Landroid/net/TestNetworkInterface;->getInterfaceName()Ljava/lang/String;,blocked`
 * (since API 30) `Landroid/net/ConnectivityModuleConnector;->IN_PROCESS_SUFFIX:Ljava/lang/String;`
 * (since API 31) `Landroid/net/INetd$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/INetd;`
 * (since API 31) `Landroid/net/INetd;->ipSecUpdateSecurityPolicy(IIILjava/lang/String;Ljava/lang/String;IIII)V`
@@ -94,6 +130,8 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 30) `Landroid/net/IIntResultListener;->onResult(I)V,blocked`
 * (since API 30) `Landroid/net/ITetheringConnector;->stopTethering(ILjava/lang/String;Landroid/net/IIntResultListener;)V,blocked`
 * (since API 30) `Landroid/net/ITetheringConnector;->stopTethering(ILjava/lang/String;Ljava/lang/String;Landroid/net/IIntResultListener;)V,blocked`
+* (since API 30) `Landroid/net/ITetheringConnector$Stub;->asInterface(Landroid/os/IBinder;)Landroid/net/ITetheringConnector;,blocked`
+* (since API 30) `Landroid/net/ITetheringConnector;->setPreferTestNetworks(ZLandroid/net/IIntResultListener;)V,blocked`
 * (since API 30) `Landroid/net/TetheringManager$ConnectorConsumer;->onConnectorAvailable(Landroid/net/ITetheringConnector;)V,blocked`
 * (since API 30) `Landroid/net/TetheringManager$TetheringEventCallback;->onTetherableInterfaceRegexpsChanged(Landroid/net/TetheringManager$TetheringInterfaceRegexps;)V,blocked`
 * (since API 31) `Landroid/net/TetheringManager$TetheringEventCallback;->onSupportedTetheringTypes(Ljava/util/Set;)V,blocked`
@@ -171,6 +209,9 @@ Greylisted/blacklisted APIs or internal constants: (some constants are hardcoded
 * (since API 33) `Ldalvik/system/DexPathList;->nativeLibraryDirectories:Ljava/util/List;,unsupported`
 * (prior to API 33) `Ljava/lang/invoke/MethodHandles$Lookup;-><init>(Ljava/lang/Class;I)V,unsupported`
 * (prior to API 33) `Ljava/lang/invoke/MethodHandles$Lookup;->ALL_MODES:I,lo-prio,max-target-o`
+* (since API 30) `Ljava/lang/UNIXProcess;->pid:I,unsupported`
+* (since API 30) `Lsun/misc/Unsafe;->theUnsafe:Lsun/misc/Unsafe;,unsupported`
+* (since API 30) `Lsun/misc/Unsafe;->allocateInstance(Ljava/lang/Class;)Ljava/lang/Object;,unsupported`
 
 See [`mobile/src/hiddenApiStubs`](mobile/src/hiddenApiStubs) for hidden whitelisted/system APIs as well as partial SDK-class stubs.
 
@@ -182,6 +223,7 @@ Nonexported system resources:
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_wifi_p2p_regexs`
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_wifi_regexs`
 * (since API 30) `@com.android.networkstack.tethering:array/config_tether_wigig_regexs`
+* (on API 30-33) `@com.android.networkstack.tethering:bool/config_tether_upstream_automatic`
 * (since API 30) `@com.android.wifi.resources:bool/config_wifi_p2p_mac_randomization_supported`
 * (since API 31) `@com.android.wifi.resources:integer/config_wifiFrameworkSoftApShutDownIdleInstanceInBridgedModeTimeoutMillisecond`
 * (since API 30) `@com.android.wifi.resources:integer/config_wifiFrameworkSoftApShutDownTimeoutMilliseconds`
@@ -198,22 +240,47 @@ Other:
   transparent sockets. ICMPv6 Echo interception uses app-owned queue `30000`
   and assumes queued downstream packets expose six-byte source hardware-address
   metadata through `NFQA_HWADDR`.
+* (since API 30) The privileged `ConnectivityManager` is allocated without a
+  constructor to avoid changing `sInstance`. It copies all instance fields, then
+  replaces `mContext`/`mService`; other fields and monitors remain shared. It is
+  used only for the exact request, its release and the agent's service lookup.
+* (since API 30) `TestNetworkManager` selects the one-interface-parameter
+  constructor whose runtime parameter has a compatible `$Stub.asInterface`.
+  The parameter's name supplies the possibly relocated TestNetwork interface;
+  unrelated additive constructors are ignored.
+* (since API 30) `android.net.IConnectivityManager` is not jarjar-relocated. Its
+  unsupported-app-usage reachability excludes it from Connectivity relocation.
+* (since API 30) The Shizuku restricted-network preflight accepts either
+  `CONNECTIVITY_USE_RESTRICTED_NETWORKS` or the legacy `CONNECTIVITY_INTERNAL`,
+  mirroring ConnectivityService's permission fallback. Shell-backed Shizuku on
+  API 30 relies on the fallback.
+* (since API 30) Adding `TRANSPORT_TEST` before
+  `NetworkRequest.Builder.setNetworkSpecifier(String)` produces a
+  `StringNetworkSpecifier` on API 30 and a `TestNetworkSpecifier` on API 31+.
+  The request's actual object is reused for the agent and its known runtime type
+  is asserted.
+* (since API 31) A fresh `NetworkCapabilities.Builder` has an empty allowed-UID
+  set. Omitting `NOT_RESTRICTED` publishes a restricted netd network without the
+  blocked `setAllowedUids`; the empty set cannot be read back reliably. API 30
+  instead uses its older restricted-network permission model.
+* (since API 30) Tethering delegates a restricted TestNetwork's global `/64` to
+  only the oldest active downstream and clamps its MTU to 1280-1500. An older
+  local-only downstream can therefore prevent tethered IPv6.
+* API 30's `com.android.tethering` APEX can update `framework-tethering`, so
+  `setPreferTestNetworks` is capability-probed and invoked reflectively. API 31
+  adds the updatable `framework-connectivity` and `service-connectivity`; agent
+  lifecycle callbacks and relocated TestNetwork shapes are therefore probed too.
 * (since API 30) Relevant tethering APEX classes used here, including `android.net.ITetheringConnector`,
   may be jarjar-relocated under the optional prefixes
   `android.net.connectivity` or `com.android.connectivity`.
 * (since API 31) Relevant netd APEX classes used here, including `android.net.INetd*`,
   may be jarjar-relocated under the optional prefixes
   `android.net.connectivity` or `com.android.connectivity`.
-* (since API 30) When runtime `TetheringEventCallback.onLocalOnlyInterfacesChanged` is present, AOSP dispatches
-  startup tether-state callbacks from one `executor.execute { ... }` block in `onCallbackStarted`,
-  and later tether-state updates from one `executor.execute { ... }` block in
-  `onTetherStatesChanged`.
-* The Rust DNS proxy submits upstream queries through `android_res_nsend`/`android_res_nresult`.
-  To keep daemon tasks nonblocking while still using `android_res_nresult` as the public result
-  reader/closer, it waits for `dnsproxyd` to close the one-shot `resnsend` client socket before
-  reading the result. This assumes `resnsend` writes the complete resolver result before returning
-  and the socket receive buffer can hold that result until the framework socket listener closes the
-  client socket.
+* (since API 30) Tethering startup callbacks and later state updates are each
+  dispatched from one executor task; `TetherStates` relies on that burst ordering.
+* The Rust DNS proxy reads `android_res_nsend` results only after `dnsproxyd` closes the one-shot
+  `resnsend` client socket, so it assumes `resnsend` writes the complete result before returning and
+  that the socket buffer holds it until then. See [`docs/vpnhotspotd/dns.md`](docs/vpnhotspotd/dns.md).
 * For `ip rule` priorities, AOSP local-network/tethering priorities are assumed to be 17000/18000
   on API 29..30 and 20000/21000 on API 31+. VPNHotspot uses the 17500..17900 or 20500..20900
   gap between them.

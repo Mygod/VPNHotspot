@@ -4,7 +4,14 @@ use std::net::{Ipv6Addr, SocketAddrV6};
 use etherparse::icmpv6::TYPE_ECHO_REQUEST as ICMPV6_ECHO_REQUEST;
 use etherparse::{IcmpEchoHeader, Icmpv6Type, IpNumber, Ipv6Header, UdpHeader};
 
+/// Bytes in the fixed ICMPv6 error/Echo header defined by RFC 4443. Generated packets always retain the whole
+/// header; inputs too short to supply their own required headers are rejected rather than partially quoted.
+/// <https://www.rfc-editor.org/rfc/rfc4443.html#section-3>
 const ICMPV6_HEADER_LEN: usize = 8;
+/// Maximum complete generated ICMPv6 packet. RFC 4443 section 2.4(c) requires an error to fit IPv6's
+/// 1,280-byte minimum MTU, so quote/payload bytes beyond the remaining space are omitted while required inner
+/// headers are preserved. This bounds each generated packet without dropping an otherwise valid error.
+/// <https://www.rfc-editor.org/rfc/rfc4443.html#section-2.4>
 const ICMPV6_MINIMUM_MTU: usize = 1280;
 
 pub fn build_echo_request_zero_checksum(id: u16, seq: u16, payload: &[u8]) -> Vec<u8> {

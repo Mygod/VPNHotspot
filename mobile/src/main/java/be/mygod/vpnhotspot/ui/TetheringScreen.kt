@@ -74,6 +74,7 @@ import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.LocalOnlyHotspotService
 import be.mygod.vpnhotspot.R
 import be.mygod.vpnhotspot.RepeaterService
+import be.mygod.vpnhotspot.ShizukuTetheringService
 import be.mygod.vpnhotspot.StaticIpSetter
 import be.mygod.vpnhotspot.TetheringService
 import be.mygod.vpnhotspot.manage.BluetoothTethering
@@ -86,6 +87,7 @@ import be.mygod.vpnhotspot.net.TetheringManagerCompat
 import be.mygod.vpnhotspot.net.wifi.WifiApManager
 import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.root.WifiApCommands
+import be.mygod.vpnhotspot.shizuku.ShizukuTestNetwork
 import be.mygod.vpnhotspot.net.wifi.VendorData
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
 import be.mygod.vpnhotspot.util.Services
@@ -295,6 +297,22 @@ fun TetheringScreen(
                         checked = localOnlyIface != null,
                         onClick = onConfigureTemporaryHotspot ?: toggleLocalOnly,
                         onCheckedChange = if (onConfigureTemporaryHotspot == null) null else toggleLocalOnly,
+                    )
+                }
+                if (Build.VERSION.SDK_INT >= 30 && ShizukuTestNetwork.supported) row(R.string.shizuku_tethering) {
+                    val shizuku by ShizukuTetheringService.status.collectAsStateWithLifecycle(
+                        ShizukuTetheringService.Status(null, on = false))
+                    TetheringRow(
+                        icon = R.drawable.ic_alt_route,
+                        title = stringResource(R.string.shizuku_tethering),
+                        summary = shizuku.label?.let { AnnotatedString(stringResource(it)) },
+                        checked = shizuku.on,
+                        onClick = {
+                            if (!inspectionMode) {
+                                if (shizuku.on) ShizukuTetheringService.stop(context)
+                                else ShizukuTetheringService.start(context)
+                            }
+                        },
                     )
                 }
                 row(R.string.tethering_static_ip) {

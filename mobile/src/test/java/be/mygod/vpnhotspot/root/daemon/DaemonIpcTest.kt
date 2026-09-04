@@ -73,8 +73,5 @@ class DaemonIpcTest {
         assertThrows(IllegalArgumentException::class.java) {
             runBlocking { DaemonIpc.writeFrame(ByteChannel(), ByteArray(0)) }
         }
-        assertThrows(IllegalArgumentException::class.java) {
-            runBlocking { DaemonIpc.writeFrame(ByteChannel(), ByteArray(DaemonIpc.MAX_FRAME_SIZE + 1)) }
-        }
     }
 }

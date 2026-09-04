@@ -1,7 +1,13 @@
 package be.mygod.vpnhotspot.util
 
 import android.annotation.SuppressLint
+import android.net.ConnectivityManager
+import android.net.IConnectivityManager
+import android.net.IIntResultListener
+import android.net.ITetheringConnector
 import android.net.MacAddress
+import android.net.NetworkRequest
+import android.net.TestNetworkManager
 import android.net.TetheringManager
 import android.net.wifi.SoftApCapability
 import android.net.wifi.SoftApConfiguration
@@ -12,11 +18,13 @@ import android.net.wifi.`WifiManager$SoftApCallback`
 import android.net.wifi.p2p.WifiP2pConfig
 import android.os.Build
 import android.os.IBinder
+import android.os.IInterface
 import android.os.Looper
 import android.service.quicksettings.TileService
 import androidx.annotation.RequiresApi
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 import timber.log.Timber
+import java.lang.reflect.Modifier
 import java.util.concurrent.Executor
 
 /**
@@ -108,12 +116,168 @@ object UnblockCentral {
         }
     }
 
+    /**
+     * Overridden after a constructor-free [ConnectivityManager] copy; all other instance fields stay aliased.
+     */
+    val ConnectivityManager_mContext by lazy {
+        init
+        ConnectivityManager::class.java.getDeclaredField("mContext").apply { isAccessible = true }
+    }
+    /** Privileged binder override paired with [ConnectivityManager_mContext]. */
+    val ConnectivityManager_mService by lazy {
+        init
+        ConnectivityManager::class.java.getDeclaredField("mService").apply { isAccessible = true }
+    }
+    /** Read only to verify constructor-free allocation did not replace the process singleton. */
+    val ConnectivityManager_sInstance by lazy {
+        init
+        ConnectivityManager::class.java.getDeclaredField("sInstance").apply { isAccessible = true }
+    }
+    /**
+     * Warms the ordinary manager's feature cache before copying it. The member appears in API 35 and is
+     * consumed from API 36; a runtime probe handles independently updated Connectivity modules.
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-15.0.0_r1/framework/src/android/net/ConnectivityManager.java#4551
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-16.0.0_r1/framework/src/android/net/NetworkAgent.java#624
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/ConnectivityManager.java#4896
+     */
+    val ConnectivityManager_isFeatureEnabled by lazy {
+        init
+        try {
+            ConnectivityManager::class.java.getDeclaredMethod("isFeatureEnabled",
+                Long::class.javaPrimitiveType).apply { isAccessible = true }
+        } catch (e: NoSuchMethodException) {
+            if (Build.VERSION.SDK_INT >= 35) Timber.w(e)
+            null
+        }
+    }
+
+    /**
+     * Exact service-returned request handle. It classifies issuance and survives until direct privileged
+     * release; the public unregister wrapper discards the callback mapping on any normal RPC return.
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/core/java/android/net/ConnectivityManager.java#3493
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/ConnectivityManager.java#4189
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/ConnectivityManager.java#4858
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/ConnectivityManager.java#4783
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/ConnectivityManager.java#5605
+     */
+    val NetworkCallback_networkRequest by lazy {
+        init
+        ConnectivityManager.NetworkCallback::class.java.getDeclaredField("networkRequest").apply {
+            if (type != NetworkRequest::class.java) throw NoSuchFieldException(
+                "NetworkCallback.networkRequest has type ${type.name}")
+            isAccessible = true
+        }
+    }
+
+    /**
+     * Preflight for the typed direct release, resolved before the session mutates anything.
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/core/java/android/net/IConnectivityManager.aidl#186
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-13.0.0_r1/framework/src/android/net/IConnectivityManager.aidl#169
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-17.0.0_r1/framework/src/android/net/IConnectivityManager.aidl#174
+     */
+    @get:RequiresApi(30)
+    val IConnectivityManager_releaseNetworkRequest by lazy {
+        init
+        IConnectivityManager::class.java.getDeclaredMethod("releaseNetworkRequest",
+            NetworkRequest::class.java).apply {
+            if (returnType != Void.TYPE) throw NoSuchMethodException(
+                "releaseNetworkRequest returns ${returnType.name}")
+        }
+    }
+
+    /**
+     * Preflight for starting the TestNetwork service before the session mutates anything.
+     * https://android.googlesource.com/platform/frameworks/base/+/refs/tags/android-11.0.0_r1/core/java/android/net/IConnectivityManager.aidl#231
+     */
+    @get:RequiresApi(30)
+    val IConnectivityManager_startOrGetTestNetworkService by lazy {
+        init
+        IConnectivityManager::class.java.getDeclaredMethod("startOrGetTestNetworkService").apply {
+            if (returnType != IBinder::class.java) throw NoSuchMethodException(
+                "startOrGetTestNetworkService returns ${returnType.name}")
+        }
+    }
+
+    /**
+     * Selects the constructor whose one interface parameter has a matching `$Stub.asInterface`.
+     * Unrelated additive constructors therefore do not change the selected runtime bridge.
+     */
+    private val TestNetworkManager_bridge by lazy {
+        init
+        val declared = TestNetworkManager::class.java.declaredConstructors
+        val compatible = declared.mapNotNull { constructor ->
+            if (constructor.parameterCount != 1) return@mapNotNull null
+            val iface = constructor.parameterTypes.single()
+            if (!iface.isInterface || !IInterface::class.java.isAssignableFrom(iface)) {
+                return@mapNotNull null
+            }
+            val asInterface = try {
+                Class.forName("${iface.name}\$Stub", true, iface.classLoader)
+                    .getDeclaredMethod("asInterface", IBinder::class.java)
+            } catch (_: ClassNotFoundException) {
+                return@mapNotNull null
+            } catch (_: NoSuchMethodException) {
+                return@mapNotNull null
+            }
+            if (!Modifier.isStatic(asInterface.modifiers) ||
+                !iface.isAssignableFrom(asInterface.returnType)) return@mapNotNull null
+            constructor.apply { isAccessible = true } to asInterface.apply { isAccessible = true }
+        }
+        if (compatible.size != 1) throw NoSuchMethodException(
+            "Expected one TestNetworkManager interface bridge, found ${compatible.size}; declared: " +
+                    declared.joinToString { it.toGenericString() })
+        compatible.single()
+    }
+    val TestNetworkManager_constructor get() = TestNetworkManager_bridge.first
+    val ITestNetworkManager_asInterface get() = TestNetworkManager_bridge.second
+
+    /**
+     * Derives the connector Stub from the already-resolved interface rather than assuming relocation.
+     */
+    @get:RequiresApi(30)
+    val ITetheringConnector_asInterface by lazy {
+        init
+        Class.forName("${ITetheringConnector::class.java.name}\$Stub")
+            .getDeclaredMethod("asInterface", IBinder::class.java).apply {
+                if (!Modifier.isStatic(modifiers) ||
+                    !ITetheringConnector::class.java.isAssignableFrom(returnType)) {
+                    throw NoSuchMethodException("Incompatible ITetheringConnector.Stub.asInterface")
+                }
+                isAccessible = true
+            }
+    }
+
+    /**
+     * This method can arrive through a newer tethering APEX on an older base release. Retaining the
+     * reflected [java.lang.reflect.Method] also keeps the optional invokeinterface edge out of DEX.
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-mainline-12.0.0_r19/Tethering/common/TetheringLib/src/android/net/ITetheringConnector.aidl#53
+     */
+    @get:RequiresApi(30)
+    val ITetheringConnector_setPreferTestNetworks by lazy {
+        init
+        ITetheringConnector::class.java.getDeclaredMethod("setPreferTestNetworks",
+            Boolean::class.javaPrimitiveType, IIntResultListener::class.java).apply {
+                if (returnType != Void.TYPE) throw NoSuchMethodException(
+                    "setPreferTestNetworks returns ${returnType.name}")
+                isAccessible = true
+            }
+    }
+
     @get:RequiresApi(30)
     val TetheringManager_ConnectorConsumer by lazy { Class.forName("android.net.TetheringManager\$ConnectorConsumer") }
+    @get:RequiresApi(30)
+    val TetheringManager_ConnectorConsumer_onConnectorAvailable by lazy {
+        TetheringManager_ConnectorConsumer.getDeclaredMethod(
+            "onConnectorAvailable", ITetheringConnector::class.java).apply {
+            if (returnType != Void.TYPE) throw NoSuchMethodException(
+                "onConnectorAvailable returns ${returnType.name}")
+        }
+    }
     @get:RequiresApi(30)
     val TetheringManager_getConnector by lazy {
         init
         TetheringManager::class.java.getDeclaredMethod("getConnector", TetheringManager_ConnectorConsumer).apply {
+            if (returnType != Void.TYPE) throw NoSuchMethodException("getConnector returns ${returnType.name}")
             isAccessible = true
         }
     }
@@ -126,4 +290,14 @@ object UnblockCentral {
     } catch (e: Exception) {
         Timber.w(e)
     } else { }
+
+    /**
+     * Preflights librootkotlinx's reflected child PID before launch; cleanup needs it for SIGKILL fencing.
+     * https://android.googlesource.com/platform/libcore/+/refs/tags/android-13.0.0_r1/ojluni/src/main/java/java/lang/UNIXProcess.java#56
+     * https://android.googlesource.com/platform/libcore/+/refs/tags/android-17.0.0_r1/ojluni/src/main/java/java/lang/UNIXProcess.java#56
+     */
+    val UNIXProcess_pid by lazy {
+        init
+        Class.forName("java.lang.UNIXProcess").getDeclaredField("pid")
+    }
 }

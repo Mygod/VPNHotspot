@@ -1,3 +1,5 @@
+use crate::shared::failure::Failure;
+
 const HEADER_LEN: usize = 12;
 const FLAG_RESPONSE: u8 = 0x80;
 const FLAG_RECURSION_DESIRED: u8 = 0x01;
@@ -6,23 +8,173 @@ const FLAGS_OPCODE_MASK: u8 = 0x78;
 const FLAGS_AD_CD_MASK: u8 = 0x30;
 const RCODE_SERVFAIL: u8 = 2;
 
+/// The length prefix in front of every message on a DNS stream.
+///
+/// https://www.rfc-editor.org/rfc/rfc1035#section-4.2.2
+pub const PREFIX: usize = 2;
+
+pub const MAX_MESSAGE: usize = u16::MAX as usize;
+
+/// One framed header-only answer: the length prefix and the twelve bytes behind it, and nothing else.
+pub const FRAMED_HEADER: usize = PREFIX + HEADER_LEN;
+
+/// Storage sized from the already-validated framing length; implementations must not grow past that length.
+pub trait Body {
+    /// Returns consumed bytes, whether stored or deliberately discarded; a short count breaks framing.
+    fn extend_within_capacity(&mut self, bytes: &[u8]) -> usize;
+}
+
+/// Fixed header-only sink that drains a refused body without allocating, preserving framing for SERVFAIL.
+#[derive(Debug, Default)]
+pub struct Refused {
+    header: [u8; HEADER_LEN],
+    filled: usize,
+}
+
+impl Refused {
+    /// Builds a header-only SERVFAIL with `QDCOUNT=0`.
+    ///
+    /// Returns `None` for an incomplete header or a message already marked as a response.
+    pub fn framed_servfail(&self) -> Option<[u8; FRAMED_HEADER]> {
+        if self.filled < HEADER_LEN || self.header[2] & FLAG_RESPONSE != 0 {
+            return None;
+        }
+        let mut framed = [0u8; FRAMED_HEADER];
+        framed[..PREFIX].copy_from_slice(&(HEADER_LEN as u16).to_be_bytes());
+        framed[PREFIX..].copy_from_slice(&servfail_header(&self.header, 0));
+        Some(framed)
+    }
+}
+
+impl Body for Refused {
+    fn extend_within_capacity(&mut self, bytes: &[u8]) -> usize {
+        let kept = (HEADER_LEN - self.filled).min(bytes.len());
+        self.header[self.filled..self.filled + kept].copy_from_slice(&bytes[..kept]);
+        self.filled += kept;
+        // Consume bytes beyond the fixed header to preserve framing.
+        bytes.len()
+    }
+}
+
+/// What the next bytes of a DNS stream turned out to be.
+pub enum Framed {
+    /// A complete prefix whose body has not yet been allocated.
+    Length(usize),
+    /// The announced message was filled, into the buffer admitted for it or into the fixed refusal header.
+    Message,
+    /// This chunk is spent before the message is complete.
+    Hungry,
+    /// Unrecoverable framing error: invalid length, insufficient sink, or missing sink.
+    Broken,
+}
+
+/// Frames the two-byte prefix before the caller admits and allocates its body.
+#[derive(Default)]
+pub struct DnsStream {
+    /// The length prefix as it arrives, one byte at a time if that is how the client sends it.
+    prefix: [u8; PREFIX],
+    /// How much of that prefix is here.
+    framed: usize,
+    /// What the announced message still wants. `None` between messages.
+    wanted: Option<usize>,
+}
+
+impl DnsStream {
+    /// Whether a half-close would truncate a prefix or message.
+    pub fn partial(&self) -> bool {
+        self.framed > 0 || self.wanted.is_some()
+    }
+
+    /// Consumes one framing step; call until [Framed::Hungry].
+    ///
+    /// Before [Framed::Length], `body` is `None`; afterward it must be the admitted body or [Refused]. A
+    /// missing or undersized sink is [Framed::Broken].
+    pub fn advance(&mut self, chunk: &mut &[u8], body: Option<&mut dyn Body>) -> Framed {
+        let Some(wanted) = self.wanted else {
+            while self.framed < PREFIX {
+                let Some((byte, rest)) = chunk.split_first() else {
+                    return Framed::Hungry;
+                };
+                self.prefix[self.framed] = *byte;
+                self.framed += 1;
+                *chunk = rest;
+            }
+            let length = u16::from_be_bytes(self.prefix) as usize;
+            if length == 0 {
+                return Framed::Broken;
+            }
+            // Announced, and nothing of it is stored: the caller admits this length before the next call has
+            // anywhere to put it.
+            self.wanted = Some(length);
+            return Framed::Length(length);
+        };
+        let taken = wanted.min(chunk.len());
+        let Some(body) = body else {
+            return Framed::Broken;
+        };
+        if body.extend_within_capacity(&chunk[..taken]) < taken {
+            return Framed::Broken;
+        }
+        *chunk = &chunk[taken..];
+        match wanted - taken {
+            0 => {
+                self.wanted = None;
+                self.framed = 0;
+                Framed::Message
+            }
+            left => {
+                self.wanted = Some(left);
+                Framed::Hungry
+            }
+        }
+    }
+}
+
+/// Length-prefixes one answer, or refuses one no prefix could describe.
+pub fn frame(answer: &[u8]) -> Option<Vec<u8>> {
+    let length = u16::try_from(answer.len()).ok()?;
+    let mut framed = Vec::with_capacity(PREFIX + answer.len());
+    framed.extend_from_slice(&length.to_be_bytes());
+    framed.extend_from_slice(answer);
+    Some(framed)
+}
+
+/// Maps resolver outcomes to per-query SERVFAIL while preserving daemon-wrapper failures for the owner.
+pub fn resolved(result: Result<Vec<u8>, Failure>, query: &[u8]) -> Result<Vec<u8>, Failure> {
+    match result {
+        Ok(answer) => Ok(answer),
+        Err(failure) if failure.reportable().is_none() => servfail_response(query).ok_or(failure),
+        Err(failure) => Err(failure),
+    }
+}
+
 pub fn servfail_response(query: &[u8]) -> Option<Vec<u8>> {
     if query.len() < HEADER_LEN || query[2] & FLAG_RESPONSE != 0 {
         return None;
     }
     let question_end = question_section_end(query)?;
     let mut response = Vec::with_capacity(question_end);
-    response.extend_from_slice(&query[..2]);
+    response.extend_from_slice(&servfail_header(
+        query,
+        u16::from_be_bytes([query[4], query[5]]),
+    ));
+    response.extend_from_slice(&query[HEADER_LEN..question_end]);
+    Some(response)
+}
+
+/// Builds a SERVFAIL header with the supplied question count.
+fn servfail_header(query: &[u8], questions: u16) -> [u8; HEADER_LEN] {
+    let mut header = [0u8; HEADER_LEN];
+    header[..2].copy_from_slice(&query[..2]);
     // Preserve the query opcode and RD bit, clear authoritative/truncated bits, and mark this as
     // a recursive server response with SERVFAIL. AD/CD are copied because clients may use them to
     // express DNSSEC validation preferences even though this daemon only forwards packets.
-    response
-        .push(FLAG_RESPONSE | (query[2] & FLAGS_OPCODE_MASK) | (query[2] & FLAG_RECURSION_DESIRED));
-    response.push(FLAG_RECURSION_AVAILABLE | (query[3] & FLAGS_AD_CD_MASK) | RCODE_SERVFAIL);
-    response.extend_from_slice(&query[4..6]);
-    response.extend_from_slice(&[0, 0, 0, 0, 0, 0]);
-    response.extend_from_slice(&query[HEADER_LEN..question_end]);
-    Some(response)
+    header[2] =
+        FLAG_RESPONSE | (query[2] & FLAGS_OPCODE_MASK) | (query[2] & FLAG_RECURSION_DESIRED);
+    header[3] = FLAG_RECURSION_AVAILABLE | (query[3] & FLAGS_AD_CD_MASK) | RCODE_SERVFAIL;
+    header[4..6].copy_from_slice(&questions.to_be_bytes());
+    // The answer, authority and additional counts stay zero, which is what the array already is.
+    header
 }
 
 fn question_section_end(query: &[u8]) -> Option<usize> {
@@ -66,7 +218,360 @@ fn name_end(packet: &[u8], mut offset: usize) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::servfail_response;
+
+    struct Admitted(Vec<u8>);
+
+    impl Admitted {
+        fn granted(capacity: usize) -> Self {
+            Self(Vec::with_capacity(capacity))
+        }
+    }
+
+    impl Body for Admitted {
+        fn extend_within_capacity(&mut self, bytes: &[u8]) -> usize {
+            let room = self.0.capacity() - self.0.len();
+            let taken = room.min(bytes.len());
+            self.0.extend_from_slice(&bytes[..taken]);
+            taken
+        }
+    }
+
+    #[test]
+    fn a_partial_message_is_distinguishable_from_a_clean_boundary() {
+        let mut stream = DnsStream::default();
+        assert!(!stream.partial());
+
+        let message = vec![0xabu8; 12];
+        let framed = frame(&message).expect("framed");
+        let mut chunk = &framed[..];
+        let Framed::Length(length) = stream.advance(&mut chunk, None) else {
+            panic!("a whole prefix announces a length")
+        };
+        assert_eq!(length, message.len());
+        assert!(stream.partial());
+
+        let mut body = Admitted::granted(length);
+        assert!(matches!(
+            stream.advance(&mut chunk, Some(&mut body)),
+            Framed::Message
+        ));
+        assert_eq!(body.0, message);
+        assert!(chunk.is_empty());
+        assert!(
+            !stream.partial(),
+            "a consumed message leaves a clean boundary"
+        );
+
+        let mut half = &framed[..1];
+        assert!(matches!(stream.advance(&mut half, None), Framed::Hungry));
+        assert!(stream.partial());
+        let mut stream = DnsStream::default();
+        let mut truncated = &framed[..framed.len() - 1];
+        assert!(matches!(
+            stream.advance(&mut truncated, None),
+            Framed::Length(12)
+        ));
+        let mut body = Admitted::granted(12);
+        assert!(matches!(
+            stream.advance(&mut truncated, Some(&mut body)),
+            Framed::Hungry
+        ));
+        assert!(stream.partial());
+    }
+
+    use std::io;
+
+    use super::*;
+    use crate::shared::protocol::reported_io_error_report;
+
+    fn query(id: u16) -> Vec<u8> {
+        let mut query = vec![
+            0x00, 0x00, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 7, b'e', b'x',
+            b'a', b'm', b'p', b'l', b'e', 3, b'c', b'o', b'm', 0, 0x00, 0x01, 0x00, 0x01,
+        ];
+        query[..2].copy_from_slice(&id.to_be_bytes());
+        query
+    }
+
+    fn errno(errno: i32) -> io::Error {
+        io::Error::from_raw_os_error(errno)
+    }
+
+    fn rcode(response: &[u8]) -> u8 {
+        response[3] & 0x0f
+    }
+
+    #[test]
+    fn a_platform_resolver_outcome_answers_its_own_query() {
+        for code in [
+            libc::EBUSY,
+            libc::ETIMEDOUT,
+            libc::ECONNREFUSED,
+            libc::ENONET,
+            libc::EINVAL,
+        ] {
+            let query = query(0x1234);
+            let answered =
+                resolved(Err(Failure::platform(errno(code))), &query).unwrap_or_else(|_| {
+                    panic!("{code} is the client's answer, not the daemon's failure")
+                });
+            assert_eq!(&answered[..2], &query[..2], "{code}");
+            assert_eq!(rcode(&answered), RCODE_SERVFAIL, "{code}");
+            assert_eq!(&answered[HEADER_LEN..], &query[HEADER_LEN..], "{code}");
+        }
+        let local = resolved(
+            Err(Failure::local("resolver.register")(errno(libc::EMFILE))),
+            &query(1),
+        )
+        .expect_err("the daemon's own setup failure is not an answer");
+        assert_eq!(
+            local.reportable().map(|(context, _)| context),
+            Some("resolver.register")
+        );
+        assert!(resolved(Err(Failure::platform(errno(libc::EBUSY))), &[]).is_err());
+    }
+
+    #[test]
+    fn only_the_daemons_own_wrapper_failure_ends_more_than_one_query() {
+        let query = query(0x4d2);
+        for code in [libc::EBUSY, libc::ETIMEDOUT, libc::ECONNREFUSED] {
+            let answer = resolved(Err(Failure::platform(errno(code))), &query)
+                .expect("what the platform answered is this query's own SERVFAIL");
+            assert_eq!(rcode(&answer), RCODE_SERVFAIL, "{code}");
+        }
+        let unanswerable = resolved(Err(Failure::platform(errno(libc::EBUSY))), &[])
+            .expect_err("nothing can be built from it");
+        assert!(
+            unanswerable
+                .ending([("query", 0u64)])
+                .is_ok_and(|failure| failure.reportable().is_none()),
+            "a query nothing can answer ends that flow and nothing else"
+        );
+        for context in ["resolver.nonblock", "resolver.register"] {
+            let local = resolved(Err(Failure::local(context)(errno(libc::EMFILE))), &query)
+                .expect_err("the daemon's own setup failure is never an answer");
+            let ending = local
+                .ending([("query", 7u64)])
+                .expect_err("and it ends the owner that met it");
+            assert_eq!(
+                reported_io_error_report(&ending)
+                    .expect("one report")
+                    .context,
+                context
+            );
+        }
+    }
+
+    #[test]
+    fn a_servfail_does_not_end_the_stream_it_was_answered_on() {
+        let mut stream = DnsStream::default();
+        let mut segment = Vec::new();
+        for id in [1, 2] {
+            let query = query(id);
+            segment.extend_from_slice(&frame(&query).expect("a query fits its own prefix"));
+        }
+        let mut chunk = &segment[..];
+
+        let first = message(&mut stream, &mut chunk).expect("a whole query in one segment");
+        assert_eq!(&first[..2], &[0, 1]);
+        let answer = resolved(Err(Failure::platform(errno(libc::EBUSY))), &first)
+            .expect("a refusal is answered rather than reset");
+        assert_eq!(rcode(&answer), RCODE_SERVFAIL);
+        assert_eq!(
+            frame(&answer).expect("an answer fits its prefix").len(),
+            PREFIX + answer.len()
+        );
+
+        let second = message(&mut stream, &mut chunk).expect("readable after a SERVFAIL");
+        assert_eq!(&second[..2], &[0, 2]);
+        assert_eq!(
+            resolved(Ok(vec![9, 9]), &second).expect("an answer is an answer"),
+            vec![9, 9]
+        );
+        assert!(chunk.is_empty());
+        assert!(matches!(stream.advance(&mut chunk, None), Framed::Hungry));
+    }
+
+    fn message(stream: &mut DnsStream, chunk: &mut &[u8]) -> Option<Vec<u8>> {
+        let mut body: Option<Admitted> = None;
+        loop {
+            match stream.advance(chunk, body.as_mut().map(|body| body as &mut dyn Body)) {
+                Framed::Length(length) => body = Some(Admitted::granted(length)),
+                Framed::Message => return Some(body.expect("a message was being filled").0),
+                Framed::Hungry => return None,
+                Framed::Broken => panic!("a well-formed stream does not break"),
+            }
+        }
+    }
+
+    #[test]
+    fn a_stream_reassembles_byte_by_byte_and_a_zero_length_message_breaks_it() {
+        let mut stream = DnsStream::default();
+        let framed = frame(&query(7)).expect("a query fits its own prefix");
+        let mut nothing: &[u8] = &[];
+        assert!(matches!(stream.advance(&mut nothing, None), Framed::Hungry));
+        let mut body: Option<Admitted> = None;
+        for byte in &framed[..framed.len() - 1] {
+            let mut dribble = std::slice::from_ref(byte);
+            match stream.advance(
+                &mut dribble,
+                body.as_mut().map(|body| body as &mut dyn Body),
+            ) {
+                Framed::Length(length) => {
+                    assert_eq!(length, query(7).len());
+                    body = Some(Admitted::granted(length));
+                }
+                Framed::Hungry => {}
+                Framed::Message | Framed::Broken => panic!("the message is not complete yet"),
+            }
+            assert!(stream.partial());
+        }
+        let mut last = &framed[framed.len() - 1..];
+        assert!(matches!(
+            stream.advance(&mut last, body.as_mut().map(|body| body as &mut dyn Body)),
+            Framed::Message
+        ));
+        assert_eq!(body.expect("filled").0, query(7));
+        assert!(!stream.partial());
+
+        let mut zero: &[u8] = &[0, 0, 0, 1];
+        assert!(matches!(stream.advance(&mut zero, None), Framed::Broken));
+        assert!(frame(&vec![0u8; MAX_MESSAGE]).is_some());
+        assert!(frame(&vec![0u8; MAX_MESSAGE + 1]).is_none());
+    }
+
+    #[test]
+    fn an_announced_message_with_nowhere_to_go_breaks_the_stream() {
+        let mut stream = DnsStream::default();
+        let framed = frame(&query(4)).expect("a query fits its own prefix");
+        let mut chunk = &framed[..];
+        assert!(matches!(
+            stream.advance(&mut chunk, None),
+            Framed::Length(_)
+        ));
+        assert!(matches!(stream.advance(&mut chunk, None), Framed::Broken));
+    }
+
+    #[test]
+    fn a_refused_query_is_answered_from_its_header_and_the_stream_stays_framed() {
+        let mut stream = DnsStream::default();
+        let mut segment = Vec::new();
+        for id in [0x2a, 0x2b] {
+            segment.extend_from_slice(&frame(&query(id)).expect("a query fits its own prefix"));
+        }
+        let mut chunk = &segment[..];
+
+        // Refuse the first query while preserving framing.
+        let Framed::Length(length) = stream.advance(&mut chunk, None) else {
+            panic!("a whole prefix announces a length")
+        };
+        let mut refused = Refused::default();
+        assert!(matches!(
+            stream.advance(&mut chunk, Some(&mut refused)),
+            Framed::Message
+        ));
+        assert!(!stream.partial(), "a refused body leaves a clean boundary");
+
+        let framed = refused
+            .framed_servfail()
+            .expect("a whole header can be answered");
+        assert_eq!(framed.len(), FRAMED_HEADER);
+        assert_eq!(
+            u16::from_be_bytes([framed[0], framed[1]]) as usize,
+            HEADER_LEN,
+            "the prefix announces a header and nothing behind it"
+        );
+        let answer = &framed[PREFIX..];
+        assert_eq!(&answer[..2], &query(0x2a)[..2], "the client's own id");
+        assert_eq!(answer[2] & FLAG_RESPONSE, FLAG_RESPONSE);
+        assert_eq!(
+            answer[2] & FLAG_RECURSION_DESIRED,
+            query(0x2a)[2] & FLAG_RECURSION_DESIRED
+        );
+        assert_eq!(rcode(answer), RCODE_SERVFAIL);
+        assert_eq!(
+            &answer[4..HEADER_LEN],
+            &[0u8; 8],
+            "no question is echoed back, because none was ever stored"
+        );
+        assert!(
+            length > answer.len(),
+            "the announced body was larger than the answer built without it"
+        );
+
+        let next = message(&mut stream, &mut chunk).expect("the stream is still framed");
+        assert_eq!(&next[..2], &[0, 0x2b]);
+        assert!(chunk.is_empty());
+    }
+
+    #[test]
+    fn a_refusal_keeps_only_the_header_however_the_body_arrives() {
+        let mut stream = DnsStream::default();
+        let framed = frame(&query(0x99)).expect("a query fits its own prefix");
+        assert!(matches!(
+            stream.advance(&mut &framed[..PREFIX], None),
+            Framed::Length(_)
+        ));
+        let mut refused = Refused::default();
+        // One byte at a time, which is how a client may send it.
+        for byte in &framed[PREFIX..] {
+            let mut dribble = std::slice::from_ref(byte);
+            match stream.advance(&mut dribble, Some(&mut refused)) {
+                Framed::Hungry | Framed::Message => {}
+                Framed::Length(_) | Framed::Broken => {
+                    panic!("a refused body is consumed, not broken")
+                }
+            }
+        }
+        let whole = refused
+            .framed_servfail()
+            .expect("the header arrived, byte by byte");
+        assert_eq!(&whole[PREFIX..PREFIX + 2], &query(0x99)[..2]);
+        assert_eq!(rcode(&whole[PREFIX..]), RCODE_SERVFAIL);
+    }
+
+    #[test]
+    fn a_refused_message_that_is_no_question_cannot_be_answered() {
+        // Shorter than a DNS header: there is no id and no flags to answer with.
+        let mut short = Refused::default();
+        assert_eq!(short.extend_within_capacity(&[0u8; 5]), 5);
+        assert!(
+            short.framed_servfail().is_none(),
+            "a stream that announced this cannot be resynchronized into an answer"
+        );
+
+        // Long enough, but it is already a response rather than a question.
+        let mut response = Refused::default();
+        let mut header = query(1)[..HEADER_LEN].to_vec();
+        header[2] |= FLAG_RESPONSE;
+        assert_eq!(response.extend_within_capacity(&header), HEADER_LEN);
+        assert!(response.framed_servfail().is_none());
+
+        // A whole header, and everything past it deliberately consumed.
+        let mut refused = Refused::default();
+        let query = query(2);
+        assert_eq!(
+            refused.extend_within_capacity(&query),
+            query.len(),
+            "the body is accounted for, so the stream stays framed"
+        );
+        assert!(refused.framed_servfail().is_some());
+    }
+
+    #[test]
+    fn a_body_shorter_than_its_admitted_length_breaks_the_stream() {
+        let mut stream = DnsStream::default();
+        let framed = frame(&query(3)).expect("a query fits its own prefix");
+        let mut chunk = &framed[..];
+        let Framed::Length(length) = stream.advance(&mut chunk, None) else {
+            panic!("a whole prefix announces a length")
+        };
+        let mut body = Admitted::granted(length - 1);
+        assert!(matches!(
+            stream.advance(&mut chunk, Some(&mut body)),
+            Framed::Broken
+        ));
+    }
 
     #[test]
     fn error_response_preserves_question() {

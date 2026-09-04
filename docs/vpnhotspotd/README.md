@@ -1,94 +1,57 @@
 # vpnhotspotd Internals
 
-`vpnhotspotd` is the root-side daemon used by VPNHotspot intended for all long-running background root-side work, including but not limited to routing state, DNS proxying, neighbour monitoring, and IPv6 NAT mode.
-The split is designed this way since root-side JVM daemon is much more expensive and should be avoided as much as possible.
-These docs describe the daemon's internal ownership model and cleanup invariants.
-IPC documentations not included and should refer to [`mobile/src/main/proto/daemon.proto`](../../mobile/src/main/proto/daemon.proto).
+`vpnhotspotd` has two entry points:
+
+- root mode owns long-running routing, DNS, neighbour-monitoring and NAT66 work;
+- app-UID mode owns the Shizuku TestNetwork dataplane and no root state.
+
+They share framing, reports and low-level socket code, but not runtime state or
+system mutations. See
+[`daemon.proto`](../../mobile/src/main/proto/daemon.proto) for the wire schema.
 
 ## Source Map
 
-- [`control.rs`](../../mobile/src/main/rust/vpnhotspotd/src/control.rs) owns the
-  daemon control loop, active calls, event-style (kotlin Flow) calls that
-  remain active for sessions or monitors, session slots, and the neighbour
-  monitor slot.
-- [`session.rs`](../../mobile/src/main/rust/vpnhotspotd/src/session.rs)
-  composes one session for one downstream interface from DNS, optional NAT66,
-  and routing runtimes.
-- [`routing.rs`](../../mobile/src/main/rust/vpnhotspotd/src/routing.rs) and
-  [`routing/`](../../mobile/src/main/rust/vpnhotspotd/src/routing/) own
-  reversible route, rule, address, firewall, forwarding, and static-address
-  mutations.
-- [`nat66/`](../../mobile/src/main/rust/vpnhotspotd/src/nat66/) owns the IPv6
-  NAT proxy runtimes and helper protocol state.
-- [`dns.rs`](../../mobile/src/main/rust/vpnhotspotd/src/dns.rs) owns the daemon
-  DNS listeners and Android resolver handoff.
-- [`traffic.rs`](../../mobile/src/main/rust/vpnhotspotd/src/traffic.rs) owns
-  daemon traffic-counter reads and the daemon-to-Kotlin counter reporting
-  boundary.
-- [`netlink.rs`](../../mobile/src/main/rust/vpnhotspotd/src/netlink.rs) owns the
-  owner-scoped rtnetlink request and multicast-only event connections.
-- [`neighbour.rs`](../../mobile/src/main/rust/vpnhotspotd/src/neighbour.rs)
-  owns neighbour-monitor connections and converts netlink neighbour and bridge
-  topology state into daemon events.
-- [`ipsec.rs`](../../mobile/src/main/rust/vpnhotspotd/src/ipsec.rs) owns the
-  optional Android 12+ IPsec forwarding-policy probe and emits session events
-  for the Kotlin routing owner to perform the hidden Netd write only when
-  needed.
-- [`report.rs`](../../mobile/src/main/rust/vpnhotspotd/src/report.rs) and
-  [`shared/protocol.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shared/protocol.rs)
-  build structured daemon reports.
+- [`src/root/`](../../mobile/src/main/rust/vpnhotspotd/src/root/) contains root
+  control, sessions, routing, NAT66, DNS, traffic, netlink, neighbours and IPsec.
+- [`src/shizuku/`](../../mobile/src/main/rust/vpnhotspotd/src/shizuku/) contains
+  app-UID control, TUN I/O, TCP, UDP, Echo and virtual DNS.
+- [`src/shared/`](../../mobile/src/main/rust/vpnhotspotd/src/shared/) contains
+  platform-neutral protocol and dataplane logic covered by host tests.
+- [`control_wire.rs`](../../mobile/src/main/rust/vpnhotspotd/src/control_wire.rs),
+  [`report.rs`](../../mobile/src/main/rust/vpnhotspotd/src/report.rs),
+  [`socket.rs`](../../mobile/src/main/rust/vpnhotspotd/src/socket.rs), and
+  [`android_network.rs`](../../mobile/src/main/rust/vpnhotspotd/src/android_network.rs)
+  are shared Android runtime support.
 
-The Kotlin side of the same subsystem lives under
-[`mobile/src/main/java/be/mygod/vpnhotspot/root/daemon/`](../../mobile/src/main/java/be/mygod/vpnhotspot/root/daemon/).
-Kotlin starts the binary, frames control messages, owns call IDs, and turns
-daemon reports into app-visible exceptions or nonfatal warnings.
+The binary modules link Android-only libraries and are not host-executed. Host
+tests cover extracted shared decisions; Android builds compile-check their owner
+adapters. Do not describe the adapters as host-tested.
+
+Kotlin root control lives under
+[`root/daemon/`](../../mobile/src/main/java/be/mygod/vpnhotspot/root/daemon/);
+Shizuku control lives under
+[`shizuku/`](../../mobile/src/main/java/be/mygod/vpnhotspot/shizuku/).
 
 ## Documents
 
-- [`lifecycle.md`](lifecycle.md): daemon startup, control-loop ownership, call
-  lifetime, session lifetime, cancellation, and shutdown.
-- [`routing.md`](routing.md): desired routing state, reversible mutations,
-  Clean behavior, and system mutation ownership.
-- [`nat66.md`](nat66.md): IPv6 NAT runtime boundaries for TCP, UDP, ICMPv6,
-  router advertisements, marks, and cleanup.
-- [`dns.md`](dns.md): DNS listener ownership, resolver handoff, config snapshot
-  semantics, and nonblocking assumptions.
-- [`traffic.md`](traffic.md): MAC-facing traffic accounting, blocking scope,
-  counter sources, recorder chain boundaries, and persistence mapping.
-- [`errors.md`](errors.md): terminal errors, nonfatal reports, context/detail
-  requirements, and background-task failure policy.
-- [`invariants.md`](invariants.md): cross-module ownership, interception,
-  cleanup, configuration, error, and platform-assumption rules.
+- [`lifecycle.md`](lifecycle.md): process, call, session and shutdown ownership.
+- [`shizuku.md`](shizuku.md): rootless mode, dataplane, system integration,
+  cleanup, security limits and qualification.
+- [`routing.md`](routing.md): exact route, rule, address, firewall, `ndc` and
+  Clean mutations.
+- [`nat66.md`](nat66.md): IPv6 NAT runtime and cleanup.
+- [`dns.md`](dns.md): resolver handoff and DNS failure semantics.
+- [`traffic.md`](traffic.md): accounting and blocking scope.
+- [`errors.md`](errors.md): terminal and nonfatal reports.
+- [`invariants.md`](invariants.md): cross-module rules.
 
 ## Maintenance Rule
 
-Keep these docs in sync with daemon behavior. A change to
-`mobile/src/main/rust/vpnhotspotd`, `mobile/src/main/proto/daemon.proto`, or
-the Kotlin daemon controller should update `docs/vpnhotspotd` when it changes
-internal ownership, lifecycle, cleanup, NAT66, DNS, routing, neighbour
-monitoring, or error-reporting semantics.
+Update these docs when daemon, protobuf or Kotlin controller changes affect
+ownership, lifecycle, cleanup, NAT66, DNS, routing, neighbours or errors.
 
-Do not summarize away external side effects. If a change adds, removes, or
-changes any mutation to kernel, netfilter, netd, resolver, socket, file
-descriptor, process, or Android system state, the relevant doc must name:
-
-- when the mutation happens;
-- the exact external state or command shape;
-- what owns rollback or normal stop cleanup;
-- what Clean or process-death cleanup does, if the state can outlive the
-  runtime;
-- which missing-state or failure cases are expected.
-
-For routing changes, [`routing.md`](routing.md) is a mutation catalog. Every
-route, policy rule, address, iptables/ip6tables rule or chain, `ndc` request,
-and Clean mutation must be listed there.
-
-If a daemon-adjacent change does not affect those documented contracts, say so
-in the change description or final response. Do not duplicate the protobuf
-schema here; update `daemon.proto` comments if the wire-level contract itself
-needs documentation.
-
-Platform and compatibility assumptions that affect the public app contract stay
-in the root [`README.md`](../../README.md), especially the `Other` and
-`System/root command assumptions` sections. These daemon docs may link to those
-assumptions, but should not create a second compatibility index.
+Document each external mutation's trigger, exact state, rollback/stop behavior,
+process-death or Clean behavior, and expected missing-state failures. Every route,
+policy rule, address, firewall rule or chain, `ndc` request and Clean mutation
+belongs in [`routing.md`](routing.md). Public platform and compatibility hazards
+belong in the root [`README.md`](../../README.md), not a second inventory here.

@@ -7,7 +7,7 @@ headers.
 
 ## Runtime Shape
 
-[`nat66::Runtime`](../../mobile/src/main/rust/vpnhotspotd/src/nat66/mod.rs) is
+[`root::nat66::Runtime`](../../mobile/src/main/rust/vpnhotspotd/src/root/nat66/mod.rs) is
 optional per session. If `SessionConfig.ipv6_nat` is absent, NAT66 startup
 returns `None` and routing must not install NAT66 interception.
 
@@ -46,8 +46,8 @@ NAT66 state is split by lifetime:
 | --- | --- | --- |
 | Process | `IcmpDispatcher` | NFQUEUE task on queue `30000`, ICMP session registrations, shared Echo state, upstream ICMP sockets |
 | Process | `ReplySocketPool` | daemon reply mark, exact UDP reply-source registry, socket leases shared across sessions |
-| Session | `nat66::Runtime` | committed per-MAC TCP/UDP capabilities, optional RA task, ICMP registration, cleanup prefixes, counter store |
-| RA task | `nat66/ra.rs` | IPv6-address event and request connections, raw ICMPv6 receive socket, periodic/suppression state |
+| Session | `root::nat66::Runtime` | committed per-MAC TCP/UDP capabilities, optional RA task, ICMP registration, cleanup prefixes, counter store |
+| RA task | `root/nat66/ra.rs` | IPv6-address event and request connections, raw ICMPv6 receive socket, periodic/suppression state |
 | Client | per-MAC runtime | TCP/UDP listener ports, stop token, active DNS/NAT66 tasks, source-scoped counters |
 | Listener | TCP/UDP loops | Accepted TCP connections, UDP association table, per-listener DNS reply-socket anchor |
 | Flow | TCP task, UDP association task, or UDP DNS query task | MAC/downstream accounting context, upstream socket, downstream reply path and reply-socket lease, ICMP error registration where applicable |
@@ -138,6 +138,9 @@ context for accepted connections. The TCP runtime:
 - connects an upstream TCP socket on that network;
 - relays bytes bidirectionally, preserving TCP half-close semantics.
 
+TCP accept backpressure is kernel-owned through the runtime
+`net.core.somaxconn`; a full accept queue allocates no Rust connection state.
+
 Connection setup failures caused by the remote path are logged and consumed.
 When `android_setsocknetwork` reports `ENONET`, the selected upstream network
 handle has already disappeared; the connection is logged and dropped because no
@@ -196,8 +199,18 @@ an association. Other UDP setup/connect failures remain structured nonfatals.
 
 Each association has one task that owns upstream receives and downstream
 responses. The listener owns downstream receives and association creation. The
-association task reports activity back to the listener, and idle associations
-are cancelled after the NAT66 idle timeout.
+association task reports activity back to the listener. Its upstream socket,
+ICMP registration and reply-socket lease remain live for 300 seconds after the
+last successful downstream send or upstream response. This is RFC 4787 section
+4.3 REQ-5's recommended five-minute UDP mapping default; the same requirement
+forbids a general timer shorter than two minutes. Expiry cancels and removes the
+association, late replies are dropped, and a later downstream datagram creates a
+new association.
+
+Each per-MAC listener and live association retains one full non-jumbogram
+receive buffer because a truncated datagram cannot be resumed. The buffer is
+released with its owner; memory exhaustion terminates the root daemon. IPv6
+jumbograms are outside this NAT66 dataplane.
 
 Reply socket leases keep the daemon-wide pool aware of an exact reply-source
 bind while an association may send responses through it. Association teardown
@@ -228,12 +241,14 @@ the entry and closes the socket.
 
 A reply socket remains a nonblocking IPv6 UDP socket with `SO_REUSEADDR`, the
 daemon `SO_MARK`, and `IPV6_TRANSPARENT`, bound to the exact original destination
-address and port that must appear as the downstream reply source. A failed
-downstream send is retried once on the same leased file descriptor; it does not
-create a second exact bind while the original socket is still live. Host- or
-network-unreachable downstream reply sends are treated as client reachability
-churn and logged. Reply socket acquisition and other unexpected send failures
-remain structured nonfatals.
+address and port that must appear as the downstream reply source. The socket is
+unconnected and does not enable `IPV6_RECVERR`, so Android's
+[UDPv6 error path](https://android.googlesource.com/kernel/common/+/refs/tags/android16-6.12-2025-07_r3/net/ipv6/udp.c#690)
+does not place remote ICMP errors in `sk_err` for a later send to consume. Each
+downstream send is attempted once. Host- or network-unreachable sends are treated
+as client reachability churn and logged. Reply socket acquisition and other
+unexpected send failures remain structured nonfatals; neither failure creates a
+second exact bind while the original socket is still live.
 
 UDP hop-limit behavior is part of the NAT66 contract. Missing hop-limit
 metadata is reported and the datagram is dropped. Expired hop limit produces a
@@ -256,6 +271,10 @@ The dispatcher owns:
 - shared Echo mapping state;
 - UDP error registrations used by live UDP associations.
 
+Dropping the last dispatcher handle cancels the upstream and NFQUEUE tasks. Their
+token cancels pending waits and is also checked inside continuously ready packet
+and error-queue drains.
+
 A NAT66 session registers ICMP only after proving that downstream send support
 is available for its downstream interface and reply mark. If the transparent raw
 IPv6 bind probe fails with `EADDRNOTAVAIL`, kernels older than Linux 5.11.14
@@ -270,26 +289,48 @@ when the registration exists. Ordinary local control-plane ICMPv6, neighbour
 discovery, router solicitation/advertisement, multicast, link-local, loopback,
 and unspecified destinations are outside the Echo proxy ownership boundary.
 
-The NFQUEUE task always gives a verdict for queued packets. Packets with no live
-session registration, no committed IPv6 NAT config, missing source
-hardware-address metadata, non-six-byte hardware addresses, or a hardware
-address outside the committed MAC set are dropped and reported as structured
-nonfatals. The dispatcher must not fall back to source IPv6 neighbour lookup.
-Malformed packets and ICMP that NAT66 does not own are dropped or accepted based
-on the ownership decision in
-`nat66/icmp/downstream.rs`.
+Queue capacity, copy truncation, error delivery and unbind cleanup are documented
+with the canonical external state in
+[`routing.md`](routing.md#nat66-icmp-echo-nfqueue).
+
+For every packet Rust does receive, the NFQUEUE task supplies a verdict. Packets
+with no live session registration, no committed IPv6 NAT config, missing source
+hardware-address metadata, non-six-byte hardware addresses, or a hardware address
+outside the committed MAC set are dropped and reported as structured nonfatals.
+The dispatcher must not fall back to source IPv6 neighbour lookup. Malformed
+packets and ICMP that NAT66 does not own are dropped or accepted based on the
+ownership decision in `root/nat66/icmp/downstream.rs`.
 
 Routable Echo Requests are copied, then the original queued packet is dropped.
 The daemon allocates a rewritten Echo identifier/sequence, records the original
 client MAC, client IPv6 address, and hop limit, sends a daemon-owned upstream
 Echo Request on the selected Android network, and restores the client-visible
-identifier when the Echo Reply returns.
+identifier when the Echo Reply returns. The mapping remains valid for 60 seconds
+from allocation, matching RFC 5508 section 3.2 REQ-2's minimum ICMP Query
+mapping lifetime. A reply/error, client or session removal releases it earlier;
+an expired reply is dropped and a later request allocates a new mapping.
+For one `(network, destination, original sequence)` tuple, rewritten identifiers
+use the complete Echo Identifier space. If it is fully occupied, the daemon
+refuses and reports only the new request; existing mappings remain intact until a
+reply, error, session/client removal, or expiry releases an identifier.
+
+Each active upstream-network receive task retains one full non-jumbogram ICMPv6
+buffer because a truncated raw receive cannot be resumed. The buffer is released
+with the task; memory exhaustion terminates the root daemon. IPv6 jumbograms are
+unsupported.
+
 The NFQUEUE path does not reassemble fragmented downstream Echo Requests, so an
 Echo Request whose Fragment header actually fragments the ICMPv6 payload is not
 proxied. Atomic fragments continue through the ordinary Echo path.
 If the selected network reports host- or network-unreachable during the
 upstream Echo send, the daemon logs the route loss, removes the Echo allocation,
 and drops the intercepted request without emitting a structured nonfatal.
+An initial upstream send failure can represent one stale asynchronous error on
+the connected raw socket. The daemon drains the complete error queue, applies any
+translated errors/removals, and retries once only when the allocation remains.
+That drain is the sole socket-state refresh; a second failure is current path or
+socket state, so it is handled normally and the allocation is removed rather
+than retried again.
 
 Echo upstream sockets are per Android network and shared with UDP ICMP error
 translation. They stay alive while that network has Echo allocations or UDP
@@ -306,10 +347,20 @@ first fragment can be mapped when its Fragment offset is zero and the quote
 contains the complete Echo or UDP header; non-initial fragments cannot identify
 daemon-owned transport state and are left unmapped. Reverse translation rewrites
 the existing quote, including the transport checksum, while preserving its
-extension headers and Fragment identification. Quotes are capped so the complete
-generated IPv6 packet stays within the IPv6 minimum MTU. Expected kernel socket
-errors from remote ICMP delivery are consumed after error-queue processing when
-no daemon-owned quote can be mapped. Unmapped remote ICMP errors are not guessed
+extension headers and Fragment identification. Every locally generated ICMPv6
+error, including Time Exceeded and Packet Too Big, is at most 1,280 bytes: RFC
+4443 section 2.4(c)'s complete-packet limit. The fixed eight-byte ICMPv6 header
+and required quoted inner headers are retained; quote bytes beyond the remaining
+space are omitted, while malformed input too short for required headers is
+dropped rather than partially represented.
+
+The upstream error queue correspondingly retains at most 1,232 invoking-packet
+bytes: IPv6's 1,280-byte minimum MTU minus the 40-byte outer IPv6 header and
+eight-byte ICMPv6 error header. `MSG_TRUNC` still reports the complete queued
+length for traffic accounting; a tail beyond 1,232 bytes is discarded because
+it cannot fit in the translated downstream error. Expected kernel socket errors
+from remote ICMP delivery are consumed after error-queue processing when no
+daemon-owned quote can be mapped. Unmapped remote ICMP errors are not guessed
 into downstream errors.
 
 ICMPv6 counters count one sent unit per daemon-owned upstream Echo Request and
@@ -322,10 +373,17 @@ inflate upstream counters.
 The RA task owns NAT66 prefix advertisement on the downstream. It sends current
 RAs periodically, answers router solicitations, watches downstream IPv6 address
 changes, and suppresses or withdraws non-NAT66 downstream prefixes when needed.
+Periodic multicast intervals are selected uniformly from 300 through 599 seconds,
+matching current Android 17
+[`RouterAdvertisementDaemon`](https://android.googlesource.com/platform/packages/modules/Connectivity/+/347fbd34b368d19f0d87e908ea101eed3601a731/Tethering/src/android/net/ip/RouterAdvertisementDaemon.java#89).
+Startup or changed content can send immediately; after each periodic/current
+attempt, a fresh interval is selected. This bounds multicast wakeups rather than
+queued advertisements, so reaching the upper interval drops no state or traffic.
 Solicitations from a usable source address are answered to that source. A
 solicitation from the unspecified address `::` is answered with a
 downstream-scoped all-nodes multicast RA to `ff02::1`, because `::` is not a
-routable unicast reply target.
+routable unicast reply target. Router Solicitation options are not retained;
+malformed solicitations are ignored.
 
 The task requires a downstream link-local router address. If the address is not
 available, it waits and logs that state instead of inventing a router source.
@@ -334,6 +392,17 @@ When the committed client set is empty, the task suppresses current NAT66 RAs.
 If it had advertised the NAT66 prefix before the set became empty, it attempts a
 zero-lifetime withdrawal and waits for clients to reappear.
 
+Current advertisements use 7,200 seconds for router, prefix valid/preferred, and
+RDNSS lifetimes: twelve times Android's 600-second maximum multicast interval,
+matching the
+[same maintained AOSP policy](https://android.googlesource.com/platform/packages/modules/Connectivity/+/347fbd34b368d19f0d87e908ea101eed3601a731/Tethering/src/android/net/ip/RouterAdvertisementDaemon.java#91)
+and allowing loss of several periodic RAs. A zero-lifetime advertisement removes
+the named prefix and RDNSS state; it retains the 7,200-second router lifetime only
+when the current NAT66 router must remain advertised. If normal
+stop/process-death withdrawal does not reach a client, the last accepted current
+router/prefix/DNS state expires no later than 7,200 seconds after that
+advertisement.
+
 On NAT66 stop, the runtime waits for the RA task and attempts to withdraw the
 current gateway prefix through the session request connection. During Clean or
 replacement cleanup, it may also withdraw older gateway prefixes recorded during
@@ -341,9 +410,15 @@ config replacement. Failure is reported without reconnecting.
 
 The RA task also watches existing downstream IPv6 prefixes. Non-NAT66 routable
 prefixes are temporarily advertised with zero lifetime so clients stop using
-them while NAT66 owns the downstream IPv6 mode. Current NAT66 RAs and suppressed
-prefix withdrawals use the actual downstream MTU when available, falling back to
-the daemon default when MTU lookup fails.
+them while NAT66 owns the downstream IPv6 mode. Suppression records are retained
+for 15 seconds and their zero-lifetime advertisements are spaced by
+[Android's three-second minimum and five-advertisement policy](https://android.googlesource.com/platform/packages/modules/Connectivity/+/347fbd34b368d19f0d87e908ea101eed3601a731/Tethering/src/android/net/ip/RouterAdvertisementDaemon.java#100),
+producing at most five urgent advertisements before the record expires; a later
+address event can recreate it. Solicited unicast replies are request-driven and
+do not enter that multicast urgent queue. Current NAT66 RAs and suppressed-prefix
+withdrawals use the actual downstream MTU when available. If MTU lookup fails,
+the error is reported and the advertisement uses 1,280 bytes, IPv6's
+protocol-required minimum, rather than assuming Ethernet's 1,500-byte MTU.
 
 Config replacement can change the deterministic NAT66 gateway. The runtime
 records old gateways that need later withdrawal, but only while the process is

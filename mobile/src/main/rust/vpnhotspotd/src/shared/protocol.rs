@@ -15,9 +15,6 @@ use crate::shared::model::{
 };
 use crate::shared::proto::daemon::{self, DaemonErrorReport, MasqueradeMode};
 
-pub(crate) const MAX_ERROR_DETAILS: usize = 32;
-const MAX_ERROR_FIELD_BYTES: usize = 4096;
-
 #[track_caller]
 pub fn daemon_error_report(
     context: impl Into<String>,
@@ -41,11 +38,11 @@ where
 {
     let location = Location::caller();
     daemon::DaemonErrorReport {
-        context: trim_error_field(context.into()),
-        message: trim_error_field(message.into()),
+        context: context.into(),
+        message: message.into(),
         errno: None,
-        kind: trim_error_field(kind.into()),
-        file: trim_error_field(location.file().to_owned()),
+        kind: kind.into(),
+        file: location.file().to_owned(),
         line: location.line(),
         column: location.column(),
         pid: process::id(),
@@ -69,16 +66,31 @@ where
     K: ToString,
     V: ToString,
 {
-    if let Some(report) = reported_io_error_report(&error) {
+    describe_io_error(context, &error, details)
+}
+
+/// Describes a borrowed error so its owner can still propagate the original errno.
+#[track_caller]
+pub fn describe_io_error<I, K, V>(
+    context: impl Into<String>,
+    error: &io::Error,
+    details: I,
+) -> DaemonErrorReport
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: ToString,
+    V: ToString,
+{
+    if let Some(report) = reported_io_error_report(error) {
         return report;
     }
     let location = Location::caller();
     daemon::DaemonErrorReport {
-        context: trim_error_field(context.into()),
-        message: trim_error_field(error.to_string()),
+        context: context.into(),
+        message: error.to_string(),
         errno: error.raw_os_error(),
-        kind: trim_error_field(format!("{:?}", error.kind())),
-        file: trim_error_field(location.file().to_owned()),
+        kind: format!("{:?}", error.kind()),
+        file: location.file().to_owned(),
         line: location.line(),
         column: location.column(),
         pid: process::id(),
@@ -86,7 +98,16 @@ where
     }
 }
 
-fn reported_io_error_report(error: &io::Error) -> Option<DaemonErrorReport> {
+/// The structured form an error is already carrying, if it has one.
+///
+/// Attaching a report is not delivering it. A failing site builds one where the errno, the details and the
+/// source location are still its own, and leaves the delivery to whoever owns the conversation - the app
+/// session picks exactly one destination per failure, and the root daemon's callers pick theirs. So the
+/// question this answers is "does this failure already carry a report built where it happened?", and the two
+/// callers that ask it both use the answer to avoid replacing that report with one built somewhere less
+/// informative: [describe_io_error] hands it back as-is, and [IoErrorReportExt::with_report_context] leaves
+/// an already-described error alone.
+pub fn reported_io_error_report(error: &io::Error) -> Option<DaemonErrorReport> {
     error
         .get_ref()?
         .downcast_ref::<DaemonReportError>()
@@ -101,10 +122,9 @@ where
 {
     details
         .into_iter()
-        .take(MAX_ERROR_DETAILS)
         .map(|(key, value)| daemon::ErrorDetail {
-            key: trim_error_field(key.to_string()),
-            value: trim_error_field(value.to_string()),
+            key: key.to_string(),
+            value: value.to_string(),
         })
         .collect()
 }
@@ -112,12 +132,6 @@ where
 #[derive(Debug)]
 pub struct DaemonReportError {
     report: DaemonErrorReport,
-}
-
-impl DaemonReportError {
-    pub fn report(&self) -> &DaemonErrorReport {
-        &self.report
-    }
 }
 
 impl fmt::Display for DaemonReportError {
@@ -404,19 +418,6 @@ fn invalid_data(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
 
-fn trim_error_field(value: String) -> String {
-    if value.len() <= MAX_ERROR_FIELD_BYTES {
-        return value;
-    }
-    let mut end = MAX_ERROR_FIELD_BYTES;
-    while !value.is_char_boundary(end) {
-        end -= 1;
-    }
-    let mut value = value[..end].to_owned();
-    value.push_str("...");
-    value
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -456,6 +457,45 @@ mod tests {
                 value: "iptables-restore".to_owned(),
             }],
         }
+    }
+
+    #[test]
+    fn describing_a_reported_error_hands_back_the_owner_s_report() {
+        let attached = io::Error::from_raw_os_error(libc::ENOBUFS)
+            .with_report_context_details("shizuku.tun_egress", [("written", 7), ("stale", 1)]);
+        let owner = reported_io_error_report(&attached).expect("the owner attached a report");
+
+        let delivered = describe_io_error(
+            "shizuku.app_session",
+            &attached,
+            std::iter::empty::<(&str, &str)>(),
+        );
+        let rebuilt = describe_io_error(
+            "shizuku.app_session",
+            &io::Error::from_raw_os_error(libc::ENOBUFS),
+            std::iter::empty::<(&str, &str)>(),
+        );
+
+        assert_eq!(delivered, owner);
+        assert_eq!(delivered.context, "shizuku.tun_egress");
+        assert_eq!(delivered.errno, Some(libc::ENOBUFS));
+        assert_eq!(delivered.details.len(), 2);
+        assert_eq!(rebuilt.context, "shizuku.app_session");
+        assert_ne!(rebuilt.line, delivered.line);
+    }
+
+    #[test]
+    fn acknowledgement_reply_frame_names_its_call() {
+        let envelope = daemon::DaemonEnvelope::decode(ack_reply_frame(9).as_slice()).unwrap();
+
+        let Some(daemon::daemon_envelope::Frame::Reply(reply)) = envelope.frame else {
+            panic!("expected a reply frame, got {envelope:?}");
+        };
+        assert_eq!(reply.call_id, 9);
+        assert_eq!(
+            reply.payload,
+            Some(daemon::reply_frame::Payload::Ack(daemon::Ack {}))
+        );
     }
 
     #[test]

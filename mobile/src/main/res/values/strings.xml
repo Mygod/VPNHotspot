@@ -62,6 +62,17 @@
 
     <string name="tethering_watch_reconnect">Watch for reconnect</string>
 
+    <string name="shizuku_tethering">Use VPN for system tethering (userspace)</string>
+    <string name="shizuku_state_armed">Ready</string>
+    <string name="shizuku_state_active">Active</string>
+    <string name="shizuku_state_restart_required">System tethering is not using this connection</string>
+    <string name="shizuku_failure_tethering_died">The system tethering service died. Restart this app before trying
+        again</string>
+    <string name="shizuku_failure_daemon">Packet daemon stopped</string>
+    <string name="shizuku_failure_network">Tethering network lost</string>
+    <string name="shizuku_failure_cleanup_unconfirmed">The previous session could not clean up so a new one cannot start. Try again or restart this app</string>
+    <string name="shizuku_failure_unfenced">Network setup failed (%s). Restart this app</string>
+
     <string name="tethering_manage">Manage system tethering…</string>
     <string name="tethering_manage_offload_enabled">Please disable Tethering hardware acceleration in Developer options
         if VPN tethering does not work.</string>

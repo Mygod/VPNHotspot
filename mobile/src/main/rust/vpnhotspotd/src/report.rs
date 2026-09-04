@@ -2,35 +2,37 @@ use std::ffi::CString;
 use std::fmt;
 use std::io;
 use std::io::Write;
-use std::sync::OnceLock;
-use std::time::{Duration, Instant};
+use std::sync::LazyLock;
 
 use libc::{c_char, c_int};
-use tokio::sync::mpsc::{
-    unbounded_channel, UnboundedReceiver, UnboundedSender, WeakUnboundedSender,
-};
-use tokio::sync::oneshot;
-use vpnhotspotd::shared::nonfatal::{NonfatalCoalescer, NonfatalReport};
+use tokio::sync::mpsc::UnboundedSender;
+use vpnhotspotd::shared::nonfatal::NonfatalReport;
 use vpnhotspotd::shared::proto::daemon::DaemonErrorReport;
 use vpnhotspotd::shared::protocol::{
-    daemon_error_report, daemon_io_error_report, daemon_io_error_report_with_details,
-    nonfatal_frame,
+    daemon_error_report, daemon_error_report_with_details, daemon_io_error_report,
+    daemon_io_error_report_with_details, nonfatal_frame,
 };
+use vpnhotspotd::shared::reporter::{Handed, Pushed, Reporter, ReporterGuard, ReporterRegistry};
 
-static REPORTER: OnceLock<UnboundedSender<ReportCommand>> = OnceLock::new();
-const NONFATAL_COALESCE_WINDOW: Duration = Duration::from_secs(1);
+/// Process-wide registry for the active control conversation.
+static REPORTER: LazyLock<ReporterRegistry> = LazyLock::new(ReporterRegistry::default);
+
+/// Limits nonfatals in the unbounded serial writer queue to one. Extra slots cannot increase throughput;
+/// while this one is occupied the coalescer retains only the latest report per compiled source site.
+const NONFATAL_QUEUE: usize = 1;
 const ANDROID_LOG_INFO: c_int = 4;
 const ANDROID_LOG_ERROR: c_int = 6;
 const LOG_TAG: &[u8] = b"vpnhotspotd\0";
 
 pub(crate) type ControllerSender = UnboundedSender<ControllerMessage>;
-pub(crate) type WeakControllerSender = WeakUnboundedSender<ControllerMessage>;
 
 pub(crate) enum ControllerMessage {
     Frame(Vec<u8>),
     Nonfatal {
         frame: Vec<u8>,
         report: DaemonErrorReport,
+        /// Releases the reporter's handoff slot when the writer drops this message.
+        _place: Handed,
     },
 }
 
@@ -63,32 +65,12 @@ impl ControllerMessage {
 
 pub(crate) trait ControllerSenderExt {
     fn send_frame(&self, frame: Vec<u8>) -> bool;
-
-    fn send_nonfatal(&self, call_id: Option<u64>, report: DaemonErrorReport) -> bool;
 }
 
 impl ControllerSenderExt for ControllerSender {
     fn send_frame(&self, frame: Vec<u8>) -> bool {
         self.send(ControllerMessage::Frame(frame)).is_ok()
     }
-
-    fn send_nonfatal(&self, call_id: Option<u64>, report: DaemonErrorReport) -> bool {
-        self.send(ControllerMessage::Nonfatal {
-            frame: nonfatal_frame(call_id, report.clone()),
-            report,
-        })
-        .is_ok()
-    }
-}
-
-enum ReportCommand {
-    Report {
-        call_id: Option<u64>,
-        report: DaemonErrorReport,
-    },
-    Flush {
-        done: oneshot::Sender<()>,
-    },
 }
 
 macro_rules! stdout {
@@ -111,86 +93,48 @@ unsafe extern "C" {
     fn __android_log_write(priority: c_int, tag: *const c_char, text: *const c_char) -> c_int;
 }
 
-pub(crate) fn init(sender: ControllerSender) -> io::Result<()> {
+/// Installs this conversation's reporter. The weak sender cannot extend the writer's lifetime.
+pub(crate) fn init(sender: ControllerSender) -> io::Result<ReporterGuard> {
     let controller = sender.downgrade();
-    let (report_sender, report_receiver) = unbounded_channel();
-    REPORTER
-        .set(report_sender)
-        .map_err(|_| io::Error::other("nonfatal reporter already initialized"))?;
-    tokio::spawn(run_reporter(controller, report_receiver));
-    Ok(())
+    REPORTER.install(Reporter::new(
+        NONFATAL_QUEUE,
+        move |NonfatalReport { call_id, report }, place| match controller.upgrade() {
+            Some(sender) => {
+                match sender.send(ControllerMessage::Nonfatal {
+                    frame: nonfatal_frame(call_id, report.clone()),
+                    report,
+                    _place: place,
+                }) {
+                    Ok(()) => true,
+                    Err(e) => {
+                        e.0.log_drop_after_disconnect();
+                        false
+                    }
+                }
+            }
+            None => {
+                stderr!("nonfatal report dropped after controller disconnect: {report:?}");
+                false
+            }
+        },
+    ))
 }
 
 pub(crate) fn report(report: DaemonErrorReport) {
     report_for(None, report);
 }
 
+/// Routes a report to the active conversation, or logs it when none can accept it.
 pub(crate) fn report_for(call_id: Option<u64>, report: DaemonErrorReport) {
-    if let Some(sender) = REPORTER.get() {
-        if sender
-            .send(ReportCommand::Report {
-                call_id,
-                report: report.clone(),
-            })
-            .is_ok()
-        {
-            return;
-        }
-    }
-    stderr!("nonfatal report dropped after controller disconnect: {report:?}");
-}
-
-pub(crate) async fn flush() {
-    let Some(sender) = REPORTER.get() else {
+    let Some(reporter) = REPORTER.get() else {
+        stderr!("nonfatal report made with no reporter to carry it: {report:?}");
         return;
     };
-    let (done, flushed) = oneshot::channel();
-    if sender.send(ReportCommand::Flush { done }).is_ok() {
-        let _ = flushed.await;
-    }
-}
-
-async fn run_reporter(
-    controller: WeakControllerSender,
-    mut commands: UnboundedReceiver<ReportCommand>,
-) {
-    let mut coalescer = NonfatalCoalescer::new(NONFATAL_COALESCE_WINDOW);
-    loop {
-        let command = if let Some(deadline) = coalescer.next_deadline() {
-            tokio::select! {
-                command = commands.recv() => command,
-                () = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => {
-                    emit_reports(&controller, coalescer.emit_due(Instant::now()));
-                    continue;
-                }
-            }
-        } else {
-            commands.recv().await
-        };
-        let Some(command) = command else {
-            emit_reports(&controller, coalescer.flush());
-            break;
-        };
-        match command {
-            ReportCommand::Report { call_id, report } => {
-                emit_reports(&controller, coalescer.push(Instant::now(), call_id, report));
-            }
-            ReportCommand::Flush { done } => {
-                emit_reports(&controller, coalescer.flush());
-                let _ = done.send(());
-            }
+    match reporter.push(call_id, report) {
+        Pushed::Coalesced => {}
+        Pushed::Closed(report) => {
+            stderr!("nonfatal report made after the reporter finished: {report:?}");
         }
-    }
-}
-
-fn emit_reports(controller: &WeakControllerSender, reports: Vec<NonfatalReport>) {
-    for NonfatalReport { call_id, report } in reports {
-        if let Some(sender) = controller.upgrade() {
-            if sender.send_nonfatal(call_id, report.clone()) {
-                continue;
-            }
-        }
-        stderr!("nonfatal report dropped after controller disconnect: {report:?}");
     }
 }
 
@@ -206,6 +150,53 @@ pub(crate) fn message(
     kind: impl Into<String>,
 ) {
     report(daemon_error_report(context, message, kind));
+}
+
+#[track_caller]
+pub(crate) fn message_with_details<I, K, V>(
+    context: impl Into<String>,
+    message: impl Into<String>,
+    kind: impl Into<String>,
+    details: I,
+) where
+    I: IntoIterator<Item = (K, V)>,
+    K: ToString,
+    V: ToString,
+{
+    report(daemon_error_report_with_details(
+        context, message, kind, details,
+    ));
+}
+
+/// Keeps the first of two independently observed failures, and reports the other.
+///
+/// The counterpart to [vpnhotspotd::shared::tasks::combine], and the distinction is whose failure each is.
+/// That folds two halves of a *single* ending - a session that failed and could not shut down cleanly - into
+/// one message. This is for failures with separate causes, where that fold would be a lie and, worse, a loss:
+/// [vpnhotspotd::shared::tasks::combine] builds a fresh error out of two messages, so the structured report
+/// each failing step attached survives neither.
+///
+/// One result carries one error, so only one of these can travel out on it. The first observed stays the
+/// causal failure its owner ends on; the second becomes a nonfatal here, because dropping it is exactly the
+/// silent discard structured reporting exists to prevent.
+///
+/// `context` is only used for a failure that arrived with no report of its own:
+/// [vpnhotspotd::shared::protocol::describe_io_error] hands an attached one back unchanged, so what is
+/// emitted names the failing site rather than this one.
+#[track_caller]
+pub(crate) fn keep_first(
+    context: &'static str,
+    kept: io::Result<()>,
+    beside: io::Result<()>,
+) -> io::Result<()> {
+    let Err(kept) = kept else {
+        // Nothing has been observed yet, so whatever this is becomes the causal failure - or stays `Ok`.
+        return beside;
+    };
+    if let Err(beside) = beside {
+        io_with_details(context, beside, std::iter::empty::<(&str, &str)>());
+    }
+    Err(kept)
 }
 
 #[track_caller]

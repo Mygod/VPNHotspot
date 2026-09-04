@@ -6,6 +6,11 @@ option java_package = "be.mygod.vpnhotspot.root.daemon";
 option java_outer_classname = "DaemonProto";
 option optimize_for = LITE_RUNTIME;
 
+message ShizukuSessionConfig {
+  // Closed admission drops new TUN input without pausing existing protocol state.
+  bool admit = 1;
+}
+
 message ClientEnvelope {
   uint64 call_id = 1;
   oneof command {
@@ -16,10 +21,22 @@ message ClientEnvelope {
     StartNeighbourMonitorCommand start_neighbour_monitor = 6;
     CleanRoutingCommand clean_routing = 7;
     ReplaceStaticAddressesCommand replace_static_addresses = 8;
+    StartShizukuSessionCommand start_shizuku_session = 9;
+    ShizukuSessionConfig apply_shizuku_config = 10;
   }
 }
 
 message CancelCommand {}
+
+// Starts one app-UID session with an attached TUN descriptor.
+message StartShizukuSessionCommand {
+  string interface_name = 1;
+  uint32 mtu = 2;
+  // Reserved DNS destinations, as packed IPv4 or IPv6 addresses.
+  repeated bytes virtual_addresses = 3;
+  // TUN gateway addresses used as ICMP error sources.
+  repeated bytes gateway_addresses = 4;
+}
 
 message StartSessionCommand {
   SessionConfig config = 1;

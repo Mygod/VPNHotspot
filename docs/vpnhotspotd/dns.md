@@ -1,121 +1,172 @@
 # DNS
 
-The DNS runtime is per session. It owns per-MAC daemon listeners for downstream
-DNS and the handoff to Android's resolver API. Routing owns how downstream
-packets reach those listeners.
+Root DNS is a per-session, per-MAC proxy. The app-UID path uses the same Android
+resolver API for virtual DNS without physical-client attribution.
 
-## Listener Ownership
+## Root Listener Ownership
 
-[`dns::Runtime::start`](../../mobile/src/main/rust/vpnhotspotd/src/dns.rs)
-attempts to bind TCP and UDP listeners on ephemeral ports for each allowed
-client MAC. Each MAC/protocol listener is an independent best-effort
-capability. A listener that starts publishes its port to routing; a listener
-that fails is reported as a structured nonfatal with downstream, MAC, and
-protocol, and that MAC/protocol DNS redirect is omitted from routing.
+[`root::dns::Runtime::start`](../../mobile/src/main/rust/vpnhotspotd/src/root/dns.rs)
+stages independent TCP and UDP listeners for each allowed MAC. Routing publishes
+only ports whose matching MAC redirect and direct-port guard committed. Failure
+of one listener or rule is a structured nonfatal and removes only that
+MAC/protocol capability.
 
-Routing redirects downstream IPv4 DNS with MAC-matched DNAT rules to the
-ephemeral ports that exist. Each redirected port also has a `filter INPUT`
-guard: packets are allowed to reach the listener only when conntrack says the
-original destination was the downstream gateway on port 53. Direct connections
-to another client's listener port are rejected before the daemon accepts them.
-Packets still addressed to the downstream gateway on port 53 are rejected in
-`filter INPUT`, so blocked clients and missing capability cases do not fall
-through to an accidental local DNS service.
+IPv4 DNS reaches listeners through MAC-matched DNAT. `filter INPUT` guards require
+the conntrack original destination to be the downstream gateway on port 53, so a
+client cannot use another client's listener port. Packets still addressed to the
+gateway are rejected rather than falling through to another local DNS service.
 
-NAT66 TCP and UDP also special-case DNS to the NAT66 gateway on port 53 and
-call the same DNS handlers from the per-MAC NAT66 listener context. This keeps
-resolver selection, MAC attribution, accounting, and DNS response generation in
-one runtime instead of duplicating DNS behavior in NAT66.
+NAT66 TCP/UDP uses the same handlers from its per-MAC listener context, preserving
+resolver selection, identity and accounting.
 
-## Config Snapshots
+Root TCP accept backpressure is kernel-owned through the runtime
+`net.core.somaxconn`; a full accept queue allocates no Rust connection state.
+Listener setup failure removes only that MAC's TCP DNS capability.
 
-The DNS runtime receives the shared session config. For each query or TCP
-connection, it clones a snapshot before resolving. That snapshot determines the
-primary and fallback Android networks used for resolver calls.
+Each root UDP listener reuses one full-datagram receive buffer so it can collect
+a supported datagram in one read; truncated bytes cannot be recovered. A
+dispatched task copies only the datagram it received. Memory exhaustion
+terminates the root daemon; there is no aggregate root DNS memory quota.
 
-Current selection is simple:
+## Root Config Snapshots
 
-1. use `primary_network` when present;
-2. otherwise use `fallback_network` when present;
-3. otherwise return a DNS failure.
-
-DNS does not hold the config mutex while waiting for Android resolver results.
-The selected network is internal resolver state; DNS counters are not persisted
-by actual upstream interface.
+Each query or TCP connection clones `SessionConfig` before resolving and selects
+`primary_network`, then `fallback_network`, otherwise failure. Resolver I/O never
+holds the config mutex. Counters follow the proxy operation, not a physical
+upstream interface.
 
 ## Resolver Handoff
 
-DNS queries are sent through bionic's Android resolver API:
+Both paths use bionic:
 
-- `android_res_nsend` starts a one-shot query on the selected Android network;
+- `android_res_nsend` submits one query with a network selection. Root passes
+  the configured `Network`; the app-UID path passes `NETWORK_UNSPECIFIED`, so
+  dnsproxyd chooses from the peer UID's policy for that submission;
 - `android_res_nresult` reads and closes the result;
-- `android_res_cancel` is used if the query object is dropped before finish.
+- dropping an unfinished query calls `android_res_cancel`.
 
-`android_res_nsend` returns a file descriptor. The daemon sets it nonblocking
-and wraps it in `AsyncFd`. The daemon waits for the resolver-side socket to
-become readable and then for EOF before calling `android_res_nresult`.
+When a root or app-UID resolver transaction completes, `android_res_nresult`
+receives one caller-owned full-answer buffer. The answer retains that buffer
+until it is sent, discarded or dropped during shutdown. Memory exhaustion
+terminates the root daemon or recoverable app-UID child.
 
-This shape exists because `android_res_nresult` is the public result
-reader/closer. The root README records the platform assumption: the resolver
-service writes the complete result before returning and closes the socket when
-the result is ready, so the daemon can stay nonblocking while still using the
-public result API.
+`android_res_cancel` closes only this process's descriptor; it neither cancels
+nor joins Android's resolver work. The per-UID limiter runs asynchronously after
+descriptor handoff, so refusal arrives as `-EBUSY` through that descriptor. The
+daemon neither mirrors the platform limit nor derives local resource bounds from
+it. Accepted queries still consume the app UID's Android slots;
+enforcement and release remain platform-owned.
 
-DNS accounting counts the DNS payload bytes handed to `android_res_nsend` and
-the response bytes returned by `android_res_nresult`. It does not try to account
-for Android's physical DNS transport, DNS-over-TLS, packet headers, or resolver
-retransmits.
+This lifecycle was verified on Android 17 and Android 13:
 
-Locally generated DNS errors are client responses, not resolver responses. If
-no resolver query is handed to Android, the daemon returns the client-visible
-error without increasing DNS counters. If `android_res_nsend` accepts a query
-but no resolver response is returned, only the sent query side is counted.
+- Android 17: [descriptor handoff](https://android.googlesource.com/platform/system/netd/+/refs/tags/android-17.0.0_r1/client/NetdClient.cpp#519),
+  [handler](https://android.googlesource.com/platform/packages/modules/DnsResolver/+/refs/tags/android-17.0.0_r1/DnsProxyListener.cpp#1061),
+  [limiter](https://android.googlesource.com/platform/packages/modules/DnsResolver/+/refs/tags/android-17.0.0_r1/DnsProxyListener.cpp#1110),
+  [cancel closes the descriptor](https://android.googlesource.com/platform/system/netd/+/refs/tags/android-17.0.0_r1/client/NetdClient.cpp#586);
+- Android 13: [descriptor handoff](https://android.googlesource.com/platform/system/netd/+/refs/tags/android-13.0.0_r1/client/NetdClient.cpp#536),
+  [handler](https://android.googlesource.com/platform/packages/modules/DnsResolver/+/refs/tags/android-13.0.0_r1/DnsProxyListener.cpp#896),
+  [limiter](https://android.googlesource.com/platform/packages/modules/DnsResolver/+/refs/tags/android-13.0.0_r1/DnsProxyListener.cpp#943),
+  [cancel closes the descriptor](https://android.googlesource.com/platform/system/netd/+/refs/tags/android-13.0.0_r1/client/NetdClient.cpp#603).
+
+The descriptor is nonblocking and registered with Tokio. The daemon waits for
+peer closure before calling the synchronous `android_res_nresult`, relying on the
+platform assumption in the root README that `dnsproxyd` writes the complete
+result before closing its one-shot socket.
+
+The app-UID wrapper in
+[`shizuku/resolver.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shizuku/resolver.rs)
+watches both read and write readiness because either can carry the terminal close.
+Transactions have no timer. If a platform close were never observed, the daemon's
+descriptor would remain until session end; Android's own query lifetime is still
+independent.
+
+Accounting includes the DNS payload submitted and the result returned, not
+physical transport, headers, retries or DNS-over-TLS. A locally generated error
+does not increment resolver counters. An accepted query with no returned answer
+counts only the sent side.
 
 ## TCP DNS
 
-TCP DNS accepts normal DNS-over-TCP framing:
+TCP follows the two-byte length framing in
+[RFC 1035 section 4.2.2](https://www.rfc-editor.org/rfc/rfc1035.html#section-4.2.2)
+and handles partial reads and writes. A resolver failure becomes a framed
+SERVFAIL for that message and does not close an otherwise valid stream. A
+zero-length message, malformed input from which no SERVFAIL can be built, or a
+result that cannot satisfy the framing contract closes or refuses only that
+stream/message.
 
-- read a two-byte length;
-- read exactly that many query bytes;
-- resolve the query through the selected Android network;
-- write a two-byte response length and response bytes.
+Each framed query/response is one accounting unit. Unexpected EOF between frames
+is clean. Host/network-unreachable response writes are logged as downstream
+churn; other I/O failures return to the connection owner.
 
-Each framed query and framed response is one DNS TCP accounting unit. DNS TCP
-does not try to infer lower-layer TCP packet counts.
-
-Unexpected EOF while reading the next frame ends the connection cleanly.
-Host- or network-unreachable response writes are treated as downstream
-reachability churn and logged. Other I/O failures are returned to the
-connection task.
+On the app-UID path, the transaction table—not the TCP transport—owns each
+submitted query, its resolver descriptor and its ordinary userspace buffers.
+Resolver terminal settlement closes the descriptor; parking or delivering the
+answer retains only ordinary userspace buffers. Closing a transport does not
+cancel an already submitted query, and exact flow identity prevents a late
+answer reaching a reused flow. Clean transport completion may retain
+client-facing TCP state as described in
+[`shizuku.md`](shizuku.md#app-uid-dataplane).
 
 ## UDP DNS
 
-UDP DNS reads one datagram, clones the config snapshot, and resolves the query
-in a child task. If resolution succeeds, the response is sent back to the
-datagram source. Host- or network-unreachable reply sends are treated as
-downstream reachability churn and logged with source context. Other send
-failures are reported with source context.
-
-The UDP listener intentionally does not serialize all queries through one
-worker. Each query has its own child task tied to the session stop token.
-Each query datagram and response datagram is one DNS UDP accounting unit.
+Root UDP handles each datagram in its own session-owned task. A successful answer
+returns to the source; host/network-unreachable sends are logged, and other send
+failures are structured reports. Each query/response datagram is one accounting
+unit.
 
 ## Failure Semantics
 
-Resolver failure normally returns a SERVFAIL response when the query can be
-parsed enough to build one. If a SERVFAIL response cannot be generated, the
-query is dropped.
+Platform outcomes such as no usable network, timeout, `EBUSY`, unresolvable
+name or remote failure return SERVFAIL when possible and are otherwise silent.
+They are traffic-controlled outcomes, not structured reports.
 
-Unexpected per-query resolver failures are logged but do not stop the DNS
-runtime. Routine resolver unavailability, such as no selected upstream network
-or an Android resolver timeout, returns SERVFAIL when possible without emitting
-one stderr log per query. Listener setup failures do not stop the session.
-Routing omits the missing DNS redirect, so normal IP traffic and manually
-configured downstream DNS can still work.
+Daemon-wrapper failures are local and session-fatal on the app-UID path. Before
+transaction-table insertion, unwinding closes any returned descriptor, drops the
+buffers and ends its identity; afterward, the table retains ownership until
+resolver settlement or shutdown. Android's operation remains independent.
 
-Per-MAC listener setup and routing failures remove only that MAC/protocol DNS
-capability. If a listener was staged but routing did not commit the matching
-MAC redirect and direct-port guard, the staged listener is cancelled before the
-session publishes committed capabilities. A TCP listener accept failure after
-cancellation is treated as teardown; transient active-listener accept failures
-are retried.
+There is no app-UID DNS memory budget, byte precharge or prepared-query count.
+Transaction maps and wait collections grow on demand. TCP processes one framed
+query at a time, so each of its two control handoffs has depth one. A refused
+query-to-owner handoff ends the transport. A second owner-to-transport control is
+discarded and counted unreachable; closure means that transport has already
+ended. An idle TCP stream owns no resolver descriptor. All virtual-DNS TCP
+transports publish their ordered requests through one unbounded session-owned
+handoff to the engine. A transport remains sequential and waits for the matching
+owner control before it can submit or receive another query. Cancellation is
+checked before publication, a closed owner ends the transport, and the dataplane
+scheduler consumes at most one aggregate request per fair pass. Session shutdown
+drops requests that no longer name a live flow.
+
+Virtual-UDP workers publish resolver terminals through an unbounded
+session-owned handoff, so there is no independent query-count ceiling. The owner
+reconciles each result with its worker terminal. Owner closure discards an
+undelivered result; worker join and retirement still close its descriptor and
+drop its buffers.
+
+TCP completion is readiness-driven, with one transaction-table-owned wait and
+one row per query. A missing wait, row or delivery identity is an owner invariant
+failure: it is reported, the affected answer is discarded, and the affected TCP
+session ends where it cannot safely identify the recipient.
+
+A syntactically answerable TCP query refused before submission is drained and
+receives a framed header-only SERVFAIL with `QDCOUNT=0`; the stream remains
+usable. Malformed or non-query input, or a message with neither a query buffer
+nor a refusal sink, closes the stream. Closing the transport does not
+release an already-submitted transaction.
+
+On stop, TCP retires its flows and directly polls each stored resolver wait once,
+reporting observable wrapper failures and wait/row mismatches before dropping
+pending waits. Resolver futures and descriptors are dropped with their rows;
+ordinary query and answer buffers are then dropped by their owners. Virtual UDP
+cancels and joins every worker. Neither path waits for Android. Process death
+closes the descriptors, and app-UID DNS leaves no external state to clean up.
+
+Root listener setup failure does not stop the session. Routing omits the missing
+redirect so ordinary traffic and manually configured downstream DNS may continue.
+Transient active-listener accept failures are retried; cancellation-time failures
+are teardown. Root shutdown waits for detached queries, ensuring their
+`android_res_cancel` runs before exit without waiting for Android itself.
+
+See [`errors.md`](errors.md) for single-delivery report routing.

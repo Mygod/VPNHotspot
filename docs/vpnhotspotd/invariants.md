@@ -1,103 +1,157 @@
 # Invariants
 
-These are daemon-wide rules that should stay true across modules. When a change
-breaks one, document the new invariant in the owning doc and explain the
-compatibility or cleanup impact.
+These rules apply across daemon modules. Put subsystem-specific detail in the
+owning document.
 
 ## Ownership
 
-- A session owns daemon runtime state for exactly one downstream interface.
-- The downstream interface is immutable for a session. Replacing a session may
-  change config details, but not `SessionConfig.downstream`.
-- DNS and NAT66 runtimes own listeners and proxy state. Routing owns system
-  interception that sends traffic to those runtimes.
-- Traffic accounting and client blocking are MAC-facing. IP addresses may be
-  hidden counter selectors, but they are not the live client identity.
-- Each rtnetlink connection has one lifecycle owner. Multicast-only event
-  connections are separate from request connections; session routing retains
-  its request connection for the session lifetime and never reconnects it.
-- The process-wide ICMP dispatcher exists only for NAT66 ICMPv6 state that must
-  be shared across sessions because the kernel queue is process-wide. It owns
-  queue `30000` and must attribute queued Echo Requests from source
-  hardware-address metadata.
-- The process-wide NAT66 UDP reply-socket registry exists because exact socket
-  binds share the daemon's network namespace across MAC listeners and sessions.
-  For its immutable daemon reply mark, it owns at most one live socket per exact
-  IPv6 source address and port. Associations, per-listener DNS anchors, and DNS
-  query tasks hold leases; only the last lease may remove and close the socket.
+- A root session owns runtime state for one immutable downstream interface.
+- DNS and NAT66 own listeners and proxy state; routing owns the interception
+  that sends traffic to them.
+- Root traffic identity is MAC-facing. IP addresses may select counters but are
+  not live client identity.
+- Each rtnetlink connection has one owner. Event connections are separate from
+  request connections, and session routing retains its request connection.
+- The process-wide NAT66 ICMP dispatcher owns NFQUEUE `30000`; client identity
+  for queued Echo Requests comes only from six-byte hardware-address metadata.
+- The process-wide NAT66 UDP reply-socket registry owns at most one socket per
+  exact source address and port. Only the last lease may remove and close it.
+- App-UID TUN ingress owns all TUN-visible transport state. The session owns and
+  joins both dataplane tasks, and ends when either task completes.
+- An app-UID TCP flow is identified by socket handle plus incarnation because
+  smoltcp reuses handles.
+- App-UID workers are never detached. Cancellation is followed by join. An
+  upstream TCP worker's terminal proves its descriptor is closed; the memory-only
+  flow record may remain for the client closing handshake.
+- Client TCP bytes cross a bounded per-flow stream. Backpressure is lossless;
+  readiness comes from that stream and packet/timer events, not capacity polling
+  or a second wake protocol.
+- A client FIN is delivered after all preceding bytes. Clean transport completion
+  closes the upstream socket but retains client-facing TCP state until its close
+  handshake finishes, or until expiry, explicit flow teardown or session shutdown.
+- Flow teardown happens exactly once. Accepted resets are determined by the TCP
+  stack, not by inspecting a header bit alone. A flow whose own reset the
+  interface handoff had no room for is retained rather than reclaimed, because
+  its socket is the only thing that can still send it.
+- Android resolver work cannot be joined. Each submitted DNS-over-TCP
+  transaction, not its transport, owns its resolver descriptor and query buffer
+  until settlement; transport closure does not cancel it. Daemon operation is
+  independent of Android's per-UID query limit.
+- DNS-over-TCP resolver waits are readiness-driven and transaction-table-owned.
+  Every wait has one row while the table is live; ownership mismatches are
+  reported and the affected delivery is discarded. See [`dns.md`](dns.md).
+- Each conversation owns one nonfatal reporter, and a successor cannot install
+  it while its predecessor is finishing.
+- Nonfatals coalesce by compiled source site only while their one writer handoff
+  is occupied; blocked sites drain in first-blocked order when it returns.
+- Root waits for every detached report-capable task and destructor before
+  finishing its reporter.
+- Failed session startup cancels staged resources. Cancellation after downstream
+  discovery waits for a complete `Session`, then uses its normal rollback.
+- Tracked packet loops observe cancellation at blocking waits and within
+  continuously ready drains. Rtnetlink request drivers end when their owning
+  connection drops.
+
+## App-UID Resource Policy
+
+- The daemon does not pre-account descriptors. Kernel or platform refusal to
+  create one affects only the new flow, mapping, family socket or resolver query.
+- There is no aggregate memory budget or byte ledger. Downstream-created tables
+  grow dynamically and disappear with the session or process; allocator
+  exhaustion may terminate the recoverable app-UID child.
+- Internet-controlled buffering is bounded instead: UDP and Echo each have a
+  one-event reply mailbox, and TUN output has one queued logical datagram. Reply
+  workers reserve before reading; a full TUN handoff refuses the complete
+  datagram, never a fragment prefix.
+- The one-ending settlement handoff uses backpressure. Its arm precedes all
+  owner work except cancellation, including the wait for TUN capacity, so the
+  writer cannot deadlock while returning an IPv4 Identification settlement.
+- A fair pass stays frozen while output producers are gated. Deadlines continue
+  retiring due state without emitting or taking a turn; capacity return resumes
+  the interrupted order rather than favoring a continuously ready producer.
+- TUN ingress and smoltcp polling require output capacity. The owner delivers a
+  poll's packet before polling again, so unsent data and resets remain in their
+  sockets during a stall. A reset candidate rechecks capacity after its required
+  pre-settlement poll.
+- Timed tables use exact ordered deadline indexes, and Echo errors use an exact
+  family/sequence index. Point-of-use deadline checks prevent an overdue row
+  from authorizing a reply before its sweep runs. smoltcp's next-poll deadline is
+  recomputed only after stack state changes.
+- Fragmented IPv4 output does not reuse an Identification for the same tuple
+  within the documented 120-second maximum-datagram-lifetime window. Exhaustion
+  and the opening quarantine affect only oversized IPv4 output.
+- Output counters distinguish queue admission and refusal from actual TUN
+  writes, which only the serial writer counts.
+- IPv6 extension prefixes, including atomic Fragment headers, are normalized in
+  one linear scan and one copy. Only genuine fragmentation enters reassembly;
+  nested fragmentation proceeds one reassembly round at a time.
 
 ## Interception
 
-- Never install routing/firewall interception for a runtime capability that did
-  not start successfully.
-- DNS TCP and UDP listener ports are per-MAC, per-protocol capabilities. NAT66
-  TCP and UDP listener ports are also per-MAC, per-protocol capabilities. NAT66
-  ICMP Echo remains one session-level capability.
-- Optional NAT66 TCP, UDP, or ICMP failure must not disable the other NAT66
-  protocol capabilities that started successfully.
-- ICMPv6 local-link control traffic is not upstream NAT66 payload.
-- DNS, NAT66 TCP, and NAT66 UDP must carry MAC identity by entering through
-  per-MAC listener resources. NAT66 ICMPv6 must carry MAC identity from a
-  six-byte `NFQA_HWADDR`; source-IP-to-MAC lookup is not a valid fallback.
-- Per-MAC listener ports are not client-provided identity tokens. Routing must
-  reject or otherwise fail closed on direct listener-port access that bypasses
-  the MAC-matched interception rule. NAT66 TCP/UDP listener ports are internal
-  `::1` TPROXY endpoints.
-- Local downstream traffic is outside the traffic-control boundary and must not
-  be blocked or counted as upstream traffic by these mechanisms.
+- Never install interception for a runtime capability that did not start.
+- DNS and NAT66 TCP/UDP listeners are per-MAC and per-protocol. NAT66 ICMP is a
+  session capability. Failure of one optional capability must not disable the
+  others.
+- DNS and NAT66 TCP/UDP carry identity through MAC-matched interception. NAT66
+  ICMP uses `NFQA_HWADDR`; source-IP neighbour lookup is not a fallback.
+- Per-MAC listener ports are not client-provided identity tokens. Direct access
+  that bypasses MAC interception must fail closed.
+- ICMPv6 link-local control and local downstream traffic are outside upstream
+  interception, blocking and accounting.
 
 ## Cleanup
 
-- Cleanup must not depend on private app databases, preferences, caches, or
-  daemon memory when the state can outlive the process.
-- Session rollback may use the in-memory applied mutation list. Clean must
-  reconstruct cleanup from deterministic identifiers and current system state.
-- Missing state during cleanup is expected. Unexpected cleanup failures should
-  be reported with structured context.
-- Shared platform tables and globally owned platform state must not be flushed
-  or disabled without an app-owned identifier.
-- Adding a new persistent route, rule, address, firewall rule, mark, table, or
-  chain requires adding or identifying its Clean path.
-- Reply-socket leases are process-local descriptor ownership, not persistent
-  routing or firewall state. Session stop and replacement release their leases,
-  detached tasks may retain leases until completion, and process death closes
-  any remaining descriptors without Clean bookkeeping.
-- When a change mutates existing rules or similar, backwards compatibility is almost never considered since these mutations are cleared upon reboot.
-  It is almost never worth the maintainability burden to carry over cleanup for legacy rules.
+- Cleanup of state that can outlive the process must not depend on private app
+  storage or daemon memory.
+- Session rollback may use its applied-mutation list. Clean reconstructs state
+  from deterministic identifiers and current system state.
+- Missing cleanup state is expected; unexpected failures are structured reports.
+- Do not flush shared platform state without an app-owned identifier.
+- Every persistent route, rule, address, mark, table or firewall mutation needs
+  a documented Clean path.
+- Reply-socket leases are process-local. Stop and replacement release their
+  leases; process death closes remaining descriptors.
+- Legacy mutation compatibility is normally unnecessary because reboot clears
+  this state; do not add migration cleanup without a concrete need.
 
 ## Configuration
 
-- Runtime packet/query work reads `SessionConfig` through snapshots and must
-  not hold the config mutex while waiting on network I/O or resolver I/O.
-  Session replacement may hold the mutex while routing is reconciled because
-  that lock is the commit gate that keeps DNS/NAT66 readers on the previous
-  config until the new routing state has committed.
-- `SessionConfig.clients` is keyed by MAC. A client entry may have no IPv4
-  addresses and still be a valid DNS/NAT66 authorization input.
-- Session replacement reconciles routing before publishing the new config
-  snapshot to NAT66/DNS readers.
-- An empty client set is a deferred NAT66 state, not a failure. Later
-  replacements may start NAT66 when clients appear.
+- Root packet and query work reads config snapshots without holding the mutex
+  across I/O. Replacement may hold the mutex while routing commits, then publish
+  the matching snapshot.
+- Root clients are keyed by MAC and may have no IPv4 address. An empty client set
+  defers NAT66 rather than failing it.
+- `ShizukuSessionConfig` is level-triggered and contains only `admit`; the
+  newest value is the whole truth. Its ACK is sent only after TUN ingress has
+  applied that value.
+- Changing `admit` tears down nothing. While false, ingress is dropped and
+  creates or refreshes no state; existing deadlines and protocol endings
+  continue.
+- The app-UID session MTU is immutable and is checked once against the TUN in
+  `StartShizukuSessionCommand`.
 
 ## Errors
 
-- Terminal call errors mean the requested command could not complete.
-- Nonfatal reports mean the daemon preserved the broader requested operation
-  but lost an optional capability or observed unexpected background state.
-- Per-MAC listener/routing failures are nonfatal when the daemon can omit only
-  that MAC/protocol capability. Unattributable NAT66 ICMPv6 NFQUEUE packets are
-  nonfatal background state and are dropped.
-- Unexpected background failures in daemon-owned networking, resolver, netlink,
-  routing, firewall, file descriptor, process, or cleanup work should become
-  structured reports, not stderr-only logs.
-- Cancellation is not an error by itself. Cleanup or channel failures observed
-  during cancellation should be reported only when they affect daemon-owned
-  state or indicate a broken invariant.
+- Terminal errors mean the requested call could not complete.
+- Nonfatal reports mean the broader operation continued after losing an optional
+  capability or observing unexpected background state.
+- Unexpected daemon-owned networking, resolver-wrapper, routing, firewall,
+  descriptor, process or cleanup failures must be structured reports, not
+  stderr-only logs.
+- Cancellation is not an error; report only cleanup failures or broken
+  invariants exposed during cancellation.
 
 ## Platform Assumptions
 
-- Public app compatibility assumptions stay in the root README.
-- Inline source comments should stay near hardcoded AOSP-derived values and
-  hidden platform behavior.
-- These docs should explain how the daemon depends on those assumptions without
-  becoming a second hidden-API or platform compatibility index.
+- The app-UID daemon does not explicitly bind its process or egress sockets to
+  an Android `Network`; Android's UID policy is the only upstream selector.
+- App-default changes are not daemon state boundaries. TCP, unconnected UDP and
+  Echo follow ordinary Android socket behavior rather than being reset, and
+  queued events are fenced only by their owning flow or worker identity.
+- App-UID DNS submits with `NETWORK_UNSPECIFIED`. Android's DNS proxy selects
+  the query network from the peer UID; a submitted transaction remains owned
+  until settlement even if the default network changes.
+
+Public compatibility assumptions belong in the root [`README.md`](../../README.md).
+Keep hardcoded AOSP-derived behavior beside its source and do not duplicate the
+hidden-API inventory here.

@@ -1,118 +1,146 @@
 # Errors And Reports
 
-Daemon errors need enough structure for the Kotlin side to show useful
-diagnostics, attach Crashlytics keys, and distinguish terminal call failures
-from background nonfatal reports.
+Daemon reports distinguish a failed call from an operation that continued after
+an optional or background failure.
 
 ## Report Shape
 
-Structured reports are built in
+Reports built by
 [`shared/protocol.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shared/protocol.rs)
-and sent by
-[`report.rs`](../../mobile/src/main/rust/vpnhotspotd/src/report.rs). A report
-contains:
+carry context, message, optional errno, kind, Rust source location, process ID
+and details. Context names the owner and operation. Details include the
+identifiers needed to reproduce the failure, such as downstream/upstream,
+session, client, destination, protocol, listener or queue.
 
-- context string;
-- message;
-- optional errno;
-- kind;
-- Rust source file, line, and column from `track_caller`;
-- daemon process ID;
-- bounded key/value details.
+Rust does not truncate report details. The Android consumer passes them to
+Crashlytics, whose
+[event contract](https://firebase.google.com/docs/reference/kotlin/com/google/firebase/crashlytics/FirebaseCrashlytics#recordException(kotlin.Throwable,com.google.firebase.crashlytics.CustomKeysAndValues))
+retains at most 64 combined app/event key-value pairs and truncates keys or
+values beyond 1,024 characters. Crashlytics also retains only the
+[eight most recent recorded nonfatal exceptions](https://firebase.google.com/docs/crashlytics/android/customize-crash-reports#report-non-fatal-exceptions).
+Those limits are applied at the consumer boundary, not on the daemon wire.
 
-Use context strings that name the owning subsystem and operation, such as
-`routing.start`, `control.replace_session`, or `nat66.udp_connect`. Details
-should include the concrete identifiers needed to debug the failing operation,
-such as downstream interface, upstream interface, session ID, client, or
-destination. Per-MAC admission and accounting failures should include the MAC,
-downstream interface, protocol/source, and queue number or listener port when
-that state exists.
+## Control Framing And Diagnostic Bounds
 
-## Terminal Call Errors
+Control protobufs use a four-byte length prefix and reject payload lengths that
+cannot fit Android's signed-`Int` frame allocation or protobuf's
+[portable size limit](https://protobuf.dev/programming-guides/proto-limits/#total-size-of-the-message).
+This is wire validation, not a daemon memory budget; invalid lengths end the
+conversation before payload allocation.
 
-A terminal call error is sent as an error frame for the call ID. Kotlin converts
-it into `DaemonException` and completes the matching one-shot reply or closes
-the matching event channel.
+The daemon fully drains `iptables-restore`, `ip6tables-restore`, and `dumpsys
+ipsec` output while retaining only the first 1,024 bytes of each stream or line
+for diagnostics, matching Crashlytics' value limit. Later bytes are discarded;
+command completion and status handling are unchanged.
 
-Use terminal errors when the requested operation cannot be completed:
+Preserve the first useful context when wrapping `io::Error`; generic layers must
+not overwrite the failing site's context or source location.
 
-- malformed control frames or command payloads;
-- duplicate active call ID;
-- duplicate session for a downstream;
-- missing session for replacement;
-- downstream IPv4 discovery failure during session start;
-- static-address replacement failure;
-- Clean failure that prevents the command from completing.
+## Terminal Errors
 
-When adding context to an `io::Error`, use the report extension helpers so the
-first useful daemon context is preserved and not overwritten by generic wrapper
-layers.
+An `ErrorFrame` carries the call ID whose request could not complete. Examples
+include malformed commands, duplicate calls or downstream sessions, missing
+replacement targets, root downstream discovery failure, failed static-address
+replacement and Clean failure.
+
+On the app-UID path, start or dataplane failure answers the start call. A refused
+configuration answers that config call and ends the session. The session cancels
+and joins its dataplane and flushes nonfatal reports before the terminal frame,
+which is the last frame written. A failure is delivered once: as the terminal
+report when it ends the session, or as a nonfatal when the session continues,
+never both.
 
 ## Nonfatal Reports
 
-A nonfatal report is sent independently of the terminal frame path. Kotlin logs
-it and shows an app-visible warning. Nonfatal reports are appropriate when the
-daemon preserves the broader requested operation but loses an optional behavior
-or observes unexpected background state.
+A `NonFatalFrame` is appropriate when the broader operation continues, for
+example:
 
-Representative examples:
+- one per-MAC DNS or NAT66 capability failed and was omitted;
+- NAT66 ICMP lacked committed-client attribution and dropped one packet;
+- one counter source failed while other counters remained available;
+- daemon-owned background work or best-effort cleanup failed without invalidating
+  the command.
 
-- a per-MAC DNS or NAT66 listener/routing capability fails, and the daemon omits
-  only that MAC/protocol capability;
-- NAT66 ICMPv6 receives a packet without usable committed-client attribution and
-  drops that packet while preserving the broader NAT66 session;
-- IPv4 forwarding counter readout fails during a traffic-counter read, while
-  daemon-owned DNS/NAT66 counters can still be returned;
-- a background task or best-effort cleanup step fails without invalidating the
-  command's main result.
+Each process mode installs one reporter for its control conversation. Root's lasts
+for the process and covers all calls, sessions and probes; the app-UID conversation
+covers one session. A successor cannot install until its predecessor finishes.
 
-Tie the report to a call ID when the failure belongs to a specific active call.
-Use process-level nonfatal reports only for daemon-global background failures or
-when no meaningful call owns the failure.
+Both modes coalesce by Rust source site `(file, line, column)`, bounding pending
+categories to compiled report sites. Context, kind, errno, message, details and
+the optional call ID remain payload; a summary carries the last blocked report
+for its site.
 
-Nonfatal reports are coalesced before they are sent to Kotlin. The first report
-for a category is emitted immediately. Further reports with the same context,
-kind, errno, and Rust source file/line are suppressed for the current
-one-second window; when the window closes, the daemon emits the last suppressed
-report with `coalesced.suppressed_count` and `coalesced.window_ms` details. If
-reports continue, subsequent windows keep emitting at most one summary per
-second instead of reopening with another immediate report. If a category goes
-quiet for a full window, the pending batch closes and the next report is again
-emitted immediately. Daemon shutdown flushes pending summaries before the
-control writer is closed, but nonfatal control-frame delivery is best-effort
-during controller disconnect or idle shutdown. If an emitted nonfatal cannot be
-written to the control socket, the daemon writes the report to stderr, which
-falls back to logcat if the app-side stderr pipe is already closed. Terminal
-error frames are not coalesced.
+Producers hand every unexpected failure to this shared owner rather than keeping
+owner-lifetime "already reported" flags. This preserves each event whenever the
+writer is available and leaves all suppression and latest-summary retention at
+the documented source-site boundary.
+
+The optional call ID only correlates a degradation with its owning call. Root can
+report call-owned nonfatals after the call succeeds. On the app-UID path such a
+failure is terminal and uses an `ErrorFrame`, so its nonfatal reports omit call IDs.
+
+App-UID contexts begin with `shizuku.` and details describe only TUN-visible
+source, destination and family. `platform_dns`, `platform_ipv4` and
+`platform_ipv6` are traffic classes, not physical clients.
+
+Only unexpected daemon/platform failures become app-UID reports. Malformed TUN
+input, refused work, expiry, unreachable peers and other ordinary
+traffic-controlled outcomes are counted or logged, not reported per packet. A
+ping socket delivering bytes that do not have the promised Echo-reply framing,
+or returning `EMSGSIZE` without an attributable local path MTU, violates the
+owner's expected kernel contract and is reported as well as counted.
+
+## Coalescing And Delivery
+
+The reporter reserves exactly one place in the serial control writer's queue:
+one place is sufficient to keep one writer busy, while another would only move
+backlog out of the coalescer. A report is attempted immediately whenever that
+place is free. While it is occupied, each compiled source site retains only its
+latest report and counts replaced reports in `coalesced.suppressed_count`.
+Returning the place wakes the reporter, which emits blocked sites in
+first-blocked order. There is no time-based reporting quota. Terminal frames are
+not coalesced.
+
+Orderly shutdown flushes summaries before ending the writer. Root first waits for
+all report-capable detached tasks and their destructors; the app-UID session
+finishes reporting before its terminal frame. Undelivered reports become part of
+the conversation's result, and root combines that with the writer result. Reports
+made outside a live conversation fall back to stderr/logcat.
+
+## Local Setup Versus Remote Outcome
+
+Classification belongs at the failing operation, not in an errno table:
+
+- `Failure::Local` covers daemon setup such as creating, binding, making
+  nonblocking or registering a socket, and wrapping a resolver descriptor. It is
+  a structured report. A resolver-wrapper failure ends the app-UID session
+  because later queries use the same broken facility.
+- `Failure::Expected` covers peer, path and platform outcomes such as refusal,
+  unreachability, timeout and ordinary resolver results. It ends only the flow or
+  query and is not a report. DNS returns SERVFAIL for the affected message and
+  keeps a valid TCP stream open.
+
+See [`dns.md`](dns.md) for resolver ownership.
 
 ## Logs
 
-`report::stdout!` and `report::stderr!` write to stdio, falling back to logcat
-if the stdio pipe is already closed. Use logs for expected remote/network
-outcomes and low-value runtime noise that should not surface as a structured
-app warning.
-
-Do not use stderr-only logging for unexpected daemon failures in networking,
-resolver, routing, firewall, netlink, fd, process, or cleanup operations.
-Unexpected background failures should become structured nonfatal reports.
+`report::stdout!` and `report::stderr!` fall back to logcat after their pipe
+closes. Use logs for expected remote outcomes and low-value summaries. Unexpected
+daemon networking, resolver-wrapper, routing, firewall, netlink, descriptor,
+process or cleanup failures must be structured reports rather than stderr-only
+messages.
 
 ## Cancellation
 
-Cancellation is not an error by itself. If a call is cancelled and the failing
-operation returns `Interrupted`, the call task should finish without sending a
-terminal error. Background tasks tied to a stop token should exit quietly when
-that token is cancelled. DNS TCP accept also re-checks its stop token before
-reporting accept errors and retries transient active-listener errors.
-
-If cancellation exposes an unexpected cleanup or channel failure, report that
-failure only when it affects daemon-owned state or indicates a broken invariant.
+Cancellation and `Interrupted` during cancellation are not errors. Tasks tied to
+a stop token exit quietly. Report only unexpected cleanup/channel failures that
+affect daemon-owned state or break an invariant. App-UID worker completion closes
+its descriptors, and the owner joins it before retiring its record. Clean TCP
+completion may retain memory-only client-facing state as documented in
+[`shizuku.md`](shizuku.md#app-uid-dataplane).
 
 ## Best-Effort Cleanup
 
-Best-effort cleanup should handle expected benign absence explicitly, for
-example missing routes, missing rules, missing addresses, or already-closed
-file descriptors. Other errors should be reported with context.
-
-Do not hide cleanup errors with `let _ = ...`, `.ok()`, broad catches, or
-stderr-only messages. If a cleanup operation is intentionally allowed to fail,
-document the expected failure mode in code or in the owning doc.
+Handle expected absence explicitly, such as a missing route, rule, address or an
+already-closed descriptor. Report other cleanup failures with context. Do not
+hide them with `let _ = ...`, `.ok()`, broad catches or stderr-only messages.

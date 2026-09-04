@@ -14,16 +14,30 @@ test = false
 [dependencies]
 cidr = "0.3.2"
 etherparse = "0.21.0"
+fastrand = "2.5.0"
 futures-channel = "0.3.33"
 futures-util = "0.3.33"
 libc = "0.2.189"
 nfq = { package = "nfq-updated", version = "0.2.6" }
 nix = { version = "0.31.3", default-features = false, features = ["net", "uio"] }
 prost = "0.14.3"
+rustix = { version = "1.1.4", features = ["rand"] }
 rtnetlink = { version = "0.21.0", default-features = false, features = ["tokio_socket"] }
+# Pin two resource-bearing smoltcp 0.13.1 build defaults instead of inheriting them invisibly:
+# `iface-max-addr-count-2` is exactly the IPv4 plus IPv6 interception addresses configured in
+# `shizuku/tcp.rs`; another push is refused and reported. `assembler-max-segment-count-4` retains at most
+# four discontinuous TCP receive ranges; an unmergeable fifth range is discarded and recovered by TCP
+# retransmission. Both values are maintained upstream defaults for the same resources:
+# https://github.com/smoltcp-rs/smoltcp/blob/v0.13.1/build.rs#L9
+# https://github.com/smoltcp-rs/smoltcp/blob/v0.13.1/build.rs#L16
+smoltcp = { version = "0.13", default-features = false, features = ["std", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp", "iface-max-addr-count-2", "assembler-max-segment-count-4"] }
 socket2 = { version = "0.6.5", features = ["all"] }
 tokio = { version = "1.53.1", features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
-tokio-util = "0.7.19"
+# `rt` for `task::TaskTracker`: root waits for every detached report-capable future before ending reporting.
+tokio-util = { version = "0.7.19", features = ["rt"] }
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["test-util"] }
 
 [build-dependencies]
 prost-build = "0.14.3"

@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repo is a single-app Android project. Root Gradle files live at the repo top level. The app module is [`mobile`](./mobile), with Kotlin/Java under [`mobile/src/main/java`](./mobile/src/main/java), native code under [`mobile/src/main/cpp`](./mobile/src/main/cpp), Rust daemon code under [`mobile/src/main/rust`](./mobile/src/main/rust), resources under [`mobile/src/main/res`](./mobile/src/main/res), JVM tests under [`mobile/src/test/java`](./mobile/src/test/java), and instrumented tests under [`mobile/src/androidTest/java`](./mobile/src/androidTest/java). Product-specific source lives in [`mobile/src/google`](./mobile/src/google) and [`mobile/src/freedom`](./mobile/src/freedom).
+This repo is a single-app Android project. Root Gradle files live at the repo top level. The app module is [`mobile`](./mobile), with Kotlin/Java under [`mobile/src/main/java`](./mobile/src/main/java), native code under [`mobile/src/main/cpp`](./mobile/src/main/cpp), Rust daemon code under [`mobile/src/main/rust`](./mobile/src/main/rust), resources under [`mobile/src/main/res`](./mobile/src/main/res), and JVM tests under [`mobile/src/test/java`](./mobile/src/test/java). Product-specific source lives in [`mobile/src/google`](./mobile/src/google) and [`mobile/src/freedom`](./mobile/src/freedom).
 
 ## Build, Test, and Development Commands
 Use Gradle from the repo root.
@@ -9,7 +9,6 @@ Use Gradle from the repo root.
 - `./gradlew :mobile:compileDebugKotlin`: fast Kotlin compile check.
 - `./gradlew :mobile:testDebugUnitTest`: run JVM/unit tests.
 - `./gradlew :mobile:installDebug`: install the debug build on a connected device.
-- `./gradlew :mobile:connectedDebugAndroidTest`: run instrumented tests on device/emulator.
 
 ## Coding Style & Naming Conventions
 Follow existing Kotlin style: 4-space indentation, concise expression bodies only when clear, and existing naming patterns. Match nearby code before introducing new structure.
@@ -31,6 +30,7 @@ Prefer resource-owner concurrency over broad locks or global serialization.
 - For ordered command or state transitions, prefer a single owner worker, channel, or pending-state loop over launching independent jobs that can interleave.
 - Use `Dispatchers.Default.limitedParallelism(1, "...")` for non-UI owner-local mutable state confinement when multiple coroutine entry points need a shared lane, but do not rely on it for run-to-completion ordering across suspensions.
 - Use `Mutex` for narrow, local critical sections where the protected invariant is clear. Do not use a daemon/global mutex to hide caller-owned lifecycle races.
+- A user-toggled service owns its lifespan with one cancellable Main-confined `Job`: start installs it, stop cancels it, `finally` performs the only teardown under `NonCancellable`, and a successor joins its predecessor before side effects. Publish stable intent, not transition states.
 - Do not run blocking work on Main. Main-confined owners may call suspending/nonblocking APIs, but blocking I/O, sleeps, or CPU-heavy work must stay off Main.
 
 ## Rust Daemon Code Hygiene
@@ -59,12 +59,14 @@ Rust daemon code should be event-driven and async-first. Prefer Tokio readiness,
 - Unexpected Rust daemon background failures must be raised to the JVM as structured non-fatal daemon reports. Expected errors may be logged or consumed when the caller intentionally preserves daemon operation.
 - Explicit Rust daemon errors returned over IPC must carry structured daemon report context, including useful command/task details, errno when available, and Rust source location. Bare errno/message responses are not sufficient.
 - Keep raw `libc` and unsafe code at the owner module boundary that needs it. Prefer `socket2`/Tokio/std APIs when they expose the required behavior, but do not create broad `sys`/`utils` modules just to hide one call site.
-- Avoid arbitrary concurrency caps, queue sizes, or timeouts. If a limit is required for resource protection, name it by the resource being limited and justify the chosen value from behavior or platform constraints.
+- Avoid arbitrary resource caps. **Every** Rust-side resource cap must be documented both at its declaration and in the owning subsystem document under [`docs/vpnhotspotd`](./docs/vpnhotspotd), including byte or memory shares, descriptor/record/flow/query limits, queue or channel depths, concurrency limits, and resource-protection timeouts. Both locations must name the resource and failure mode being bounded, explain how the exact value follows from a protocol or platform constraint or a directly analogous maintained upstream value, default, or formula, and state the exhaustion behavior. A round number, safety factor, unexplained fraction, or unrelated upstream constant is not a justification; cite the source and explain why the same resource, ownership, and exhaustion semantics apply. Structural wire-format and integer-range validation is not a daemon resource cap: do not catalog it or justify a fixed allocation merely by restating the field width. If a buffer deliberately retains the full protocol range, explain why that ownership requires a full unit and what happens when it cannot be retained. Keep the declaration and daemon documentation synchronized whenever the cap or its rationale changes.
+- Assume downstream clients are trusted; resource exhaustion recoverable by disconnect or reboot needs no daemon cap.
+- Prefer protocol limits and directly analogous values, defaults, or formulas from Linux and maintained upstream packages. Remove caps without an in-scope failure mode; use project-local benchmarks to validate consequences, not to invent cap values.
 - Local Rust tests are permitted only when they do not introduce non-Android scaffolding into daemon code. If a test needs fake non-Android platform behavior, remove it or refactor the logic under test so the test stays platform-neutral without production fallbacks.
 - Run `cargo fmt`, `cargo check`, and preferably `cargo clippy --all-targets -- -D warnings` for Rust changes. Also run the Gradle native build task when the Android build integration could be affected.
 
 ## Testing Guidelines
-Add or update unit tests in `mobile/src/test/java` for parser, routing, and compatibility logic. Use AndroidX instrumentation tests only when behavior depends on framework/runtime integration. Name tests after the target type, for example `IpSecForwardPolicyCommandTest`. Prefer the smallest test that proves the behavior change.
+Add or update JVM tests in `mobile/src/test/java` for parser, routing, and compatibility logic. AndroidTest variants are disabled; use separately authorized device qualification for framework behavior. Name tests after the target type, for example `IpSecForwardPolicyCommandTest`. Prefer the smallest test that proves the behavior change.
 
 ## Commit & Pull Request Guidelines
 Keep commit messages short, imperative, and specific, matching recent history such as `Fixes` or `Update dependencies`. PRs should explain user-visible impact, compatibility risk, and validation performed. Link the issue when relevant and include screenshots only for UI changes.
@@ -89,10 +91,8 @@ Do not hand-wave platform API reflection, hidden API, or root behavior.
 - Do not add normal `sdk/public-api` entries to `README.md` just because code now touches them. Document only reflected hidden APIs, blocked APIs, or non-obvious platform assumptions.
 - If a hidden API is only used on a narrower runtime path than its Android introduction, the `README.md` qualifier must follow actual app usage, not just platform availability.
 - Follow existing conventions first. Check similar entries in `README.md`, `../hiddenapi/hiddenapi-flags.csv`, and nearby source comments before adding new ones.
-- Do not search for hiddenapi data elsewhere. Use the provided `../hiddenapi/hiddenapi-flags.csv`, and do not edit it unless explicitly asked.
-- Before adding, removing, or reclassifying any Android API entry in `README.md`, verify the exact descriptor and exact overload in `../hiddenapi/hiddenapi-flags.csv`. Do not infer access category from class-level knowledge, AOSP source, or a sibling overload.
-- Never guess or synthesize hiddenapi flag suffixes. The suffix after the descriptor, such as `blocked`, `unsupported`, or `sdk,system-api,test-api`, must come from an exact descriptor match in `../hiddenapi/hiddenapi-flags.csv`.
-- AOSP API signature files such as `current.txt`, `system-current.txt`, annotations such as `@SystemApi`/`@FlaggedApi`, and SDK stubs may support API-surface or availability conclusions, but they do not prove hiddenapi flags. If the exact descriptor is absent from `../hiddenapi/hiddenapi-flags.csv`, do not append a flag suffix; document the absence explicitly when it matters.
+- Hidden-API inventory edits must follow `$android-hidden-api-compatibility`; its app-use range, release-matched dataset, exact-descriptor, suffix, and row-shape rules are authoritative.
+- Do not edit `../hiddenapi` or another hiddenapi dataset unless explicitly asked.
 - Treat `public-api` as a stop sign for `Hidden whitelisted APIs` and `Private APIs used / Assumptions for Android customizations` unless this app also uses a different non-public member with its own descriptor.
 - Update the correct documentation bucket: blocked/private/internal APIs go in `README.md` under
   `Private APIs used / Assumptions for Android customizations`; reflected or directly referenced
@@ -115,6 +115,5 @@ Do not hand-wave platform API reflection, hidden API, or root behavior.
 Keep `README.md` in sync with these changes.
 
 - Update `Private APIs used / Assumptions for Android customizations`, `Hidden whitelisted APIs`, and `Other` whenever descriptors, API ranges, hidden constants, or platform assumptions change.
-- Cross-check README entries against `../hiddenapi/hiddenapi-flags.csv` by exact descriptor when applicable.
-- If `README.md` API documentation changes, state in the final response that `../hiddenapi/hiddenapi-flags.csv` was checked and which descriptors were verified.
+- If `README.md` API documentation changes, state which exact descriptors and release-matched datasets were verified.
 - If a change affects compatibility, cleanup behavior, or required privileges, also update the relevant README usage or troubleshooting text.

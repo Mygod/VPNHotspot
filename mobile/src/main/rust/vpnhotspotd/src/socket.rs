@@ -6,6 +6,9 @@ use socket2::{SockAddr, Socket};
 use tokio::io::unix::AsyncFd;
 use vpnhotspotd::shared::protocol::error_errno;
 
+/// Lets Linux clamp accept backpressure to `net.core.somaxconn`.
+pub(crate) const TCP_LISTEN_BACKLOG: i32 = i32::MAX;
+
 pub(crate) async fn await_connect(socket: &Socket) -> io::Result<()> {
     await_writable(socket.as_fd()).await?;
     socket.take_error()?.map_or(Ok(()), Err)
