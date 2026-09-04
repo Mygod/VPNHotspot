@@ -230,8 +230,8 @@ android {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 29
         targetSdk = 37
-        versionCode = 2011
-        versionName = "3.0.8"
+        versionCode = 2020
+        versionName = "3.1.0"
     }
     splits {
         abi {
