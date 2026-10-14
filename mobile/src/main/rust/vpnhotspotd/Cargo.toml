@@ -3,6 +3,9 @@ name = "vpnhotspotd"
 version = "0.1.0"
 edition = "2021"
 
+# This reference checkout is nested under NewHome, but owns its Rust build independently.
+[workspace]
+
 [lib]
 path = "src/lib.rs"
 

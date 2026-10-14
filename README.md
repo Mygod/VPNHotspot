@@ -12,6 +12,8 @@ Connecting things to your VPN made simple. Share your VPN connection over hotspo
 
 This fork keeps automatic recovery controls for Wi-Fi, Bluetooth, USB, and Ethernet tethering. Recovery is driven by Android tether-state events and uses exponential retry backoff instead of periodic one-second polling. Existing preference keys are preserved during upgrades.
 
+自动补开开关关闭后只停止后续请求，不关闭现有热点或其他共享接口，也不撤回已经提交给 Android 的请求。每种共享类型只有一个请求任务；等待系统启动回调最多 30 秒，回调成功后等待真实共享接口事件最多 15 秒，缺失时按 2 秒至 5 分钟指数退避恢复。重复设置通知不会重复启动。定时取消只释放应用侧等待，无法保证厂商系统同步取消已提交的启动操作。自动补开只控制 Android Wi-Fi/蓝牙/USB/以太网网络共享，不会自动启用 VPN downstream，也不会自动打开接口的“监控并自动重连”；后两项只能由接口行中的用户操作启用。
+
 It also includes a local HTTP control API, API-key management, and QR-code pairing under **Settings > HTTP API and QR pairing**. The server listens on the local network and allows cleartext HTTP for LAN access. API-key authentication is optional for compatibility; enable it before using the service on an untrusted network.
 
 This app is useful for:
