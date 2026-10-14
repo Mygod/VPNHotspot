@@ -1,4 +1,6 @@
 import groovy.json.JsonOutput
+import java.io.File
+import java.util.Properties
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.file.RegularFileProperty
@@ -218,6 +220,15 @@ abstract class GenerateSupplicantAidlJavaTask : DefaultTask() {
 }
 
 val javaVersion = 11
+val sharedSigningPropertiesFile = File(System.getProperty("user.home"), "work/newhome-signing.properties")
+val sharedSigningProperties = Properties().apply {
+    if (sharedSigningPropertiesFile.isFile) sharedSigningPropertiesFile.inputStream().use(::load)
+}
+val sharedSigningStoreFile = sharedSigningProperties.getProperty("storeFile")?.let { configuredPath ->
+    File(configuredPath).takeIf { it.isFile }
+        ?: File(sharedSigningPropertiesFile.parentFile, File(configuredPath).name).takeIf { it.isFile }
+}
+
 android {
     namespace = "be.mygod.vpnhotspot"
 
@@ -226,6 +237,7 @@ android {
         targetCompatibility(javaVersion)
     }
     compileSdk = 37
+    buildToolsVersion = "36.1.0"
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 29
@@ -245,10 +257,22 @@ android {
     buildFeatures {
         buildConfig = true
         compose = true
+        viewBinding = true
+    }
+    signingConfigs {
+        if (sharedSigningPropertiesFile.isFile && sharedSigningStoreFile != null) {
+            create("newhomeShared") {
+                storeFile = sharedSigningStoreFile
+                storePassword = sharedSigningProperties.getProperty("storePassword")
+                keyAlias = sharedSigningProperties.getProperty("keyAlias")
+                keyPassword = sharedSigningProperties.getProperty("keyPassword")
+            }
+        }
     }
     buildTypes {
         debug {
             isPseudoLocalesEnabled = true
+            signingConfigs.findByName("newhomeShared")?.let { signingConfig = it }
         }
         release {
             isShrinkResources = true
@@ -381,6 +405,15 @@ dependencies {
     implementation(libs.timber)
     implementation(libs.wire.runtime)
     implementation(libs.zxing.core)
+    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("com.google.android.material:material:1.13.0")
+    implementation("androidx.camera:camera-core:1.4.2")
+    implementation("androidx.camera:camera-camera2:1.4.2")
+    implementation("androidx.camera:camera-lifecycle:1.4.2")
+    implementation("androidx.camera:camera-view:1.4.2")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     debugImplementation(libs.leakcanary.android)
     debugImplementation("androidx.compose.ui:ui-tooling")
     hiddenApiStubAnnotations(libs.annotation.jvm)

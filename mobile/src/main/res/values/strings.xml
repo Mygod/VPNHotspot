@@ -310,12 +310,33 @@
     <string name="settings_misc">Misc</string>
     <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:4162 -->
     <string name="settings_help">Help</string>
+    <string name="settings_developer_mode">开发者调试模式</string>
+    <string name="settings_developer_mode_summary">启用开发者调试API接口（有安全风险，仅供调试）</string>
+    <string name="settings_developer_mode_warning">警告：启用开发者调试模式将暴露敏感API接口，包括生成API Key和开关认证功能。这些接口可能被恶意利用，请仅在调试环境中使用。</string>
     <string name="settings_misc_logcat">Export debug information</string>
     <string name="settings_misc_logcat_summary">Such useful very wow</string>
     <string name="settings_misc_source">Project homepage at GitHub</string>
     <string name="settings_misc_source_summary">Read manual, star, submit issues and contribute</string>
     <string name="settings_misc_donate">Donate</string>
     <string name="settings_misc_donate_summary">I love money</string>
+
+    <!-- WebServer -->
+    <string name="webserver_start_failed">Failed to start WebServer on port %d</string>
+
+    
+    <!-- 远程控制 -->
+    <string name="title_remote_control">远程控制</string>
+    <string name="remote_control_connect">连接远程设备</string>
+    <string name="remote_control_ip_hint">远程设备IP地址</string>
+    <string name="remote_control_api_key_hint">API Key</string>
+    <string name="remote_control_connect_success">连接成功</string>
+    <string name="remote_control_connect_failed">连接失败</string>
+    <string name="remote_control_refresh">刷新</string>
+    <string name="remote_control_start_wifi">启动热点</string>
+    <string name="remote_control_stop_wifi">停止热点</string>
+    <string name="remote_control_device_status">远程设备状态</string>
+    <string name="remote_control_usage_guide">使用说明</string>
+
 
     <string name="notification_tethering_title">VPN tethering</string>
     <string name="notification_channel_tethering">VPN Tethering Service</string>
@@ -457,4 +478,15 @@
     <!-- Android translation-index match: packages/apps/Settings/res/values/strings.xml:579 -->
     <string name="wifi_save">Save</string>
 
+
+    <string name="auto_tether_wifi">自动恢复 Wi-Fi 热点</string>
+    <string name="auto_tether_wifi_summary">状态变化时自动恢复 Wi-Fi 网络共享</string>
+    <string name="auto_tether_bluetooth">自动恢复蓝牙共享</string>
+    <string name="auto_tether_bluetooth_summary">状态变化时自动恢复蓝牙网络共享</string>
+    <string name="auto_tether_usb">自动恢复 USB 共享</string>
+    <string name="auto_tether_usb_summary">USB 状态变化时自动恢复网络共享</string>
+    <string name="auto_tether_ethernet">自动恢复以太网共享</string>
+    <string name="auto_tether_ethernet_summary">以太网状态变化时自动恢复网络共享</string>
+    <string name="remote_control_title">HTTP API 与扫码配对</string>
+    <string name="remote_control_summary">管理后台、API Key、远程设备和二维码配对</string>
 </resources>
