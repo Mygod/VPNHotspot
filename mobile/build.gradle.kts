@@ -254,11 +254,12 @@ android {
             isPseudoLocalesEnabled = true
         }
         release {
-            isShrinkResources = true
-            isMinifyEnabled = true
+            // Enables R8 code optimization and resource shrinking; keep rules are in src/main/keepRules.
+            optimization {
+                enable = true
+            }
             // BuildGit already records the commit; AGP's VCS tag task fails when Git packs branch refs.
             vcsInfo.include = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
     packaging.resources.excludes += listOf(
@@ -298,18 +299,18 @@ androidComponents.onVariants { variant ->
     val task = tasks.register<GenerateGitJavaTask>("generate${variantTitle}GitJava") {
         includeStatus.set(variant.buildType == "debug")
         outputDir.set(layout.buildDirectory.dir("generated/source/git/${variant.name}"))
-        repositoryDir.set(rootProject.layout.projectDirectory)
+        repositoryDir.set(isolated.rootProject.projectDirectory)
         outputs.upToDateWhen { false }
     }
     variant.sources.java?.addGeneratedSourceDirectory(task, GenerateGitJavaTask::outputDir)
     val supplicantAidlTask = tasks.register<GenerateSupplicantAidlJavaTask>("generate${variantTitle}SupplicantAidlJava") {
         minSdkVersion.set(android.defaultConfig.minSdk!!)
         supplicantAidlDir.set(
-            rootProject.layout.projectDirectory.dir(
+            isolated.rootProject.projectDirectory.dir(
                 "external/aosp/hardware/interfaces/wifi/supplicant/aidl/aidl_api/" +
                     "android.hardware.wifi.supplicant/5"))
         commonAidlDir.set(
-            rootProject.layout.projectDirectory.dir(
+            isolated.rootProject.projectDirectory.dir(
                 "external/aosp/hardware/interfaces/wifi/common/aidl/aidl_api/" +
                     "android.hardware.wifi.common/2"))
         aidlExecutable.set(androidComponents.sdkComponents.aidl.flatMap { it.executable })
@@ -329,8 +330,6 @@ androidComponents.onVariants { variant ->
     variant.sources.jniLibs?.addGeneratedSourceDirectory(daemonTask, BuildDaemonNativeLibsTask::outputDir)
 }
 ksp {
-    arg("room.expandProjection", "true")
-    arg("room.incremental", "true")
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
@@ -380,7 +379,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.librootkotlinx)
     implementation(libs.lifecycle.runtime.compose)
-    implementation(libs.lifecycle.viewmodel.compose)
     implementation(libs.navigation.compose)
     implementation(libs.play.services.oss.licenses)
     implementation(libs.room.ktx)
