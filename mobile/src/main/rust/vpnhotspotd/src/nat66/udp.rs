@@ -5,7 +5,7 @@ use std::os::fd::AsRawFd;
 use std::sync::Arc;
 use std::time::Instant;
 
-use tokio::io::unix::AsyncFd;
+use tokio::io::Interest;
 use tokio::net::UdpSocket as TokioUdpSocket;
 use tokio::sync::{mpsc, Mutex};
 use tokio::{select, spawn};
@@ -78,13 +78,12 @@ pub(crate) fn spawn_loop(
         icmp: icmp_dispatcher,
         reply_sockets,
     } = resources;
-    // SAFETY: the socket owns its fd, and the inner socket is never replaced.
-    let listener = unsafe { AsyncFd::register(listener) }?;
+    if let Err(e) = enable_recv_hop_limit(&listener) {
+        report::io("nat66.udp_hop_limit_setup", e);
+    }
+    let listener = TokioUdpSocket::from_std(listener)?;
     spawn(async move {
-        let listener_fd = listener.get_ref().as_raw_fd();
-        if let Err(e) = enable_recv_hop_limit(listener.get_ref()) {
-            report::io("nat66.udp_hop_limit_setup", e);
-        }
+        let listener_fd = listener.as_raw_fd();
         let mut retained_dns = None::<ReplySocketLease>;
         let mut associations = HashMap::<AssociationKey, UdpAssociation>::new();
         let (association_event_tx, mut association_event_rx) = mpsc::unbounded_channel();
@@ -136,15 +135,12 @@ pub(crate) fn spawn_loop(
                     None => break,
                 },
                 ready = listener.readable() => {
-                    let mut ready = match ready {
-                        Ok(ready) => ready,
-                        Err(e) => {
-                            report::io("nat66.udp_readable", e);
-                            break;
-                        }
-                    };
+                    if let Err(e) = ready {
+                        report::io("nat66.udp_readable", e);
+                        break;
+                    }
                     loop {
-                        match recv_packet(listener_fd, &mut buffer) {
+                        match listener.try_io(Interest::READABLE, || recv_packet(listener_fd, &mut buffer)) {
                             Ok((size, client, destination, hop_limit)) => {
                                 let activity = Instant::now();
                                 let snapshot = config.lock().await.clone();
@@ -460,10 +456,7 @@ pub(crate) fn spawn_loop(
                                     },
                                 );
                             }
-                            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                                ready.clear_ready();
-                                break;
-                            }
+                            Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
                             Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
                             Err(e) => {
                                 report::io("nat66.udp_recv", e);
