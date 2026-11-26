@@ -33,8 +33,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -48,7 +46,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
@@ -129,11 +126,6 @@ private enum class AppDestination(val route: String) {
     TemporaryHotspotConfiguration("temporary_hotspot_configuration"),
 }
 
-@OptIn(
-    ExperimentalMaterial3AdaptiveApi::class,
-    ExperimentalMaterial3Api::class,
-    ExperimentalMaterial3ExpressiveApi::class,
-)
 @Composable
 fun VpnHotspotApp(clientViewModel: ClientViewModel) {
     val context = LocalContext.current
@@ -473,7 +465,6 @@ private fun <T : IBinder> rememberServiceBinder(enabled: Boolean, clazz: Class<o
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3AdaptiveApi::class)
 private fun RootDestinationScaffold(
     @StringRes title: Int,
     selectedDestination: RootDestination,
@@ -604,7 +595,6 @@ private fun ApConfigurationRoute(
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
 private fun DestinationScaffold(
     @StringRes title: Int,
     modifier: Modifier = Modifier,

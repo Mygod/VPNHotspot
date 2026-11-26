@@ -31,7 +31,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItemDefaults
@@ -148,7 +147,6 @@ fun LazyListScope.preferenceGroup(
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 fun PreferenceGroup(
     title: String? = null,
     horizontalPadding: Dp = 16.dp,
@@ -234,7 +232,6 @@ fun PreferenceRow(
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 fun PreferenceRow(
     titleContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
@@ -275,7 +272,6 @@ fun PreferenceRow(
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 fun PreferenceRadioRow(
     selected: Boolean,
     titleContent: @Composable () -> Unit,
@@ -334,14 +330,12 @@ fun PreferenceSwitchRow(
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private fun preferenceRowShapes(position: PreferenceRowPosition?) = when {
     position == null -> ListItemDefaults.shapes()
     else -> ListItemDefaults.segmentedShapes(position.index, position.count)
 }
 
 @Composable
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private fun preferenceRowColors(position: PreferenceRowPosition?) = if (position == null) {
     ListItemDefaults.colors()
 } else {
@@ -473,7 +467,6 @@ fun modalBottomSheetListContentPadding() = PaddingValues(
 )
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 fun PreferenceSelectionSheet(
     title: String,
     entryCount: Int,
