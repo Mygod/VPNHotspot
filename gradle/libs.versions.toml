@@ -6,6 +6,8 @@ wire = "7.2.2"
 activity-compose = "androidx.activity:activity-compose:1.13.0"
 annotation-jvm = "androidx.annotation:annotation-jvm:1.11.0"
 browser = "androidx.browser:browser:1.10.0"
+# Once this BOM resolves material3 1.6.0 or newer, replace tonalOutlinedTextFieldColors() in
+# mobile/src/main/java/be/mygod/vpnhotspot/ui/theme/Theme.kt with OutlinedTextFieldDefaults.tonalColors().
 compose-bom = "androidx.compose:compose-bom:2026.11.01"
 core = "androidx.core:core:1.19.1"
 firebase-analytics = "com.google.firebase:firebase-analytics:24.0.0"

@@ -88,6 +88,7 @@ import be.mygod.vpnhotspot.net.wifi.WifiP2pManagerHelper
 import be.mygod.vpnhotspot.root.WifiApCommands
 import be.mygod.vpnhotspot.net.wifi.VendorData
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
+import be.mygod.vpnhotspot.ui.theme.tonalOutlinedTextFieldColors
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.readableMessage
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -461,7 +462,7 @@ fun TetheringScreen(
                         scrollState = scrollState,
                         isError = staticIpDraftError != null,
                         shape = OutlinedTextFieldDefaults.roundedShape,
-                        colors = OutlinedTextFieldDefaults.tonalColors(),
+                        colors = tonalOutlinedTextFieldColors(),
                         supportingText = staticIpDraftError?.let {
                             {
                                 Text(
@@ -514,7 +515,7 @@ fun TetheringScreen(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true,
                     shape = OutlinedTextFieldDefaults.roundedShape,
-                    colors = OutlinedTextFieldDefaults.tonalColors(),
+                    colors = tonalOutlinedTextFieldColors(),
                 )
             },
             confirmButton = {

@@ -37,6 +37,7 @@ import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.TooltipIconButton
 import be.mygod.vpnhotspot.ui.annotatedStringResource
 import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
+import be.mygod.vpnhotspot.ui.theme.tonalOutlinedTextFieldColors
 
 @Composable
 fun PasswordApRow(state: ApConfigurationState) {
@@ -76,7 +77,7 @@ fun PasswordApRow(state: ApConfigurationState) {
                     inputTransformation = if (maxLength) InputTransformation.maxLengthReject(63) else null,
                     isError = error != null,
                     shape = OutlinedTextFieldDefaults.roundedShape,
-                    colors = OutlinedTextFieldDefaults.tonalColors(),
+                    colors = tonalOutlinedTextFieldColors(),
                     supportingText = if (error != null || maxLength) {
                         {
                             Column {

@@ -76,6 +76,7 @@ import be.mygod.vpnhotspot.root.Dump
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.daemon.MasqueradeMode
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
+import be.mygod.vpnhotspot.ui.theme.tonalOutlinedTextFieldColors
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.allInterfaceNames
@@ -493,7 +494,7 @@ private fun TextPreferenceRow(
                                     modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.SecondaryEditable),
                                 )
                             },
-                            colors = OutlinedTextFieldDefaults.tonalColors(),
+                            colors = tonalOutlinedTextFieldColors(),
                             shape = OutlinedTextFieldDefaults.roundedShape,
                             singleLine = true,
                         )

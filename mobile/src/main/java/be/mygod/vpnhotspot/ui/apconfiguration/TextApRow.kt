@@ -35,6 +35,7 @@ import be.mygod.vpnhotspot.ui.DialogDismissButton
 import be.mygod.vpnhotspot.ui.PreferenceRow
 import be.mygod.vpnhotspot.ui.nonInteractiveVerticalScrollbar
 import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
+import be.mygod.vpnhotspot.ui.theme.tonalOutlinedTextFieldColors
 
 @Composable
 fun TextApRow(
@@ -94,7 +95,7 @@ fun TextApRow(
                     scrollState = scrollState,
                     isError = error != null,
                     shape = OutlinedTextFieldDefaults.roundedShape,
-                    colors = OutlinedTextFieldDefaults.tonalColors(),
+                    colors = tonalOutlinedTextFieldColors(),
                     supportingText = if (error != null || maxLength != null) {
                         {
                             Column {

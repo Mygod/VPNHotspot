@@ -65,6 +65,7 @@ import be.mygod.vpnhotspot.room.ClientStats
 import be.mygod.vpnhotspot.room.TrafficStatsSource
 import be.mygod.vpnhotspot.root.daemon.NeighbourState
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
+import be.mygod.vpnhotspot.ui.theme.tonalOutlinedTextFieldColors
 import be.mygod.vpnhotspot.util.formatTimestamp
 import be.mygod.vpnhotspot.util.toPluralInt
 import kotlinx.coroutines.CancellationException
@@ -307,7 +308,7 @@ private fun ClientRow(
                     ),
                     singleLine = true,
                     shape = OutlinedTextFieldDefaults.roundedShape,
-                    colors = OutlinedTextFieldDefaults.tonalColors(),
+                    colors = tonalOutlinedTextFieldColors(),
                 )
             },
             confirmButton = {

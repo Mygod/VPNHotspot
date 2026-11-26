@@ -43,6 +43,7 @@ import be.mygod.vpnhotspot.ui.TooltipIconButton
 import be.mygod.vpnhotspot.ui.annotatedStringResource
 import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
 import be.mygod.vpnhotspot.ui.rememberTextFieldValueAtEnd
+import be.mygod.vpnhotspot.ui.theme.tonalOutlinedTextFieldColors
 import be.mygod.vpnhotspot.util.readableMessage
 
 @Composable
@@ -120,7 +121,7 @@ fun SsidApRow(
                     singleLine = true,
                     isError = draftError != null,
                     shape = OutlinedTextFieldDefaults.roundedShape,
-                    colors = OutlinedTextFieldDefaults.tonalColors(),
+                    colors = tonalOutlinedTextFieldColors(),
                     supportingText = {
                         Column {
                             draftError?.let { ErrorApText(it) } ?: state.ssidSupplicantModeWarning(

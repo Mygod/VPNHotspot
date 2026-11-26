@@ -41,6 +41,7 @@ import be.mygod.vpnhotspot.ui.PreferenceSwitch
 import be.mygod.vpnhotspot.ui.nonInteractiveVerticalScrollbar
 import be.mygod.vpnhotspot.ui.rememberDialogFocusRequester
 import be.mygod.vpnhotspot.ui.rememberPreferenceSplitFocusModifiers
+import be.mygod.vpnhotspot.ui.theme.tonalOutlinedTextFieldColors
 
 @Composable
 fun TextSwitchApRow(
@@ -145,7 +146,7 @@ fun TextSwitchApRow(
                         scrollState = scrollState,
                         isError = fieldEnabled && error != null,
                         shape = OutlinedTextFieldDefaults.roundedShape,
-                        colors = OutlinedTextFieldDefaults.tonalColors(),
+                        colors = tonalOutlinedTextFieldColors(),
                         suffix = suffix?.let { { Text(it) } },
                         supportingText = if ((fieldEnabled && error != null) || maxLength != null) {
                             {
