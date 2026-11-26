@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repo is a single-app Android project. Root Gradle files live at the repo top level. The app module is [`mobile`](./mobile), with Kotlin/Java under [`mobile/src/main/java`](./mobile/src/main/java), native code under [`mobile/src/main/cpp`](./mobile/src/main/cpp), Rust daemon code under [`mobile/src/main/rust`](./mobile/src/main/rust), resources under [`mobile/src/main/res`](./mobile/src/main/res), JVM tests under [`mobile/src/test/java`](./mobile/src/test/java), and instrumented tests under [`mobile/src/androidTest/java`](./mobile/src/androidTest/java). Product-specific source lives in [`mobile/src/google`](./mobile/src/google) and [`mobile/src/freedom`](./mobile/src/freedom).
+This repo is a single-app Android project. Root Gradle files live at the repo top level. The app module is [`mobile`](./mobile), with Kotlin/Java under [`mobile/src/main/java`](./mobile/src/main/java), native code under [`mobile/src/main/cpp`](./mobile/src/main/cpp), Rust daemon code under [`mobile/src/main/rust`](./mobile/src/main/rust), resources under [`mobile/src/main/res`](./mobile/src/main/res), and JVM tests under [`mobile/src/test/java`](./mobile/src/test/java). Product-specific source lives in [`mobile/src/google`](./mobile/src/google) and [`mobile/src/freedom`](./mobile/src/freedom).
 
 ## Build, Test, and Development Commands
 Use Gradle from the repo root.
@@ -9,7 +9,6 @@ Use Gradle from the repo root.
 - `./gradlew :mobile:compileDebugKotlin`: fast Kotlin compile check.
 - `./gradlew :mobile:testDebugUnitTest`: run JVM/unit tests.
 - `./gradlew :mobile:installDebug`: install the debug build on a connected device.
-- `./gradlew :mobile:connectedDebugAndroidTest`: run instrumented tests on device/emulator.
 
 ## Coding Style & Naming Conventions
 Follow existing Kotlin style: 4-space indentation, concise expression bodies only when clear, and existing naming patterns. Match nearby code before introducing new structure.
@@ -64,7 +63,7 @@ Rust daemon code should be event-driven and async-first. Prefer Tokio readiness,
 - Run `cargo fmt`, `cargo check`, and preferably `cargo clippy --all-targets -- -D warnings` for Rust changes. Also run the Gradle native build task when the Android build integration could be affected.
 
 ## Testing Guidelines
-Add or update unit tests in `mobile/src/test/java` for parser, routing, and compatibility logic. Use AndroidX instrumentation tests only when behavior depends on framework/runtime integration. Name tests after the target type, for example `IpSecForwardPolicyCommandTest`. Prefer the smallest test that proves the behavior change.
+Add or update JVM tests in `mobile/src/test/java` for parser, routing, and compatibility logic. AndroidTest variants are disabled; use separately authorized device qualification for framework behavior. Name tests after the target type, for example `IpSecForwardPolicyCommandTest`. Prefer the smallest test that proves the behavior change.
 
 ## Commit & Pull Request Guidelines
 Keep commit messages short, imperative, and specific, matching recent history such as `Fixes` or `Update dependencies`. PRs should explain user-visible impact, compatibility risk, and validation performed. Link the issue when relevant and include screenshots only for UI changes.
