@@ -1,6 +1,7 @@
 package be.mygod.vpnhotspot
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import android.app.Application
 import android.content.ActivityNotFoundException
 import android.content.ClipboardManager
@@ -12,6 +13,7 @@ import android.content.pm.ProviderInfo
 import android.content.res.Configuration
 import android.location.LocationManager
 import android.os.Build
+import android.os.Bundle
 import android.os.ServiceSpecificException
 import android.os.StrictMode
 import android.os.SystemProperties
@@ -23,10 +25,12 @@ import android.widget.Toast
 import androidx.annotation.Size
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.material3.Typography
 import androidx.core.content.getSystemService
 import be.mygod.librootkotlinx.NoShellException
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.root.RootManager
+import be.mygod.vpnhotspot.ui.theme.vpnHotspotColorScheme
 import be.mygod.vpnhotspot.util.CrashlyticsKeyProvider
 import be.mygod.vpnhotspot.util.DeviceStorageApp
 import be.mygod.vpnhotspot.util.InPlaceExecutor
@@ -35,6 +39,7 @@ import be.mygod.vpnhotspot.util.getRootCause
 import be.mygod.vpnhotspot.util.privateLookup
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import com.google.android.gms.dynamite.DynamiteModule
+import com.google.android.gms.oss.licenses.v2.OssLicensesMenuActivity
 import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.analytics.ParametersBuilder
 import com.google.firebase.analytics.logEvent
@@ -132,6 +137,24 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         ServiceNotification.updateNotificationChannels()
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            /**
+             * Without this, the licenses screen uses its own static Theme.Material3.DayNight colors. Its theme
+             * lives in process-static fields, so it is set right before every creation of the screen, including
+             * restores into a fresh process and recreation after the system palette changes.
+             */
+            override fun onActivityPreCreated(activity: Activity, savedInstanceState: Bundle?) {
+                if (activity is OssLicensesMenuActivity) OssLicensesMenuActivity.setTheme(
+                    vpnHotspotColorScheme(activity, false), vpnHotspotColorScheme(activity, true), Typography())
+            }
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+            override fun onActivityStarted(activity: Activity) = Unit
+            override fun onActivityResumed(activity: Activity) = Unit
+            override fun onActivityPaused(activity: Activity) = Unit
+            override fun onActivityStopped(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+            override fun onActivityDestroyed(activity: Activity) = Unit
+        })
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
