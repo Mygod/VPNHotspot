@@ -179,12 +179,8 @@ impl<'a> ParsedIpv6Quote<'a> {
 }
 
 fn update_checksum_words(sum: &mut u32, old: [u8; 16], new: [u8; 16]) {
-    for (old, new) in old.chunks_exact(2).zip(new.chunks_exact(2)) {
-        update_checksum_word(
-            sum,
-            u16::from_be_bytes([old[0], old[1]]),
-            u16::from_be_bytes([new[0], new[1]]),
-        );
+    for (old, new) in old.as_chunks::<2>().0.iter().zip(new.as_chunks::<2>().0) {
+        update_checksum_word(sum, u16::from_be_bytes(*old), u16::from_be_bytes(*new));
     }
 }
 
