@@ -310,7 +310,8 @@ impl EchoState {
         if let Some(upstream) = state.lock_inner()?.upstream.get(&network).cloned() {
             return Ok(upstream);
         }
-        let socket = Arc::new(AsyncFd::new(create_upstream_socket(network)?)?);
+        // SAFETY: the socket owns its fd, and the inner socket is never replaced.
+        let socket = Arc::new(unsafe { AsyncFd::register(create_upstream_socket(network)?) }?);
         let stop = CancellationToken::new();
         let changed = Arc::new(Notify::new());
         let error_queue = match enable_ipv6_error_queue(socket.get_ref()) {

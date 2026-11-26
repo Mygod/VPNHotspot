@@ -58,7 +58,9 @@ pub(crate) fn spawn_loop(
     stop: CancellationToken,
     initial: &SessionConfig,
 ) -> io::Result<JoinHandle<()>> {
-    let socket = AsyncFd::new(create_recv_socket(&initial.downstream, initial.reply_mark)?)?;
+    // SAFETY: the socket owns its fd, and the inner socket is never replaced.
+    let socket =
+        unsafe { AsyncFd::register(create_recv_socket(&initial.downstream, initial.reply_mark)?) }?;
     Ok(spawn(async move {
         let mut next_ra = Instant::now();
         let mut next_suppressed_ra = None;

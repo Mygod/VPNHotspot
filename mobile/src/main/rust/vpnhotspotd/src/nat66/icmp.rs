@@ -142,7 +142,8 @@ impl Dispatcher {
         if task.as_ref().is_some_and(|task| !task.is_finished()) {
             return Ok(());
         }
-        let queue = AsyncFd::new(create_downstream_queue()?)?;
+        // SAFETY: the queue owns its netlink fd, and the inner queue is never replaced.
+        let queue = unsafe { AsyncFd::register(create_downstream_queue()?) }?;
         *task = Some(spawn(downstream::run_queue(
             queue,
             self.inner.registrations.clone(),

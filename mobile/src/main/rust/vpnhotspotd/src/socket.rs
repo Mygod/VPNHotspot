@@ -12,7 +12,8 @@ pub(crate) async fn await_connect(socket: &Socket) -> io::Result<()> {
 }
 
 pub(crate) async fn await_writable(fd: BorrowedFd<'_>) -> io::Result<()> {
-    let fd = AsyncFd::new(fd)?;
+    // SAFETY: the borrow keeps this fd open and unchanged until the local registration drops.
+    let fd = unsafe { AsyncFd::register(fd) }?;
     drop(fd.writable().await?);
     Ok(())
 }

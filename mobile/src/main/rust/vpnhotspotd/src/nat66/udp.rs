@@ -78,7 +78,8 @@ pub(crate) fn spawn_loop(
         icmp: icmp_dispatcher,
         reply_sockets,
     } = resources;
-    let listener = AsyncFd::new(listener)?;
+    // SAFETY: the socket owns its fd, and the inner socket is never replaced.
+    let listener = unsafe { AsyncFd::register(listener) }?;
     spawn(async move {
         let listener_fd = listener.get_ref().as_raw_fd();
         if let Err(e) = enable_recv_hop_limit(listener.get_ref()) {

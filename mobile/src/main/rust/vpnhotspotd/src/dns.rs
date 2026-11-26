@@ -579,9 +579,10 @@ async fn query_network(network: Network, query: &[u8]) -> (io::Result<Vec<u8>>, 
     if let Err(e) = set_nonblocking(fd.as_raw_fd()) {
         return (Err(e), true);
     }
-    let fd = match AsyncFd::new(fd) {
+    // SAFETY: ResolverQuery owns the fd until finish() or Drop, and as_raw_fd() never changes.
+    let fd = match unsafe { AsyncFd::register(fd) } {
         Ok(fd) => fd,
-        Err(e) => return (Err(e), true),
+        Err(e) => return (Err(e.into()), true),
     };
     (read_resolver_result(fd).await, true)
 }
