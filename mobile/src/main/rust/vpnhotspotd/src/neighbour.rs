@@ -59,18 +59,7 @@ pub(crate) async fn run(
         .with_report_context("neighbour.events.netlink")?;
     let mut request =
         netlink::RequestConnection::new().with_report_context("neighbour.request.netlink")?;
-    let mut topology = netlink::bridge_topology(&mut request).await?;
-    send_update(
-        &sender,
-        call_id,
-        dump(&mut request, call_id)
-            .await?
-            .into_iter()
-            .map(|neighbour| daemon::NeighbourDelta {
-                delta: Some(daemon::neighbour_delta::Delta::Upsert(neighbour)),
-            }),
-        Some(topology.clone()),
-    )?;
+    let mut topology = send_snapshot(&sender, call_id, &mut request).await?;
 
     loop {
         let message = select! {
@@ -78,25 +67,60 @@ pub(crate) async fn run(
             event = events.next() => event.with_report_context("neighbour.events")?,
         };
         match message {
-            message @ (RouteNetlinkMessage::NewNeighbour(_)
-            | RouteNetlinkMessage::DelNeighbour(_)) => {
+            netlink::Event::Overrun => {
+                topology = send_snapshot(&sender, call_id, &mut request).await?;
+            }
+            netlink::Event::Message(
+                message @ (RouteNetlinkMessage::NewNeighbour(_)
+                | RouteNetlinkMessage::DelNeighbour(_)),
+            ) => {
                 if let Some(delta) = neighbour_from_event(call_id, &mut request, message).await {
-                    send_update(&sender, call_id, std::iter::once(delta), None)?;
+                    send_update(&sender, call_id, std::iter::once(delta), None, false)?;
                 }
             }
-            RouteNetlinkMessage::NewLink(_) | RouteNetlinkMessage::DelLink(_) => {
-                match netlink::bridge_topology(&mut request).await {
-                    Ok(next) if next != topology => {
-                        send_update(&sender, call_id, std::iter::empty(), Some(next.clone()))?;
-                        topology = next;
-                    }
-                    Ok(_) => {}
-                    Err(e) => report::io("neighbour.bridge_topology", e),
+            netlink::Event::Message(
+                RouteNetlinkMessage::NewLink(_) | RouteNetlinkMessage::DelLink(_),
+            ) => match netlink::bridge_topology(&mut request).await {
+                Ok(next) if next != topology => {
+                    send_update(
+                        &sender,
+                        call_id,
+                        std::iter::empty(),
+                        Some(next.clone()),
+                        false,
+                    )?;
+                    topology = next;
                 }
-            }
-            _ => {}
+                Ok(_) => {}
+                Err(e) => report::io("neighbour.bridge_topology", e),
+            },
+            netlink::Event::Message(_) => {}
         }
     }
+}
+
+/// Sends a full neighbour dump that replaces every neighbour reported earlier. The monitor sends one
+/// when it starts and another after an event overrun, because events lost on a full receive buffer
+/// may include deletes.
+async fn send_snapshot(
+    sender: &ControllerSender,
+    call_id: u64,
+    request: &mut netlink::RequestConnection,
+) -> io::Result<daemon::LinkTopologySnapshot> {
+    let topology = netlink::bridge_topology(request).await?;
+    send_update(
+        sender,
+        call_id,
+        dump(request, call_id)
+            .await?
+            .into_iter()
+            .map(|neighbour| daemon::NeighbourDelta {
+                delta: Some(daemon::neighbour_delta::Delta::Upsert(neighbour)),
+            }),
+        Some(topology.clone()),
+        true,
+    )?;
+    Ok(topology)
 }
 
 fn send_update(
@@ -104,8 +128,14 @@ fn send_update(
     call_id: u64,
     deltas: impl IntoIterator<Item = daemon::NeighbourDelta>,
     topology: Option<daemon::LinkTopologySnapshot>,
+    replace_neighbours: bool,
 ) -> io::Result<()> {
-    if sender.send_frame(neighbour_monitor_update_frame(call_id, deltas, topology)) {
+    if sender.send_frame(neighbour_monitor_update_frame(
+        call_id,
+        deltas,
+        topology,
+        replace_neighbours,
+    )) {
         Ok(())
     } else {
         Err(io::Error::new(

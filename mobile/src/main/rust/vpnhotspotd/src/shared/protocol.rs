@@ -220,6 +220,7 @@ pub fn neighbour_monitor_update_frame<I>(
     id: u64,
     neighbour_deltas: I,
     link_topology: Option<daemon::LinkTopologySnapshot>,
+    replace_neighbours: bool,
 ) -> Vec<u8>
 where
     I: IntoIterator<Item = daemon::NeighbourDelta>,
@@ -229,6 +230,7 @@ where
         daemon::event_frame::Payload::NeighbourMonitor(daemon::NeighbourMonitorUpdate {
             neighbour_deltas: neighbour_deltas.into_iter().collect(),
             link_topology,
+            replace_neighbours,
         }),
     )
 }

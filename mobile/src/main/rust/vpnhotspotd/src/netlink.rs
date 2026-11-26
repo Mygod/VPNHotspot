@@ -155,6 +155,14 @@ impl Drop for RequestConnection {
     }
 }
 
+pub(crate) enum Event {
+    Message(RouteNetlinkMessage),
+    /// The kernel dropped notifications because the socket receive buffer filled (`ENOBUFS`,
+    /// surfaced by netlink-proto as `NLMSG_OVERRUN`), so state built from earlier events must be
+    /// rebuilt from a fresh dump.
+    Overrun,
+}
+
 pub(crate) struct EventConnection {
     messages: UnboundedReceiver<(NetlinkMessage<RouteNetlinkMessage>, SocketAddr)>,
     task: JoinHandle<()>,
@@ -169,10 +177,12 @@ impl EventConnection {
         })
     }
 
-    pub(crate) async fn next(&mut self) -> io::Result<RouteNetlinkMessage> {
+    pub(crate) async fn next(&mut self) -> io::Result<Event> {
         while let Some((message, _)) = self.messages.next().await {
-            if let NetlinkPayload::InnerMessage(message) = message.payload {
-                return Ok(message);
+            match message.payload {
+                NetlinkPayload::InnerMessage(message) => return Ok(Event::Message(message)),
+                NetlinkPayload::Overrun(_) => return Ok(Event::Overrun),
+                _ => {}
             }
         }
         Err(io::Error::new(

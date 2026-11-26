@@ -34,6 +34,12 @@ Each notification consumer owns a multicast-only rtnetlink connection and a
 separate request connection where needed. Session routing retains its request
 connection for the session lifetime; one-shot commands open their own.
 
+When the kernel drops notifications because an event socket's receive buffer is
+full, the receive fails with `ENOBUFS` and netlink-proto delivers a synthetic
+`NLMSG_OVERRUN`. Consumers treat it as a change of unknown scope, because the lost
+notifications are gone. The downstream IPv4 wait and the RA loop already re-query
+on any event, and the neighbour monitor sends a replacing snapshot (see below).
+
 The daemon does not listen for arbitrary clients. The app-side controller owns
 the listening socket and accepts only a peer whose Unix socket credentials have
 `uid=0`; non-root peers are closed and the controller keeps waiting within the
@@ -231,3 +237,10 @@ multicast-only neighbour/link event connection plus a separate request
 connection, sends an initial neighbour dump and bridge topology snapshot, then
 streams deltas until cancellation. Stopping drops both connections. Link events
 refresh bridge topology only when it changes.
+
+The initial dump is sent with `replace_neighbours` set, so the app replaces its
+neighbour map rather than merging into it. After an event overrun the monitor
+sends another full dump and topology snapshot the same way. Without it, a lost
+delete would leave a stale client in the app. Events queued before the new dump
+are still applied after it; each one carries the full state of its entry, so
+the map converges.

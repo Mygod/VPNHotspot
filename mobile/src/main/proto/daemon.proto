@@ -158,6 +158,8 @@ enum DaemonTrafficSource {
 message NeighbourMonitorUpdate {
   repeated NeighbourDelta neighbour_deltas = 1;
   LinkTopologySnapshot link_topology = 2;
+  // neighbour_deltas is a complete dump that replaces every neighbour reported earlier.
+  bool replace_neighbours = 3;
 }
 
 message IpSecForwardPolicyRequest {

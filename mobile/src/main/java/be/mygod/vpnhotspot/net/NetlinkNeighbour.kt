@@ -59,7 +59,7 @@ data class NetlinkNeighbour(val proto: Neighbour) {
 
         val monitorSnapshots = DaemonController.neighbourMonitor().runningFold(MonitorState()) { state, update ->
             state.copy(
-                neighbours = state.neighbours.mutate {
+                neighbours = (if (update.replace_neighbours) persistentHashMapOf() else state.neighbours).mutate {
                     for (entry in update.neighbour_deltas) {
                         when (val delta = entry.delta) {
                             is NeighbourDelta.Delta.Upsert -> {
