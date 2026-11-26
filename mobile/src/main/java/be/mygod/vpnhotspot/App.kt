@@ -74,7 +74,19 @@ class App : Application() {
             android.preference.PreferenceManager.getDefaultSharedPreferencesName(this))
         deviceStorage.moveDatabaseFrom(this, AppDatabase.DB_NAME)
         Services.init { this }
+    }
 
+    /**
+     * Firebase must not be initialized from [attachBaseContext]: its eager Analytics component starts GMS API calls
+     * on GoogleApiHandler, and when GMS is disabled, that thread builds an error notification. The notification
+     * constructor reads an aconfig flag backed by DeviceConfig, which dereferences ActivityThread.currentApplication():
+     * https://android.googlesource.com/platform/frameworks/base/+/android-15.0.0_r1/core/java/android/app/Notification.java#2604
+     * https://android.googlesource.com/platform/frameworks/base/+/android-15.0.0_r1/core/java/android/provider/Settings.java#20696
+     * That stays null until makeApplicationInner, which calls [attachBaseContext], returns:
+     * https://android.googlesource.com/platform/frameworks/base/+/android-15.0.0_r1/core/java/android/app/ActivityThread.java#7473
+     */
+    override fun onCreate() {
+        super.onCreate()
         DynamiteModule::class.java.getDeclaredField("zzg").apply { isAccessible = true }.set(null, false)
         // call super.attachInfo get around ProviderInfo check
         FirebaseInitProvider::class.java.privateLookup().findSpecial(ContentProvider::class.java, "attachInfo",
@@ -132,10 +144,6 @@ class App : Application() {
         StrictMode.setVmPolicy(StrictMode.VmPolicy.Builder().apply {
             if (BuildConfig.DEBUG) detectAll() else detectFileUriExposure()
         }.penaltyListener(InPlaceExecutor) { Timber.w(it, "StrictMode VM policy violation") }.build())
-    }
-
-    override fun onCreate() {
-        super.onCreate()
         ServiceNotification.updateNotificationChannels()
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
             /**
