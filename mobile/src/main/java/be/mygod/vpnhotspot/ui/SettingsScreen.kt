@@ -76,6 +76,7 @@ import be.mygod.vpnhotspot.root.Dump
 import be.mygod.vpnhotspot.root.RootManager
 import be.mygod.vpnhotspot.root.daemon.MasqueradeMode
 import be.mygod.vpnhotspot.ui.theme.VpnHotspotPreviewSurface
+import be.mygod.vpnhotspot.ui.theme.vpnHotspotColorScheme
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.UnblockCentral
 import be.mygod.vpnhotspot.util.allInterfaceNames
@@ -387,12 +388,16 @@ fun SettingsScreen(snackbarHostState: SnackbarHostState) {
                 )
             }
             row(OssLicensesR.string.oss_license_title) {
+                val typography = MaterialTheme.typography
                 PreferenceRow(
                     icon = R.drawable.ic_license,
                     title = stringResource(OssLicensesR.string.oss_license_title),
                     summary = stringResource(OssLicensesR.string.preferences_license_summary),
                     onClick = {
                         if (!inspectionMode) {
+                            // Without this, the screen uses its own static Theme.Material3.DayNight colors.
+                            OssLicensesMenuActivity.setTheme(vpnHotspotColorScheme(context, false),
+                                vpnHotspotColorScheme(context, true), typography)
                             context.startActivity(Intent(context, OssLicensesMenuActivity::class.java))
                         }
                     },
