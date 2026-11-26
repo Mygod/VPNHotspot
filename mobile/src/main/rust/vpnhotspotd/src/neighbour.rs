@@ -20,7 +20,14 @@ use vpnhotspotd::shared::protocol::{
     daemon_error_report_with_details, neighbour_monitor_update_frame, IoResultReportExt,
 };
 
-const KNOWN_NEIGHBOUR_STATE_BITS: u16 = 0x01 | 0x02 | 0x04 | 0x08 | 0x10 | 0x20 | 0x40 | 0x80;
+const KNOWN_NEIGHBOUR_STATE_BITS: u16 = libc::NUD_INCOMPLETE
+    | libc::NUD_REACHABLE
+    | libc::NUD_STALE
+    | libc::NUD_DELAY
+    | libc::NUD_PROBE
+    | libc::NUD_FAILED
+    | libc::NUD_NOARP
+    | libc::NUD_PERMANENT;
 const EVENT_GROUPS: [MulticastGroup; 2] = [MulticastGroup::Neigh, MulticastGroup::Link];
 
 pub(crate) async fn dump(

@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::net::IpAddr;
+use std::pin::pin;
 
 use futures_channel::mpsc::UnboundedReceiver;
-use futures_util::{pin_mut, StreamExt, TryStreamExt};
+use futures_util::{StreamExt, TryStreamExt};
 use rtnetlink::{
     packet_core::{NetlinkMessage, NetlinkPayload},
     packet_route::{
@@ -195,7 +196,7 @@ pub(crate) async fn link_index(handle: &mut RequestConnection, name: &str) -> io
         .get()
         .match_name(name.to_owned())
         .execute();
-    pin_mut!(links);
+    let mut links = pin!(links);
     if let Some(link) = links.try_next().await.map_err(to_io_error)? {
         Ok(link.header.index)
     } else {
@@ -214,7 +215,7 @@ pub(crate) async fn link_mtu(handle: &mut RequestConnection, name: &str) -> io::
         .get()
         .match_name(name.to_owned())
         .execute();
-    pin_mut!(links);
+    let mut links = pin!(links);
     if let Some(link) = links.try_next().await.map_err(to_io_error)? {
         link.attributes
             .into_iter()
@@ -241,7 +242,7 @@ pub(crate) async fn link_mtu(handle: &mut RequestConnection, name: &str) -> io::
 
 pub(crate) async fn link_name(handle: &mut RequestConnection, index: u32) -> io::Result<String> {
     let links = handle.inner.link().get().match_index(index).execute();
-    pin_mut!(links);
+    let mut links = pin!(links);
     if let Some(link) = links.try_next().await.map_err(to_io_error)? {
         link_name_from_message(link).ok_or_else(|| {
             io::Error::new(
