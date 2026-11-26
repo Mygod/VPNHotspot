@@ -286,6 +286,7 @@ val hiddenApiStubsJar = tasks.register<Jar>("hiddenApiStubsJar") {
 wire {
     kotlin {
         enumMode = "sealed_class"
+        oneofMode = "sealed_class"
         rpcRole = "none"
     }
 }

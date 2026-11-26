@@ -16,7 +16,7 @@ class TrafficRecorderTest {
         val source = TrafficRecorder.counterSource(
             TrafficCounter(
                 source = TrafficCounterSource(
-                    ipv4_forward_address = byteArrayOf(192.toByte(), 0, 2, 8).toByteString(),
+                    source = TrafficCounterSource.Source.Ipv4ForwardAddress(byteArrayOf(192.toByte(), 0, 2, 8).toByteString()),
                 ),
             ),
         )
@@ -30,7 +30,7 @@ class TrafficRecorderTest {
             TrafficRecorder.counterSource(
                 TrafficCounter(
                     source = TrafficCounterSource(
-                        ipv4_forward_address = ByteArray(16).toByteString(),
+                        source = TrafficCounterSource.Source.Ipv4ForwardAddress(ByteArray(16).toByteString()),
                     ),
                 ),
             ),
@@ -39,7 +39,7 @@ class TrafficRecorderTest {
             TrafficRecorder.counterSource(
                 TrafficCounter(
                     source = TrafficCounterSource(
-                        ipv4_forward_address = ByteArray(3).toByteString(),
+                        source = TrafficCounterSource.Source.Ipv4ForwardAddress(ByteArray(3).toByteString()),
                     ),
                 ),
             ),
@@ -55,7 +55,7 @@ class TrafficRecorderTest {
             DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_NAT66_ICMPV6 to TrafficRecord.DAEMON_SOURCE_NAT66_ICMPV6,
         )) {
             val recordSource = TrafficRecorder.counterSource(
-                TrafficCounter(source = TrafficCounterSource(daemon_source = source)),
+                TrafficCounter(source = TrafficCounterSource(source = TrafficCounterSource.Source.DaemonSource(source))),
             )
             assertEquals(TrafficRecord.DAEMON_SOURCE_ADDRESS, recordSource?.ip)
             assertEquals(marker, recordSource?.upstream)
@@ -68,7 +68,7 @@ class TrafficRecorderTest {
             TrafficRecorder.counterSource(
                 TrafficCounter(
                     source = TrafficCounterSource(
-                        daemon_source = DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_UNSPECIFIED,
+                        source = TrafficCounterSource.Source.DaemonSource(DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_UNSPECIFIED),
                     ),
                 ),
             ),
@@ -83,7 +83,7 @@ class TrafficRecorderTest {
                     mac = ByteArray(5).toByteString(),
                     downstream = "ncm0",
                     source = TrafficCounterSource(
-                        daemon_source = DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_DNS,
+                        source = TrafficCounterSource.Source.DaemonSource(DaemonTrafficSource.DAEMON_TRAFFIC_SOURCE_DNS),
                     ),
                 ),
             ),

@@ -23,6 +23,7 @@ import be.mygod.vpnhotspot.root.daemon.Ipv6NatConfig
 import be.mygod.vpnhotspot.root.daemon.Ipv6Prefix
 import be.mygod.vpnhotspot.root.daemon.MasqueradeMode
 import be.mygod.vpnhotspot.root.daemon.SessionConfig
+import be.mygod.vpnhotspot.root.daemon.ipsec_forward_policy
 import be.mygod.vpnhotspot.util.allInterfaceNames
 import be.mygod.vpnhotspot.util.allRoutes
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -136,7 +137,7 @@ class Routing(private val caller: Any, private val downstream: String) {
                 session = DaemonController.startSession(nextConfig())
                 launch(start = CoroutineStart.UNDISPATCHED) {
                     session.events.collect { event ->
-                        val ipsecForwardPolicy = event.ipsec_forward_policy ?: throw IOException(
+                        val ipsecForwardPolicy = event.payload?.ipsec_forward_policy ?: throw IOException(
                                 "Unexpected session event $event")
                         try {
                             RootManager.use { server ->

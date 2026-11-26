@@ -10,6 +10,7 @@ import androidx.collection.ObjectList
 import be.mygod.vpnhotspot.root.daemon.DaemonTrafficSource
 import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.root.daemon.TrafficCounter
+import be.mygod.vpnhotspot.root.daemon.TrafficCounterSource
 import be.mygod.vpnhotspot.room.AppDatabase
 import be.mygod.vpnhotspot.room.TrafficRecord
 import be.mygod.vpnhotspot.widget.SmartSnackbar
@@ -219,13 +220,14 @@ object TrafficRecorder {
         return CounterKey(MacAddress.fromBytes(mac), counter.downstream, recordSource)
     }
 
-    fun counterSource(counter: TrafficCounter): CounterSource? {
-        val counterSource = counter.source
-        return counterSource?.ipv4_forward_address?.let {
-            if (it.size != 4) return@let null
-            val ip = InetAddress.getByAddress(it.toByteArray())
-            CounterSource(ip, null)
-        } ?: counterSource?.daemon_source?.marker?.let { CounterSource(TrafficRecord.DAEMON_SOURCE_ADDRESS, it) }
+    fun counterSource(counter: TrafficCounter): CounterSource? = when (val source = counter.source?.source) {
+        is TrafficCounterSource.Source.Ipv4ForwardAddress -> source.value.takeIf { it.size == 4 }?.let {
+            CounterSource(InetAddress.getByAddress(it.toByteArray()), null)
+        }
+        is TrafficCounterSource.Source.DaemonSource -> source.value.marker?.let {
+            CounterSource(TrafficRecord.DAEMON_SOURCE_ADDRESS, it)
+        }
+        null -> null
     }
 
     private val DaemonTrafficSource.marker get() = when (this) {

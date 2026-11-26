@@ -3,6 +3,7 @@ package be.mygod.vpnhotspot.net
 import android.net.MacAddress
 import be.mygod.vpnhotspot.root.daemon.DaemonController
 import be.mygod.vpnhotspot.root.daemon.Neighbour
+import be.mygod.vpnhotspot.root.daemon.NeighbourDelta
 import be.mygod.vpnhotspot.root.daemon.NeighbourState
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.collections.immutable.PersistentMap
@@ -59,18 +60,18 @@ data class NetlinkNeighbour(val proto: Neighbour) {
         val monitorSnapshots = DaemonController.neighbourMonitor().runningFold(MonitorState()) { state, update ->
             state.copy(
                 neighbours = state.neighbours.mutate {
-                    for (delta in update.neighbour_deltas) {
-                        when {
-                            delta.upsert != null -> {
-                                val neighbour = NetlinkNeighbour(delta.upsert)
-                                it[delta.upsert.address to neighbour.dev] = neighbour
+                    for (entry in update.neighbour_deltas) {
+                        when (val delta = entry.delta) {
+                            is NeighbourDelta.Delta.Upsert -> {
+                                val neighbour = NetlinkNeighbour(delta.value)
+                                it[delta.value.address to neighbour.dev] = neighbour
                             }
-                            delta.delete != null -> {
-                                val address = delta.delete.address
+                            is NeighbourDelta.Delta.Delete -> {
+                                val address = delta.value.address
                                 address.toInetAddress()
-                                it.remove(address to delta.delete.dev)
+                                it.remove(address to delta.value.dev)
                             }
-                            else -> throw IOException("Missing neighbour delta")
+                            null -> throw IOException("Missing neighbour delta")
                         }
                     }
                 },
