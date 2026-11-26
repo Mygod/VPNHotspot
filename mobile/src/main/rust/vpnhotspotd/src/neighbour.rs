@@ -59,17 +59,49 @@ pub(crate) async fn run(
         .with_report_context("neighbour.events.netlink")?;
     let mut request =
         netlink::RequestConnection::new().with_report_context("neighbour.request.netlink")?;
-    let mut topology = send_snapshot(&sender, call_id, &mut request).await?;
+    let (mut topology, neighbours) = read_snapshot(&mut request, call_id).await?;
+    send_replacement(&sender, call_id, neighbours, &topology)?;
+    // Set by an event overrun until a replacement subscription and a fresh dump both succeed.
+    let mut resync_pending = false;
+    // Whether the pending resync already reported a failure; retries after each event would
+    // otherwise report a persistent failure once per neighbour event.
+    let mut resync_reported = false;
 
     loop {
+        if resync_pending {
+            // The kernel reports ENOBUFS before notifications already queued on the old socket,
+            // and those are older than any new dump, so the replacement subscription is opened
+            // before the dump and both are committed together. On failure the old subscription
+            // keeps feeding deltas and the resync is retried after the next event, because ending
+            // the call would freeze the app's view.
+            let staged = async {
+                let replacement = netlink::EventConnection::new(&EVENT_GROUPS)
+                    .with_report_context("neighbour.events.resubscribe")?;
+                Ok::<_, io::Error>((replacement, read_snapshot(&mut request, call_id).await?))
+            }
+            .await;
+            match staged {
+                Ok((replacement, (next, neighbours))) => {
+                    send_replacement(&sender, call_id, neighbours, &next)?;
+                    events = replacement;
+                    topology = next;
+                    resync_pending = false;
+                    resync_reported = false;
+                }
+                Err(e) if !resync_reported => {
+                    report::io("neighbour.resync", e);
+                    resync_reported = true;
+                }
+                // This failure episode was already reported.
+                Err(_) => {}
+            }
+        }
         let message = select! {
             _ = cancel.cancelled() => return Ok(()),
             event = events.next() => event.with_report_context("neighbour.events")?,
         };
         match message {
-            netlink::Event::Overrun => {
-                topology = send_snapshot(&sender, call_id, &mut request).await?;
-            }
+            netlink::Event::Overrun => resync_pending = true,
             netlink::Event::Message(
                 message @ (RouteNetlinkMessage::NewNeighbour(_)
                 | RouteNetlinkMessage::DelNeighbour(_)),
@@ -99,28 +131,37 @@ pub(crate) async fn run(
     }
 }
 
-/// Sends a full neighbour dump that replaces every neighbour reported earlier. The monitor sends one
-/// when it starts and another after an event overrun, because events lost on a full receive buffer
-/// may include deletes.
-async fn send_snapshot(
+/// Reads a full neighbour dump and bridge topology. The monitor takes one when it starts and
+/// another after an event overrun, because events lost on a full receive buffer may include
+/// deletes.
+async fn read_snapshot(
+    request: &mut netlink::RequestConnection,
+    call_id: u64,
+) -> io::Result<(daemon::LinkTopologySnapshot, Vec<daemon::Neighbour>)> {
+    Ok((
+        netlink::bridge_topology(request).await?,
+        dump(request, call_id).await?,
+    ))
+}
+
+/// Sends a snapshot from [`read_snapshot`] that replaces every neighbour reported earlier.
+fn send_replacement(
     sender: &ControllerSender,
     call_id: u64,
-    request: &mut netlink::RequestConnection,
-) -> io::Result<daemon::LinkTopologySnapshot> {
-    let topology = netlink::bridge_topology(request).await?;
+    neighbours: Vec<daemon::Neighbour>,
+    topology: &daemon::LinkTopologySnapshot,
+) -> io::Result<()> {
     send_update(
         sender,
         call_id,
-        dump(request, call_id)
-            .await?
+        neighbours
             .into_iter()
             .map(|neighbour| daemon::NeighbourDelta {
                 delta: Some(daemon::neighbour_delta::Delta::Upsert(neighbour)),
             }),
         Some(topology.clone()),
         true,
-    )?;
-    Ok(topology)
+    )
 }
 
 fn send_update(

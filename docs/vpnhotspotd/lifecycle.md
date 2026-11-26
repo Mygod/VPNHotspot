@@ -241,6 +241,20 @@ refresh bridge topology only when it changes.
 The initial dump is sent with `replace_neighbours` set, so the app replaces its
 neighbour map rather than merging into it. After an event overrun the monitor
 sends another full dump and topology snapshot the same way. Without it, a lost
-delete would leave a stale client in the app. Events queued before the new dump
-are still applied after it; each one carries the full state of its entry, so
-the map converges.
+delete would leave a stale client in the app. The kernel reports `ENOBUFS`
+before notifications that were already queued on the socket, and those predate
+the new dump, so the monitor drops them with the old socket when it switches to
+a new subscription. The new subscription is opened before the dump, so
+notifications raised during the dump are applied after it. Each one carries the
+full state of its entry, so the map converges.
+
+Overrun recovery commits the replacement subscription and the new dump
+together: the monitor opens the subscription first, reads the dump, and only
+when both succeed sends the replacing snapshot and drops the old socket. If
+either step fails, for example on `EMFILE`, it keeps the old subscription,
+reports one structured nonfatal (`neighbour.resync`) for that failure, keeps
+streaming deltas, and retries the resync after each following event until one
+succeeds. Until then a delete lost in the overrun can stay stale. A failed
+resync does not end the monitor call, because the app does not restart a
+monitor that ended while routing still depends on it. Losing the controller
+still ends the call.
