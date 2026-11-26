@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.TextObfuscationMode
-import androidx.compose.foundation.text.input.maxLength
+import androidx.compose.foundation.text.input.maxLengthReject
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
@@ -73,7 +73,7 @@ fun PasswordApRow(state: ApConfigurationState) {
                         .focusRequester(focusRequester)
                         .contentType(ContentType("wifiPassword") + ContentType.Password)
                         .semantics { contentDescription = title },
-                    inputTransformation = if (maxLength) InputTransformation.maxLength(63) else null,
+                    inputTransformation = if (maxLength) InputTransformation.maxLengthReject(63) else null,
                     isError = error != null,
                     shape = OutlinedTextFieldDefaults.roundedShape,
                     colors = OutlinedTextFieldDefaults.tonalColors(),

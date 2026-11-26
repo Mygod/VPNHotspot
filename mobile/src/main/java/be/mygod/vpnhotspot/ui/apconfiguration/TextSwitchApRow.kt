@@ -11,7 +11,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
-import androidx.compose.foundation.text.input.maxLength
+import androidx.compose.foundation.text.input.maxLengthReject
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -133,7 +133,7 @@ fun TextSwitchApRow(
                                 } else Modifier
                             ),
                         enabled = fieldEnabled,
-                        inputTransformation = maxLength?.let { InputTransformation.maxLength(it) },
+                        inputTransformation = maxLength?.let { InputTransformation.maxLengthReject(it) },
                         labelPosition = TextFieldLabelPosition.Inside(),
                         label = { Text(stringResource(valueTitle)) },
                         keyboardOptions = keyboardOptions,

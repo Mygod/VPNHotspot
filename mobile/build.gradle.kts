@@ -225,7 +225,11 @@ android {
         sourceCompatibility(javaVersion)
         targetCompatibility(javaVersion)
     }
-    compileSdk = 37
+    compileSdk {
+        version = release(37) {
+            minorApiLevel = 1
+        }
+    }
     defaultConfig {
         applicationId = "be.mygod.vpnhotspot"
         minSdk = 29

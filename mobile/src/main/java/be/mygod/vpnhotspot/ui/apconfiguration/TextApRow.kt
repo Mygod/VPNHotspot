@@ -10,7 +10,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
-import androidx.compose.foundation.text.input.maxLength
+import androidx.compose.foundation.text.input.maxLengthReject
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -85,7 +85,7 @@ fun TextApRow(
                             } else Modifier
                         )
                         .semantics { contentDescription = titleText },
-                    inputTransformation = maxLength?.let { InputTransformation.maxLength(it) },
+                    inputTransformation = maxLength?.let { InputTransformation.maxLengthReject(it) },
                     keyboardOptions = keyboardOptions,
                     lineLimits = if (multiline) TextFieldLineLimits.MultiLine(
                         minHeightInLines = minLines,
