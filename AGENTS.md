@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-This repo is a single-app Android project. Root Gradle files live at the repo top level. The app module is [`mobile`](./mobile), with Kotlin/Java under [`mobile/src/main/java`](./mobile/src/main/java), native code under [`mobile/src/main/cpp`](./mobile/src/main/cpp), Rust daemon code under [`mobile/src/main/rust`](./mobile/src/main/rust), resources under [`mobile/src/main/res`](./mobile/src/main/res), and JVM tests under [`mobile/src/test/java`](./mobile/src/test/java). Product-specific source lives in [`mobile/src/google`](./mobile/src/google) and [`mobile/src/freedom`](./mobile/src/freedom).
+This repo is a single-app Android project. Root Gradle files live at the repo top level. The app module is [`mobile`](./mobile), with Kotlin/Java under [`mobile/src/main/java`](./mobile/src/main/java), the daemon IPC schema under [`mobile/src/main/proto`](./mobile/src/main/proto), Rust daemon code under [`mobile/src/main/rust`](./mobile/src/main/rust), resources under [`mobile/src/main/res`](./mobile/src/main/res), and JVM tests under [`mobile/src/test/java`](./mobile/src/test/java). Debug-only source lives in [`mobile/src/debug`](./mobile/src/debug), and compile-only hidden API stubs live in [`mobile/src/hiddenApiStubs`](./mobile/src/hiddenApiStubs).
 
 ## Build, Test, and Development Commands
 Use Gradle from the repo root.
