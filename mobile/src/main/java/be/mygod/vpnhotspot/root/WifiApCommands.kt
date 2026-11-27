@@ -26,6 +26,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
@@ -324,9 +325,54 @@ object WifiApCommands {
         override suspend fun execute() = ParcelableBoolean(WifiApManager.setConfiguration(configuration))
     }
 
+    /**
+     * Root process only, confined to its main thread, where root commands start: the [StartLocalOnlyHotspot] request
+     * running there with its token, or the token of a [StopLocalOnlyHotspot] that overtook its request (with no job).
+     * The app runs one request at a time and stops it at most once, so one slot covers both; a stop arriving after its
+     * request completed only leaves a stale token for the next request to replace.
+     */
+    private var localOnlyHotspotRequest: Pair<Long, Job?>? = null
+
+    /**
+     * A LOHS request made by uid 0, identified by [token] for [StopLocalOnlyHotspot]. Cancelling a root flow from the
+     * app is only best-effort (librootkotlinx 2.0.0-beta02 `RootServer.flow`, `RootCommandService.cancel`): the app
+     * stops listening at once, the remote cancel is queued as a oneway call that cancels the root job without joining
+     * it, and a cancelled job never reports completion. Its cleanup closes the request, which from uid 0 on Android 14+
+     * stops every local-only hotspot
+     * (https://android.googlesource.com/platform/packages/modules/Wifi/+/android-14.0.0_r1/service/java/com/android/server/wifi/WifiServiceImpl.java#2681,
+     * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/WifiServiceImpl.java#3464),
+     * so it could land after a successor's request has started. A stop therefore ends the request here instead, and
+     * this flow completes, and reports so, only after the request's own cleanup has run.
+     */
     @Parcelize
     @RequiresApi(30)
-    class StartLocalOnlyHotspot : RootFlow<WifiApManager.LocalOnlyHotspotEvent> {
-        override fun flow() = WifiApManager.startLocalOnlyHotspotFlow(WifiApManager.configuration)
+    data class StartLocalOnlyHotspot(private val token: Long) : RootFlow<WifiApManager.LocalOnlyHotspotEvent> {
+        override fun flow() = channelFlow {
+            if (localOnlyHotspotRequest?.first == token) {  // its stop overtook it: never start
+                localOnlyHotspotRequest = null
+                return@channelFlow
+            }
+            val request = launch {
+                WifiApManager.startLocalOnlyHotspotFlow(WifiApManager.configuration).collect { send(it) }
+            }
+            localOnlyHotspotRequest = token to request
+            try {
+                // a stop cancels the request, whose cleanup closes the reservation before this joins
+                request.join()
+            } finally {
+                if (localOnlyHotspotRequest?.second === request) localOnlyHotspotRequest = null
+            }
+        }
+    }
+    /**
+     * Ends the [StartLocalOnlyHotspot] request with [token]: its own cleanup closes the reservation, then its flow
+     * completes, which the app collects to the end.
+     */
+    @Parcelize
+    data class StopLocalOnlyHotspot(private val token: Long) : RootCommandNoResult {
+        override suspend fun execute() = null.also {
+            val request = localOnlyHotspotRequest
+            if (request?.first == token) request.second?.cancel() else localOnlyHotspotRequest = token to null
+        }
     }
 }

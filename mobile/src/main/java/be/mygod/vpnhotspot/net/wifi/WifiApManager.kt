@@ -436,6 +436,22 @@ object WifiApManager {
      * Therefore, we are happy with crashing the app if reflection fails.
      */
     fun cancelLocalOnlyHotspotRequest() = cancelLocalOnlyHotspotRequest(Services.wifi)
+    /**
+     * One LOHS request as a flow, completing after onStopped/onFailed. Its cleanup closes the request even then, when
+     * the service has already dropped every request
+     * (https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/java/com/android/server/wifi/WifiServiceImpl.java#1321,
+     * https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/java/com/android/server/wifi/WifiServiceImpl.java#1342,
+     * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/WifiServiceImpl.java#3005,
+     * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/WifiServiceImpl.java#3027):
+     * neither callback clears the WifiManager's callback proxy, and the reservation's finalizer closes it regardless
+     * (https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/wifi/java/android/net/wifi/WifiManager.java#3232,
+     * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/framework/java/android/net/wifi/WifiManager.java#7604).
+     * Skipping the close would leave it to that finalizer, which would stop whatever request holds the proxy by then;
+     * from uid 0 on Android 14+ that is every local-only hotspot
+     * (https://android.googlesource.com/platform/packages/modules/Wifi/+/android-14.0.0_r1/service/java/com/android/server/wifi/WifiServiceImpl.java#2681,
+     * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/WifiServiceImpl.java#3464).
+     * Closing here keeps it within the request's lifetime, which the root backend's caller waits out.
+     */
     private fun localOnlyHotspotFlow(
         nullReservationReason: Int,
         start: (WifiManager.LocalOnlyHotspotCallback) -> Unit,

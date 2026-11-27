@@ -40,6 +40,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
+import kotlin.random.Random
 
 class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
     companion object {
@@ -119,11 +120,12 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
     /**
      * Collect one LOHS request until it completes: the reservation lives exactly as long as the collection (the flow's
      * unregister closes it), and so does the routing for its interface. This runs in the lifespan's own coroutine, and
-     * cancelling it (a stop) does not cancel the request outright: the routing is torn down first, then the request is
-     * ended, and this returns or throws only once the request has completed with its own cleanup done. A request the
-     * framework reports stopped or failed ends by itself, so it is only collected until it completes.
+     * cancelling it (a stop) does not cancel the request outright: the routing is torn down first, then [stopRequest]
+     * ends the request, and this returns or throws only once the request has completed with its own cleanup done. A
+     * request the framework reports stopped or failed ends by itself, so it is only collected until it completes.
      */
-    private suspend fun collectLocalOnlyHotspotEvents(flow: Flow<LocalOnlyHotspotEvent>) {
+    private suspend fun collectLocalOnlyHotspotEvents(flow: Flow<LocalOnlyHotspotEvent>,
+                                                      stopRequest: suspend (Job) -> Unit = { it.cancel() }) {
         val self = currentCoroutineContext().job
         // a lifespan that has ended (say while a backend failed) must not open another request
         self.ensureActive()
@@ -208,12 +210,15 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
                         try {
                             routing?.stop()
                         } finally {
-                            // the framework ends a request it reported stopped or failed by itself
-                            if (!ended) request.cancel()
                             try {
-                                request.await()
-                            } catch (_: CancellationException) {
-                                // ended above; any failure of its own still propagates
+                                // the framework ends a request it reported stopped or failed by itself
+                                if (!ended) stopRequest(request)
+                            } finally {
+                                try {
+                                    request.await()
+                                } catch (_: CancellationException) {
+                                    // cancelled above; any failure of its own still propagates
+                                }
                             }
                         }
                     }
@@ -345,8 +350,13 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
                     Timber.d(e)
                 }
                 try {
-                    RootManager.use {
-                        collectLocalOnlyHotspotEvents(it.flow(WifiApCommands.StartLocalOnlyHotspot()))
+                    RootManager.use { server ->
+                        // the root process ends its request itself, and its flow completes once that cleanup ran; a
+                        // dead connection fails the flow instead, which surfaces once it is collected to the end
+                        val token = Random.nextLong()
+                        collectLocalOnlyHotspotEvents(server.flow(WifiApCommands.StartLocalOnlyHotspot(token))) {
+                            server.execute(WifiApCommands.StopLocalOnlyHotspot(token))
+                        }
                     }
                     return
                 } catch (e: CancellationException) {
