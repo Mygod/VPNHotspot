@@ -61,6 +61,13 @@ object VendorData {
                     event = parser.next()
                 } while (event != XmlPullParser.END_DOCUMENT && (event != XmlPullParser.END_TAG || parser.depth != 1))
                 require(event == XmlPullParser.END_TAG) { incomplete }
+                // only whitespace may follow the root element, or a mistyped header would be silently swallowed
+                do {
+                    event = parser.next()
+                } while (event == XmlPullParser.TEXT && parser.isWhitespace)
+                require(event == XmlPullParser.END_DOCUMENT) {
+                    context.getString(R.string.wifi_vendor_data_error_header, lineNumber + parser.lineNumber - 1)
+                }
                 ByteArrayInputStream(xml.toByteArray(StandardCharsets.UTF_8)).use { PersistableBundle.readFromStream(it) }
             } catch (e: XmlPullParserException) {
                 throw IllegalArgumentException(incomplete, e)
