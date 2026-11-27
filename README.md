@@ -204,6 +204,10 @@ Other:
 * (since API 31) Relevant netd APEX classes used here, including `android.net.INetd*`,
   may be jarjar-relocated under the optional prefixes
   `android.net.connectivity` or `com.android.connectivity`.
+* The repeater assumes `WIFI_P2P_CONNECTION_CHANGED_ACTION` reports a removed group (`groupFormed` false) once
+  `WifiP2pManager.removeGroup` has completed, and waits for it before a restart may create or adopt a group.
+  On API 30..32 AOSP sends that broadcast only to `NETWORK_SETTINGS` holders while Location is off, so there the
+  repeater polls `requestP2pState`/`requestConnectionInfo` once a second instead, as it does while serving.
 * (since API 30) When runtime `TetheringEventCallback.onLocalOnlyInterfacesChanged` is present, AOSP dispatches
   startup tether-state callbacks from one `executor.execute { ... }` block in `onCallbackStarted`,
   and later tether-state updates from one `executor.execute { ... }` block in

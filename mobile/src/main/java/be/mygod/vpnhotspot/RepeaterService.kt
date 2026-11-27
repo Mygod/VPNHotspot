@@ -501,8 +501,22 @@ class RepeaterService : Service(), CoroutineScope {
                         val reason = p2pManager.removeGroup(channel)
                         // with no timeout, a wedged framework keeps this teardown fenced: only destroying the service,
                         // which cancels its scope, abandons the wait
-                        if (reason == null) this@RepeaterService.launch { removed.await() }.join()
-                        else if (reason != WifiP2pManager.BUSY) {   // BUSY means it is already going away
+                        if (reason == null) this@RepeaterService.launch {
+                            // API 30-32 send the broadcast only to NETWORK_SETTINGS holders while Location is off, so
+                            // poll there the way serving does until the group is no longer formed
+                            // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-11.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#160
+                            // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-11.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#3095
+                            val poll = if (Build.VERSION.SDK_INT in 30 until 33) launch {
+                                while (p2pManager.requestP2pState(channel) != WifiP2pManager.WIFI_P2P_STATE_DISABLED &&
+                                        (app.location?.isLocationEnabled == true ||
+                                                p2pManager.requestConnectionInfo(channel)?.groupFormed == true)) {
+                                    delay(1.seconds)
+                                }
+                                removed.complete(Unit)
+                            } else null
+                            removed.await()
+                            poll?.cancel()
+                        }.join() else if (reason != WifiP2pManager.BUSY) {   // BUSY means it is already going away
                             dismissIfApplicable()
                             SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
                         }
