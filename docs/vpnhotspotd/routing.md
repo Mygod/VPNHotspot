@@ -500,10 +500,10 @@ leaves that address on the proxied path.
 
 ### NAT66 Phone Address Returns
 
-Condition: the NAT66 session firewall above is present, and the session follows the phone's IPv6 addresses. A session follows them when it
-starts with `SessionConfig.ipv6_nat` and both its address subscription and its
-initial address dump succeed. Replacement that clears `ipv6_nat` stops
-following.
+Condition: the NAT66 session firewall above is present, and the session
+follows the phone's IPv6 addresses. A session follows them when it starts with
+`SessionConfig.ipv6_nat` and its address subscription succeeds. Replacement
+that clears `ipv6_nat` stops following.
 
 External mutations, for each followed address outside the session's
 `<nat66-prefix>`, filter rule first:
@@ -537,10 +537,30 @@ clients. Like the other local/special returns, this traffic is outside NAT66
 admission and counting, so a blocked MAC reaches local apps on these addresses
 as a blocked IPv4 client does.
 
-AOSP sources for the implicit local-network rule:
+A non-bypassable VPN also takes UDP replies from the apps it covers. Its UID
+rule matches every unprotected socket in its UID ranges regardless of netId, at
+priority 13000 on Android 17 (12000 on Android 10), ahead of the implicit
+local-network rule at 20000 (17000 on Android 10). When the VPN's table routes
+the client's NAT66 address, for example through an IPv6 default route, such an
+app receives the client's datagram, but its reply goes into the tunnel and never
+reaches the client. TCP
+is unaffected: netd marks packets arriving on a local-network interface with the
+local netId, `explicitlySelected`, and `protectedFromVpn`, and Android enables
+`tcp_fwmark_accept`, so an accepted socket inherits that mark and its replies
+match the explicit local-network rule instead of the VPN. IPv4 tethered clients
+have the same UDP limit.
 
-- https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/RouteController.cpp#654
-- https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#737
+AOSP sources:
+
+- implicit local-network rule:
+  - https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/RouteController.cpp#654
+  - https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#737
+- VPN UID rule:
+  https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#517
+- incoming local-network mark:
+  https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#481
+- `tcp_fwmark_accept`:
+  https://android.googlesource.com/platform/system/core/+/android-17.0.0_r1/rootdir/init.rc#316
 
 Without these returns, the daemon would proxy such traffic upstream. Its UDP
 reply socket must then bind the exact original destination, which fails with
@@ -583,10 +603,12 @@ firewall until Clean; the event connection closes with the process.
 
 Failure and missing-state behavior:
 
-- subscription or initial dump failure: structured nonfatal
-  `routing.local_ipv6.events` or `routing.local_ipv6.dump`. The session follows
-  no addresses and installs no per-address returns, so its phone-address
-  traffic stays on the proxied path.
+- subscription failure: structured nonfatal `routing.local_ipv6.events`. The
+  session follows no addresses and installs no per-address returns, so its
+  phone-address traffic stays on the proxied path.
+- initial dump failure: structured nonfatal `routing.local_ipv6.dump`. The
+  session keeps the subscription with an empty set, so phone-address traffic
+  stays proxied until the next notification dumps successfully.
 - later dump failure: structured nonfatal `routing.local_ipv6.dump`. The
   previous set and its rules stay until a later notification dumps
   successfully.

@@ -113,8 +113,10 @@ constructs the session in this order:
    back unrelated successful mutations. When the config requests NAT66, routing
    first subscribes to IPv6-address notifications and dumps the phone's
    addresses for its
-   [phone address returns](routing.md#nat66-phone-address-returns); failure is a
-   structured nonfatal that leaves those returns out.
+   [phone address returns](routing.md#nat66-phone-address-returns). Either
+   failure is a structured nonfatal. A failed subscription leaves those returns
+   out; a failed dump starts from an empty set that the next notification
+   refills.
 5. Publish only capabilities whose daemon resource and routing rule both
    committed. Staged per-MAC resources whose routing rules failed are cancelled
    before the ACK. If clients are present and routing commits no NAT66 TCP or

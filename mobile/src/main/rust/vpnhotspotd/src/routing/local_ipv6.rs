@@ -32,7 +32,8 @@ pub(super) struct LocalIpv6 {
 }
 
 impl LocalIpv6 {
-    /// Subscribes before dumping so a change racing the dump still produces a notification.
+    /// Subscribes before dumping so a change racing the dump still produces a notification. A
+    /// failed dump keeps the subscription with no addresses, so the next notification retries it.
     pub(super) async fn watch(
         connection: &mut netlink::RequestConnection,
         downstream: &str,
@@ -48,16 +49,14 @@ impl LocalIpv6 {
                 return None;
             }
         };
-        match connection.dump_ipv6_addresses().await {
-            Ok(messages) => Some(Self {
-                events,
-                addresses: local_ipv6_addresses(&messages),
-            }),
+        let addresses = match connection.dump_ipv6_addresses().await {
+            Ok(messages) => local_ipv6_addresses(&messages),
             Err(e) => {
                 report::io_with_details("routing.local_ipv6.dump", e, [("downstream", downstream)]);
-                None
+                Vec::new()
             }
-        }
+        };
+        Some(Self { events, addresses })
     }
 }
 

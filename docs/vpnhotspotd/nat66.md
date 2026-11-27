@@ -240,13 +240,19 @@ network-unreachable downstream reply sends are treated as client reachability
 churn and logged. Reply socket acquisition and other unexpected send failures
 remain structured nonfatals.
 
-Downstream traffic to one of the phone's own addresses is not proxied, so it
-never needs a reply socket: routing returns it before interception and the
-kernel delivers it to the local app, which replies from its own socket. That
-removes the exact-bind collision with a local app holding the destination port,
-which made `reply_socket_stage=acquire_socket` fail with `EADDRINUSE`. The
-acquisition report stays, because a remote destination whose port a local app
-holds on the wildcard address can still collide.
+Downstream traffic to a phone address that has
+[phone address returns](routing.md#nat66-phone-address-returns), meaning one
+outside the session's gateway prefix and the link-local, multicast,
+unspecified, and loopback prefixes, is not proxied, so it never needs a reply
+socket: routing returns it before interception and the kernel delivers it to
+the local app, which replies from its own socket. That removes the exact-bind
+collision with a local app holding the destination port, which made
+`reply_socket_stage=acquire_socket` fail with `EADDRINUSE`. Gateway DNS on port
+53 is still intercepted and still answers through an exact gateway reply
+socket. The acquisition report stays, because that gateway socket, or a remote
+destination whose port a local app holds on the wildcard address, can still
+collide. A UDP reply from an app covered by a non-bypassable VPN goes into the
+tunnel instead of reaching the client; see the routing document.
 
 UDP hop-limit behavior is part of the NAT66 contract. Missing hop-limit
 metadata is reported and the datagram is dropped. Expired hop limit produces a

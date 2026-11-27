@@ -225,7 +225,8 @@ Other:
 * `IPv6 NAT` leaves downstream traffic to the phone's own IPv6 addresses to the kernel instead of
   proxying it. Replies from local sockets that are not explicitly bound to a network are assumed to
   reach the client through AOSP's implicit local-network rule
-  `from all fwmark 0x0/0x10000 lookup local_network` and that table 97 route.
+  `from all fwmark 0x0/0x10000 lookup local_network` and that table 97 route. UDP replies from
+  apps covered by a non-bypassable VPN match that VPN's UID rule first and go into the tunnel.
 * For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata.
 * `IPv6 NAT` fwmark fallback for TPROXY uses masked high reserved bits `0x10000000/0x10000000`.
   That fallback is expected on only kernels without effective `FRA_IP_PROTO` policy-rule support, which upstream Linux added in 4.17.
