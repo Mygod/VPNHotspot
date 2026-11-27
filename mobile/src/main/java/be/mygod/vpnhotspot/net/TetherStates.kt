@@ -13,6 +13,7 @@ import kotlinx.collections.immutable.PersistentSet
 import kotlinx.collections.immutable.persistentMapOf
 import kotlinx.collections.immutable.persistentSetOf
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -50,7 +51,9 @@ data class TetherStates(
          * The reassembled tether states as a cold flow — one source registration per collector. API 30+
          * folds [TetheringManagerCompat.eventFlow]; API 30- (and API 30 runtimes lacking public
          * `onLocalOnlyInterfacesChanged`) parse the sticky `ACTION_TETHER_STATE_CHANGED` broadcast,
-         * which carries local-only membership the public callback omits there.
+         * which carries local-only membership the public callback omits there. API 30 runtimes rejecting
+         * the callback registration, which completes [TetheringManagerCompat.eventFlow], fall back to
+         * the broadcast as well.
          *
          * AOSP dispatches its startup callback burst from one `executor.execute { ... }` block, so the
          * folds are coalesced onto the main handler into a single emission per burst.
@@ -84,10 +87,17 @@ data class TetherStates(
                     localOnly.toPersistentIfaceSet(), nextErrored.build())
                 scheduleDispatch()
             }
+            fun registerBroadcast() {
+                // no sticky broadcast yet: Tethering has reported no interface since boot, so emit the empty states
+                if (app.registerReceiver(receiver, IntentFilter(ACTION_TETHER_STATE_CHANGED)) == null) {
+                    Services.mainHandler.post(dispatch)
+                }
+            }
             if (Build.VERSION.SDK_INT < 30) {
-                app.registerReceiver(receiver, IntentFilter(ACTION_TETHER_STATE_CHANGED))
+                registerBroadcast()
                 broadcastRegistered = true
             } else {
+                val localOnlyFromBroadcast = Build.VERSION.SDK_INT < 31 && !publicLocalOnlyInterfacesChangedSupported
                 launch(Dispatchers.Main.immediate) {
                     TetheringManagerCompat.eventFlow.collect { event ->
                         when (event) {
@@ -120,9 +130,17 @@ data class TetherStates(
                             else -> { }     // offload/supported/upstream/regexps/clients aren't tether states
                         }
                     }
+                    // eventFlow completes only when the platform rejected the callback registration
+                    if (localOnlyFromBroadcast) return@launch
+                    registerBroadcast()
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        app.unregisterReceiver(receiver)
+                    }
                 }
-                if (Build.VERSION.SDK_INT < 31 && !publicLocalOnlyInterfacesChangedSupported) {
-                    app.registerReceiver(receiver, IntentFilter(ACTION_TETHER_STATE_CHANGED))
+                if (localOnlyFromBroadcast) {
+                    registerBroadcast()
                     broadcastRegistered = true
                 }
             }

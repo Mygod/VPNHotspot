@@ -1,5 +1,6 @@
 package be.mygod.vpnhotspot.net
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.annotation.TargetApi
 import android.content.Context
@@ -365,6 +366,14 @@ object TetheringManagerCompat {
      *
      * Most events are also delivered immediately on registration. Requires TETHER_PRIVILEGED or
      * ACCESS_NETWORK_STATE; [Event.ClientsChanged] additionally needs signature permissions.
+     *
+     * On Samsung SCR01's API 30 firmware, registration first writes the non-public System setting
+     * `MHS_DMZ_ENABLED`, which SettingsProvider rejects for app UIDs: with a SecurityException naming
+     * WRITE_SETTINGS while that app op is not granted, and with an IllegalArgumentException once it is.
+     * The write precedes the remote registration, so nothing is left registered, and the flow completes
+     * without events instead (https://github.com/Mygod/VPNHotspot/issues/814):
+     * https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/core/java/android/provider/Settings.java#15168
+     * https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/packages/SettingsProvider/src/com/android/providers/settings/SettingsProvider.java#2152
      */
     @get:RequiresApi(30)
     val eventFlow: Flow<Event> = binderCallbackFlow("tethering event callback") {
@@ -407,7 +416,18 @@ object TetheringManagerCompat {
             if (Build.VERSION.SDK_INT >= 31) Timber.w(e)
             LegacyCallback()
         }
-        Services.tethering.registerTetheringEventCallback(InPlaceExecutor, callback)
+        try {
+            Services.tethering.registerTetheringEventCallback(InPlaceExecutor, callback)
+        } catch (e: RuntimeException) {
+            if (Build.VERSION.SDK_INT != 30 || when (e) {
+                is SecurityException -> e.message?.contains(Manifest.permission.WRITE_SETTINGS) != true
+                is IllegalArgumentException -> e.message != "You cannot keep your settings in the secure settings."
+                else -> true
+            }) throw e
+            Timber.d(e)
+            finish()
+            return@binderCallbackFlow { }
+        }
         return@binderCallbackFlow {
             try {
                 Services.tethering.unregisterTetheringEventCallback(callback)

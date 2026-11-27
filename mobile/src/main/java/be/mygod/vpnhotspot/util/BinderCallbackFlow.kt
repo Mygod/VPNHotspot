@@ -22,6 +22,10 @@ class BinderCallbackScope<T>(private val name: String, private val scope: Produc
     fun finish(event: T) {
         if (push(event)) scope.close()
     }
+
+    fun finish() {
+        scope.close()
+    }
 }
 
 /**
