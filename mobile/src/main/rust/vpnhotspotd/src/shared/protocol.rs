@@ -184,10 +184,15 @@ pub trait IoResultReportExt<T> {
         V: ToString;
 }
 
+/// Matches instead of using `map_err`: `#[track_caller]` does not reach through a closure, so a closure would record
+/// its own location here rather than the caller's.
 impl<T> IoResultReportExt<T> for io::Result<T> {
     #[track_caller]
     fn with_report_context(self, context: impl Into<String>) -> Self {
-        self.map_err(|error| error.with_report_context(context))
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.with_report_context(context)),
+        }
     }
 
     #[track_caller]
@@ -197,7 +202,10 @@ impl<T> IoResultReportExt<T> for io::Result<T> {
         K: ToString,
         V: ToString,
     {
-        self.map_err(|error| error.with_report_context_details(context, details))
+        match self {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.with_report_context_details(context, details)),
+        }
     }
 }
 
@@ -432,6 +440,20 @@ mod tests {
         .with_report_context("outer");
 
         assert_eq!(reported_io_error_report(&error), Some(report));
+    }
+
+    #[test]
+    fn result_report_context_records_caller_location() {
+        let line = line!() + 1;
+        let error = Err::<(), _>(io::Error::other("failed")).with_report_context("test");
+        let report = reported_io_error_report(&error.unwrap_err()).unwrap();
+        assert_eq!((report.file.as_str(), report.line), (file!(), line));
+
+        let result: io::Result<()> = Err(io::Error::other("failed"));
+        let line = line!() + 1;
+        let error = result.with_report_context_details("test", [("key", "value")]);
+        let report = reported_io_error_report(&error.unwrap_err()).unwrap();
+        assert_eq!((report.file.as_str(), report.line), (file!(), line));
     }
 
     #[test]
