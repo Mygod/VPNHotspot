@@ -257,7 +257,7 @@ class RepeaterService : Service(), CoroutineScope {
             }
         }
 
-        fun shutdown() = service?.session?.cancel()
+        fun shutdown() = service?.stop()
     }
 
     @Parcelize
@@ -285,10 +285,15 @@ class RepeaterService : Service(), CoroutineScope {
      * The job owning the current repeater lifespan, or `null` when idle: the single source of truth for the service's
      * lifecycle. It is created, replaced and cleared only on the main thread; a lifespan winds the
      * service down only while it is still the job [session] points at, so whether [session] still refers
-     * to it doubles as the "is a restart pending" signal — no separate flag is needed.
+     * to it doubles as the "is a restart pending" signal — no separate flag is needed. A job not cancelled is [live],
+     * even while still waiting behind its predecessor; a cancelled one is ending, its intent already withdrawn by
+     * [stop], and is kept only for a successor to join.
      */
     private var session: Job? = null
+    /** Whether [session] is live rather than ending: [active] publishes exactly this. */
+    private val live get() = session?.isCancelled == false
     private var destroyed = false
+    private var lastStartId = 0
 
     private fun updateGroup(value: WifiP2pGroup?) {
         group.value = value
@@ -318,7 +323,7 @@ class RepeaterService : Service(), CoroutineScope {
             val ref = WeakReference(this)
             channel = p2pManager.initialize(app, Looper.getMainLooper()) {
                 ref.get()?.apply {
-                    session?.cancel()
+                    stop()
                     initializeChannel()
                 }
             }
@@ -331,8 +336,9 @@ class RepeaterService : Service(), CoroutineScope {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         launch { BootReceiver.startIfEnabled() }
+        lastStartId = startId
         if (channel == null) return START_NOT_STICKY.also { stopSelf() }
-        if (destroyed || session?.isActive == true) return START_NOT_STICKY
+        if (destroyed || live) return START_NOT_STICKY
         // claim the foreground slot synchronously: startForegroundService requires startForeground() promptly, and a
         // previous lifespan may still be tearing down. Re-show the current group so a duplicate start — which
         // startSession() coalesces — doesn't blank the active interface/client count from the shared notification
@@ -343,7 +349,6 @@ class RepeaterService : Service(), CoroutineScope {
             val self = coroutineContext.job
             try {
                 predecessor?.join()
-                active.value = true
                 channel?.let { runLifespan(it) }
             } catch (_: CancellationException) {
                 // a stop, possibly while still waiting behind the barrier: unwind into settle below
@@ -358,32 +363,58 @@ class RepeaterService : Service(), CoroutineScope {
                 dismissIfApplicable()
                 Timber.w(e)
                 SmartSnackbar.make(e.readableMessage).show()
-            }
-            withContext(NonCancellable) {
-                // wind down only after the predecessor has fully torn down: the cancellable barrier above may have been
-                // aborted mid-wait, so re-join here (a no-op once already joined) to keep the Wi-Fi P2P interface
-                // single-owner across a cancelled restart, and so a successor that joins us inherits that ordering
-                predecessor?.join()
-                if (session !== self) return@withContext
-                if (!destroyed) {
-                    BootReceiver.delete<RepeaterService>()
+            } finally {
+                // a lifespan that never got to run withdraws its intent here (a no-op once already ending)
+                stop(self)
+                withContext(NonCancellable) {
+                    // wind down only after the predecessor has fully torn down: the cancellable barrier above may have
+                    // been aborted mid-wait, so re-join here (a no-op once already joined) to keep the Wi-Fi P2P
+                    // interface single-owner across a cancelled restart, and so a successor that joins us inherits
+                    // that ordering
+                    predecessor?.join()
                     if (session !== self) return@withContext
+                    session = null
+                    updateGroup(null)
+                    active.value = false
+                    // stopping by the latest start ID keeps a start Android has accepted but not delivered yet from
+                    // being torn down with us, and that start keeps the foreground slot rather than claiming it anew
+                    if (destroyed || stopSelfResult(lastStartId)) {
+                        ServiceNotification.stopForeground(this@RepeaterService)
+                        if (destroyed) try {
+                            channel?.close()
+                        } finally {
+                            channel = null
+                            this@RepeaterService.cancel()
+                        }
+                    }
                 }
-                session = null
-                updateGroup(null)
-                ServiceNotification.stopForeground(this@RepeaterService)
-                active.value = false
-                if (destroyed) try {
-                    channel?.close()
-                } finally {
-                    channel = null
-                    this@RepeaterService.cancel()
-                } else stopSelf()
             }
         }
         session = job
+        active.value = true
         job.start()
         return START_NOT_STICKY
+    }
+
+    /**
+     * Stop [lifespan] if it is still the live session, withdrawing its intent before any of its teardown can suspend.
+     * Cancelling it marks it ending, so [active] reports off at once and a start from here on is a successor that joins
+     * the teardown rather than a duplicate; the boot starter goes, as no successor exists yet to want it. A lifespan
+     * reports its own end through this as well, which does nothing once a stop or a successor has taken over.
+     */
+    private fun stop(lifespan: Job? = session) {
+        if (lifespan == null || lifespan !== session || lifespan.isCancelled) return
+        active.value = false
+        // Withdraw the active P2P interface before framework teardown starts. Group removal can outlive this
+        // service's foreground detach, and the shared notification otherwise keeps rendering the last group.
+        updateGroup(null)
+        // an update of the foreground slot this session claimed, never a start Android could refuse in the background
+        ServiceNotification.startForeground(this, isStart = false)
+        // detached from the service scope, which onDestroy may end right after this lifespan settles
+        launch(NonCancellable) { BootReceiver.delete<RepeaterService>() }
+        // Cancel last: on the main thread, Dispatchers.Main.immediate can resume the lifespan inside cancel(), running
+        // its teardown, even its settle, before this returns.
+        lifespan.cancel()
     }
 
     /**
@@ -392,22 +423,23 @@ class RepeaterService : Service(), CoroutineScope {
      * separate starting state or startup timeout is needed. Exactly one runs at a time — the barrier
      * serializes lifespans — so it can own the Wi-Fi P2P interface outright without any locking of its own.
      */
-    private suspend fun runLifespan(channel: WifiP2pManager.Channel) = try {
-        val existing = p2pManager.requestGroupInfo(channel)
-        val initialGroup = when {
-            existing == null -> createGroup(channel)
-            existing.isGroupOwner -> existing
-            else -> {   // a stale non-owner group holds the interface; drop it before creating ours
-                Timber.i("Removing old group ($existing)")
-                p2pManager.removeGroup(channel)?.let {
-                    throw StartFailure(formatReason(R.string.repeater_remove_old_group_failure, it))
-                }
-                createGroup(channel)
-            }
-        }
-        val routing = RoutingManager.LocalOnly(this, initialGroup.`interface`!!)
-        check(routing.start())
+    private suspend fun runLifespan(channel: WifiP2pManager.Channel) {
+        val self = currentCoroutineContext().job
+        var routing: RoutingManager? = null
         try {
+            val existing = p2pManager.requestGroupInfo(channel)
+            val initialGroup = when {
+                existing == null -> createGroup(channel)
+                existing.isGroupOwner -> existing
+                else -> {   // a stale non-owner group holds the interface; drop it before creating ours
+                    Timber.i("Removing old group ($existing)")
+                    p2pManager.removeGroup(channel)?.let {
+                        throw StartFailure(formatReason(R.string.repeater_remove_old_group_failure, it))
+                    }
+                    createGroup(channel)
+                }
+            }
+            routing = RoutingManager.LocalOnly(this, initialGroup.`interface`!!).also { check(it.start()) }
             timeoutMonitor = if (isAutoShutdownEnabled) {
                 TetherTimeoutMonitor(shutdownTimeoutMillis, currentCoroutineContext()) { binder.shutdown() }
             } else null
@@ -429,27 +461,29 @@ class RepeaterService : Service(), CoroutineScope {
                 showNotification(group)
             }
         } finally {
+            // A lifespan ending on its own withdraws its intent as a stop would, before any of its teardown suspends (a
+            // no-op once a stop or a successor has taken over). What follows only releases what this lifespan owns,
+            // routing first, then the group, each running even if the one before it fails.
+            stop(self)
             timeoutMonitor?.close()
             timeoutMonitor = null
-            withContext(NonCancellable) { routing.stop() }
-        }
-    } finally {
-        // Withdraw the active P2P interface before framework teardown starts. Group removal can outlive this
-        // service's foreground detach, and the shared notification otherwise keeps rendering the last group.
-        updateGroup(null)
-        showNotification()
-        withContext(NonCancellable) {
-            val group = try {
-                p2pManager.requestGroupInfo(channel)
-            } catch (e: Exception) {
-                Timber.w(e)
-                return@withContext
-            }
-            if (group?.isGroupOwner != true) return@withContext // nothing of ours left to remove
-            val reason = p2pManager.removeGroup(channel)
-            if (reason != null && reason != WifiP2pManager.BUSY) {   // BUSY means it is already going away
-                dismissIfApplicable()
-                SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
+            try {
+                withContext(NonCancellable) { routing?.stop() }
+            } finally {
+                withContext(NonCancellable) {
+                    val group = try {
+                        p2pManager.requestGroupInfo(channel)
+                    } catch (e: Exception) {
+                        Timber.w(e)
+                        return@withContext
+                    }
+                    if (group?.isGroupOwner != true) return@withContext // nothing of ours left to remove
+                    val reason = p2pManager.removeGroup(channel)
+                    if (reason != null && reason != WifiP2pManager.BUSY) {   // BUSY means it is already going away
+                        dismissIfApplicable()
+                        SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
+                    }
+                }
             }
         }
     }
