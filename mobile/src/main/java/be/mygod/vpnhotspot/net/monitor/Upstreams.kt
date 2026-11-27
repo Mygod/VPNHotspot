@@ -146,11 +146,40 @@ object Upstreams {
         trySend(null)
         val state = SourceState()
         val callback = object : ConnectivityManager.NetworkCallback() {
+            /**
+             * Since Android 15, Tethering may register a NetworkAgent with
+             * [NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK] and without INTERNET for each tethering downstream
+             * and Wi-Fi P2P group it serves:
+             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/android/net/ip/IpServer.java#408
+             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/android/net/ip/IpServer.java#1227
+             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/framework/src/android/net/connectivity/ConnectivityInternalApiUtil.java#91
+             * Since Android 17, apps targeting SDK 37 see these unless their request forbids the capability:
+             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#3604
+             * so an [ifaceRequest] pattern that also matches a downstream would pick it as its own upstream.
+             * Tethering forbids the capability for its own upstreams:
+             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/com/android/networkstack/tethering/UpstreamNetworkMonitor.java#175
+             * but NetworkRequest.Builder.addForbiddenCapability is a module-lib API:
+             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/framework/src/android/net/NetworkRequest.java#440
+             * so drop these networks here instead. onCapabilitiesChanged always precedes their first
+             * onLinkPropertiesChanged, and a network can never gain or lose the capability:
+             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/service/src/com/android/server/connectivity/NetworkAgentInfo.java#462
+             */
+            private val localNetworks = HashSet<Network>()
+
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                if (Build.VERSION.SDK_INT >= 35 &&
+                    networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
+                    localNetworks.add(network)
+                }
+            }
+
             override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
+                if (network in localNetworks) return
                 state.onLinkPropertiesChanged(network, properties)?.let { trySend(it.upstream) }
             }
 
             override fun onLost(network: Network) {
+                if (localNetworks.remove(network)) return
                 state.onLost(network)?.let { trySend(it.upstream) }
             }
         }
