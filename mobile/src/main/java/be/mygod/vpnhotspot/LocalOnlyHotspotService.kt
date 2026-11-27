@@ -246,7 +246,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         launch { BootReceiver.startIfEnabled() }
-        if (iface.value != null) return START_STICKY
+        if (iface.value != null) return START_NOT_STICKY
         val generation = lifecycleGeneration.incrementAndGet()
         updateIface("")
         ServiceNotification.startForeground(this)   // show invisible foreground notification to avoid being killed
@@ -259,7 +259,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
                 if (localOnlyHotspotJob === requestJob) localOnlyHotspotJob = null
             }
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
     private suspend fun doStart(generation: Int, requestJob: Job) {
         if (!receiverRegistered) {
