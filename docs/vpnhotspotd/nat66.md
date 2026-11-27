@@ -36,7 +36,8 @@ session config across awaits.
 
 ICMP registration uses the session routing request connection before routing
 takes ownership. The RA task owns separate request and IPv6-address event
-connections.
+connections. Routing follows the phone's IPv6 addresses through its own event
+connection to keep local destinations out of interception.
 
 ## Ownership Levels
 
@@ -114,16 +115,20 @@ that MAC/protocol capability.
 
 The mangle path returns local-link ICMPv6 control traffic first. Downstream
 gateway DNS goes through `vpnhotspot_acl`, then admitted gateway DNS reaches
-protocol-specific handling. Other local or special destinations return before
-the generic upstream ACL/proxy path. The remaining upstream path gates through
-`vpnhotspot_acl`, then applies per-MAC TCP/UDP TPROXY or ICMPv6 NFQUEUE
+protocol-specific handling. Other local or special destinations, including
+every address the phone currently has on any interface, return before the
+generic upstream ACL/proxy path, so the kernel delivers them to local sockets
+directly (see
+[NAT66 Phone Address Returns](routing.md#nat66-phone-address-returns)). The
+remaining upstream path gates through `vpnhotspot_acl`, then applies per-MAC TCP/UDP TPROXY or ICMPv6 NFQUEUE
 handling. Client allow rules return from the ACL chain; the base ACL rule drops
 what remains. Blocked or unknown MACs never reach daemon-owned DNS, TCP/UDP
 upstream TPROXY, or ICMPv6 NFQUEUE handling. TCP and UDP listeners bind to
 `::1` and routing uses `--on-ip ::1`, so NAT66 listener ports are internal
 TPROXY endpoints. Direct connections to those ports on local or special
-downstream destinations do not reach the listener and fall through the base
-input reject path.
+downstream destinations do not reach the listener: no socket lookup for
+another destination matches the `::1` bind, and the gateway and special
+destinations also fall through the base input reject path.
 
 ## TCP
 
@@ -234,6 +239,14 @@ create a second exact bind while the original socket is still live. Host- or
 network-unreachable downstream reply sends are treated as client reachability
 churn and logged. Reply socket acquisition and other unexpected send failures
 remain structured nonfatals.
+
+Downstream traffic to one of the phone's own addresses is not proxied, so it
+never needs a reply socket: routing returns it before interception and the
+kernel delivers it to the local app, which replies from its own socket. That
+removes the exact-bind collision with a local app holding the destination port,
+which made `reply_socket_stage=acquire_socket` fail with `EADDRINUSE`. The
+acquisition report stays, because a remote destination whose port a local app
+holds on the wildcard address can still collide.
 
 UDP hop-limit behavior is part of the NAT66 contract. Missing hop-limit
 metadata is reported and the datagram is dropped. Expired hop limit produces a

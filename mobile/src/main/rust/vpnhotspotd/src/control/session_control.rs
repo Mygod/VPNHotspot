@@ -1,3 +1,4 @@
+use std::future::pending;
 use std::io;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -80,6 +81,16 @@ pub(super) async fn run_session(
                 };
                 if handle_session_command(&mut session, command).await {
                     break;
+                }
+            }
+            changed = async {
+                match session.as_mut() {
+                    Some(session) => session.local_ipv6_changed().await,
+                    None => pending().await,
+                }
+            } => {
+                if let Some(session) = session.as_mut() {
+                    session.refresh_local_ipv6(changed).await;
                 }
             }
             _ = cancel.cancelled(), if !waiting_for_clean_stop => {

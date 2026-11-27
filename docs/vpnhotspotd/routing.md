@@ -38,7 +38,10 @@ persisted and is not a Clean source of truth.
 `routing::Runtime` owns one rtnetlink request connection for the session
 lifetime. Startup transfers the connection used for downstream discovery;
 replacement and normal stop reuse it. Request failures are reported and later
-operations remain best effort; the runtime does not reconnect.
+operations remain best effort; the runtime does not reconnect. A session that
+starts with `SessionConfig.ipv6_nat` also owns a multicast-only IPv6-address
+event connection for its
+[phone address returns](#nat66-phone-address-returns).
 
 ## Session Desired Mutations
 
@@ -376,7 +379,10 @@ Rollback:
 These rules reject non-daemon IPv6 forwarding while allowing daemon-owned
 transparent sockets and daemon-marked router advertisements. Because rules are
 inserted with `-I`, rule order must be reviewed together with insertion order
-when changing this list.
+when changing this list. The per-address `vpnhotspot_v6_input` returns in
+[NAT66 Phone Address Returns](#nat66-phone-address-returns) sit above the
+downstream `REJECT`, so input to the phone's own addresses continues to the
+platform's `INPUT` rules instead.
 
 The mark value is `DAEMON_REPLY_MARK/DAEMON_REPLY_MARK_MASK`.
 
@@ -431,8 +437,11 @@ least one TCP or UDP runtime capability. Gateway DNS preludes and local/special
 destination returns are session-level rules. Listener TPROXY rules are per
 committed client MAC/protocol listener port. NAT66 gateway DNS and upstream
 proxying share the same per-MAC listener; the daemon distinguishes gateway DNS
-by the original destination. Local or special destinations should not enter the
-daemon-owned upstream proxy path.
+by the original destination. Local or special destinations do not enter the
+daemon-owned upstream proxy path: the fixed returns below cover the session's
+gateway prefix, link-local, multicast, unspecified, and loopback destinations,
+and [NAT66 Phone Address Returns](#nat66-phone-address-returns) cover every
+other address the phone currently has.
 
 External mutations:
 
@@ -453,8 +462,9 @@ External mutations:
   - `ip6tables -t mangle -I vpnhotspot_v6_protocols -i <downstream> -p udp -m mac --mac-source <mac> -j TPROXY --on-ip ::1 --on-port <nat66-udp-port-for-mac>`
 
 Effective mangle order is gateway DNS `:53` ACL gate, gateway DNS `:53`
-protocol interception, local/special destination returns, generic upstream ACL
-gate, then broad per-MAC listener TPROXY for the remaining TCP or UDP traffic.
+protocol interception, local/special destination returns and phone address
+returns, generic upstream ACL gate, then broad per-MAC listener TPROXY for the
+remaining TCP or UDP traffic.
 Gateway DNS enters the same listener as ordinary upstream traffic, but the
 daemon routes it to DNS handling from the original destination. This keeps local
 traffic outside NAT66 admission while still applying the allow/block decision to
@@ -475,14 +485,128 @@ Rollback:
 The TCP and UDP rules use `--on-ip ::1`, and the listeners bind to `::1`.
 Listener ports are internal TPROXY endpoints rather than downstream-reachable
 service ports. Direct downstream local/special traffic to those ports does not
-match the listener and falls through the base input reject path.
+match the listener's `::1` bind. Traffic to the gateway or a special
+destination then falls through the base input reject path; traffic to another
+phone address passes the per-address input return and reaches no daemon
+listener.
 
 A per-MAC TCP or UDP listener is not committed unless the daemon listener,
 required session-level local/special exclusions, base input filter rules,
 gateway DNS preludes, and matching MAC-scoped listener TPROXY rule all exist.
 If routing fails the rules required for that MAC/protocol, the staged listener
 is cancelled and that MAC/protocol capability is omitted from the committed
-session.
+session. Phone address returns are not commit requirements; a missing one only
+leaves that address on the proxied path.
+
+### NAT66 Phone Address Returns
+
+Condition: the NAT66 session firewall above is present, and the session follows the phone's IPv6 addresses. A session follows them when it
+starts with `SessionConfig.ipv6_nat` and both its address subscription and its
+initial address dump succeed. Replacement that clears `ipv6_nat` stops
+following.
+
+External mutations, for each followed address outside the session's
+`<nat66-prefix>`, filter rule first:
+
+- `ip6tables -t filter -I vpnhotspot_v6_input -i <downstream> -d <phone-address>/128 -j RETURN`
+- `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d <phone-address>/128 -j RETURN`
+
+Followed addresses come from an `AF_INET6` `RTM_GETADDR` dump across all
+interfaces, parsed by
+[`shared/local_ipv6.rs`](../../mobile/src/main/rust/vpnhotspotd/src/shared/local_ipv6.rs).
+Each distinct address counts once, taking `IFA_LOCAL` over `IFA_ADDRESS` for
+point-to-point addresses. The parser leaves out:
+
+- addresses still tentative without being optimistic, and DAD-failed
+  addresses, because the kernel does not deliver to them yet and the address
+  may belong to another node on its link;
+- addresses inside `fe80::/10`, `ff00::/8`, or `::/127`, which the fixed
+  local/special returns above already cover. The session's own gateway prefix
+  is left out when the rules are built, for the same reason.
+
+Effect: a downstream packet addressed to the phone's own address leaves
+`vpnhotspot_v6_tproxy` before the ACL gate and TPROXY, and leaves
+`vpnhotspot_v6_input` before the downstream `REJECT`. The kernel then delivers
+it to whichever local socket owns that address and port, with the client's own
+source address, as it does for IPv4 tethered clients. Replies from a local
+socket that is not explicitly bound to a network reach the client through the
+NAT66 prefix route in table 97, via AOSP's
+`from all fwmark 0x0/0x10000 lookup local_network` rule; a socket explicitly
+bound to another network replies elsewhere, as it does to IPv4 tethered
+clients. Like the other local/special returns, this traffic is outside NAT66
+admission and counting, so a blocked MAC reaches local apps on these addresses
+as a blocked IPv4 client does.
+
+AOSP sources for the implicit local-network rule:
+
+- https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/RouteController.cpp#654
+- https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#737
+
+Without these returns, the daemon would proxy such traffic upstream. Its UDP
+reply socket must then bind the exact original destination, which fails with
+`EADDRINUSE` when a local app already holds that port.
+
+Insertion at the chain heads is correct whenever the rules are installed: the
+filter return lands above the session's downstream `REJECT`, and the mangle
+return lands above the process-wide ACL gate and protocol jumps. Rules inserted
+above them later are other `RETURN`s, rules scoped to another downstream, or the
+gateway DNS preludes, whose destination is inside the excluded gateway prefix,
+so their relative order does not matter.
+
+Following addresses: routing subscribes to `RTNLGRP_IPV6_IFADDR` before its
+initial dump, so a change that races the dump still produces a notification.
+The session owner waits for notifications beside its commands. A notification,
+including a netlink overrun, makes the owner re-dump through the session
+request connection and reconcile only these rules. That refresh runs between
+commands rather than racing them, so a command never cancels an in-flight
+iptables mutation. Because every notification triggers a full dump, an overrun
+needs no resubscription: the dump that follows it postdates every lost
+notification. Router advertisement lifetime refreshes also send `RTM_NEWADDR`;
+their dumps change nothing and run no iptables command. A refresh does not
+re-resolve upstream interfaces or retry other failed mutations.
+
+Rollback:
+
+- an address that leaves the followed set: delete its `vpnhotspot_v6_tproxy`
+  return, then its `vpnhotspot_v6_input` return;
+- replacement that removes the NAT66 session firewall, and session stop: delete
+  with the rest of the applied list, which also removes the mangle return before
+  the filter return.
+
+Clean:
+
+- the NAT66 filter and mangle chain flush-and-delete removes every per-address
+  return without any address knowledge.
+
+Process death leaves these returns in place with the rest of the session's NAT66
+firewall until Clean; the event connection closes with the process.
+
+Failure and missing-state behavior:
+
+- subscription or initial dump failure: structured nonfatal
+  `routing.local_ipv6.events` or `routing.local_ipv6.dump`. The session follows
+  no addresses and installs no per-address returns, so its phone-address
+  traffic stays on the proxied path.
+- later dump failure: structured nonfatal `routing.local_ipv6.dump`. The
+  previous set and its rules stay until a later notification dumps
+  successfully.
+- notification stream end: structured nonfatal `routing.local_ipv6.events`. The
+  session withdraws every per-address return and stops following, because the
+  set could only go stale and a stale return would keep a departed address off
+  its upstream path.
+- insert or delete failure: the generic `routing.apply_iptables` or
+  `routing.iptables_delete` nonfatal. A failed insert stays out of the applied
+  list, so the next refresh or replacement retries it. If only the filter return
+  fails, the downstream `REJECT` refuses that address explicitly until then.
+- expected races: rules match only the destination address and interface name,
+  so an address that disappears before its rule is installed still gets an
+  installable rule, which the deletion notification then removes. A departing
+  interface does not fail the all-interface dump; its addresses leave the next
+  dump. Deleting a rule that is already gone exits nonzero and counts as
+  deleted, as for every session rule.
+
+The address set is phone-owned kernel state, not something downstream clients
+grow, so the daemon caps neither the set nor the rule count.
 
 ### NAT66 ICMPv6 Control Returns
 
@@ -617,7 +741,7 @@ External mutations:
 Because these rules are inserted with `-I`, session rules must preserve the
 effective `vpnhotspot_v6_tproxy` order documented above: local-link ICMPv6
 control returns, gateway DNS ACL/protocol handling, local/special destination
-returns, generic ACL gate, then protocol interception. That ordering is part of
+and phone address returns, generic ACL gate, then protocol interception. That ordering is part of
 the NAT66 blocking contract: blocked MACs hit the base ACL drop before
 daemon-owned DNS, upstream TCP/UDP TPROXY, or ICMPv6 NFQUEUE, while local or
 special destinations outside those daemon-owned paths do not use the ACL as an
@@ -721,6 +845,9 @@ External mutations:
   - `vpnhotspot_v6_acl_gate`
   - `vpnhotspot_v6_protocols`
   - `vpnhotspot_v6_tproxy`
+
+Flushing `vpnhotspot_v6_input` and `vpnhotspot_v6_tproxy` also removes every
+NAT66 phone address return, so Clean needs no address state.
 
 Missing rules or chains are expected after partial startup or prior cleanup.
 Unexpected restore failures are reported.

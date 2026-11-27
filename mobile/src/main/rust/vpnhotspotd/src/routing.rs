@@ -12,6 +12,7 @@ mod iptables;
 mod ipv6_nat_firewall;
 mod ipv6_nat_intercept;
 mod ipv6_nat_listener_rules;
+mod local_ipv6;
 mod ndc;
 mod netlink_commands;
 mod static_addresses;
@@ -21,6 +22,7 @@ use iptables::{
 };
 use ipv6_nat_firewall::Ipv6NatFirewall;
 use ipv6_nat_intercept::Ipv6NatInterceptMode;
+use local_ipv6::LocalIpv6;
 use ndc::{add_ip_forward, remove_ip_forward, run_ndc};
 use netlink_commands::{delete_rule_repeated, IpCommand, IpFamily};
 use static_addresses::clean_ip;
@@ -106,6 +108,7 @@ pub(crate) struct Runtime {
     ports: SessionPorts,
     downstream_ipv4: DownstreamIpv4,
     ipv6_nat_intercept_mode: Option<Ipv6NatInterceptMode>,
+    local_ipv6: Option<LocalIpv6>,
     applied: Vec<RoutingMutation>,
     connection: netlink::RequestConnection,
 }
@@ -123,9 +126,16 @@ impl Runtime {
             ports,
             downstream_ipv4,
             ipv6_nat_intercept_mode: None,
+            local_ipv6: None,
             applied: Vec::new(),
             connection,
         };
+        // Only a session that starts with NAT66 can intercept IPv6, because replacement never
+        // enables NAT66 for a session that started without it.
+        if config.ipv6_nat.is_some() {
+            runtime.local_ipv6 =
+                LocalIpv6::watch(&mut runtime.connection, &config.downstream).await;
+        }
         let desired = runtime.desired_mutations(config).await;
         runtime.reconcile(desired).await;
         let committed = runtime.reconcile_committed_ports(config).await;
@@ -147,6 +157,9 @@ impl Runtime {
         }
         self.downstream_ipv4 = downstream_ipv4;
         self.ports = ports;
+        if next.ipv6_nat.is_none() {
+            self.local_ipv6 = None;
+        }
         self.reset_changed_ipv4_counter_rules(previous, next).await;
         let desired = self.desired_mutations(next).await;
         self.reconcile(desired).await;

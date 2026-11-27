@@ -1,3 +1,5 @@
+use std::net::Ipv6Addr;
+
 use crate::firewall::IptablesTarget;
 use vpnhotspotd::shared::icmp_nat::icmp_echo_rule_args;
 use vpnhotspotd::shared::model::{
@@ -41,6 +43,7 @@ impl Ipv6NatFirewall {
         ipv6_nat: &Ipv6NatConfig,
         ports: &Ipv6NatPorts,
         intercept_mode: Ipv6NatInterceptMode,
+        local_addresses: &[Ipv6Addr],
     ) {
         for chain in Self::NAT_FILTER_JUMPS
             .into_iter()
@@ -73,6 +76,11 @@ impl Ipv6NatFirewall {
             push_unique(mutations, RoutingMutation::Iptables(rule));
         }
         for rule in Self::local_special_return_rules(config, ipv6_nat) {
+            push_unique(mutations, RoutingMutation::Iptables(rule));
+        }
+        // Inserted after the input reject and above the generic ACL gate and protocol jumps; later
+        // reconciles insert them at the chain heads, which keeps both properties.
+        for rule in Self::local_address_return_rules(config, ipv6_nat, local_addresses) {
             push_unique(mutations, RoutingMutation::Iptables(rule));
         }
         for protocol in Self::enabled_listener_protocols(ports) {

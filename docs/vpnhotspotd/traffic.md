@@ -69,8 +69,9 @@ The listener port is not a client-controlled identity token. IPv4 DNS listener
 ports accept only packets whose conntrack original destination was the
 downstream gateway on port 53. NAT66 listener ports are internal `::1` TPROXY
 endpoints reached only through the MAC-matched TPROXY path; direct local or
-special-destination traffic to those ports does not reach the listener and
-falls through the input reject path.
+special-destination traffic to those ports does not match the `::1` bind, so it
+does not reach the listener. Local traffic to the phone's own addresses is
+outside NAT66 admission and counting.
 
 NAT66 ICMPv6 Echo uses one process-wide NFQUEUE path. The queue number is
 `30000`. Routing queues eligible Echo Requests only after the NAT66 ACL has
