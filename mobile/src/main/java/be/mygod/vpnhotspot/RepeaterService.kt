@@ -729,17 +729,19 @@ class RepeaterService : Service(), CoroutineScope {
     override fun onDestroy() {
         binder.detach()
         destroyed = true
-        // Cancel the live lifespan; its settle() drops the shared notification and closes the P2P channel once its own
-        // teardown finishes. With nothing running, do that wind-down here instead. Ending the scope cancels the
-        // lifespan, and also abandons a teardown's wait for its group to go away, which only this may do.
-        if (session == null) {
-            ServiceNotification.stopForeground(this)
-            try {
-                channel?.close()
-            } finally {
-                channel = null
-                cancel()
-            }
+        // Withdraw what this service publishes right away, as stop() would: the lifespan's teardown can outlive the
+        // service, and the shared notification would otherwise keep rendering its group meanwhile.
+        active.value = false
+        updateGroup(null)
+        ServiceNotification.stopForeground(this)
+        // Cancel the live lifespan; its settle() closes the P2P channel once its own teardown finishes. With nothing
+        // running, do that wind-down here instead. Ending the scope cancels the lifespan, and also abandons a
+        // teardown's wait for its group to go away, which only this may do.
+        if (session == null) try {
+            channel?.close()
+        } finally {
+            channel = null
+            cancel()
         } else cancel()
         super.onDestroy()
     }
