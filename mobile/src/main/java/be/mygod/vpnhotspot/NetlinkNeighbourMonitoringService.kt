@@ -36,7 +36,7 @@ abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
      * never be paired with a stale prior value.
      */
     protected abstract val interfaces: Flow<Interfaces?>
-    private val notificationLock = Any()
+    /** Main-confined, like every subclass scope, which also runs the notification collector in [onCreate]. */
     private var notificationClosed = false
 
     private fun netlinkSizeLookup(snapshot: NetlinkNeighbour.Snapshot) =
@@ -128,22 +128,18 @@ abstract class NetlinkNeighbourMonitoringService : Service(), CoroutineScope {
                     // Services synchronously enter foreground before their first non-null interface state.
                     if (content == null) return@collect
                 }
-                synchronized(notificationLock) {
-                    if (!notificationClosed) {
-                        if (content == null) ServiceNotification.stopForeground(this@NetlinkNeighbourMonitoringService)
-                        else ServiceNotification.startForeground(
-                            this@NetlinkNeighbourMonitoringService, content.counts, content.inactive, false)
-                    }
+                if (!notificationClosed) {
+                    if (content == null) ServiceNotification.stopForeground(this@NetlinkNeighbourMonitoringService)
+                    else ServiceNotification.startForeground(
+                        this@NetlinkNeighbourMonitoringService, content.counts, content.inactive, false)
                 }
             }
         }
     }
 
     override fun onDestroy() {
-        synchronized(notificationLock) {
-            notificationClosed = true
-            ServiceNotification.stopForeground(this)
-        }
+        notificationClosed = true
+        ServiceNotification.stopForeground(this)
         super.onDestroy()
     }
 }
