@@ -41,11 +41,13 @@ pub(super) async fn run_ndc(name: &str, args: &[&str]) -> io::Result<()> {
         ("binary".to_owned(), firewall::NDC.to_owned()),
         ("args".to_owned(), args.join(" ")),
     ];
+    // Every ndc command reports from here, so the subcommand (e.g. `nat.enable`) keeps their contexts apart.
+    let operation = args.iter().take(2).copied().collect::<Vec<_>>().join(".");
     let output = Command::new(firewall::NDC)
         .args(args)
         .output()
         .await
-        .with_report_context_details("routing.ndc.spawn", details.clone())?;
+        .with_report_context_details(format!("routing.ndc.{operation}.spawn"), details.clone())?;
     let stdout = String::from_utf8_lossy(&output.stdout);
     let suffix = format!("200 0 {name} operation succeeded\n");
     if output.status.success() && stdout.ends_with(&suffix) {
@@ -61,6 +63,6 @@ pub(super) async fn run_ndc(name: &str, args: &[&str]) -> io::Result<()> {
             stdout.trim_end(),
             String::from_utf8_lossy(&output.stderr).trim_end()
         )))
-        .with_report_context_details("routing.ndc.status", details)
+        .with_report_context_details(format!("routing.ndc.{operation}.status"), details)
     }
 }
