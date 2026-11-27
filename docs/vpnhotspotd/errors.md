@@ -48,6 +48,9 @@ When adding context to an `io::Error`, use the report extension helpers so the
 first useful daemon context is preserved and not overwritten by generic wrapper
 layers.
 
+The `io::Result` helpers record the caller's source location, not their own, so
+the report's Rust file/line names the call site that attached the context.
+
 ## Nonfatal Reports
 
 A nonfatal report is sent independently of the terminal frame path. Kotlin logs
@@ -84,6 +87,15 @@ during controller disconnect or idle shutdown. If an emitted nonfatal cannot be
 written to the control socket, the daemon writes the report to stderr, which
 falls back to logcat if the app-side stderr pipe is already closed. Terminal
 error frames are not coalesced.
+
+Because the coalescing key includes the Rust source location, reports from one
+shared helper that match in kind and errno are separated only by their context.
+`run_ndc` in
+[`routing/ndc.rs`](../../mobile/src/main/rust/vpnhotspotd/src/routing/ndc.rs)
+therefore names the ndc subcommand in its context,
+`routing.ndc.<cmd>.<verb>.spawn` or `routing.ndc.<cmd>.<verb>.status` (for
+example `routing.ndc.nat.enable.status`), so failures of different ndc commands
+do not coalesce together.
 
 ## Logs
 

@@ -42,7 +42,7 @@ pub(super) async fn run_ndc(name: &str, args: &[&str]) -> io::Result<()> {
         ("args".to_owned(), args.join(" ")),
     ];
     // Every ndc command reports from here, so the subcommand (e.g. `nat.enable`) keeps their contexts apart.
-    let operation = args.iter().take(2).copied().collect::<Vec<_>>().join(".");
+    let operation = args[..args.len().min(2)].join(".");
     let output = Command::new(firewall::NDC)
         .args(args)
         .output()
