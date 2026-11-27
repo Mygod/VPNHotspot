@@ -148,10 +148,15 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
         inactiveIfaceSet.value = inactiveIfaces
         this.managedIfaces.value = managedIfaces
         if (managedIfaces.isEmpty()) {
-            interfaces.value = null
             unregisterReceiver()
-            ServiceNotification.stopForeground(this)
-            stopSelfResult(lastStartId)
+            if (stopSelfResult(lastStartId)) {
+                interfaces.value = null
+                ServiceNotification.stopForeground(this)
+            } else {
+                // a newer start is still queued: keep the foreground slot it claimed, with an empty placeholder in
+                // place of the interfaces just torn down, since re-promoting later can be denied in the background
+                interfaces.value = Interfaces()
+            }
         } else {
             if (tetherStatesJob == null) tetherStatesJob = launchTetherStatesJob()
             interfaces.value = Interfaces(active, notificationInactive)
