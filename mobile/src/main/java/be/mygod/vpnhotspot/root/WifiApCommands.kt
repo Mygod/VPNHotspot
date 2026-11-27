@@ -326,15 +326,16 @@ object WifiApCommands {
     }
 
     /**
-     * Root process only, confined to its main thread, where root commands start: the [StartLocalOnlyHotspot] request
-     * running there with its token, or the token of a [StopLocalOnlyHotspot] that overtook its request (with no job).
-     * The app runs one request at a time and stops it at most once, so one slot covers both; a stop arriving after its
-     * request completed only leaves a stale token for the next request to replace.
+     * Root process only, confined to its main thread, where root commands start: each [StartLocalOnlyHotspot] request
+     * running there by token, so requests of different service instances never displace each other, plus a null entry
+     * for a [StopLocalOnlyHotspot] that overtook its request. A request removes its entry when its flow completes, and
+     * also drops the null entries of older tokens, so a stop that crossed its request's completion goes with the next.
      */
-    private var localOnlyHotspotRequest: Pair<Long, Job?>? = null
+    private val localOnlyHotspotRequests = mutableMapOf<Long, Job?>()
 
     /**
-     * A LOHS request made by uid 0, identified by [token] for [StopLocalOnlyHotspot]. Cancelling a root flow from the
+     * A LOHS request made by uid 0, identified by [token] for [StopLocalOnlyHotspot]; tokens increase with each request
+     * (`SystemClock.elapsedRealtimeNanos`), whichever app process makes it. Cancelling a root flow from the
      * app is only best-effort (librootkotlinx 2.0.0-beta02 `RootServer.flow`, `RootCommandService.cancel`): the app
      * stops listening at once, the remote cancel is queued as a oneway call that cancels the root job without joining
      * it, and a cancelled job never reports completion. Its cleanup closes the request, which from uid 0 on Android 14+
@@ -348,19 +349,20 @@ object WifiApCommands {
     @RequiresApi(30)
     data class StartLocalOnlyHotspot(private val token: Long) : RootFlow<WifiApManager.LocalOnlyHotspotEvent> {
         override fun flow() = channelFlow {
-            if (localOnlyHotspotRequest?.first == token) {  // its stop overtook it: never start
-                localOnlyHotspotRequest = null
+            if (localOnlyHotspotRequests.containsKey(token)) {  // its stop overtook it: never start
+                localOnlyHotspotRequests.remove(token)
                 return@channelFlow
             }
+            localOnlyHotspotRequests.entries.removeAll { (other, request) -> request == null && other < token }
             val request = launch {
                 WifiApManager.startLocalOnlyHotspotFlow(WifiApManager.configuration).collect { send(it) }
             }
-            localOnlyHotspotRequest = token to request
+            localOnlyHotspotRequests[token] = request
             try {
                 // a stop cancels the request, whose cleanup closes the reservation before this joins
                 request.join()
             } finally {
-                if (localOnlyHotspotRequest?.second === request) localOnlyHotspotRequest = null
+                localOnlyHotspotRequests.remove(token)
             }
         }
     }
@@ -371,8 +373,8 @@ object WifiApCommands {
     @Parcelize
     data class StopLocalOnlyHotspot(private val token: Long) : RootCommandNoResult {
         override suspend fun execute() = null.also {
-            val request = localOnlyHotspotRequest
-            if (request?.first == token) request.second?.cancel() else localOnlyHotspotRequest = token to null
+            if (localOnlyHotspotRequests.containsKey(token)) localOnlyHotspotRequests[token]?.cancel()
+            else localOnlyHotspotRequests[token] = null
         }
     }
 }

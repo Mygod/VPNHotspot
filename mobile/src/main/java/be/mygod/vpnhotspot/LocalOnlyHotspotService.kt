@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.os.SystemClock
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.net.TetherStates
 import be.mygod.vpnhotspot.net.wifi.SoftApConfigurationCompat
@@ -40,7 +41,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
 import java.lang.reflect.InvocationTargetException
-import kotlin.random.Random
 
 class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
     companion object {
@@ -353,7 +353,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
                     RootManager.use { server ->
                         // the root process ends its request itself, and its flow completes once that cleanup ran; a
                         // dead connection fails the flow instead, which surfaces once it is collected to the end
-                        val token = Random.nextLong()
+                        val token = SystemClock.elapsedRealtimeNanos()
                         collectLocalOnlyHotspotEvents(server.flow(WifiApCommands.StartLocalOnlyHotspot(token))) {
                             server.execute(WifiApCommands.StopLocalOnlyHotspot(token))
                         }
