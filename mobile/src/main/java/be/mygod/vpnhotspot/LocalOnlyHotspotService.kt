@@ -243,6 +243,11 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
     private val live get() = session?.isCancelled == false
     private var destroyed = false
     private var lastStartId = 0
+    /**
+     * The boot-starter deletion [stop] launched last. Settling waits for it, so that the service is not let go while
+     * the persisted starter could still bring back what the user stopped.
+     */
+    private var bootStarterDeletion: Job? = null
 
     /**
      * Stop [lifespan] if it is still the live session, withdrawing its intent before any of its teardown can suspend.
@@ -261,7 +266,7 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
         // monitor entry for the same interface.
         updateIface("")
         // detached from the service scope, which onDestroy may end right after this lifespan settles
-        launch(NonCancellable) { BootReceiver.delete<LocalOnlyHotspotService>() }
+        bootStarterDeletion = launch(NonCancellable) { BootReceiver.delete<LocalOnlyHotspotService>() }
         // Cancel last: on the main thread, Dispatchers.Main.immediate can resume the lifespan inside cancel(), running
         // its teardown, even its settle, before this returns. The binder state derived after it then reports idle.
         lifespan.cancel()
@@ -309,6 +314,9 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
                     // a successor joining us must also wait out our whole teardown, so re-join a predecessor whose
                     // cancellable barrier above may have been aborted mid-wait (a no-op once already joined)
                     predecessor?.join()
+                    if (session !== self) return@withContext
+                    // still the session while waiting, so a start meanwhile becomes a successor that takes over
+                    bootStarterDeletion?.join()
                     if (session !== self) return@withContext
                     session = null
                     // stopping by the latest start ID keeps a start delivered meanwhile from being torn down with us;

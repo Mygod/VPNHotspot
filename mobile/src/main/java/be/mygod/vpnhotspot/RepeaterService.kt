@@ -295,6 +295,11 @@ class RepeaterService : Service(), CoroutineScope {
     private val live get() = session?.isCancelled == false
     private var destroyed = false
     private var lastStartId = 0
+    /**
+     * The boot-starter deletion [stop] launched last. Settling waits for it, so that the service is not let go while
+     * the persisted starter could still bring back what the user stopped.
+     */
+    private var bootStarterDeletion: Job? = null
 
     private fun updateGroup(value: WifiP2pGroup?) {
         group.value = value
@@ -374,6 +379,9 @@ class RepeaterService : Service(), CoroutineScope {
                     // that ordering
                     predecessor?.join()
                     if (session !== self) return@withContext
+                    // still the session while waiting, so a start meanwhile becomes a successor that takes over
+                    bootStarterDeletion?.join()
+                    if (session !== self) return@withContext
                     session = null
                     updateGroup(null)
                     active.value = false
@@ -412,7 +420,7 @@ class RepeaterService : Service(), CoroutineScope {
         // an update of the foreground slot this session claimed, never a start Android could refuse in the background
         ServiceNotification.startForeground(this, isStart = false)
         // detached from the service scope, which onDestroy may end right after this lifespan settles
-        launch(NonCancellable) { BootReceiver.delete<RepeaterService>() }
+        bootStarterDeletion = launch(NonCancellable) { BootReceiver.delete<RepeaterService>() }
         // Cancel last: on the main thread, Dispatchers.Main.immediate can resume the lifespan inside cancel(), running
         // its teardown, even its settle, before this returns.
         lifespan.cancel()
