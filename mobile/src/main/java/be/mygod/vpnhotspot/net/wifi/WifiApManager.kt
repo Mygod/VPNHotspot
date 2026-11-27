@@ -46,6 +46,7 @@ import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicReference
 
 object WifiApManager {
     /**
@@ -450,28 +451,31 @@ object WifiApManager {
      * from uid 0 on Android 14+ that is every local-only hotspot
      * (https://android.googlesource.com/platform/packages/modules/Wifi/+/android-14.0.0_r1/service/java/com/android/server/wifi/WifiServiceImpl.java#2681,
      * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/WifiServiceImpl.java#3464).
-     * Closing here keeps it within the request's lifetime, which the root backend's caller waits out.
+     * Closing here keeps it within the request's lifetime, which the root backend's caller waits out. A reservation
+     * whose onStarted arrives once the flow has closed (a stop racing the one-way callback) misses that cleanup, so it
+     * is closed on arrival instead.
      */
     private fun localOnlyHotspotFlow(
         nullReservationReason: Int,
         start: (WifiManager.LocalOnlyHotspotCallback) -> Unit,
     ) = binderCallbackFlow("local-only hotspot callback") {
-        var reservation: WifiManager.LocalOnlyHotspotReservation? = null
+        // set from the callback's thread, taken by whichever of the cleanup or a late onStarted gets to close it
+        val reservation = AtomicReference<WifiManager.LocalOnlyHotspotReservation?>()
         start(object : WifiManager.LocalOnlyHotspotCallback() {
             override fun onStarted(startedReservation: WifiManager.LocalOnlyHotspotReservation?) {
                 if (startedReservation == null) return finish(LocalOnlyHotspotEvent.Failed(nullReservationReason))
-                reservation = startedReservation
+                reservation.set(startedReservation)
                 val config = if (Build.VERSION.SDK_INT < 30) @Suppress("DEPRECATION") {
                     startedReservation.wifiConfiguration?.toCompat()
                 } else startedReservation.softApConfiguration.toCompat()
-                push(LocalOnlyHotspotEvent.Started(config))
+                // the flow closes before its cleanup runs, so a failed push means that cleanup may have missed this
+                if (!push(LocalOnlyHotspotEvent.Started(config))) reservation.getAndSet(null)?.close()
             }
             override fun onStopped() = finish(LocalOnlyHotspotEvent.Stopped())
             override fun onFailed(reason: Int) = finish(LocalOnlyHotspotEvent.Failed(reason))
         })
         return@binderCallbackFlow {
-            reservation?.close() ?: cancelLocalOnlyHotspotRequest()
-            reservation = null
+            reservation.getAndSet(null)?.close() ?: cancelLocalOnlyHotspotRequest()
         }
     }
 
