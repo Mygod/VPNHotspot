@@ -548,8 +548,7 @@ private fun rememberInterfaceNameSuggestions(active: Boolean): State<List<String
         }
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                if (Build.VERSION.SDK_INT >= 35 &&
-                    networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
+                if (networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
                     localNetworks.add(network)
                 }
             }
@@ -561,7 +560,7 @@ private fun rememberInterfaceNameSuggestions(active: Boolean): State<List<String
             }
 
             override fun onLost(network: Network) {
-                if (localNetworks.remove(network)) return
+                localNetworks.remove(network)
                 interfaceNames.remove(network)
                 update()
             }

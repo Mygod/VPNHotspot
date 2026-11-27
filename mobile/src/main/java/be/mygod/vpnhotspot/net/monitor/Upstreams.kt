@@ -166,9 +166,17 @@ object Upstreams {
              */
             private val localNetworks = HashSet<Network>()
 
+            /**
+             * Android 14 Thread networks have the capability too (SDK extension 12):
+             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-14.0.0_r50/thread/service/java/com/android/server/thread/ThreadNetworkControllerService.java#542
+             * The constant is inlined, and platforms that predate it return false from hasCapability:
+             * https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/net/NetworkCapabilities.java#519
+             * https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/net/NetworkCapabilities.java#1691
+             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-14.0.0_r1/framework/src/android/net/NetworkCapabilities.java#985
+             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-14.0.0_r1/framework/src/android/net/NetworkCapabilities.java#2521
+             */
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                if (Build.VERSION.SDK_INT >= 35 &&
-                    networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
+                if (networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
                     localNetworks.add(network)
                 }
             }
@@ -179,7 +187,7 @@ object Upstreams {
             }
 
             override fun onLost(network: Network) {
-                if (localNetworks.remove(network)) return
+                localNetworks.remove(network)
                 state.onLost(network)?.let { trySend(it.upstream) }
             }
         }
