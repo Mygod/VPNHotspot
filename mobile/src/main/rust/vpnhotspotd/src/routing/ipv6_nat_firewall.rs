@@ -59,7 +59,7 @@ impl Ipv6NatFirewall {
                 },
             );
         }
-        for rule in Self::filter_rules(config) {
+        for rule in Self::filter_rules(config, ipv6_nat) {
             push_unique(mutations, RoutingMutation::Iptables(rule));
         }
         push_unique(
@@ -101,8 +101,29 @@ impl Ipv6NatFirewall {
         );
     }
 
-    fn filter_rules(config: &SessionConfig) -> Vec<IptablesRule> {
-        let mut rules = Self::input_filter_rules(config).to_vec();
+    fn filter_rules(config: &SessionConfig, ipv6_nat: &Ipv6NatConfig) -> Vec<IptablesRule> {
+        let [reject, transparent, icmpv6] = Self::input_filter_rules(config);
+        let mut rules = vec![
+            reject,
+            // Opens the gateway to local services as IPv4's downstream address is. Inserted right
+            // after the downstream REJECT, it lands below the transparent-socket ACCEPT, so
+            // intercepted gateway DNS keeps that path.
+            IptablesRule::new(
+                IptablesTarget::Ipv6,
+                "filter",
+                "vpnhotspot_v6_input",
+                vec![
+                    "-i".into(),
+                    config.downstream.clone(),
+                    "-d".into(),
+                    format!("{}/128", ipv6_nat.gateway.address()),
+                    "-j".into(),
+                    "RETURN".into(),
+                ],
+            ),
+            transparent,
+            icmpv6,
+        ];
         rules.extend([
             IptablesRule::new(
                 IptablesTarget::Ipv6,

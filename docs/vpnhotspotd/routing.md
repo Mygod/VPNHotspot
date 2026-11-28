@@ -321,11 +321,15 @@ instead of adding it to `LOCAL_NET_ID` 99, and ConnectivityService creates that
 agent's network as `PHYSICAL_LOCAL`. For such a network, netd resolves the
 interface table as ifindex + 1000 when the downstream joins, marks packets
 arriving on it with the agent's netId, and points the network's explicit
-`fwmark <netId>/0x1ffff` rule and implicit
-`from all fwmark 0x0/0x10000` local-network rule at that table rather than
-table 97. A locally delivered TCP connection's accepted socket inherits the
-incoming mark, and kernel replies such as RSTs and ICMPv6 errors reflect it, so
-without this route their replies to the NAT66 prefix find no route. In
+`fwmark <netId>/0x1ffff` rule at that table rather than table 97. A locally
+delivered TCP connection's accepted socket inherits the incoming mark, and
+kernel replies such as RSTs and ICMPv6 errors reflect it, so without this route
+their replies to the NAT66 prefix find no route. Only replies carrying the
+agent's netId need it. The agent network also gets an implicit
+`from all fwmark 0x0/0x10000` local-network rule for the interface table, but
+netd installs the table-97 rule at that priority when it starts, and the kernel
+places a new rule after existing rules of equal priority, so an unmarked reply
+still finds the NAT66 prefix in table 97 first. In
 `LOCAL_NET_ID` mode netd maps the downstream to table 97 and no rule selects its
 interface table, so the route there is inert. Routing installs it
 unconditionally rather than detecting netd's network membership, which netd
@@ -413,6 +417,7 @@ least one TCP or UDP runtime capability.
 External mutations:
 
 - `ip6tables -t filter -I vpnhotspot_v6_input -i <downstream> -j REJECT`
+- `ip6tables -t filter -I vpnhotspot_v6_input -i <downstream> -d <nat66-gateway>/128 -j RETURN`
 - `ip6tables -t filter -I vpnhotspot_v6_input -i <downstream> -m socket --transparent -j ACCEPT`
 - `ip6tables -t filter -I vpnhotspot_v6_input -i <downstream> -p icmpv6 -j ACCEPT`
 - `ip6tables -t filter -I vpnhotspot_v6_forward -o <downstream> -j REJECT`
@@ -431,6 +436,28 @@ when changing this list. The per-address `vpnhotspot_v6_input` returns in
 [NAT66 Phone Address Returns](#nat66-phone-address-returns) sit above the
 downstream `REJECT`, so input to the phone's own addresses continues to the
 platform's `INPUT` rules instead.
+
+The gateway return gives the NAT66 gateway the reachability IPv4 gives the
+downstream address: phone services listening on it, or on the wildcard address,
+can be reached from the downstream at `<nat66-gateway>`, as at
+`<downstream-ipv4>`. The mangle path already returns the whole gateway prefix
+before the ACL gate, so this includes blocked MACs, as for IPv4; only gateway
+DNS on port 53 passes the ACL gate. Gateway DNS stays intercepted: the gateway
+DNS preludes TPROXY it to the daemon listener in mangle `PREROUTING`, before
+any filter rule, and installing the gateway return in this order places it below
+the transparent-socket `ACCEPT`, so intercepted DNS is accepted there as before.
+The effective `vpnhotspot_v6_input` order for the session is: ICMPv6 `ACCEPT`,
+transparent-socket `ACCEPT`, gateway `RETURN`, downstream `REJECT`, with phone
+address returns above them all. If the gateway return alone is inserted later,
+for example on a retry or after a gateway change, it lands at the chain head;
+intercepted DNS then continues to the platform's `INPUT` rules instead of the
+transparent `ACCEPT`, and the daemon's uid 0 listener is exempt from netd's
+socket owner match. NAT66 listener ports stay unreachable at the gateway because
+the listeners bind `::1`. The return is not a commit requirement; without it,
+non-DNS input to the gateway is refused as before.
+
+Process death leaves these rules in place until Clean, which flushes and deletes
+the NAT66 filter chains.
 
 The mark value is `DAEMON_REPLY_MARK/DAEMON_REPLY_MARK_MASK`.
 
@@ -533,10 +560,9 @@ Rollback:
 The TCP and UDP rules use `--on-ip ::1`, and the listeners bind to `::1`.
 Listener ports are internal TPROXY endpoints rather than downstream-reachable
 service ports. Direct downstream local/special traffic to those ports does not
-match the listener's `::1` bind. Traffic to the gateway or a special
-destination then falls through the base input reject path; traffic to another
-phone address passes the per-address input return and reaches no daemon
-listener.
+match the listener's `::1` bind. Traffic to a special destination then falls
+through the base input reject path; traffic to the gateway or another phone
+address passes its input return and reaches no daemon listener.
 
 A per-MAC TCP or UDP listener is not committed unless the daemon listener,
 required session-level local/special exclusions, base input filter rules,
@@ -585,12 +611,13 @@ Effect: a downstream packet addressed to the phone's own address leaves
 it to whichever local socket owns that address and port, with the client's own
 source address, as it does for IPv4 tethered clients. Replies from a local
 socket that is not explicitly bound to a network reach the client through the
-NAT66 prefix route, via AOSP's implicit
-`from all fwmark 0x0/0x10000 lookup <table>` local-network rule. An accepted
-TCP socket inherits netd's incoming local-network mark, because Android enables
-`tcp_fwmark_accept`, so its replies use that network's explicit rule instead.
-Both rules select table 97 for a `LOCAL_NET_ID` downstream and the downstream's
-interface table for a per-downstream local network; see
+NAT66 prefix route in table 97, via netd's startup
+`from all fwmark 0x0/0x10000 lookup local_network` rule. An accepted TCP socket
+inherits netd's incoming local-network mark, because Android enables
+`tcp_fwmark_accept`, so its replies use the downstream network's explicit rule
+instead, and kernel replies reflect the same mark. That rule selects table 97
+for a `LOCAL_NET_ID` downstream and the downstream's interface table for a
+per-downstream local network; see
 [NAT66 Routes, Address, And Policy Rule](#nat66-routes-address-and-policy-rule).
 A socket explicitly bound to another network replies elsewhere, as it does to
 IPv4 tethered clients. Like the other local/special returns, this traffic is

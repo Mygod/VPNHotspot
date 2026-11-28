@@ -18,11 +18,12 @@ use super::{push_unique, RoutingMutation};
 /// downstream gets its own local network agent, which ConnectivityService creates as a
 /// `PHYSICAL_LOCAL` netd network instead of adding the interface to `LOCAL_NET_ID`. netd then marks
 /// packets arriving on the downstream with that network's netId and points the network's explicit
-/// and implicit rules at the interface table, so a locally delivered TCP connection, whose
-/// accepted socket inherits that mark, and kernel replies reflecting it never consult table 97. In
-/// `LOCAL_NET_ID` mode netd keeps the downstream on table 97 and no rule selects the interface
-/// table, so that route is inert there; installing it unconditionally avoids racing netd's network
-/// membership.
+/// rule at the interface table, so a locally delivered TCP connection, whose accepted socket
+/// inherits that mark, and kernel replies reflecting it never consult table 97. Unmarked replies
+/// still match netd's startup `fwmark 0x0/0x10000 lookup 97` rule before the agent's rule at the
+/// same priority, because the kernel orders equal-priority rules by insertion. In `LOCAL_NET_ID`
+/// mode netd keeps the downstream on table 97 and no rule selects the interface table, so that
+/// route is inert there; installing it unconditionally avoids racing netd's network membership.
 ///
 /// Sources:
 /// https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/android/net/ip/IpServer.java#408
