@@ -5,6 +5,7 @@ import android.annotation.TargetApi
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.content.res.Resources
 import android.net.wifi.ISoftApCallback
 import android.net.wifi.IWifiManager
@@ -447,21 +448,37 @@ object WifiApManager {
      * neither callback clears the WifiManager's callback proxy, and the reservation's finalizer closes it regardless
      * (https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/wifi/java/android/net/wifi/WifiManager.java#3232,
      * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/framework/java/android/net/wifi/WifiManager.java#7604).
-     * Skipping the close would leave it to that finalizer, which would stop whatever request holds the proxy by then;
-     * from uid 0 on Android 14+ that is every local-only hotspot
+     * Skipping the close would leave it to that finalizer, which would stop whatever request this process holds by
+     * then, as the service tracks requests per process; from uid 0 on Android 14+ that is every local-only hotspot
      * (https://android.googlesource.com/platform/packages/modules/Wifi/+/android-14.0.0_r1/service/java/com/android/server/wifi/WifiServiceImpl.java#2681,
      * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/WifiServiceImpl.java#3464).
      * Closing here keeps it within the request's lifetime, which the root backend's caller waits out. A reservation
      * whose onStarted arrives once the flow has closed (a stop racing the one-way callback) misses that cleanup, so it
-     * is closed on arrival instead.
+     * is closed on arrival instead, on the request's own WifiManager (see below), whose proxy that cleanup already
+     * cleared, so it cannot reach a successor's request.
      */
     private fun localOnlyHotspotFlow(
         nullReservationReason: Int,
-        start: (WifiManager.LocalOnlyHotspotCallback) -> Unit,
+        start: (WifiManager, WifiManager.LocalOnlyHotspotCallback) -> Unit,
     ) = binderCallbackFlow("local-only hotspot callback") {
+        // A WifiManager of its own: close() on a reservation, and its finalizer, stop whichever request the manager's
+        // callback proxy holds, and that proxy is a field of the manager. getSystemService caches managers per
+        // ContextImpl, and these contexts are new ContextImpls, so each request gets its own manager and proxy.
+        // https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/app/ContextImpl.java#2232
+        // https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/core/java/android/app/ContextImpl.java#2438
+        // https://android.googlesource.com/platform/frameworks/base/+/android-17.0.0_r1/core/java/android/app/ContextImpl.java#3258
+        // https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/app/SystemServiceRegistry.java#718
+        // https://android.googlesource.com/platform/frameworks/base/+/android-17.0.0_r1/core/java/android/app/SystemServiceRegistry.java#2639
+        // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/framework/java/android/net/wifi/WifiFrameworkInitializer.java#50
+        // https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/wifi/java/android/net/wifi/WifiManager.java#1134
+        // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/framework/java/android/net/wifi/WifiManager.java#2186
+        // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/framework/java/android/net/wifi/WifiManager.java#6437
+        val wifi = (if (Build.VERSION.SDK_INT >= 30) {
+            Services.context.createAttributionContext(Services.context.attributionTag)
+        } else Services.context.createConfigurationContext(Configuration())).getSystemService(WifiManager::class.java)
         // set from the callback's thread, taken by whichever of the cleanup or a late onStarted gets to close it
         val reservation = AtomicReference<WifiManager.LocalOnlyHotspotReservation?>()
-        start(object : WifiManager.LocalOnlyHotspotCallback() {
+        start(wifi, object : WifiManager.LocalOnlyHotspotCallback() {
             override fun onStarted(startedReservation: WifiManager.LocalOnlyHotspotReservation?) {
                 if (startedReservation == null) return finish(LocalOnlyHotspotEvent.Failed(nullReservationReason))
                 reservation.set(startedReservation)
@@ -475,7 +492,7 @@ object WifiApManager {
             override fun onFailed(reason: Int) = finish(LocalOnlyHotspotEvent.Failed(reason))
         })
         return@binderCallbackFlow {
-            reservation.getAndSet(null)?.close() ?: cancelLocalOnlyHotspotRequest()
+            reservation.getAndSet(null)?.close() ?: cancelLocalOnlyHotspotRequest(wifi)
         }
     }
 
@@ -486,13 +503,15 @@ object WifiApManager {
     }
     @RequiresApi(30)
     fun startLocalOnlyHotspotFlow(config: SoftApConfiguration, executor: Executor? = InPlaceExecutor) =
-        localOnlyHotspotFlow(-3) { startLocalOnlyHotspot(Services.wifi, config, executor, it) }
+        localOnlyHotspotFlow(-3) { wifi, callback -> startLocalOnlyHotspot(wifi, config, executor, callback) }
     @SuppressLint("MissingPermission")
     fun startLocalOnlyHotspotFlow(handler: Handler? = null) =
-        localOnlyHotspotFlow(-2) { Services.wifi.startLocalOnlyHotspot(it, handler) }
+        localOnlyHotspotFlow(-2) { wifi, callback -> wifi.startLocalOnlyHotspot(callback, handler) }
     @RequiresApi(33)
     @SuppressLint("MissingPermission")
     fun startLocalOnlyHotspotWithConfigurationFlow(config: SoftApConfiguration,
                                                    executor: Executor = InPlaceExecutor) =
-        localOnlyHotspotFlow(-2) { Services.wifi.startLocalOnlyHotspotWithConfiguration(config, executor, it) }
+        localOnlyHotspotFlow(-2) { wifi, callback ->
+            wifi.startLocalOnlyHotspotWithConfiguration(config, executor, callback)
+        }
 }
