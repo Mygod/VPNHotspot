@@ -397,10 +397,19 @@ NAT66 cleanup has two layers:
   state.
 
 Per-MAC runtime removal cancels that MAC's TCP tasks, UDP associations, Echo
-allocations, and UDP error registrations, then preserves final source counters
-long enough for one structured traffic-counter read, which ends their counter
-generation. A listener recreated for the MAC after that read counts under a new
-generation.
+allocations, and UDP error registrations. Its final source counters stay in the
+runtime's counter store until one structured traffic-counter read reports them
+and ends their counter generation, as long as the runtime itself survives. A
+listener recreated for the MAC after that read counts under a new generation.
+
+The runtime and its counter store do not survive a session replacement that
+removes the last MAC with a committed TCP/UDP capability while the remaining
+MACs still have none, because routing then commits no NAT66 TCP/UDP capability
+and the session stops NAT66. Such a replacement drops the removed MACs' unread
+final counters and the unread ICMP Echo counters of remaining MACs that never
+had a committed listener. Kotlin reads counters just before every replacement that removes
+a MAC, so the loss covers only the milliseconds between that read and the
+replacement.
 
 Reply sockets are process-owned file descriptors rather than routing or
 firewall mutations. Session stop releases listener anchors and association
