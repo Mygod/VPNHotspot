@@ -16,7 +16,7 @@ represents session routing state as `RoutingMutation` values:
 | --- | --- | --- |
 | `EnsureIptablesChain` | `iptables-restore`/`ip6tables-restore` `-N <chain>`; after a nonzero exit, verify the chain with `-L <chain> -n` | no-op; chains are scaffold state |
 | `Iptables` | `iptables-restore`/`ip6tables-restore` `-I <chain> ...` | delete the same rule with `-D <chain> ...` |
-| `IptablesGroup` | one `iptables-restore`/`ip6tables-restore` commit with an `-I <chain> ...` line per rule, so the group lands at the chain head in its listed order | delete each rule bottom-up, stopping at the first failure |
+| `IptablesGroup` | one `iptables-restore`/`ip6tables-restore` commit with an `-I <chain> ...` line per rule; rules are listed bottom-up, and since each `-I` inserts at position 1 they end up together at the chain head top-down in reverse of the list | delete each rule in list order, bottom-up, stopping at the first failure |
 | `LocalAddressReturn` | `ip6tables-restore` `-I` of the filter return, then the mangle return; the filter return is deleted again if the mangle insert fails | delete the mangle return, then the filter return |
 | `IpForward` | `ndc ipfwd enable vpnhotspot_<downstream>`, or `/proc/sys/net/ipv4/ip_forward = 1` fallback | `ndc ipfwd disable vpnhotspot_<downstream>` only |
 | `Ip` | rtnetlink rule, route, or address replace | rtnetlink delete for the same rule, route, or address |
@@ -424,7 +424,8 @@ External mutations:
 - `ip6tables -t filter -I vpnhotspot_v6_output -o <downstream> -p icmpv6 --icmpv6-type 134 -j REJECT`
 - `ip6tables -t filter -I vpnhotspot_v6_output -o <downstream> -p icmpv6 --icmpv6-type 134 -m mark --mark 0x00030063/0x0003ffff -j ACCEPT`
 - gateway input group, inserted by one `ip6tables-restore` commit in this
-  order:
+  order; each `-I` lands at position 1, so the chain ends up in the reverse
+  order, with the transparent-socket `ACCEPT` on top:
   - `-I vpnhotspot_v6_input -i <downstream> -d <nat66-gateway>/128 -j RETURN`
   - `-I vpnhotspot_v6_input -i <downstream> -d <nat66-gateway>/128 -p udp --dport 53 -j REJECT`
   - `-I vpnhotspot_v6_input -i <downstream> -d <nat66-gateway>/128 -p tcp --dport 53 -j REJECT --reject-with tcp-reset`
@@ -458,7 +459,7 @@ transparent-socket `ACCEPT` accepts it. DNS that reaches the gateway without
 interception, for example over UDP when only TCP listeners committed, finds no
 transparent socket and is rejected by the port 53 `REJECT`s, as the downstream
 `REJECT` refused it before the gateway was opened. Because one restore commit
-inserts the whole group at the chain head in the listed order, the
+inserts the whole group at the chain head, last-listed rule on top, the
 transparent-socket `ACCEPT` sits above the `REJECT`s whenever the group is
 installed, including a retry or a gateway change after the rest of the session
 firewall. The effective session order is phone address returns, then the group

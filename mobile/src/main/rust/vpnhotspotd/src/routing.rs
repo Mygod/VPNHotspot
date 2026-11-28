@@ -57,9 +57,10 @@ enum RoutingMutation {
         intercept: IptablesRule,
     },
     /// Rules of one table that are only correct in their relative order, listed bottom-up in
-    /// insertion order. One restore inserts them all or none, so they land together at the chain
-    /// head in that order whenever they are applied. Deletion goes bottom-up, so every remaining
-    /// rule keeps the rules above it that guard it.
+    /// insertion order. One restore inserts them all or none, and each `-I` lands at position 1, so
+    /// they end up together at the chain head, top-down in reverse of the list, whenever they are
+    /// applied. Deletion follows the list, bottom-up, so every remaining rule keeps the rules
+    /// above it that guard it.
     IptablesGroup(Vec<IptablesRule>),
     IpForward {
         downstream: String,
