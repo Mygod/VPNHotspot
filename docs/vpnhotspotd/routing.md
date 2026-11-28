@@ -734,7 +734,10 @@ Failure and missing-state behavior:
   it, and the leftover filter return at most lets that address skip the
   downstream `REJECT` until Clean flushes the chain.
 - delete failure: `routing.iptables_delete`. The pair stays applied, and the
-  next reconcile that no longer wants it retries whichever half remains.
+  next reconcile that no longer wants it retries whichever half remains. An
+  address refresh rebuilds every pair from the latest dump instead of carrying
+  applied pairs over, so a departed address's pair is retried on the next
+  notification.
 - expected races: rules match only the destination address and interface name,
   so an address that disappears before its rule is installed still gets an
   installable rule, which the deletion notification then removes. A departing

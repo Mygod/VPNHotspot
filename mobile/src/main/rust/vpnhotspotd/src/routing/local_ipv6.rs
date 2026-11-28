@@ -10,7 +10,6 @@
 
 use std::future::pending;
 use std::io;
-use std::mem::{replace, take};
 use std::net::Ipv6Addr;
 
 use rtnetlink::MulticastGroup;
@@ -82,9 +81,9 @@ impl Runtime {
         let Some(local_ipv6) = self.local_ipv6.as_mut() else {
             return;
         };
-        let previous = match changed {
+        match changed {
             Ok(()) => match self.connection.dump_ipv6_addresses().await {
-                Ok(messages) => replace(&mut local_ipv6.addresses, local_ipv6_addresses(&messages)),
+                Ok(messages) => local_ipv6.addresses = local_ipv6_addresses(&messages),
                 // The previous exemptions stay until a later notification dumps successfully.
                 Err(e) => {
                     report::io_with_details(
@@ -103,23 +102,23 @@ impl Runtime {
                     e,
                     [("downstream", config.downstream.clone())],
                 );
-                let previous = take(&mut local_ipv6.addresses);
                 self.local_ipv6 = None;
-                previous
             }
-        };
-        let Some(ipv6_nat) = config.ipv6_nat.as_ref() else {
-            return;
-        };
-        let stale = Ipv6NatFirewall::local_address_returns(config, ipv6_nat, &previous);
+        }
+        // Every applied pair is replaced by the pairs for the current set, so a pair whose removal
+        // failed earlier is not carried over and gets retried.
         let mut desired = self
             .applied
             .iter()
-            .filter(|mutation| !stale.contains(mutation))
+            .filter(|mutation| !matches!(mutation, RoutingMutation::LocalAddressReturn { .. }))
             .cloned()
             .collect::<Vec<_>>();
         // The same condition under which `desired_mutations` emits the NAT66 session firewall.
-        if self.ports.ipv6_nat.is_some() && self.ipv6_nat_intercept_mode.is_some() {
+        if let (Some(ipv6_nat), Some(_), Some(_)) = (
+            config.ipv6_nat.as_ref(),
+            self.ports.ipv6_nat.as_ref(),
+            self.ipv6_nat_intercept_mode,
+        ) {
             desired.extend(Ipv6NatFirewall::local_address_returns(
                 config,
                 ipv6_nat,
