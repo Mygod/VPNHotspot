@@ -225,13 +225,14 @@ Other:
   VPNHotspot prefixes reconstructed from current interface names and indices.
 * `IPv6 NAT` leaves downstream traffic to the phone's own non-link-local IPv6 addresses to the kernel
   instead of proxying it, including non-DNS traffic to the NAT66 gateway, so phone services are
-  reachable there as at the IPv4 downstream address, also from blocked clients. Gateway DNS stays
-  intercepted. Replies from local sockets are assumed to reach the client through AOSP's
-  local-network rules and those routes: netd's startup `from all fwmark 0x0/0x10000 lookup
-  local_network` rule for sockets not explicitly bound to a network, and the downstream network's
-  explicit rule for accepted TCP sockets and reflected kernel replies. With the Tethering module's
-  per-downstream local network agent, that explicit rule selects the downstream's interface table
-  instead of table 97. That traffic otherwise follows Android's local-delivery rules as IPv4
+  reachable there as at the IPv4 downstream address, also from blocked clients. Gateway port 53 stays
+  reserved for DNS interception and rejects DNS that is not intercepted. Replies from local sockets
+  are assumed to reach the client through AOSP's local-network rules and those routes: netd's
+  startup `from all fwmark 0x0/0x10000 lookup local_network` rule for sockets not explicitly bound
+  to a network, and the downstream network's explicit rule for accepted TCP sockets and reflected
+  kernel replies. When the platform release gives each downstream its own local network agent
+  (Android 15+, on by default from 25Q4), that explicit rule selects the downstream's interface
+  table instead of table 97. That traffic otherwise follows Android's local-delivery rules as IPv4
   tethered clients do: netd's eBPF ingress filter can drop it for apps covered by a VPN, and UDP
   replies from apps covered by a non-bypassable VPN match that VPN's UID rule first and go into the
   tunnel.

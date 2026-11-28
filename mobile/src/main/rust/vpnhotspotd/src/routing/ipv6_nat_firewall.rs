@@ -59,9 +59,10 @@ impl Ipv6NatFirewall {
                 },
             );
         }
-        for rule in Self::filter_rules(config, ipv6_nat) {
+        for rule in Self::filter_rules(config) {
             push_unique(mutations, RoutingMutation::Iptables(rule));
         }
+        push_unique(mutations, Self::gateway_input_rules(config, ipv6_nat));
         push_unique(
             mutations,
             RoutingMutation::Iptables(Self::acl_gate_rule(config)),
@@ -101,29 +102,8 @@ impl Ipv6NatFirewall {
         );
     }
 
-    fn filter_rules(config: &SessionConfig, ipv6_nat: &Ipv6NatConfig) -> Vec<IptablesRule> {
-        let [reject, transparent, icmpv6] = Self::input_filter_rules(config);
-        let mut rules = vec![
-            reject,
-            // Opens the gateway to local services as IPv4's downstream address is. Inserted right
-            // after the downstream REJECT, it lands below the transparent-socket ACCEPT, so
-            // intercepted gateway DNS keeps that path.
-            IptablesRule::new(
-                IptablesTarget::Ipv6,
-                "filter",
-                "vpnhotspot_v6_input",
-                vec![
-                    "-i".into(),
-                    config.downstream.clone(),
-                    "-d".into(),
-                    format!("{}/128", ipv6_nat.gateway.address()),
-                    "-j".into(),
-                    "RETURN".into(),
-                ],
-            ),
-            transparent,
-            icmpv6,
-        ];
+    fn filter_rules(config: &SessionConfig) -> Vec<IptablesRule> {
+        let mut rules = Self::input_filter_rules(config).to_vec();
         rules.extend([
             IptablesRule::new(
                 IptablesTarget::Ipv6,
@@ -183,6 +163,45 @@ impl Ipv6NatFirewall {
             ),
         ]);
         rules
+    }
+
+    /// Opens the gateway to local services as IPv4's downstream address is, except DNS on port 53,
+    /// which only gateway DNS interception may answer, as IPv4's gateway DNS denial keeps it. The
+    /// group carries its own gateway transparent-socket ACCEPT above the port 53 REJECTs, so
+    /// intercepted DNS stays accepted wherever the group lands. Listed bottom-up, in insertion
+    /// order.
+    fn gateway_input_rules(config: &SessionConfig, ipv6_nat: &Ipv6NatConfig) -> RoutingMutation {
+        let rule = |match_args: &[&str]| {
+            IptablesRule::new(
+                IptablesTarget::Ipv6,
+                "filter",
+                "vpnhotspot_v6_input",
+                [
+                    "-i".to_owned(),
+                    config.downstream.clone(),
+                    "-d".to_owned(),
+                    format!("{}/128", ipv6_nat.gateway.address()),
+                ]
+                .into_iter()
+                .chain(match_args.iter().map(|arg| (*arg).to_owned()))
+                .collect(),
+            )
+        };
+        RoutingMutation::IptablesGroup(vec![
+            rule(&["-j", "RETURN"]),
+            rule(&["-p", "udp", "--dport", "53", "-j", "REJECT"]),
+            rule(&[
+                "-p",
+                "tcp",
+                "--dport",
+                "53",
+                "-j",
+                "REJECT",
+                "--reject-with",
+                "tcp-reset",
+            ]),
+            rule(&["-m", "socket", "--transparent", "-j", "ACCEPT"]),
+        ])
     }
 
     pub(super) fn input_filter_rules(config: &SessionConfig) -> [IptablesRule; 3] {

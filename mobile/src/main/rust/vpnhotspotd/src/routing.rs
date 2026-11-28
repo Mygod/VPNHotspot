@@ -57,6 +57,11 @@ enum RoutingMutation {
         input: IptablesRule,
         intercept: IptablesRule,
     },
+    /// Rules of one table that are only correct in their relative order, listed bottom-up in
+    /// insertion order. One restore inserts them all or none, so they land together at the chain
+    /// head in that order whenever they are applied. Deletion goes bottom-up, so every remaining
+    /// rule keeps the rules above it that guard it.
+    IptablesGroup(Vec<IptablesRule>),
     IpForward {
         downstream: String,
     },
@@ -99,6 +104,10 @@ impl RoutingMutation {
                 }
                 result
             }
+            Self::IptablesGroup(rules) => match rules.first() {
+                Some(first) => apply_iptables_batch(first.target, first.table, rules).await,
+                None => Ok(()),
+            },
             Self::IpForward { downstream } => add_ip_forward(downstream).await,
             Self::Ip(command) => command.apply(connection).await,
             Self::NetdNat {
@@ -119,6 +128,15 @@ impl RoutingMutation {
             // until both deletions succeed, so a retry repeats whichever half remains.
             Self::LocalAddressReturn { input, intercept } => {
                 intercept.delete().await && input.delete().await
+            }
+            // Stops at the first failure and stays applied, so a retry repeats from there.
+            Self::IptablesGroup(rules) => {
+                for rule in rules {
+                    if !rule.delete().await {
+                        return false;
+                    }
+                }
+                true
             }
             Self::IpForward { downstream } => remove_ip_forward(downstream).await,
             Self::Ip(command) => command.delete_result(connection).await,

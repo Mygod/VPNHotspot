@@ -16,6 +16,7 @@ represents session routing state as `RoutingMutation` values:
 | --- | --- | --- |
 | `EnsureIptablesChain` | `iptables-restore`/`ip6tables-restore` `-N <chain>`; after a nonzero exit, verify the chain with `-L <chain> -n` | no-op; chains are scaffold state |
 | `Iptables` | `iptables-restore`/`ip6tables-restore` `-I <chain> ...` | delete the same rule with `-D <chain> ...` |
+| `IptablesGroup` | one `iptables-restore`/`ip6tables-restore` commit with an `-I <chain> ...` line per rule, so the group lands at the chain head in its listed order | delete each rule bottom-up, stopping at the first failure |
 | `LocalAddressReturn` | `ip6tables-restore` `-I` of the filter return, then the mangle return; the filter return is deleted again if the mangle insert fails | delete the mangle return, then the filter return |
 | `IpForward` | `ndc ipfwd enable vpnhotspot_<downstream>`, or `/proc/sys/net/ipv4/ip_forward = 1` fallback | `ndc ipfwd disable vpnhotspot_<downstream>` only |
 | `Ip` | rtnetlink rule, route, or address replace | rtnetlink delete for the same rule, route, or address |
@@ -315,17 +316,23 @@ Clean never flushes table 97 because it is Android's shared `local_network`
 table, nor an interface table because netd owns it.
 
 The interface-table route exists for downstreams that netd keeps in their own
-network. On Android 15+ with the 25Q4 Tethering module, `IpServer` registers a
-local network agent for each tethering or Wi-Fi P2P group-owner downstream
-instead of adding it to `LOCAL_NET_ID` 99, and ConnectivityService creates that
-agent's network as `PHYSICAL_LOCAL`. For such a network, netd resolves the
-interface table as ifindex + 1000 when the downstream joins, marks packets
-arriving on it with the agent's netId, and points the network's explicit
-`fwmark <netId>/0x1ffff` rule at that table rather than table 97. A locally
-delivered TCP connection's accepted socket inherits the incoming mark, and
-kernel replies such as RSTs and ICMPv6 errors reflect it, so without this route
-their replies to the NAT66 prefix find no route. Only replies carrying the
-agent's netId need it. The agent network also gets an implicit
+network. On Android 15+, `IpServer` can register a local network agent for each
+tethering or Wi-Fi P2P group-owner downstream instead of adding it to
+`LOCAL_NET_ID` 99. Whether it does depends on the platform release, not only on
+the Tethering module: on 25Q4+ releases the agent is on unless a kill switch
+disables it, and on earlier Android 15+ releases only a beta flag enables it.
+ConnectivityService creates the agent's network as `PHYSICAL_LOCAL`. For such
+a network, netd resolves the interface table as ifindex + 1000 when the
+downstream joins, marks packets arriving on it with the agent's netId, and
+points the network's explicit `fwmark <netId>/0x1ffff` rule at that table
+rather than table 97. A locally delivered TCP connection's accepted socket
+inherits the incoming mark, and kernel replies such as RSTs and ICMPv6 errors
+reflect it, so their replies to the NAT66 prefix need a route in that table.
+Only replies carrying the agent's netId need it. Android kernels may already
+provide one: netd sets the downstream's `accept_ra_rt_table` to -1000, and
+Android's per-device-table kernel change can then put the prefix route of the
+gateway address into the same interface table. In that case this route is
+redundant but harmless; the device test shows which applies. The agent network also gets an implicit
 `from all fwmark 0x0/0x10000` local-network rule for the interface table, but
 netd installs the table-97 rule at that priority when it starts, and the kernel
 places a new rule after existing rules of equal priority, so an unmarked reply
@@ -340,8 +347,9 @@ either mode.
 The table number comes from the downstream's ifindex at reconcile time, as for
 upstream tables. A missing downstream link skips the route; another lookup
 failure is a structured nonfatal `routing.resolve_downstream_index` and skips it
-for that reconcile. The route is not a commit requirement: without it, only
-replies that select the agent network's table are lost. When the downstream
+for that reconcile. The route is not a commit requirement: without it, and
+without a kernel prefix route in that table, only replies that select the agent
+network's table are lost. When the downstream
 leaves its agent network, netd flushes the interface table, so a later
 rollback delete finds the route missing, which is expected.
 
@@ -361,6 +369,8 @@ AOSP sources:
   https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#1284
 - interface table flush on removal:
   https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#1320
+- `accept_ra_rt_table` set to -1000 on all interfaces:
+  https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/InterfaceController.cpp#247
 
 Before routing the first candidate NAT66 TCP/UDP listener ports, routing probes
 kernel `FRA_IP_PROTO` support through rtnetlink once per daemon process and
@@ -417,17 +427,24 @@ least one TCP or UDP runtime capability.
 External mutations:
 
 - `ip6tables -t filter -I vpnhotspot_v6_input -i <downstream> -j REJECT`
-- `ip6tables -t filter -I vpnhotspot_v6_input -i <downstream> -d <nat66-gateway>/128 -j RETURN`
 - `ip6tables -t filter -I vpnhotspot_v6_input -i <downstream> -m socket --transparent -j ACCEPT`
 - `ip6tables -t filter -I vpnhotspot_v6_input -i <downstream> -p icmpv6 -j ACCEPT`
 - `ip6tables -t filter -I vpnhotspot_v6_forward -o <downstream> -j REJECT`
 - `ip6tables -t filter -I vpnhotspot_v6_forward -i <downstream> -j REJECT`
 - `ip6tables -t filter -I vpnhotspot_v6_output -o <downstream> -p icmpv6 --icmpv6-type 134 -j REJECT`
 - `ip6tables -t filter -I vpnhotspot_v6_output -o <downstream> -p icmpv6 --icmpv6-type 134 -m mark --mark 0x00030063/0x0003ffff -j ACCEPT`
+- gateway input group, inserted by one `ip6tables-restore` commit in this
+  order:
+  - `-I vpnhotspot_v6_input -i <downstream> -d <nat66-gateway>/128 -j RETURN`
+  - `-I vpnhotspot_v6_input -i <downstream> -d <nat66-gateway>/128 -p udp --dport 53 -j REJECT`
+  - `-I vpnhotspot_v6_input -i <downstream> -d <nat66-gateway>/128 -p tcp --dport 53 -j REJECT --reject-with tcp-reset`
+  - `-I vpnhotspot_v6_input -i <downstream> -d <nat66-gateway>/128 -m socket --transparent -j ACCEPT`
 
 Rollback:
 
-- delete the same rules.
+- delete the same rules. The gateway input group is deleted bottom-up, the
+  `RETURN` first and the transparent-socket `ACCEPT` last, and stays applied
+  until every deletion succeeds; a retry repeats from the first remaining rule.
 
 These rules reject non-daemon IPv6 forwarding while allowing daemon-owned
 transparent sockets and daemon-marked router advertisements. Because rules are
@@ -437,24 +454,32 @@ when changing this list. The per-address `vpnhotspot_v6_input` returns in
 downstream `REJECT`, so input to the phone's own addresses continues to the
 platform's `INPUT` rules instead.
 
-The gateway return gives the NAT66 gateway the reachability IPv4 gives the
+The gateway input group gives the NAT66 gateway the reachability IPv4 gives the
 downstream address: phone services listening on it, or on the wildcard address,
 can be reached from the downstream at `<nat66-gateway>`, as at
 `<downstream-ipv4>`. The mangle path already returns the whole gateway prefix
 before the ACL gate, so this includes blocked MACs, as for IPv4; only gateway
-DNS on port 53 passes the ACL gate. Gateway DNS stays intercepted: the gateway
-DNS preludes TPROXY it to the daemon listener in mangle `PREROUTING`, before
-any filter rule, and installing the gateway return in this order places it below
-the transparent-socket `ACCEPT`, so intercepted DNS is accepted there as before.
-The effective `vpnhotspot_v6_input` order for the session is: ICMPv6 `ACCEPT`,
-transparent-socket `ACCEPT`, gateway `RETURN`, downstream `REJECT`, with phone
-address returns above them all. If the gateway return alone is inserted later,
-for example on a retry or after a gateway change, it lands at the chain head;
-intercepted DNS then continues to the platform's `INPUT` rules instead of the
-transparent `ACCEPT`, and the daemon's uid 0 listener is exempt from netd's
-socket owner match. NAT66 listener ports stay unreachable at the gateway because
-the listeners bind `::1`. The return is not a commit requirement; without it,
-non-DNS input to the gateway is refused as before.
+DNS on port 53 passes the ACL gate.
+
+Port 53 stays reserved for gateway DNS interception, as the IPv4 gateway DNS
+denial keeps it. The gateway DNS preludes TPROXY admitted DNS to the daemon
+listener in mangle `PREROUTING`, before any filter rule, and the group's own
+transparent-socket `ACCEPT` accepts it. DNS that reaches the gateway without
+interception, for example over UDP when only TCP listeners committed, finds no
+transparent socket and is rejected by the port 53 `REJECT`s, as the downstream
+`REJECT` refused it before the gateway was opened. Because one restore commit
+inserts the whole group at the chain head in the listed order, the
+transparent-socket `ACCEPT` sits above the `REJECT`s whenever the group is
+installed, including a retry or a gateway change after the rest of the session
+firewall. The effective session order is phone address returns, then the group
+(gateway transparent-socket `ACCEPT`, TCP and UDP port 53 `REJECT`s, gateway
+`RETURN`), then ICMPv6 `ACCEPT`, transparent-socket `ACCEPT`, and the downstream
+`REJECT`. ICMPv6 to the gateway therefore continues to the platform's `INPUT`
+rules, as ICMPv6 to the phone's other addresses does.
+
+NAT66 listener ports stay unreachable at the gateway because the listeners bind
+`::1`. The group is not a commit requirement; without it, non-DNS input to the
+gateway is refused as before. If its insert fails, nothing of it is installed.
 
 Process death leaves these rules in place until Clean, which flushes and deletes
 the NAT66 filter chains.

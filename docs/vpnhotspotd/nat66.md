@@ -124,8 +124,10 @@ the kernel delivers them to local sockets under Android's usual local-delivery
 rules (see [NAT66 Filter Rules](routing.md#nat66-filter-rules) and
 [NAT66 Phone Address Returns](routing.md#nat66-phone-address-returns)). Phone
 services are therefore reachable at the gateway, as they are at the IPv4
-downstream address, including from blocked MACs; only gateway DNS on port 53 is
-still intercepted and gated by the ACL. Non-ICMPv6 input to link-local
+downstream address, including from blocked MACs. Gateway port 53 stays reserved
+for DNS interception, which the ACL gates: DNS that reaches the gateway without
+interception, such as UDP when only TCP listeners committed, is rejected, as
+the IPv4 gateway DNS denial does. Non-ICMPv6 input to link-local
 addresses still hits the base input reject. The remaining upstream path gates
 through `vpnhotspot_acl`, then applies per-MAC TCP/UDP TPROXY or ICMPv6 NFQUEUE
 handling. Client allow rules return from the ACL chain; the base ACL rule drops
