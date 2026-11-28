@@ -536,6 +536,7 @@ private fun TextPreferenceRow(
 private fun rememberInterfaceNameSuggestions(active: Boolean): State<List<String>> {
     val lifecycleOwner = LocalLifecycleOwner.current
     return produceState(initialValue = emptyList(), active, lifecycleOwner) {
+        value = emptyList() // produceState keeps the last value across key changes
         if (!active) return@produceState
         val interfaceNames = mutableMapOf<Network, List<String>>()
         /**
@@ -548,7 +549,8 @@ private fun rememberInterfaceNameSuggestions(active: Boolean): State<List<String
         }
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                if (networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
+                if (Upstreams.localNetworkCapabilitySupported &&
+                    networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
                     localNetworks.add(network)
                 }
             }

@@ -6,6 +6,7 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.ext.SdkExtensions
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.allInterfaceNames
@@ -54,6 +55,18 @@ object Upstreams {
         removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
         removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
     }.build()
+    /**
+     * [NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK] was added in API 35 and U extension 12:
+     * https://developer.android.com/reference/android/net/NetworkCapabilities#NET_CAPABILITY_LOCAL_NETWORK
+     * which also covers Android 14 Thread networks:
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-14.0.0_r50/thread/service/java/com/android/server/thread/ThreadNetworkControllerService.java#542
+     * Older platforms may give its value to something else, such as 5G slices in this unofficial decompilation of
+     * Huawei EMUI 10.1.1:
+     * https://github.com/dstmath/HWFramework/blob/672bb34094b8780806a10ba9b1d21036fd808b8e/DVC-AN20_EMUI10.1.1/src/main/java/android/net/NetworkCapabilities.java#L98
+     * https://github.com/dstmath/HWFramework/blob/672bb34094b8780806a10ba9b1d21036fd808b8e/DVC-AN20_EMUI10.1.1/src/main/java/android/telephony/data/ApnSetting.java#L225-L230
+     */
+    val localNetworkCapabilitySupported = Build.VERSION.SDK_INT >= 35 || Build.VERSION.SDK_INT == 34 &&
+            SdkExtensions.getExtensionVersion(Build.VERSION_CODES.UPSIDE_DOWN_CAKE) >= 12
 
     val vpn = source(
         register = { Services.registerNetworkCallback(vpnRequest, it) },
@@ -184,17 +197,9 @@ object Upstreams {
             }
         }
         val callback = if (ignoreLocalNetworks) object : Callback() {
-            /**
-             * Android 14 Thread networks have the capability too (SDK extension 12):
-             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-14.0.0_r50/thread/service/java/com/android/server/thread/ThreadNetworkControllerService.java#542
-             * The constant is inlined, and platforms that predate it return false from hasCapability:
-             * https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/net/NetworkCapabilities.java#519
-             * https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/net/NetworkCapabilities.java#1691
-             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-14.0.0_r1/framework/src/android/net/NetworkCapabilities.java#985
-             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-14.0.0_r1/framework/src/android/net/NetworkCapabilities.java#2521
-             */
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                if (networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
+                if (localNetworkCapabilitySupported &&
+                    networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
                     localNetworks.add(network)
                 }
             }
