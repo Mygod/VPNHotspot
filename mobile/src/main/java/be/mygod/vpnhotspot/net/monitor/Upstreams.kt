@@ -92,6 +92,7 @@ object Upstreams {
                 selectAvailable(network, properties, properties.allInterfaceNames.any(iface))
             },
             onLost = { network -> removeAvailable(network) },
+            ignoreLocalNetworks = true,
         )
     }
 
@@ -142,30 +143,47 @@ object Upstreams {
         register: (ConnectivityManager.NetworkCallback) -> Unit,
         onLinkPropertiesChanged: SourceState.(Network, LinkProperties) -> Emission?,
         onLost: SourceState.(Network) -> Emission?,
+        ignoreLocalNetworks: Boolean = false,
     ) = callbackFlow {
         trySend(null)
         val state = SourceState()
-        val callback = object : ConnectivityManager.NetworkCallback() {
-            /**
-             * Since Android 15, Tethering may register a NetworkAgent with
-             * [NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK] and without INTERNET for each tethering downstream
-             * and Wi-Fi P2P group it serves:
-             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/android/net/ip/IpServer.java#408
-             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/android/net/ip/IpServer.java#1227
-             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/framework/src/android/net/connectivity/ConnectivityInternalApiUtil.java#91
-             * Since Android 17, apps targeting SDK 37 see these unless their request forbids the capability:
-             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#3604
-             * so an [ifaceRequest] pattern that also matches a downstream would pick it as its own upstream.
-             * Tethering forbids the capability for its own upstreams:
-             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/com/android/networkstack/tethering/UpstreamNetworkMonitor.java#175
-             * but NetworkRequest.Builder.addForbiddenCapability is a module-lib API:
-             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/framework/src/android/net/NetworkRequest.java#440
-             * so drop these networks here instead. onCapabilitiesChanged always precedes their first
-             * onLinkPropertiesChanged, and a network can never gain or lose the capability:
-             * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/service/src/com/android/server/connectivity/NetworkAgentInfo.java#462
-             */
-            private val localNetworks = HashSet<Network>()
+        /**
+         * Since Android 15, Tethering may register a NetworkAgent with
+         * [NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK] and without INTERNET for each tethering downstream
+         * and Wi-Fi P2P group it serves:
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/android/net/ip/IpServer.java#408
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/android/net/ip/IpServer.java#1227
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/framework/src/android/net/connectivity/ConnectivityInternalApiUtil.java#91
+         * Since Android 17, apps targeting SDK 37 see these unless their request forbids the capability:
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#3604
+         * so an [ifaceRequest] pattern that also matches a downstream would pick it as its own upstream.
+         * Tethering forbids the capability for its own upstreams:
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/com/android/networkstack/tethering/UpstreamNetworkMonitor.java#175
+         * but NetworkRequest.Builder.addForbiddenCapability is a module-lib API:
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/framework/src/android/net/NetworkRequest.java#440
+         * so drop these networks here instead. onCapabilitiesChanged always precedes their first
+         * onLinkPropertiesChanged, and a network can never gain or lose the capability:
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/service/src/com/android/server/connectivity/NetworkAgentInfo.java#462
+         * Only [ifaceRequest] needs this: [vpnRequest] and [defaultRequest] need the VPN transport or INTERNET, and
+         * networks that provide Internet access are never local:
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/framework/src/android/net/NetworkCapabilities.java#753
+         * so only its callback overrides onCapabilitiesChanged; ConnectivityService skips callbacks that are not
+         * overridden:
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#12514
+         */
+        val localNetworks = HashSet<Network>()
+        open class Callback : ConnectivityManager.NetworkCallback() {
+            override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
+                if (network in localNetworks) return
+                state.onLinkPropertiesChanged(network, properties)?.let { trySend(it.upstream) }
+            }
 
+            override fun onLost(network: Network) {
+                localNetworks.remove(network)
+                state.onLost(network)?.let { trySend(it.upstream) }
+            }
+        }
+        val callback = if (ignoreLocalNetworks) object : Callback() {
             /**
              * Android 14 Thread networks have the capability too (SDK extension 12):
              * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-14.0.0_r50/thread/service/java/com/android/server/thread/ThreadNetworkControllerService.java#542
@@ -180,17 +198,7 @@ object Upstreams {
                     localNetworks.add(network)
                 }
             }
-
-            override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
-                if (network in localNetworks) return
-                state.onLinkPropertiesChanged(network, properties)?.let { trySend(it.upstream) }
-            }
-
-            override fun onLost(network: Network) {
-                localNetworks.remove(network)
-                state.onLost(network)?.let { trySend(it.upstream) }
-            }
-        }
+        } else Callback()
         var registered = false
         try {
             register(callback)
