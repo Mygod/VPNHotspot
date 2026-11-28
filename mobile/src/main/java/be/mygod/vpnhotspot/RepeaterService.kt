@@ -518,7 +518,8 @@ class RepeaterService : Service(), CoroutineScope {
                             else -> false
                         }) removed.complete(Unit)
                     }
-                    registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION,
+                    // on the application context, as this teardown can outlive the service and its receivers
+                    app.registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION,
                         WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION))
                     try {
                         val reason = p2pManager.removeGroup(channel)
@@ -542,7 +543,7 @@ class RepeaterService : Service(), CoroutineScope {
                             SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
                         }
                     } finally {
-                        ensureReceiverUnregistered(receiver)
+                        app.ensureReceiverUnregistered(receiver)
                     }
                 }
             }
