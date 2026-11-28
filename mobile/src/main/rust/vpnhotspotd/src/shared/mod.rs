@@ -1,3 +1,4 @@
+pub mod counter_generation;
 pub mod dns_counter;
 pub mod dns_wire;
 pub mod downstream;

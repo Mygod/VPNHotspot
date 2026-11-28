@@ -48,7 +48,7 @@ NAT66 state is split by lifetime:
 | Process | `ReplySocketPool` | daemon reply mark, exact UDP reply-source registry, socket leases shared across sessions |
 | Session | `nat66::Runtime` | committed per-MAC TCP/UDP capabilities, optional RA task, ICMP registration, cleanup prefixes, counter store |
 | RA task | `nat66/ra.rs` | IPv6-address event and request connections, raw ICMPv6 receive socket, periodic/suppression state |
-| Client | per-MAC runtime | TCP/UDP listener ports, stop token, active DNS/NAT66 tasks, source-scoped counters |
+| Client | per-MAC runtime | TCP/UDP listener ports, stop token, active DNS/NAT66 tasks; its counters stay in the session counter store until a read ends their generation |
 | Listener | TCP/UDP loops | Accepted TCP connections, UDP association table, per-listener DNS reply-socket anchor |
 | Flow | TCP task, UDP association task, or UDP DNS query task | MAC/downstream accounting context, upstream socket, downstream reply path and reply-socket lease, ICMP error registration where applicable |
 
@@ -398,7 +398,9 @@ NAT66 cleanup has two layers:
 
 Per-MAC runtime removal cancels that MAC's TCP tasks, UDP associations, Echo
 allocations, and UDP error registrations, then preserves final source counters
-long enough for one structured traffic-counter read.
+long enough for one structured traffic-counter read, which ends their counter
+generation. A listener recreated for the MAC after that read counts under a new
+generation.
 
 Reply sockets are process-owned file descriptors rather than routing or
 firewall mutations. Session stop releases listener anchors and association
