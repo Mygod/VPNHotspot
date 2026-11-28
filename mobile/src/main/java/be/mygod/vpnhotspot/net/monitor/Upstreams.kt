@@ -6,6 +6,7 @@ import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
+import android.os.ext.SdkExtensions
 import be.mygod.vpnhotspot.App.Companion.app
 import be.mygod.vpnhotspot.util.Services
 import be.mygod.vpnhotspot.util.allInterfaceNames
@@ -54,6 +55,18 @@ object Upstreams {
         removeCapability(NetworkCapabilities.NET_CAPABILITY_TRUSTED)
         removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
     }.build()
+    /**
+     * [NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK] was added in API 35 and U extension 12:
+     * https://developer.android.com/reference/android/net/NetworkCapabilities#NET_CAPABILITY_LOCAL_NETWORK
+     * which also covers Android 14 Thread networks:
+     * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-14.0.0_r50/thread/service/java/com/android/server/thread/ThreadNetworkControllerService.java#542
+     * Older platforms may give its value to something else, such as 5G slices in this unofficial decompilation of
+     * Huawei EMUI 10.1.1:
+     * https://github.com/dstmath/HWFramework/blob/672bb34094b8780806a10ba9b1d21036fd808b8e/DVC-AN20_EMUI10.1.1/src/main/java/android/net/NetworkCapabilities.java#L98
+     * https://github.com/dstmath/HWFramework/blob/672bb34094b8780806a10ba9b1d21036fd808b8e/DVC-AN20_EMUI10.1.1/src/main/java/android/telephony/data/ApnSetting.java#L225-L230
+     */
+    val localNetworkCapabilitySupported = Build.VERSION.SDK_INT >= 35 || Build.VERSION.SDK_INT == 34 &&
+            SdkExtensions.getExtensionVersion(Build.VERSION_CODES.UPSIDE_DOWN_CAKE) >= 12
 
     val vpn = source(
         register = { Services.registerNetworkCallback(vpnRequest, it) },
@@ -92,6 +105,7 @@ object Upstreams {
                 selectAvailable(network, properties, properties.allInterfaceNames.any(iface))
             },
             onLost = { network -> removeAvailable(network) },
+            ignoreLocalNetworks = true,
         )
     }
 
@@ -142,18 +156,53 @@ object Upstreams {
         register: (ConnectivityManager.NetworkCallback) -> Unit,
         onLinkPropertiesChanged: SourceState.(Network, LinkProperties) -> Emission?,
         onLost: SourceState.(Network) -> Emission?,
+        ignoreLocalNetworks: Boolean = false,
     ) = callbackFlow {
         trySend(null)
         val state = SourceState()
-        val callback = object : ConnectivityManager.NetworkCallback() {
+        /**
+         * Since Android 15, Tethering may register a NetworkAgent with
+         * [NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK] and without INTERNET for each tethering downstream
+         * and Wi-Fi P2P group it serves:
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/android/net/ip/IpServer.java#408
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/android/net/ip/IpServer.java#1227
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/framework/src/android/net/connectivity/ConnectivityInternalApiUtil.java#91
+         * Since Android 17, apps targeting SDK 37 see these unless their request forbids the capability:
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#3604
+         * so an [ifaceRequest] pattern that also matches a downstream would pick it as its own upstream.
+         * Tethering forbids the capability for its own upstreams:
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/com/android/networkstack/tethering/UpstreamNetworkMonitor.java#175
+         * but NetworkRequest.Builder.addForbiddenCapability is a module-lib API:
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/framework/src/android/net/NetworkRequest.java#440
+         * so drop these networks here instead. onCapabilitiesChanged always precedes their first
+         * onLinkPropertiesChanged, and a network can never gain or lose the capability:
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/service/src/com/android/server/connectivity/NetworkAgentInfo.java#462
+         * Only [ifaceRequest] needs this: [vpnRequest] and [defaultRequest] need the VPN transport or INTERNET, and
+         * networks that provide Internet access are never local:
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/framework/src/android/net/NetworkCapabilities.java#753
+         * so only its callback overrides onCapabilitiesChanged, and only with [localNetworkCapabilitySupported];
+         * ConnectivityService skips callbacks that are not overridden:
+         * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#12514
+         */
+        val localNetworks = HashSet<Network>()
+        open class Callback : ConnectivityManager.NetworkCallback() {
             override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
+                if (network in localNetworks) return
                 state.onLinkPropertiesChanged(network, properties)?.let { trySend(it.upstream) }
             }
 
             override fun onLost(network: Network) {
+                localNetworks.remove(network)
                 state.onLost(network)?.let { trySend(it.upstream) }
             }
         }
+        val callback = if (ignoreLocalNetworks && localNetworkCapabilitySupported) object : Callback() {
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                if (networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
+                    localNetworks.add(network)
+                }
+            }
+        } else Callback()
         var registered = false
         try {
             register(callback)

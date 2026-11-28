@@ -536,22 +536,37 @@ private fun TextPreferenceRow(
 private fun rememberInterfaceNameSuggestions(active: Boolean): State<List<String>> {
     val lifecycleOwner = LocalLifecycleOwner.current
     return produceState(initialValue = emptyList(), active, lifecycleOwner) {
+        value = emptyList() // produceState keeps the last value across key changes
         if (!active) return@produceState
         val interfaceNames = mutableMapOf<Network, List<String>>()
+        /**
+         * Local networks, such as tethering downstreams and Wi-Fi P2P groups, are never upstream candidates;
+         * see the same filter in [Upstreams].
+         */
+        val localNetworks = mutableSetOf<Network>()
         fun update() {
             value = interfaceNames.values.flatten().distinct().sorted()
         }
-        val callback = object : ConnectivityManager.NetworkCallback() {
+        open class Callback : ConnectivityManager.NetworkCallback() {
             override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
+                if (network in localNetworks) return
                 interfaceNames[network] = properties.allInterfaceNames
                 update()
             }
 
             override fun onLost(network: Network) {
+                localNetworks.remove(network)
                 interfaceNames.remove(network)
                 update()
             }
         }
+        val callback = if (Upstreams.localNetworkCapabilitySupported) object : Callback() {
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                if (networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
+                    localNetworks.add(network)
+                }
+            }
+        } else Callback()
         var registered = false
         fun register() {
             if (!registered) {
@@ -573,6 +588,7 @@ private fun rememberInterfaceNameSuggestions(active: Boolean): State<List<String
             override fun onStart(owner: LifecycleOwner) = register()
             override fun onStop(owner: LifecycleOwner) {
                 unregister()
+                localNetworks.clear()
                 interfaceNames.clear()
                 update()
             }
