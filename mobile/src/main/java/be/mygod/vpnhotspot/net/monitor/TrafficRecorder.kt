@@ -45,6 +45,12 @@ object TrafficRecorder {
         val mac: MacAddress,
         val downstream: String,
         val source: CounterSource,
+        /**
+         * [TrafficCounter.generation] of a daemon-owned source. Its chain ends at the first read that omits it, so a
+         * later generation of the same source starts a new unlinked chain. IPv4 forwarding chains use 0 and end on
+         * [unregister] instead.
+         */
+        val generation: Long,
     )
 
     private var lastUpdate = 0L
@@ -60,7 +66,7 @@ object TrafficRecorder {
         .onCompletion { rescheduleUpdate() }
 
     suspend fun register(ip: InetAddress, downstream: String, mac: MacAddress) = updateMutex.withLock {
-        val key = CounterKey(mac, downstream, CounterSource(ip, null))
+        val key = CounterKey(mac, downstream, CounterSource(ip, null), 0)
         check(records[key] == null)
         val record = TrafficRecord(mac = mac, ip = ip, downstream = downstream)
         AppDatabase.instance.trafficRecordDao.insert(record)
@@ -217,7 +223,7 @@ object TrafficRecorder {
     fun counterKey(counter: TrafficCounter): CounterKey? {
         val recordSource = counterSource(counter) ?: return null
         val mac = counter.mac.takeIf { it.size == 6 }?.toByteArray() ?: return null
-        return CounterKey(MacAddress.fromBytes(mac), counter.downstream, recordSource)
+        return CounterKey(MacAddress.fromBytes(mac), counter.downstream, recordSource, counter.generation)
     }
 
     fun counterSource(counter: TrafficCounter): CounterSource? = when (val source = counter.source?.source) {
