@@ -169,10 +169,12 @@ the matching interception state.
 Client changes are MAC-scoped. Replacement stages DNS and NAT66 resources for
 new MAC/protocol capabilities, reconciles routing, publishes only committed
 capabilities, and cancels removed or uncommitted per-MAC resources. When a MAC
-or counter source is removed, the session keeps its final daemon-owned counters
-for the next traffic-counter read, under that source's counter generation, as
-long as the store holding them survives. A MAC or capability that counts again
-after that read does so under a new generation; see
+or counter source is removed, the session keeps its daemon-owned counters under
+that source's counter generation until a traffic-counter read finds the source
+inactive, as long as the store holding them survives. That read reports them as
+final and ends the generation, and a MAC or capability that counts again after
+it does so under a new generation. A source removed and recreated before the
+next read is still active at that read, so its generation continues; see
 [`traffic.md`](traffic.md#counter-generations).
 
 The NAT66 store does not survive a replacement that stops NAT66 because routing

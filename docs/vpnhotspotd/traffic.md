@@ -204,10 +204,14 @@ NAT66 TCP or UDP capability for a non-empty client set. Clients that stay in the
 config keep their committed capabilities, so that NAT66 stop drops prior counts
 only after every previously committed client was removed. Normal stop,
 replacement, and routing teardown paths must still read counters before
-destroying daemon-owned state; Kotlin reads before stopping a session and before
-a replacement that removes clients. What a destroyed store counted between
-Kotlin's read and the daemon applying the stop or replacement is lost; nothing
-bounds that interval, which includes the IPC round trip.
+destroying daemon-owned state; Kotlin reads before a replacement that removes
+clients, and before stopping a session while its routing still has clients.
+What a destroyed store counted between Kotlin's read and the daemon applying the
+stop or replacement is lost; nothing bounds that interval, which includes the
+IPC round trip. After the last MAC leaves, Routing skips its stop-time read and
+polling stops once no recorder entries or clients remain, so a generation that
+late in-flight work starts after the read following that replacement is lost
+when the session stops.
 The control path enqueues counter reads while holding the session control slot.
 Stop and Clean take the same slot before enqueuing stop, so any read that has
 observed the session as active is ordered in the session owner before a later

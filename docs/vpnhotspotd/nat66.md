@@ -397,10 +397,13 @@ NAT66 cleanup has two layers:
   state.
 
 Per-MAC runtime removal cancels that MAC's TCP tasks, UDP associations, Echo
-allocations, and UDP error registrations. Its final source counters stay in the
-runtime's counter store until one structured traffic-counter read reports them
-and ends their counter generation, as long as the runtime itself survives. A
-listener recreated for the MAC after that read counts under a new generation.
+allocations, and UDP error registrations. Its source counters stay in the
+runtime's counter store until a structured traffic-counter read finds the source
+inactive, as long as the runtime itself survives; that read reports them as
+final and ends their counter generation. A listener recreated for the MAC after
+that read counts under a new generation. A listener recreated before the next
+read is still active at that read, so its counters continue in the same
+generation.
 
 The runtime and its counter store do not survive a session replacement that
 removes the last MAC with a committed TCP/UDP capability while the remaining
