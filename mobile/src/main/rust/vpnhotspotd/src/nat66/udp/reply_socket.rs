@@ -80,38 +80,55 @@ impl ReplySocketLease {
         if let Some(socket) = entry.socket.get() {
             return Ok(socket);
         }
-        let (socket, in_use) = match create_reply_socket(entry.source, self.pool.mark) {
-            Ok(socket) => (ReplySocket::Bound(socket), None),
+        let in_use = match create_reply_socket(entry.source, self.pool.mark) {
+            Ok(socket) => {
+                entry
+                    .socket
+                    .set(ReplySocket::Bound(socket))
+                    .map_err(|_| io::Error::other("reply socket already initialized"))?;
+                return Ok(entry
+                    .socket
+                    .get()
+                    .expect("reply socket initialization failed"));
+            }
             // Another socket owns this port on the source address or the wildcard, and SO_REUSEADDR
             // shares a port only when both sockets set it
             // (https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv4/udp.c#142).
-            Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
-                let raw = match state.raw.upgrade() {
+            Err(e) if e.kind() == io::ErrorKind::AddrInUse => e,
+            Err(e) => return Err(e.into()),
+        };
+        let raw = match state.raw.upgrade() {
+            Some(raw) => raw,
+            None => {
+                // Creation connects through Bionic's blocking fwmarkd request, so it runs unlocked.
+                drop(state);
+                let created = Arc::new(
+                    RawReplySocket::new(self.pool.mark).map_err(SendResponseError::RawSocket)?,
+                );
+                state = self.pool.lock_state()?;
+                // A concurrent acquirer may have initialized this entry or the shared socket meanwhile;
+                // an unused new socket closes when dropped.
+                if let Some(socket) = entry.socket.get() {
+                    return Ok(socket);
+                }
+                match state.raw.upgrade() {
                     Some(raw) => raw,
                     None => {
-                        let raw = Arc::new(
-                            RawReplySocket::new(self.pool.mark)
-                                .map_err(SendResponseError::RawSocket)?,
-                        );
-                        state.raw = Arc::downgrade(&raw);
-                        raw
+                        state.raw = Arc::downgrade(&created);
+                        created
                     }
-                };
-                (ReplySocket::Raw(raw), Some(e))
+                }
             }
-            Err(e) => return Err(e.into()),
         };
         entry
             .socket
-            .set(socket)
+            .set(ReplySocket::Raw(raw))
             .map_err(|_| io::Error::other("reply socket already initialized"))?;
         drop(state);
-        if let Some(e) = in_use {
-            report::stdout!(
-                "nat66 udp reply source {} in use, replying through raw socket: {e}",
-                entry.source
-            );
-        }
+        report::stdout!(
+            "nat66 udp reply source {} in use, replying through raw socket: {in_use}",
+            entry.source
+        );
         Ok(entry
             .socket
             .get()
@@ -239,10 +256,9 @@ pub(super) async fn send_response(
         }
         ReplySocket::Raw(socket) => {
             let source = reply_socket.source();
-            if let Err(initial) = socket.send(source, target, payload).await {
+            if let Err(initial) = socket.send(source, target, payload) {
                 socket
                     .send(source, target, payload)
-                    .await
                     .map_err(|error| SendResponseError::Retry {
                         stage: "raw_retry_send",
                         initial,

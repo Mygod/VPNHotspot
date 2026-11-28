@@ -7,8 +7,6 @@ use libc::{c_int, c_void, socklen_t, IPPROTO_IPV6, IPV6_CHECKSUM};
 use nix::errno::Errno;
 use nix::sys::socket::{sendmsg, ControlMessage, MsgFlags, SockaddrIn6};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
-use tokio::io::unix::AsyncFd;
-use tokio::io::Interest;
 
 use vpnhotspotd::shared::udp_wire::{kernel_checksum_udp_header, UDP_CHECKSUM_OFFSET};
 
@@ -30,7 +28,7 @@ const DISCARD_PEER: Ipv6Addr = Ipv6Addr::new(0xff0e, 0, 0, 0, 0, 0, 0, 0);
 /// port in use. It needs no port bind: the daemon writes the UDP header, `IPV6_PKTINFO` names the
 /// non-local source, and the kernel fills the checksum, routes by the daemon reply mark, and
 /// fragments oversized datagrams like a UDP socket.
-pub(super) struct RawReplySocket(AsyncFd<Socket>);
+pub(super) struct RawReplySocket(Socket);
 
 impl RawReplySocket {
     pub(super) fn new(mark: u32) -> io::Result<Self> {
@@ -48,6 +46,11 @@ impl RawReplySocket {
             0,
         )))?;
         socket.connect(&SockAddr::from(SocketAddrV6::new(DISCARD_PEER, 0, 0, 0)))?;
+        // Bionic's connect() asks fwmarkd for ON_CONNECT, which writes the caller's permission bits into
+        // SO_MARK (https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/FwmarkServer.cpp#310,
+        // https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/FwmarkServer.cpp#314),
+        // so restore the exact daemon reply mark.
+        socket.set_mark(mark)?;
         socket.set_nonblocking(true)?;
         // Raw sockets receive from creation
         // (https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/af_inet6.c#256),
@@ -75,13 +78,10 @@ impl RawReplySocket {
         {
             return Err(io::Error::last_os_error());
         }
-        // SAFETY: the socket owns its fd, and the inner socket is never replaced.
-        Ok(Self(unsafe {
-            AsyncFd::register_with_interest(socket, Interest::WRITABLE)
-        }?))
+        Ok(Self(socket))
     }
 
-    pub(super) async fn send(
+    pub(super) fn send(
         &self,
         source: SocketAddrV6,
         target: SocketAddrV6,
@@ -105,7 +105,6 @@ impl RawReplySocket {
             target.scope_id(),
         ));
         loop {
-            let mut ready = self.0.writable().await?;
             match sendmsg(
                 self.0.as_raw_fd(),
                 &iov,
@@ -121,10 +120,12 @@ impl RawReplySocket {
                     ))
                 }
                 Err(Errno::EINTR) => {}
-                Err(Errno::EAGAIN) => ready.clear_ready(),
-                // Raw sends return transmit-queue drops as ENOBUFS
+                // Overload drops this datagram. A raw send passes no transport header, so a full send
+                // budget, which every raw-reply flow shares, fails with ENOBUFS rather than EAGAIN
+                // (https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/ip6_output.c#1696),
+                // and a transmit-queue drop also returns ENOBUFS
                 // (https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/ip6_output.c#1989),
-                // which a UDP socket reports as success
+                // where a UDP socket reports success
                 // (https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/udp.c#1301).
                 Err(Errno::ENOBUFS) => return Ok(()),
                 Err(e) => return Err(e.into()),

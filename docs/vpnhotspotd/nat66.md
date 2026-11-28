@@ -263,7 +263,12 @@ the behavior above.
 
 The raw socket is created on the first fallback, shared through a weak
 reference in the registry, and closed when the last raw-reply entry is released.
-Setup, in order:
+Creation runs outside the registry lock because Bionic's `connect()` makes a
+blocking fwmarkd request
+([`netdClientConnect`](https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/client/NetdClient.cpp#150)).
+After relocking, the creator uses an entry or shared socket that a concurrent
+acquirer installed meanwhile, and its own unused socket closes on drop. Setup,
+in order:
 
 - `socket(AF_INET6, SOCK_RAW, IPPROTO_UDP)` with the daemon `SO_MARK`, so
   replies route through the same reply-mark rules as the exact reply socket;
@@ -290,6 +295,11 @@ Setup, in order:
   connect source, so connect needs neither multicast source selection on the
   route's interface nor the Linux 5.11.14 non-local raw bind that ICMP depends
   on;
+- the daemon `SO_MARK` again, because fwmarkd's `ON_CONNECT` writes the
+  caller's permission bits into the mark, turning `0x00030063` into
+  `0x000f0063` for root
+  ([`FwmarkServer.cpp`](https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/FwmarkServer.cpp#310),
+  [`FwmarkServer.cpp`](https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/FwmarkServer.cpp#314));
 - one nonblocking drain of the copies queued between socket creation and
   connect, because socket creation already hashes a raw socket for receive
   ([`inet6_create`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/af_inet6.c#256)).
@@ -299,8 +309,7 @@ Setup, in order:
   and `EAGAIN` means the queue is empty;
 - `IPV6_CHECKSUM` set to `6`, so the kernel computes the UDP checksum over the
   final pseudo-header and stores a zero result as `0xffff`
-  ([`rawv6_push_pending_frames`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/raw.c#571));
-- Tokio registration for writability only.
+  ([`rawv6_push_pending_frames`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/raw.c#571)).
 
 Each send writes an 8-byte UDP header (source port is the original destination
 port, destination port is the client port, length covers the header and
@@ -317,17 +326,24 @@ route or interface default, the traffic class is the same socket default `0`,
 and both sockets keep the default `IPV6_PMTUDISC_WANT`, so datagrams larger than
 the downstream MTU are fragmented locally
 ([`__ip6_append_data`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/ip6_output.c#1546)).
-Send backpressure waits for writability, and a failed send is retried once with
-the same host- or network-unreachable logging rule. NAT66 counters do not
-change because they count upstream datagrams before the downstream send. The
-differences are:
+A failed send is retried once with the same host- or network-unreachable
+logging rule. NAT66 counters do not change because they count upstream
+datagrams before the downstream send. The differences are:
 
-- a raw send returns a transmit-queue drop as `ENOBUFS`
+- raw sends never wait for writability. A raw send passes no transport header,
+  so `__ip6_append_data` charges its buffers against twice the socket send
+  buffer and returns `ENOBUFS`, never `EAGAIN`, when that budget is exhausted
+  ([`__ip6_append_data`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/ip6_output.c#1696));
+  a UDP socket's send of an unfragmented datagram instead waits for buffer
+  space. A transmit-queue drop also
+  returns `ENOBUFS` to a raw send
   ([`ip6_send_skb`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/ip6_output.c#1989)),
   where a UDP socket reports success
   ([`udp_v6_send_skb`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/udp.c#1301)).
-  The raw sender treats every `ENOBUFS` as a dropped datagram, including the
-  rarer allocation failure that a UDP socket would return as an error;
+  The raw sender treats `ENOBUFS` as an expected overload drop of that datagram
+  and neither retries nor reports it. All raw-reply flows share the one raw
+  socket's send budget, so under downstream overload one flow's burst can drop
+  another flow's replies, which separate exact reply sockets would not share;
 - the kernel computes the checksum in software instead of offloading it;
 - automatic flow labels hash the flow key
   ([`ip6_make_flowlabel`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/include/net/ipv6.h#941)),
@@ -336,8 +352,11 @@ differences are:
 
 Raw socket setup failures are structured nonfatals with
 `reply_socket_stage=raw_socket`, and raw send failures use `raw_retry_send`.
-Every reply-path report carries the MAC, client, destination, and downstream
-interface. An association whose reply fails ends as before.
+These reply acquisition and send reports (`nat66.udp_response`,
+`nat66.dns_udp_reply_socket`, and `nat66.dns_udp_response`) carry the MAC,
+client, destination, and downstream interface; lease bookkeeping reports such
+as `nat66.udp_reply_reserve` and `nat66.udp_reply_release` keep their own
+details. An association whose reply fails ends as before.
 
 ## ICMPv6
 
