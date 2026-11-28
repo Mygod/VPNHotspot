@@ -499,27 +499,40 @@ class RepeaterService : Service(), CoroutineScope {
                     // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2268
                     // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#5627
                     // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#5899
+                    // Wi-Fi P2P becoming unavailable (Wi-Fi going off, say) leaves GroupCreatedState without that
+                    // broadcast from API 30, as its exit skips it while the group is still recorded, so being disabled
+                    // counts as gone too. Losing wpa_supplicant only clears the group silently: the wait then ends
+                    // once P2P comes back up, which broadcasts the connection change, or once recovery turns it off.
+                    // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-11.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2950
+                    // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#5902
+                    // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2970
+                    // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#3218
+                    // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#6096
                     val removed = CompletableDeferred<Unit>()
                     val receiver = broadcastReceiver { _, intent ->
-                        if (intent.getParcelableExtra<WifiP2pInfo>(WifiP2pManager.EXTRA_WIFI_P2P_INFO)?.groupFormed
-                                != true) removed.complete(Unit)
+                        if (when (intent.action) {
+                            WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION -> intent.getParcelableExtra<WifiP2pInfo>(
+                                WifiP2pManager.EXTRA_WIFI_P2P_INFO)?.groupFormed != true
+                            WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION -> intent.getIntExtra(
+                                WifiP2pManager.EXTRA_WIFI_STATE, 0) == WifiP2pManager.WIFI_P2P_STATE_DISABLED
+                            else -> false
+                        }) removed.complete(Unit)
                     }
-                    registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
+                    registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION,
+                        WifiP2pManager.WIFI_P2P_STATE_CHANGED_ACTION))
                     try {
                         val reason = p2pManager.removeGroup(channel)
                         // with no timeout, a wedged framework keeps this teardown fenced: only destroying the service,
                         // which cancels its scope, abandons the wait
                         if (reason == null) this@RepeaterService.launch {
                             // API 30-32 send the broadcast only to NETWORK_SETTINGS holders while Location is off, so
-                            // poll there the way serving does until the group is no longer formed
+                            // poll there at serving's cadence until the group is no longer formed, whatever Location
+                            // does meanwhile: a removal broadcast while it was off is missed for good
                             // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-11.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#160
                             // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-11.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#3095
                             val poll = if (Build.VERSION.SDK_INT in 30 until 33) launch {
                                 while (p2pManager.requestP2pState(channel) != WifiP2pManager.WIFI_P2P_STATE_DISABLED &&
-                                        (app.location?.isLocationEnabled == true ||
-                                                p2pManager.requestConnectionInfo(channel)?.groupFormed == true)) {
-                                    delay(1.seconds)
-                                }
+                                        p2pManager.requestConnectionInfo(channel)?.groupFormed == true) delay(1.seconds)
                                 removed.complete(Unit)
                             } else null
                             removed.await()
