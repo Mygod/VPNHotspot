@@ -123,8 +123,9 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
      * cancelling it (a stop) does not cancel the request outright: the routing is torn down first, then [stopRequest]
      * ends the request, and this returns or throws only once the request has completed with its own cleanup done. A
      * request the framework reports stopped or failed ends by itself, so it is only collected until it completes.
+     * [wifi] is the manager an app-process request uses, recorded as [requestWifi] once it starts.
      */
-    private suspend fun collectLocalOnlyHotspotEvents(flow: Flow<LocalOnlyHotspotEvent>,
+    private suspend fun collectLocalOnlyHotspotEvents(flow: Flow<LocalOnlyHotspotEvent>, wifi: WifiManager? = null,
                                                       stopRequest: suspend (Job) -> Unit = { it.cancel() }) {
         val self = currentCoroutineContext().job
         // a lifespan that has ended (say while a backend failed) must not open another request
@@ -141,6 +142,9 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
                         if (!self.isActive) return@collect
                         when (event) {
                             is LocalOnlyHotspotEvent.Started -> {
+                                // a request that starts has registered, so a leftover of this instance would be on
+                                // its manager
+                                if (wifi != null) requestWifi = wifi
                                 configuration = event.config
                                 refreshConfiguration()
                                 // attempt to update again
@@ -250,7 +254,8 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
     private var lastStartId = 0
     /**
      * The WifiManager of the latest LOHS request this instance made from its own process (the root backend's live in
-     * the root process): a request it left outstanding is on that manager, the only one able to cancel it.
+     * the root process) that registered, as its Started event proves: a request it left outstanding is on that
+     * manager, the only one able to cancel it, while a backend attempt that never registered leaves this alone.
      */
     private var requestWifi: WifiManager? = null
     /**
@@ -358,9 +363,9 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
         try {
             if (Build.VERSION.SDK_INT >= 30 && app.pref.getBoolean(KEY_USE_SYSTEM, false)) {
                 if (Build.VERSION.SDK_INT >= 33) try {
+                    val wifi = WifiApManager.newLocalOnlyHotspotManager()
                     return collectLocalOnlyHotspotEvents(WifiApManager.startLocalOnlyHotspotWithConfigurationFlow(
-                        WifiApManager.newLocalOnlyHotspotManager().also { requestWifi = it },
-                        WifiApManager.configuration))
+                        wifi, WifiApManager.configuration), wifi)
                 } catch (e: NoSuchMethodError) {
                     if (Build.VERSION.SDK_INT >= 36) Timber.w(e)
                 } catch (e: InvocationTargetException) {
@@ -387,19 +392,18 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
                     SmartSnackbar.make(e).show()
                 }
             }
-            val outstanding = requestWifi
             try {
-                collectLocalOnlyHotspotEvents(WifiApManager.startLocalOnlyHotspotFlow(
-                    WifiApManager.newLocalOnlyHotspotManager().also { requestWifi = it }))
+                val wifi = WifiApManager.newLocalOnlyHotspotManager()
+                collectLocalOnlyHotspotEvents(WifiApManager.startLocalOnlyHotspotFlow(wifi), wifi)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: IllegalStateException) {
                 // throws IllegalStateException if the caller attempts to start the LocalOnlyHotspot while they
                 // have an outstanding request.
                 // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/53e0284/service/java/com/android/server/wifi/WifiServiceImpl.java#1192
-                // Only the WifiManager that made it can cancel it: one this instance left is on [outstanding], while
+                // Only the WifiManager that made it can cancel it: one this instance left is on [requestWifi], while
                 // one another service instance left stays until that instance cleans up.
-                outstanding?.let(WifiApManager::cancelLocalOnlyHotspotRequest)
+                requestWifi?.let(WifiApManager::cancelLocalOnlyHotspotRequest)
                 SmartSnackbar.make(e).show()
                 dismissIfApplicable()
             } catch (e: SecurityException) {
