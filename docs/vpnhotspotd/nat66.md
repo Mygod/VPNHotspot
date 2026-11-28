@@ -45,7 +45,7 @@ NAT66 state is split by lifetime:
 | Lifetime | Owner | State |
 | --- | --- | --- |
 | Process | `IcmpDispatcher` | NFQUEUE task on queue `30000`, ICMP session registrations, shared Echo state, upstream ICMP sockets |
-| Process | `ReplySocketPool` | daemon reply mark, exact UDP reply-source registry, socket leases shared across sessions |
+| Process | `ReplySocketPool` | daemon reply mark, exact UDP reply-source registry, socket leases shared across sessions, raw UDP reply fallback socket |
 | Session | `nat66::Runtime` | committed per-MAC TCP/UDP capabilities, optional RA task, ICMP registration, cleanup prefixes, counter store |
 | RA task | `nat66/ra.rs` | IPv6-address event and request connections, raw ICMPv6 receive socket, periodic/suppression state |
 | Client | per-MAC runtime | TCP/UDP listener ports, stop token, active DNS/NAT66 tasks, source-scoped counters |
@@ -245,6 +245,119 @@ downstream when it has enough context. If the connected upstream socket reports
 ICMP errors through the error queue, the association's ICMP registration maps
 those errors back to the original client/destination.
 
+### Raw Reply Fallback
+
+The exact bind fails with `EADDRINUSE` when another socket on the phone already
+owns that port on the same address or on the wildcard `[::]`, because Linux
+shares a UDP port only when both sockets set `SO_REUSEADDR`
+([`udp_lib_lport_inuse`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv4/udp.c#142)).
+Proxy and VPN apps commonly hold many `[::]` UDP ports, so this is expected port
+sharing, not a daemon fault. Instead of dropping the flow's replies, the
+registry marks that source entry as a raw-reply entry and logs the fallback to
+stdout once per entry; it does not emit a nonfatal. Every lease on the entry,
+including association replies and gateway DNS replies, then sends through one
+process-wide raw IPv6 UDP socket. The entry keeps that choice until its last
+lease is released, so a later lease for the same source tries the exact bind
+again. Sources whose exact bind succeeds, or fails with any other error, keep
+the behavior above.
+
+The raw socket is created on the first fallback, shared through a weak
+reference in the registry, and closed when the last raw-reply entry is released.
+Creation runs outside the registry lock because Bionic's `connect()` makes a
+blocking fwmarkd request
+([`netdClientConnect`](https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/client/NetdClient.cpp#150)).
+After relocking, the creator uses an entry or shared socket that a concurrent
+acquirer installed meanwhile, and its own unused socket closes on drop. Setup,
+in order:
+
+- `socket(AF_INET6, SOCK_RAW, IPPROTO_UDP)` with the daemon `SO_MARK`, so
+  replies route through the same reply-mark rules as the exact reply socket;
+- `IPV6_TRANSPARENT`, which lets each send's `IPV6_PKTINFO` name the non-local
+  original destination as the source
+  ([`ip6_datagram_send_ctl`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/datagram.c#826));
+- `bind([::1])`, then `connect([ff0e::])`. An unconnected raw UDP socket receives
+  a copy of every locally delivered UDP datagram. A connected raw socket matches
+  only datagrams whose source is its peer
+  ([`raw_v6_match`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/raw.c#71)),
+  and the kernel drops multicast-source packets before raw delivery
+  ([`ip6_rcv_core`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/ip6_input.c#253)).
+  `ff0e::` is the reserved, never-assigned global-scope group of RFC 4291
+  section 2.7.1, so the socket never receives a datagram or an ICMP error.
+  Connect needs a route
+  ([`__ip6_datagram_connect`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/datagram.c#253)).
+  `ff0e::` uses the kernel's per-interface `ff00::/8` multicast route in the
+  `local` table
+  ([`addrconf_add_mroute`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/addrconf.c#2512)),
+  which Android's rule 0 reaches before any fwmark rule. The RFC 6666 discard
+  prefix `100::/64` does not work: before Android's unreachable rule, the reply
+  mark reaches only the `local` table and `local_network`, neither routes it,
+  and connect fails with `ENETUNREACH`. Binding the always-local `::1` fixes the
+  connect source, so connect needs neither multicast source selection on the
+  route's interface nor the Linux 5.11.14 non-local raw bind that ICMP depends
+  on;
+- the daemon `SO_MARK` again, because fwmarkd's `ON_CONNECT` writes the
+  caller's permission bits into the mark, turning `0x00030063` into
+  `0x000f0063` for root
+  ([`FwmarkServer.cpp`](https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/FwmarkServer.cpp#310),
+  [`FwmarkServer.cpp`](https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/FwmarkServer.cpp#314));
+- one nonblocking drain of the copies queued between socket creation and
+  connect, because socket creation already hashes a raw socket for receive
+  ([`inet6_create`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/af_inet6.c#256)).
+  Those copies arrived before `IPV6_CHECKSUM` was set, so the kernel marked them
+  checksum-verified
+  ([`rawv6_rcv`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/raw.c#390))
+  and `EAGAIN` means the queue is empty;
+- `IPV6_CHECKSUM` set to `6`, so the kernel computes the UDP checksum over the
+  final pseudo-header and stores a zero result as `0xffff`
+  ([`rawv6_push_pending_frames`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/raw.c#571)).
+
+Each send writes an 8-byte UDP header (source port is the original destination
+port, destination port is the client port, length covers the header and
+payload, checksum is zero for the kernel to fill), followed by the upstream
+payload. `IPV6_PKTINFO` carries the original destination address with interface
+index 0, and the destination `sin6_port` is 0 because a raw IPv6 `sin6_port`
+selects the next header
+([`rawv6_sendmsg`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/raw.c#789)).
+The kernel builds the IPv6 header. A payload that cannot fit the 16-bit UDP
+length field is rejected before the send; IPv6 UDP receives cannot produce one.
+
+Raw replies keep the exact reply socket's semantics. The hop limit is the same
+route or interface default, the traffic class is the same socket default `0`,
+and both sockets keep the default `IPV6_PMTUDISC_WANT`, so datagrams larger than
+the downstream MTU are fragmented locally
+([`__ip6_append_data`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/ip6_output.c#1546)).
+A failed send is retried once with the same host- or network-unreachable
+logging rule. NAT66 counters do not change because they count upstream
+datagrams before the downstream send. The differences are:
+
+- raw sends never wait for writability. A raw send passes no transport header,
+  so `__ip6_append_data` charges its buffers against twice the socket send
+  buffer and returns `ENOBUFS`, never `EAGAIN`, when that budget is exhausted
+  ([`__ip6_append_data`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/ip6_output.c#1696));
+  a UDP socket's send of an unfragmented datagram instead waits for buffer
+  space. A transmit-queue drop also
+  returns `ENOBUFS` to a raw send
+  ([`ip6_send_skb`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/ip6_output.c#1989)),
+  where a UDP socket reports success
+  ([`udp_v6_send_skb`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv6/udp.c#1301)).
+  The raw sender treats `ENOBUFS` as an expected overload drop of that datagram
+  and neither retries nor reports it. All raw-reply flows share the one raw
+  socket's send budget, so under downstream overload one flow's burst can drop
+  another flow's replies, which separate exact reply sockets would not share;
+- the kernel computes the checksum in software instead of offloading it;
+- automatic flow labels hash the flow key
+  ([`ip6_make_flowlabel`](https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/include/net/ipv6.h#941)),
+  which carries no ports for a raw send, so raw-reply flows between the same
+  source address and client share one label.
+
+Raw socket setup failures are structured nonfatals with
+`reply_socket_stage=raw_socket`, and raw send failures use `raw_retry_send`.
+These reply acquisition and send reports (`nat66.udp_response`,
+`nat66.dns_udp_reply_socket`, and `nat66.dns_udp_response`) carry the MAC,
+client, destination, and downstream interface; lease bookkeeping reports such
+as `nat66.udp_reply_reserve` and `nat66.udp_reply_release` keep their own
+details. An association whose reply fails ends as before.
+
 ## ICMPv6
 
 The ICMP dispatcher is process-wide, but registrations are per NAT66 session.
@@ -378,6 +491,9 @@ NAT66 startup is best effort across these pieces:
   background state.
 - ICMP error-queue setup failure is reported, but Echo and UDP may continue
   without that error translation path.
+- An exact UDP reply bind `EADDRINUSE` is expected port sharing with another
+  socket on the phone. It moves that reply source to the raw reply fallback and
+  is logged rather than reported.
 - Runtime packet parse failures, unmapped errors, and ordinary remote failures
   should be dropped or logged without stopping the session.
 
@@ -405,8 +521,10 @@ firewall mutations. Session stop releases listener anchors and association
 leases. A retained listener swaps its anchor on the first DNS query for a new
 gateway after reconfiguration, while overlapping detached tasks keep their
 sockets live until they finish. The last lease closes each socket, and process
-death closes any remaining descriptors. Normal stop and Clean require no
-additional kernel-state cleanup for the reply socket pool.
+death closes any remaining descriptors. The raw reply fallback socket is also a
+process-owned descriptor: it closes with the last raw-reply entry, and process
+death closes it. Normal stop and Clean require no additional kernel-state
+cleanup for the reply socket pool.
 
 Do not add persisted NAT66 cleanup state. If state can leak after process death,
 Clean must be able to reconstruct and delete it from deterministic identifiers,
