@@ -180,8 +180,8 @@ object Upstreams {
          * Only [ifaceRequest] needs this: [vpnRequest] and [defaultRequest] need the VPN transport or INTERNET, and
          * networks that provide Internet access are never local:
          * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/framework/src/android/net/NetworkCapabilities.java#753
-         * so only its callback overrides onCapabilitiesChanged; ConnectivityService skips callbacks that are not
-         * overridden:
+         * so only its callback overrides onCapabilitiesChanged, and only with [localNetworkCapabilitySupported];
+         * ConnectivityService skips callbacks that are not overridden:
          * https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#12514
          */
         val localNetworks = HashSet<Network>()
@@ -196,10 +196,9 @@ object Upstreams {
                 state.onLost(network)?.let { trySend(it.upstream) }
             }
         }
-        val callback = if (ignoreLocalNetworks) object : Callback() {
+        val callback = if (ignoreLocalNetworks && localNetworkCapabilitySupported) object : Callback() {
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                if (localNetworkCapabilitySupported &&
-                    networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
+                if (networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
                     localNetworks.add(network)
                 }
             }

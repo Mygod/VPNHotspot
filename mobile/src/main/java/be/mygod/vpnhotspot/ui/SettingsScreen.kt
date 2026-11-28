@@ -547,14 +547,7 @@ private fun rememberInterfaceNameSuggestions(active: Boolean): State<List<String
         fun update() {
             value = interfaceNames.values.flatten().distinct().sorted()
         }
-        val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-                if (Upstreams.localNetworkCapabilitySupported &&
-                    networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
-                    localNetworks.add(network)
-                }
-            }
-
+        open class Callback : ConnectivityManager.NetworkCallback() {
             override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) {
                 if (network in localNetworks) return
                 interfaceNames[network] = properties.allInterfaceNames
@@ -567,6 +560,13 @@ private fun rememberInterfaceNameSuggestions(active: Boolean): State<List<String
                 update()
             }
         }
+        val callback = if (Upstreams.localNetworkCapabilitySupported) object : Callback() {
+            override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                if (networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_LOCAL_NETWORK)) {
+                    localNetworks.add(network)
+                }
+            }
+        } else Callback()
         var registered = false
         fun register() {
             if (!registered) {
