@@ -220,19 +220,19 @@ Other:
 * For route-table numbers, Android interface tables are assumed to start at ifindex + 1000; `IPv6 NAT`
   TPROXY uses table 900 to stay below that range and away from AOSP fixed tables 97..99 and kernel built-ins.
 * Clean flushes table 900 because that table is reserved by VPNHotspot. `IPv6 NAT` also adds its
-  deterministic ULA /64 route to Android's shared `local_network` route table 97 and to the
-  downstream's interface table (ifindex + 1000); Clean never flushes those tables and only deletes
-  VPNHotspot prefixes reconstructed from current interface names and indices.
+  deterministic ULA /64 route to Android's shared `local_network` route table 97; Clean never flushes
+  that table and only deletes VPNHotspot prefixes reconstructed from current interface names.
 * `IPv6 NAT` leaves downstream traffic to the phone's own non-link-local IPv6 addresses to the kernel
   instead of proxying it, including non-DNS traffic to the NAT66 gateway, so phone services are
   reachable there as at the IPv4 downstream address, also from blocked clients. Gateway port 53 stays
   reserved for DNS interception and rejects DNS that is not intercepted. Replies from local sockets
-  are assumed to reach the client through AOSP's local-network rules and those routes: netd's
-  startup `from all fwmark 0x0/0x10000 lookup local_network` rule for sockets not explicitly bound
-  to a network, and the downstream network's explicit rule for accepted TCP sockets and reflected
-  kernel replies. When the platform release gives each downstream its own local network agent
-  (Android 15+, on by default from 25Q4), that explicit rule selects the downstream's interface
-  table instead of table 97. That traffic otherwise follows Android's local-delivery rules as IPv4
+  are assumed to reach the client through AOSP's local-network rules: netd's startup
+  `from all fwmark 0x0/0x10000 lookup local_network` rule and that table 97 route for sockets not
+  explicitly bound to a network, and the downstream network's explicit rule for accepted TCP
+  sockets and reflected kernel replies. When the platform release gives each downstream its own
+  local network agent (Android 15+, on by default from 25Q4), that explicit rule selects the
+  downstream's interface table (ifindex + 1000), which is assumed to hold the kernel's prefix route
+  for the gateway address because netd sets `accept_ra_rt_table` to -1000. That traffic otherwise follows Android's local-delivery rules as IPv4
   tethered clients do: netd's eBPF ingress filter can drop it for apps covered by a VPN, and UDP
   replies from apps covered by a non-bypassable VPN match that VPN's UID rule first and go into the
   tunnel.

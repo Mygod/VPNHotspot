@@ -6,8 +6,7 @@ use rtnetlink::packet_route::{address::AddressAttribute, AddressFamily};
 
 use crate::{netlink, report};
 use vpnhotspotd::shared::model::{
-    ipv6_nat_gateway, ipv6_nat_prefix, ANDROID_ROUTE_TABLE_LOCAL_NETWORK,
-    ANDROID_ROUTE_TABLE_OFFSET_FROM_INDEX, DAEMON_TABLE,
+    ipv6_nat_gateway, ipv6_nat_prefix, ANDROID_ROUTE_TABLE_LOCAL_NETWORK, DAEMON_TABLE,
 };
 use vpnhotspotd::shared::proto::daemon::{CleanRoutingCommand, ReplaceStaticAddressesCommand};
 use vpnhotspotd::shared::protocol::{error_errno, read_ip_address_entry, IoResultReportExt};
@@ -95,7 +94,7 @@ pub(super) async fn clean_ip(
     command: &CleanRoutingCommand,
 ) -> io::Result<()> {
     flush_routes(connection, AddressFamily::Inet6, DAEMON_TABLE).await?;
-    for (index, interface) in netlink::link_names(connection).await? {
+    for interface in netlink::link_names(connection).await?.into_values() {
         let prefix = ipv6_nat_prefix(&command.ipv6_nat_prefix_seed, &interface);
         let gateway = ipv6_nat_gateway(prefix);
         let address = IpAddressCommand {
@@ -109,25 +108,17 @@ pub(super) async fn clean_ip(
                 report::io_with_details("routing.clean_ip.address", e, address_details(&address));
             }
         }
-        // The interface table is reconstructed from the current ifindex; a route in an older
-        // ifindex's table left with its device, because the kernel deletes routes through a
-        // device that goes away.
-        for table in [
-            ANDROID_ROUTE_TABLE_LOCAL_NETWORK,
-            ANDROID_ROUTE_TABLE_OFFSET_FROM_INDEX + index,
-        ] {
-            let route = IpRouteCommand {
-                operation: IpOperation::Delete,
-                route_type: RouteType::Unicast,
-                destination: IpAddr::V6(prefix.first_address()),
-                prefix_len: prefix.network_length(),
-                interface: interface.clone(),
-                table,
-            };
-            if let Err(e) = apply_route_command(connection, &route).await {
-                if !is_missing(&e) {
-                    report::io_with_details("routing.clean_ip.route", e, route_details(&route));
-                }
+        let route = IpRouteCommand {
+            operation: IpOperation::Delete,
+            route_type: RouteType::Unicast,
+            destination: IpAddr::V6(prefix.first_address()),
+            prefix_len: prefix.network_length(),
+            interface,
+            table: ANDROID_ROUTE_TABLE_LOCAL_NETWORK,
+        };
+        if let Err(e) = apply_route_command(connection, &route).await {
+            if !is_missing(&e) {
+                report::io_with_details("routing.clean_ip.route", e, route_details(&route));
             }
         }
     }

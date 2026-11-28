@@ -12,7 +12,6 @@ mod iptables;
 mod ipv6_nat_firewall;
 mod ipv6_nat_intercept;
 mod ipv6_nat_listener_rules;
-mod ipv6_nat_routes;
 mod local_ipv6;
 mod ndc;
 mod netlink_commands;

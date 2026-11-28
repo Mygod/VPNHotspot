@@ -283,8 +283,6 @@ External mutations:
 
 - replace IPv6 unicast route in table 97:
   `<nat66-prefix> dev <downstream> table local_network`
-- replace IPv6 unicast route in the downstream's netd interface table:
-  `<nat66-prefix> dev <downstream> table <1000 + downstream-ifindex>`
 - replace IPv6 address on the downstream:
   `<nat66-gateway>/<prefix-len> dev <downstream>`
 - replace IPv6 local route in table 900:
@@ -302,58 +300,44 @@ External mutations:
 
 Rollback:
 
-- delete the same routes, address, local route, and policy rule.
+- delete the same route, address, local route, and policy rule.
 
 Clean:
 
 - flush IPv6 routes from table 900.
 - reconstruct `<nat66-prefix>` and `<nat66-gateway>` for every current
-  interface from the Clean prefix seed, then delete the gateway address, the
-  table 97 route, and the route in table `<1000 + current-ifindex>` for each
-  interface.
+  interface from the Clean prefix seed, then delete the gateway address and
+  table 97 route for each interface.
 
 Clean never flushes table 97 because it is Android's shared `local_network`
-table, nor an interface table because netd owns it.
+table.
 
-The interface-table route exists for downstreams that netd keeps in their own
-network. On Android 15+, `IpServer` can register a local network agent for each
-tethering or Wi-Fi P2P group-owner downstream instead of adding it to
-`LOCAL_NET_ID` 99. Whether it does depends on the platform release, not only on
-the Tethering module: on 25Q4+ releases the agent is on unless a kill switch
-disables it, and on earlier Android 15+ releases only a beta flag enables it.
-ConnectivityService creates the agent's network as `PHYSICAL_LOCAL`. For such
-a network, netd resolves the interface table as ifindex + 1000 when the
-downstream joins, marks packets arriving on it with the agent's netId, and
-points the network's explicit `fwmark <netId>/0x1ffff` rule at that table
-rather than table 97. A locally delivered TCP connection's accepted socket
-inherits the incoming mark, and kernel replies such as RSTs and ICMPv6 errors
-reflect it, so their replies to the NAT66 prefix need a route in that table.
-Only replies carrying the agent's netId need it. Android kernels may already
-provide one: netd sets the downstream's `accept_ra_rt_table` to -1000, and
-Android's per-device-table kernel change can then put the prefix route of the
-gateway address into the same interface table. In that case this route is
-redundant but harmless; the device test shows which applies. The agent network also gets an implicit
-`from all fwmark 0x0/0x10000` local-network rule for the interface table, but
-netd installs the table-97 rule at that priority when it starts, and the kernel
-places a new rule after existing rules of equal priority, so an unmarked reply
-still finds the NAT66 prefix in table 97 first. In
-`LOCAL_NET_ID` mode netd maps the downstream to table 97 and no rule selects its
-interface table, so the route there is inert. Routing installs it
-unconditionally rather than detecting netd's network membership, which netd
-does not expose and which would race the agent's registration. Daemon reply
-sockets use the `LOCAL_NET_ID` reply mark, which keeps selecting table 97 in
-either mode.
+Routing adds no route to the downstream's netd interface table
+(`1000 + downstream-ifindex`), because the kernel already puts one there. On
+Android 15+, `IpServer` can register a local network agent for each tethering
+or Wi-Fi P2P group-owner downstream instead of adding it to `LOCAL_NET_ID` 99;
+the platform release decides, with 25Q4+ releases enabling it unless a kill
+switch is set and earlier Android 15+ releases only behind a beta flag.
+ConnectivityService creates that network as `PHYSICAL_LOCAL`, and netd marks
+packets arriving on the downstream with the agent's netId and points the
+network's explicit `fwmark <netId>/0x1ffff` rule at the interface table. A
+locally delivered TCP connection's accepted socket inherits that mark, and
+kernel replies such as RSTs and ICMPv6 errors reflect it, so their replies to
+the NAT66 prefix need a route in that table. netd sets `accept_ra_rt_table` to
+-1000 on every interface and on `default`, which new interfaces such as
+tethering and P2P downstreams inherit, and Android's common kernels route the
+prefix of a manually added address, such as the NAT66 gateway, through
+`addrconf_rt_table` into table `ifindex + 1000` when that sysctl is negative.
+The kernel route `<nat66-prefix> dev <downstream> proto kernel` therefore exists
+in the interface table while the gateway address does, and goes with the
+address on rollback, Clean, or interface removal. The agent network's implicit
+`from all fwmark 0x0/0x10000` rule also selects that table, but netd installs
+the table-97 rule at that priority when it starts, and the kernel places a new
+rule after existing rules of equal priority, so an unmarked reply finds the
+NAT66 prefix in table 97 first. Daemon reply sockets use the `LOCAL_NET_ID`
+reply mark, which selects table 97 in either mode.
 
-The table number comes from the downstream's ifindex at reconcile time, as for
-upstream tables. A missing downstream link skips the route; another lookup
-failure is a structured nonfatal `routing.resolve_downstream_index` and skips it
-for that reconcile. The route is not a commit requirement: without it, and
-without a kernel prefix route in that table, only replies that select the agent
-network's table are lost. When the downstream
-leaves its agent network, netd flushes the interface table, so a later
-rollback delete finds the route missing, which is expected.
-
-AOSP sources:
+Sources:
 
 - local network agent:
   https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/android/net/ip/IpServer.java#408
@@ -361,16 +345,22 @@ AOSP sources:
   https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/Tethering/src/android/net/ip/IpServer.java#1226
 - `PHYSICAL_LOCAL` network creation:
   https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/service/src/com/android/server/ConnectivityService.java#6374
-- interface table resolution:
-  https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#146
-- incoming mark, explicit rule, and local-network rule for the interface table:
+- incoming mark and explicit rule for the interface table:
   https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#903
-- `LOCAL_NET_ID` interfaces mapped to table 97:
-  https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#1284
-- interface table flush on removal:
-  https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#1320
-- `accept_ra_rt_table` set to -1000 on all interfaces:
+- `accept_ra_rt_table` set to -1000 on every interface and `default`:
+  https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/InterfaceController.cpp#257
+  and
   https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/InterfaceController.cpp#247
+- manually added address prefix routes through `addrconf_rt_table`, the same in
+  every common kernel from `android-4.9-q` to `android16-6.12`:
+  https://android.googlesource.com/kernel/common/+/f9b8314c64640cd10c7b14ce9d2a11a0dc02a941/net/ipv6/addrconf.c#2200
+  and
+  https://android.googlesource.com/kernel/common/+/f9b8314c64640cd10c7b14ce9d2a11a0dc02a941/net/ipv6/addrconf.c#2807
+  (`deprecated/android-4.9-q`);
+  https://android.googlesource.com/kernel/common/+/5a9b268fa91d4a7dd6501b35be8cd969e4cff1fd/net/ipv6/addrconf.c#2469
+  and
+  https://android.googlesource.com/kernel/common/+/5a9b268fa91d4a7dd6501b35be8cd969e4cff1fd/net/ipv6/addrconf.c#3118
+  (`android16-6.12`)
 
 Before routing the first candidate NAT66 TCP/UDP listener ports, routing probes
 kernel `FRA_IP_PROTO` support through rtnetlink once per daemon process and
@@ -641,8 +631,9 @@ NAT66 prefix route in table 97, via netd's startup
 inherits netd's incoming local-network mark, because Android enables
 `tcp_fwmark_accept`, so its replies use the downstream network's explicit rule
 instead, and kernel replies reflect the same mark. That rule selects table 97
-for a `LOCAL_NET_ID` downstream and the downstream's interface table for a
-per-downstream local network; see
+for a `LOCAL_NET_ID` downstream and the downstream's interface table, which the
+kernel's prefix route for the gateway address covers, for a per-downstream
+local network; see
 [NAT66 Routes, Address, And Policy Rule](#nat66-routes-address-and-policy-rule).
 A socket explicitly bound to another network replies elsewhere, as it does to
 IPv4 tethered clients. Like the other local/special returns, this traffic is
@@ -942,10 +933,9 @@ For every current interface name:
   interface name.
 - delete address `<nat66-gateway>/<prefix-len>` from that interface.
 - delete table 97 unicast route `<nat66-prefix> dev <interface>`.
-- delete unicast route `<nat66-prefix> dev <interface> table <1000 + ifindex>`
-  using the interface's current ifindex. A route left in an older ifindex's
-  table went with its device, because the kernel deletes routes through a
-  device that is removed.
+
+Deleting the gateway address also removes the kernel's prefix route for it from
+the interface's netd table.
 
 Missing address or route is expected. For address deletion, this includes an
 interface that still exists but has no IPv6 address state. Other errors are
@@ -1021,12 +1011,11 @@ The daemon uses these table conventions:
 
 - table 900 is VPNHotspot's daemon table for NAT66 local interception;
 - table 97 is Android's shared `local_network` route table;
-- upstream and downstream interface tables use Android's `ifindex + 1000`
-  convention.
+- upstream interface tables use Android's `ifindex + 1000` convention.
 
 Table 900 may be flushed by Clean because it is reserved by VPNHotspot. Table
-97 and interface tables must not be flushed; delete only reconstructed
-VPNHotspot NAT66 routes from them.
+97 must not be flushed; delete only reconstructed VPNHotspot NAT66 routes from
+it.
 
 ## Guardrails
 

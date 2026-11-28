@@ -45,15 +45,6 @@ pub const DAEMON_TABLE: u32 = 900;
 /// https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#58
 /// https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#217
 pub const ANDROID_ROUTE_TABLE_LOCAL_NETWORK: u32 = 97;
-/// Offset from an interface's ifindex to the route table netd uses for that interface in a
-/// physical network, including the `PHYSICAL_LOCAL` network a tethering downstream gets from its
-/// own local network agent. netd resolves it when the interface joins the network.
-///
-/// Sources:
-/// https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/RouteController.h#45
-/// https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.h#96
-/// https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#146
-pub const ANDROID_ROUTE_TABLE_OFFSET_FROM_INDEX: u32 = 1000;
 
 struct KernelRelease {
     major: u32,
