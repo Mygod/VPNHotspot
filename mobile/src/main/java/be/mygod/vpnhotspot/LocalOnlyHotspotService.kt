@@ -214,6 +214,11 @@ class LocalOnlyHotspotService : NetlinkNeighbourMonitoringService() {
                                 // the framework ends a request it reported stopped or failed by itself
                                 if (!ended) stopRequest(request)
                             } finally {
+                                // Known issue, inherited from master and deferred: releasing the last request only
+                                // queues its AP's shutdown, and the framework fails every request registered by the
+                                // time that AP reports DISABLING or DISABLED, so a successor that starts right after
+                                // this completes can be failed by it.
+                                // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/WifiServiceImpl.java#3224
                                 try {
                                     request.await()
                                 } catch (_: CancellationException) {
