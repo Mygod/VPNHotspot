@@ -1,3 +1,5 @@
+use std::net::Ipv6Addr;
+
 use crate::firewall::IptablesTarget;
 use vpnhotspotd::shared::icmp_nat::icmp_echo_rule_args;
 use vpnhotspotd::shared::model::{
@@ -41,6 +43,7 @@ impl Ipv6NatFirewall {
         ipv6_nat: &Ipv6NatConfig,
         ports: &Ipv6NatPorts,
         intercept_mode: Ipv6NatInterceptMode,
+        local_addresses: &[Ipv6Addr],
     ) {
         for chain in Self::NAT_FILTER_JUMPS
             .into_iter()
@@ -59,6 +62,7 @@ impl Ipv6NatFirewall {
         for rule in Self::filter_rules(config) {
             push_unique(mutations, RoutingMutation::Iptables(rule));
         }
+        push_unique(mutations, Self::gateway_input_rules(config, ipv6_nat));
         push_unique(
             mutations,
             RoutingMutation::Iptables(Self::acl_gate_rule(config)),
@@ -74,6 +78,11 @@ impl Ipv6NatFirewall {
         }
         for rule in Self::local_special_return_rules(config, ipv6_nat) {
             push_unique(mutations, RoutingMutation::Iptables(rule));
+        }
+        // Inserted after the input reject and above the generic ACL gate and protocol jumps; later
+        // reconciles insert them at the chain heads, which keeps both properties.
+        for mutation in Self::local_address_returns(config, ipv6_nat, local_addresses) {
+            push_unique(mutations, mutation);
         }
         for protocol in Self::enabled_listener_protocols(ports) {
             for rule in Self::gateway_dns_prelude_rules(config, ipv6_nat, protocol) {
@@ -154,6 +163,45 @@ impl Ipv6NatFirewall {
             ),
         ]);
         rules
+    }
+
+    /// Opens the gateway to local services as IPv4's downstream address is, except DNS on port 53,
+    /// which only gateway DNS interception may answer, as IPv4's gateway DNS denial keeps it. The
+    /// group carries its own gateway transparent-socket ACCEPT above the port 53 REJECTs, so
+    /// intercepted DNS stays accepted wherever the group lands. Listed bottom-up, in insertion
+    /// order.
+    fn gateway_input_rules(config: &SessionConfig, ipv6_nat: &Ipv6NatConfig) -> RoutingMutation {
+        let rule = |match_args: &[&str]| {
+            IptablesRule::new(
+                IptablesTarget::Ipv6,
+                "filter",
+                "vpnhotspot_v6_input",
+                [
+                    "-i".to_owned(),
+                    config.downstream.clone(),
+                    "-d".to_owned(),
+                    format!("{}/128", ipv6_nat.gateway.address()),
+                ]
+                .into_iter()
+                .chain(match_args.iter().map(|arg| (*arg).to_owned()))
+                .collect(),
+            )
+        };
+        RoutingMutation::IptablesGroup(vec![
+            rule(&["-j", "RETURN"]),
+            rule(&["-p", "udp", "--dport", "53", "-j", "REJECT"]),
+            rule(&[
+                "-p",
+                "tcp",
+                "--dport",
+                "53",
+                "-j",
+                "REJECT",
+                "--reject-with",
+                "tcp-reset",
+            ]),
+            rule(&["-m", "socket", "--transparent", "-j", "ACCEPT"]),
+        ])
     }
 
     pub(super) fn input_filter_rules(config: &SessionConfig) -> [IptablesRule; 3] {

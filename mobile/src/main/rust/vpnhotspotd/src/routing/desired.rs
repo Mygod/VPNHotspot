@@ -276,6 +276,7 @@ impl Runtime {
                 ipv6_nat,
                 ports,
                 intercept_mode,
+                self.local_addresses(),
             );
         }
         let mut client_ip_v4 = Vec::new();

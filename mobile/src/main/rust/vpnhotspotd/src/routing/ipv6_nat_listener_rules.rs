@@ -1,4 +1,5 @@
 use crate::firewall::IptablesTarget;
+use vpnhotspotd::shared::local_ipv6::SPECIAL_DESTINATIONS;
 use vpnhotspotd::shared::model::{
     mac_string, Ipv6NatConfig, Ipv6NatPorts, SessionConfig, DAEMON_INTERCEPT_FWMARK_MASK,
     DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_TPROXY_ADDRESS,
@@ -159,15 +160,12 @@ impl Ipv6NatFirewall {
     }
 
     fn local_special_destinations(ipv6_nat: &Ipv6NatConfig) -> Vec<String> {
-        vec![
-            format!(
-                "{}/{}",
-                ipv6_nat.gateway.first_address(),
-                ipv6_nat.gateway.network_length()
-            ),
-            "fe80::/10".to_owned(),
-            "ff00::/8".to_owned(),
-            "::/127".to_owned(),
-        ]
+        std::iter::once((
+            ipv6_nat.gateway.first_address(),
+            ipv6_nat.gateway.network_length(),
+        ))
+        .chain(SPECIAL_DESTINATIONS)
+        .map(|(address, prefix_len)| format!("{address}/{prefix_len}"))
+        .collect()
     }
 }

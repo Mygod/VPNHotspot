@@ -12,6 +12,7 @@ mod iptables;
 mod ipv6_nat_firewall;
 mod ipv6_nat_intercept;
 mod ipv6_nat_listener_rules;
+mod local_ipv6;
 mod ndc;
 mod netlink_commands;
 mod static_addresses;
@@ -21,6 +22,7 @@ use iptables::{
 };
 use ipv6_nat_firewall::Ipv6NatFirewall;
 use ipv6_nat_intercept::Ipv6NatInterceptMode;
+use local_ipv6::LocalIpv6;
 use ndc::{add_ip_forward, remove_ip_forward, run_ndc};
 use netlink_commands::{delete_rule_repeated, IpCommand, IpFamily};
 use static_addresses::clean_ip;
@@ -47,6 +49,19 @@ enum RoutingMutation {
         chain: &'static str,
     },
     Iptables(IptablesRule),
+    /// A NAT66 phone address's input return and interception return, kept as one mutation so the
+    /// interception return never stands without the input return that keeps the downstream
+    /// `REJECT` off the same address.
+    LocalAddressReturn {
+        input: IptablesRule,
+        intercept: IptablesRule,
+    },
+    /// Rules of one table that are only correct in their relative order, listed bottom-up in
+    /// insertion order. One restore inserts them all or none, and each `-I` lands at position 1, so
+    /// they end up together at the chain head, top-down in reverse of the list, whenever they are
+    /// applied. Deletion follows the list, bottom-up, so every remaining rule keeps the rules
+    /// above it that guard it.
+    IptablesGroup(Vec<IptablesRule>),
     IpForward {
         downstream: String,
     },
@@ -71,6 +86,28 @@ impl RoutingMutation {
             Self::Iptables(rule) => {
                 apply_iptables_batch(rule.target, rule.table, std::slice::from_ref(rule)).await
             }
+            Self::LocalAddressReturn { input, intercept } => {
+                apply_iptables_batch(input.target, input.table, std::slice::from_ref(input))
+                    .await?;
+                let result = apply_iptables_batch(
+                    intercept.target,
+                    intercept.table,
+                    std::slice::from_ref(intercept),
+                )
+                .await;
+                // Unrecorded, the input return would be inserted again on retry; removing it keeps
+                // the pair all-or-nothing. A failed removal is reported and leaves only an input
+                // return, which at most lets that address skip the downstream REJECT, until Clean
+                // flushes the chain.
+                if result.is_err() {
+                    input.delete().await;
+                }
+                result
+            }
+            Self::IptablesGroup(rules) => match rules.first() {
+                Some(first) => apply_iptables_batch(first.target, first.table, rules).await,
+                None => Ok(()),
+            },
             Self::IpForward { downstream } => add_ip_forward(downstream).await,
             Self::Ip(command) => command.apply(connection).await,
             Self::NetdNat {
@@ -87,6 +124,20 @@ impl RoutingMutation {
         match self {
             Self::EnsureIptablesChain { .. } => true,
             Self::Iptables(rule) => rule.delete().await,
+            // The input return goes only after the interception return, and the pair stays applied
+            // until both deletions succeed, so a retry repeats whichever half remains.
+            Self::LocalAddressReturn { input, intercept } => {
+                intercept.delete().await && input.delete().await
+            }
+            // Stops at the first failure and stays applied, so a retry repeats from there.
+            Self::IptablesGroup(rules) => {
+                for rule in rules {
+                    if !rule.delete().await {
+                        return false;
+                    }
+                }
+                true
+            }
             Self::IpForward { downstream } => remove_ip_forward(downstream).await,
             Self::Ip(command) => command.delete_result(connection).await,
             // Revert is intentionally omitted because netd tracks forwarding state globally by
@@ -106,6 +157,7 @@ pub(crate) struct Runtime {
     ports: SessionPorts,
     downstream_ipv4: DownstreamIpv4,
     ipv6_nat_intercept_mode: Option<Ipv6NatInterceptMode>,
+    local_ipv6: Option<LocalIpv6>,
     applied: Vec<RoutingMutation>,
     connection: netlink::RequestConnection,
 }
@@ -123,9 +175,16 @@ impl Runtime {
             ports,
             downstream_ipv4,
             ipv6_nat_intercept_mode: None,
+            local_ipv6: None,
             applied: Vec::new(),
             connection,
         };
+        // Only a session that starts with NAT66 can intercept IPv6, because replacement never
+        // enables NAT66 for a session that started without it.
+        if config.ipv6_nat.is_some() {
+            runtime.local_ipv6 =
+                LocalIpv6::watch(&mut runtime.connection, &config.downstream).await;
+        }
         let desired = runtime.desired_mutations(config).await;
         runtime.reconcile(desired).await;
         let committed = runtime.reconcile_committed_ports(config).await;
@@ -147,6 +206,9 @@ impl Runtime {
         }
         self.downstream_ipv4 = downstream_ipv4;
         self.ports = ports;
+        if next.ipv6_nat.is_none() {
+            self.local_ipv6 = None;
+        }
         self.reset_changed_ipv4_counter_rules(previous, next).await;
         let desired = self.desired_mutations(next).await;
         self.reconcile(desired).await;

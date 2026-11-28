@@ -199,6 +199,17 @@ impl Session {
         Ok(())
     }
 
+    /// Waits for a phone IPv6 address notification. Cancel-safe; the session owner applies it with
+    /// [`Self::refresh_local_ipv6`] once the wait has won its race against commands.
+    pub(crate) async fn local_ipv6_changed(&mut self) -> io::Result<()> {
+        self.routing.local_ipv6_changed().await
+    }
+
+    pub(crate) async fn refresh_local_ipv6(&mut self, changed: io::Result<()>) {
+        let config = self.config.lock().await.clone();
+        self.routing.refresh_local_ipv6(&config, changed).await;
+    }
+
     pub(crate) async fn config_snapshot(&self) -> SessionConfig {
         self.config.lock().await.clone()
     }

@@ -37,8 +37,9 @@ connection for the session lifetime; one-shot commands open their own.
 When the kernel drops notifications because an event socket's receive buffer is
 full, the receive fails with `ENOBUFS` and netlink-proto delivers a synthetic
 `NLMSG_OVERRUN`. Consumers treat it as a change of unknown scope, because the lost
-notifications are gone. The downstream IPv4 wait and the RA loop already re-query
-on any event, and the neighbour monitor sends a replacing snapshot (see below).
+notifications are gone. The downstream IPv4 wait, the RA loop, and routing's
+phone-address following already re-query on any event, and the neighbour
+monitor sends a replacing snapshot (see below).
 
 The daemon does not listen for arbitrary clients. The app-side controller owns
 the listening socket and accepts only a peer whose Unix socket credentials have
@@ -109,7 +110,13 @@ constructs the session in this order:
 4. Transfer the startup request connection into routing beside its applied
    mutation ledger and reconcile the staged DNS and NAT66 capabilities. Routing
    applies each mutation best effort and reports setup failures without rolling
-   back unrelated successful mutations.
+   back unrelated successful mutations. When the config requests NAT66, routing
+   first subscribes to IPv6-address notifications and dumps the phone's
+   addresses for its
+   [phone address returns](routing.md#nat66-phone-address-returns). Either
+   failure is a structured nonfatal. A failed subscription leaves those returns
+   out; a failed dump starts from an empty set that the next notification
+   refills.
 5. Publish only capabilities whose daemon resource and routing rule both
    committed. Staged per-MAC resources whose routing rules failed are cancelled
    before the ACK. If clients are present and routing commits no NAT66 TCP or
@@ -152,6 +159,9 @@ downstream interface is immutable; replacing it is rejected because routing and
 session ownership are keyed to that interface. Replacement is ordered through
 the session-control command loop, so it cannot interleave with traffic-counter
 reads or session stop. It reuses routing's session-owned request connection.
+The same loop also waits for routing's IPv6-address notifications and refreshes
+the phone address returns between commands, so a refresh never interleaves with
+replacement or stop either.
 
 Inside that ordered replacement, the session holds its config mutex as a commit
 gate for DNS and NAT66 readers:

@@ -36,7 +36,8 @@ session config across awaits.
 
 ICMP registration uses the session routing request connection before routing
 takes ownership. The RA task owns separate request and IPv6-address event
-connections.
+connections. Routing follows the phone's IPv6 addresses through its own event
+connection to keep local destinations out of interception.
 
 ## Ownership Levels
 
@@ -114,16 +115,29 @@ that MAC/protocol capability.
 
 The mangle path returns local-link ICMPv6 control traffic first. Downstream
 gateway DNS goes through `vpnhotspot_acl`, then admitted gateway DNS reaches
-protocol-specific handling. Other local or special destinations return before
-the generic upstream ACL/proxy path. The remaining upstream path gates through
-`vpnhotspot_acl`, then applies per-MAC TCP/UDP TPROXY or ICMPv6 NFQUEUE
+protocol-specific handling. Other local or special destinations, including
+every address the phone currently has on any interface, return before the
+generic upstream ACL/proxy path. Of these, the NAT66 gateway and the phone
+addresses outside the gateway prefix and the link-local, multicast,
+unspecified, and loopback prefixes also return from the base input reject, so
+the kernel delivers them to local sockets under Android's usual local-delivery
+rules (see [NAT66 Filter Rules](routing.md#nat66-filter-rules) and
+[NAT66 Phone Address Returns](routing.md#nat66-phone-address-returns)). Phone
+services are therefore reachable at the gateway, as they are at the IPv4
+downstream address, including from blocked MACs. Gateway port 53 stays reserved
+for DNS interception, which the ACL gates: DNS that reaches the gateway without
+interception, such as UDP when only TCP listeners committed, is rejected, as
+the IPv4 gateway DNS denial does. Non-ICMPv6 input to link-local
+addresses still hits the base input reject. The remaining upstream path gates
+through `vpnhotspot_acl`, then applies per-MAC TCP/UDP TPROXY or ICMPv6 NFQUEUE
 handling. Client allow rules return from the ACL chain; the base ACL rule drops
 what remains. Blocked or unknown MACs never reach daemon-owned DNS, TCP/UDP
 upstream TPROXY, or ICMPv6 NFQUEUE handling. TCP and UDP listeners bind to
 `::1` and routing uses `--on-ip ::1`, so NAT66 listener ports are internal
 TPROXY endpoints. Direct connections to those ports on local or special
-downstream destinations do not reach the listener and fall through the base
-input reject path.
+downstream destinations do not reach the listener: no socket lookup for
+another destination matches the `::1` bind, and special destinations also fall
+through the base input reject path.
 
 ## TCP
 
@@ -234,6 +248,25 @@ create a second exact bind while the original socket is still live. Host- or
 network-unreachable downstream reply sends are treated as client reachability
 churn and logged. Reply socket acquisition and other unexpected send failures
 remain structured nonfatals.
+
+Downstream traffic to a phone address that has
+[phone address returns](routing.md#nat66-phone-address-returns), meaning one
+outside the session's gateway prefix and the link-local, multicast,
+unspecified, and loopback prefixes, is not proxied, so it never needs a reply
+socket: routing returns it before interception and the kernel delivers it to
+the local app under Android's usual local-delivery rules, and the app replies
+from its own socket. Non-DNS traffic to the gateway is never proxied either.
+That removes the exact-bind collision with a local app holding the destination
+port, which made `reply_socket_stage=acquire_socket` fail with `EADDRINUSE`.
+Gateway DNS on port 53 is still intercepted and still answers through an exact
+gateway reply socket. The acquisition report stays, because that gateway socket, or a remote
+destination whose port a local app holds on the wildcard address, can still
+collide. Those local-delivery rules can drop the packet before an app covered
+by a VPN receives it, or send that app's UDP reply into the tunnel; see the
+routing document. A UDP service bound to `[::]` without `IPV6_PKTINFO` also
+replies from the gateway address, because netd enables `use_oif_addrs_only`,
+so clients should reach phone UDP services at the gateway, as IPv4 clients do
+at the downstream address.
 
 UDP hop-limit behavior is part of the NAT66 contract. Missing hop-limit
 metadata is reported and the datagram is dropped. Expired hop limit produces a

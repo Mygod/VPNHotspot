@@ -13,7 +13,7 @@ use rtnetlink::{
         neighbour::NeighbourMessage,
         route::RouteMessage,
         rule::RuleMessage,
-        RouteNetlinkMessage,
+        AddressFamily, RouteNetlinkMessage,
     },
     sys::SocketAddr,
     IpVersion, MulticastGroup,
@@ -54,6 +54,12 @@ impl RequestConnection {
             .try_collect()
             .await
             .map_err(to_io_error)
+    }
+
+    pub(crate) async fn dump_ipv6_addresses(&mut self) -> io::Result<Vec<AddressMessage>> {
+        let mut request = self.inner.address().get();
+        request.message_mut().header.family = AddressFamily::Inet6;
+        request.execute().try_collect().await.map_err(to_io_error)
     }
 
     pub(crate) async fn dump_neighbours(&mut self) -> io::Result<Vec<NeighbourMessage>> {

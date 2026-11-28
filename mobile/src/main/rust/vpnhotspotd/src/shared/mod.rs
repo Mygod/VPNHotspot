@@ -6,6 +6,7 @@ pub mod icmp_quote;
 pub mod icmp_wire;
 pub mod ipsec;
 pub mod ipv4_forward_counter;
+pub mod local_ipv6;
 pub mod model;
 pub mod nat66_counter;
 pub mod nonfatal;
