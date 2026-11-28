@@ -181,9 +181,10 @@ happens when the replacement removes the last client with a committed NAT66
 TCP/UDP capability while the remaining clients still have none. The stopped
 store takes its unread counts with it: the removed clients' final NAT66
 counters, and the ICMP Echo counts of remaining clients that never had a
-committed listener. Kotlin reads counters just before every replacement that removes a
-client, so only counts from the milliseconds between that read and the
-replacement are lost.
+committed listener. Kotlin reads counters before every replacement that removes
+a client, so the loss is what NAT66 counted between Kotlin's read before the
+replacement and the daemon applying it. Those are separate steps, including the
+replacement's IPC round trip, and nothing bounds the interval between them.
 
 When the next client set is empty, replacement publishes no NAT66 routing
 capabilities. Existing NAT66 runtime state may stay alive only to preserve

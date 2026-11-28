@@ -407,9 +407,11 @@ removes the last MAC with a committed TCP/UDP capability while the remaining
 MACs still have none, because routing then commits no NAT66 TCP/UDP capability
 and the session stops NAT66. Such a replacement drops the removed MACs' unread
 final counters and the unread ICMP Echo counters of remaining MACs that never
-had a committed listener. Kotlin reads counters just before every replacement that removes
-a MAC, so the loss covers only the milliseconds between that read and the
-replacement.
+had a committed listener. Kotlin reads counters before every replacement that
+removes a MAC, so the loss covers what NAT66 counted between Kotlin's read
+before the replacement and the daemon applying it. Those are separate steps,
+including the replacement's IPC round trip, and nothing bounds the interval
+between them.
 
 Reply sockets are process-owned file descriptors rather than routing or
 firewall mutations. Session stop releases listener anchors and association
