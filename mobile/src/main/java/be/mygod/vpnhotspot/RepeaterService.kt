@@ -300,6 +300,12 @@ class RepeaterService : Service(), CoroutineScope {
      * the persisted starter could still bring back what the user stopped.
      */
     private var bootStarterDeletion: Job? = null
+    /**
+     * A teardown's removal of its group, which losing the P2P channel it goes through cancels: no answer can arrive
+     * over a lost channel, its pending listeners included. Destroying the service only abandons its wait for the group
+     * to go away, never the removal command.
+     */
+    private var groupRemoval: Job? = null
 
     private fun updateGroup(value: WifiP2pGroup?) {
         group.value = value
@@ -330,6 +336,7 @@ class RepeaterService : Service(), CoroutineScope {
             channel = p2pManager.initialize(app, Looper.getMainLooper()) {
                 ref.get()?.apply {
                     stop()
+                    groupRemoval?.cancel()
                     initializeChannel()
                 }
             }
@@ -479,64 +486,94 @@ class RepeaterService : Service(), CoroutineScope {
             try {
                 withContext(NonCancellable) { routing?.stop() }
             } finally {
-                withContext(NonCancellable) {
-                    val group = try {
-                        p2pManager.requestGroupInfo(channel)
-                    } catch (e: Exception) {
-                        Timber.w(e)
-                        return@withContext
-                    }
-                    if (group?.isGroupOwner != true) return@withContext // nothing of ours left to remove
-                    // removeGroup succeeds as soon as wpa_supplicant accepts the removal: the framework then sits in
-                    // OngoingGroupRemovalState, refusing CREATE_GROUP with BUSY, and still reports this group until
-                    // P2P_GROUP_REMOVED moves it out of GroupCreatedState, whose exit broadcasts the connection change
-                    // with groupFormed cleared. A successor must not adopt or recreate a group before that, so the
-                    // lifespan waits for it; the broadcast is not sticky, hence registering before asking.
-                    // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#990
-                    // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2679
-                    // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2836
-                    // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#3002
-                    // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2268
-                    // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#5627
-                    // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#5899
-                    // Wi-Fi P2P turning unavailable is no sign of that: WIFI_P2P_STATE_CHANGED_ACTION reports whether
-                    // P2P is available (Wi-Fi going off says so at once), while GroupCreatedState, this group's state
-                    // until P2P_GROUP_REMOVED, turns the resulting DISABLE_P2P into one more REMOVE_GROUP and defers
-                    // it, so this group still goes, with its connection broadcast, before P2P is torn down.
-                    // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2721
-                    // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-13.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#1093
-                    // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#5667
-                    // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#6096
-                    val removed = CompletableDeferred<Unit>()
-                    val receiver = broadcastReceiver { _, intent ->
-                        if (intent.getParcelableExtra<WifiP2pInfo>(WifiP2pManager.EXTRA_WIFI_P2P_INFO)?.groupFormed
-                                != true) removed.complete(Unit)
-                    }
-                    // on the application context, as this teardown can outlive the service and its receivers
-                    app.registerReceiver(receiver, intentFilter(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
-                    try {
-                        val reason = p2pManager.removeGroup(channel)
-                        // with no timeout, a wedged framework keeps this teardown fenced: only destroying the service,
-                        // which cancels its scope, abandons the wait
-                        if (reason == null) this@RepeaterService.launch {
-                            // API 30-32 send the broadcast only to NETWORK_SETTINGS holders while Location is off, so
-                            // poll there at serving's cadence until the group is no longer formed, whatever Location
-                            // does meanwhile: a removal broadcast while it was off is missed for good
-                            // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-11.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#160
-                            // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-11.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#3095
-                            val poll = if (Build.VERSION.SDK_INT in 30 until 33) launch {
-                                while (p2pManager.requestConnectionInfo(channel)?.groupFormed == true) delay(1.seconds)
-                                removed.complete(Unit)
-                            } else null
-                            removed.await()
-                            poll?.cancel()
-                        }.join() else if (reason != WifiP2pManager.BUSY) {   // BUSY means it is already going away
-                            dismissIfApplicable()
-                            SmartSnackbar.make(formatReason(R.string.repeater_remove_group_failure, reason)).show()
+                // Every step of the removal goes through [channel], and a lost channel answers nothing any more, its
+                // pending listeners included: the removal runs as [groupRemoval], which losing the channel cancels. A
+                // channel already lost leaves nothing to remove the group with. Joined explicitly: a scope that is
+                // left to wait for its child resumes this cancelled lifespan with a CancellationException, which
+                // would replace a StartFailure on its way out.
+                if (this.channel === channel) try {
+                    withContext(NonCancellable) {
+                        val removal = launch {
+                            val group = try {
+                                p2pManager.requestGroupInfo(channel)
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                Timber.w(e)
+                                return@launch
+                            }
+                            if (group?.isGroupOwner != true) return@launch // nothing of ours left to remove
+                            // removeGroup succeeds as soon as wpa_supplicant accepts the removal: the framework then
+                            // sits in OngoingGroupRemovalState, refusing CREATE_GROUP with BUSY, and still reports this
+                            // group until P2P_GROUP_REMOVED moves it out of GroupCreatedState, whose exit broadcasts
+                            // the connection change with groupFormed cleared. A successor must not adopt or recreate a
+                            // group before that, so the lifespan waits for it; the broadcast is not sticky, hence
+                            // registering before asking.
+                            // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#990
+                            // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2679
+                            // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2836
+                            // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#3002
+                            // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2268
+                            // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#5627
+                            // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#5899
+                            // Wi-Fi P2P turning unavailable is no sign of that: WIFI_P2P_STATE_CHANGED_ACTION reports
+                            // whether P2P is available (Wi-Fi going off says so at once), while GroupCreatedState, this
+                            // group's state until P2P_GROUP_REMOVED, turns the resulting DISABLE_P2P into one more
+                            // REMOVE_GROUP and defers it, so this group still goes, with its connection broadcast,
+                            // before P2P is torn down.
+                            // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-10.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#2721
+                            // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-13.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#1093
+                            // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#5667
+                            // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#6096
+                            val removed = CompletableDeferred<Unit>()
+                            val receiver = broadcastReceiver { _, intent ->
+                                if (intent.getParcelableExtra<WifiP2pInfo>(
+                                        WifiP2pManager.EXTRA_WIFI_P2P_INFO)?.groupFormed != true) removed.complete(Unit)
+                            }
+                            // on the application context, as this teardown can outlive the service and its receivers
+                            app.registerReceiver(receiver,
+                                intentFilter(WifiP2pManager.WIFI_P2P_CONNECTION_CHANGED_ACTION))
+                            try {
+                                val reason = p2pManager.removeGroup(channel)
+                                // With no timeout, a wedged framework keeps this teardown fenced: only losing the
+                                // channel or destroying the service abandons the wait, which runs in the service's
+                                // scope for the latter, and is already over once the service is gone.
+                                if (reason == null) {
+                                    val wait = this@RepeaterService.launch {
+                                        // API 30-32 send the broadcast only to NETWORK_SETTINGS holders while Location
+                                        // is off, so poll there at serving's cadence until the group is no longer
+                                        // formed, whatever Location does meanwhile: a removal broadcast while it was
+                                        // off is missed for good
+                                        // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-11.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#160
+                                        // https://android.googlesource.com/platform/frameworks/opt/net/wifi/+/android-11.0.0_r1/service/java/com/android/server/wifi/p2p/WifiP2pServiceImpl.java#3095
+                                        val poll = if (Build.VERSION.SDK_INT in 30 until 33) launch {
+                                            while (p2pManager.requestConnectionInfo(channel)?.groupFormed == true) {
+                                                delay(1.seconds)
+                                            }
+                                            removed.complete(Unit)
+                                        } else null
+                                        removed.await()
+                                        poll?.cancel()
+                                    }
+                                    try {
+                                        wait.join()
+                                    } finally {
+                                        wait.cancel()
+                                    }
+                                } else if (reason != WifiP2pManager.BUSY) {   // BUSY means it is already going away
+                                    dismissIfApplicable()
+                                    SmartSnackbar.make(
+                                        formatReason(R.string.repeater_remove_group_failure, reason)).show()
+                                }
+                            } finally {
+                                app.ensureReceiverUnregistered(receiver)
+                            }
                         }
-                    } finally {
-                        app.ensureReceiverUnregistered(receiver)
+                        groupRemoval = removal
+                        removal.join()
                     }
+                } finally {
+                    groupRemoval = null
                 }
             }
         }
@@ -742,7 +779,7 @@ class RepeaterService : Service(), CoroutineScope {
         ServiceNotification.stopForeground(this)
         // Cancel the live lifespan; its settle() closes the P2P channel once its own teardown finishes. With nothing
         // running, do that wind-down here instead. Ending the scope cancels the lifespan, and also abandons a
-        // teardown's wait for its group to go away, which only this may do.
+        // teardown's wait for its group to go away, which only this or losing the channel may do.
         if (session == null) try {
             channel?.close()
         } finally {
