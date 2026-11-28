@@ -437,7 +437,27 @@ object WifiApManager {
      * This is the only way to unregister requests besides app exiting.
      * Therefore, we are happy with crashing the app if reflection fails.
      */
-    fun cancelLocalOnlyHotspotRequest() = cancelLocalOnlyHotspotRequest(Services.wifi)
+    fun cancelLocalOnlyHotspotRequest(wifi: WifiManager) {
+        cancelLocalOnlyHotspotRequest.invoke(wifi)
+    }
+    /**
+     * A WifiManager of its own for one LOHS request: close() on a reservation, and its finalizer, stop whichever
+     * request the manager's callback proxy holds, and that proxy is a field of the manager. getSystemService caches
+     * managers per ContextImpl, and these contexts are new ContextImpls, so each request gets its own manager and
+     * proxy, and only that manager can cancel a request it left outstanding.
+     * https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/app/ContextImpl.java#2232
+     * https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/core/java/android/app/ContextImpl.java#2438
+     * https://android.googlesource.com/platform/frameworks/base/+/android-17.0.0_r1/core/java/android/app/ContextImpl.java#3258
+     * https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/app/SystemServiceRegistry.java#718
+     * https://android.googlesource.com/platform/frameworks/base/+/android-17.0.0_r1/core/java/android/app/SystemServiceRegistry.java#2639
+     * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/framework/java/android/net/wifi/WifiFrameworkInitializer.java#50
+     * https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/wifi/java/android/net/wifi/WifiManager.java#1134
+     * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/framework/java/android/net/wifi/WifiManager.java#2186
+     * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/framework/java/android/net/wifi/WifiManager.java#6437
+     */
+    fun newLocalOnlyHotspotManager(): WifiManager = (if (Build.VERSION.SDK_INT >= 30) {
+        Services.context.createAttributionContext(Services.context.attributionTag)
+    } else Services.context.createConfigurationContext(Configuration())).getSystemService(WifiManager::class.java)
     /**
      * One LOHS request as a flow, completing after onStopped/onFailed. Its cleanup closes the request even then, when
      * the service has already dropped every request
@@ -454,31 +474,17 @@ object WifiApManager {
      * https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/service/java/com/android/server/wifi/WifiServiceImpl.java#3464).
      * Closing here keeps it within the request's lifetime, which the root backend's caller waits out. A reservation
      * whose onStarted arrives once the flow has closed (a stop racing the one-way callback) misses that cleanup, so it
-     * is closed on arrival instead, on the request's own WifiManager (see below), whose proxy that cleanup already
-     * cleared, so it cannot reach a successor's request.
+     * is closed on arrival instead, on the request's own WifiManager ([newLocalOnlyHotspotManager]), whose proxy that
+     * cleanup already cleared, so it cannot reach a successor's request.
      */
     private fun localOnlyHotspotFlow(
+        wifi: WifiManager,
         nullReservationReason: Int,
-        start: (WifiManager, WifiManager.LocalOnlyHotspotCallback) -> Unit,
+        start: (WifiManager.LocalOnlyHotspotCallback) -> Unit,
     ) = binderCallbackFlow("local-only hotspot callback") {
-        // A WifiManager of its own: close() on a reservation, and its finalizer, stop whichever request the manager's
-        // callback proxy holds, and that proxy is a field of the manager. getSystemService caches managers per
-        // ContextImpl, and these contexts are new ContextImpls, so each request gets its own manager and proxy.
-        // https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/app/ContextImpl.java#2232
-        // https://android.googlesource.com/platform/frameworks/base/+/android-11.0.0_r1/core/java/android/app/ContextImpl.java#2438
-        // https://android.googlesource.com/platform/frameworks/base/+/android-17.0.0_r1/core/java/android/app/ContextImpl.java#3258
-        // https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/core/java/android/app/SystemServiceRegistry.java#718
-        // https://android.googlesource.com/platform/frameworks/base/+/android-17.0.0_r1/core/java/android/app/SystemServiceRegistry.java#2639
-        // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/framework/java/android/net/wifi/WifiFrameworkInitializer.java#50
-        // https://android.googlesource.com/platform/frameworks/base/+/android-10.0.0_r1/wifi/java/android/net/wifi/WifiManager.java#1134
-        // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/framework/java/android/net/wifi/WifiManager.java#2186
-        // https://android.googlesource.com/platform/packages/modules/Wifi/+/android-17.0.0_r1/framework/java/android/net/wifi/WifiManager.java#6437
-        val wifi = (if (Build.VERSION.SDK_INT >= 30) {
-            Services.context.createAttributionContext(Services.context.attributionTag)
-        } else Services.context.createConfigurationContext(Configuration())).getSystemService(WifiManager::class.java)
         // set from the callback's thread, taken by whichever of the cleanup or a late onStarted gets to close it
         val reservation = AtomicReference<WifiManager.LocalOnlyHotspotReservation?>()
-        start(wifi, object : WifiManager.LocalOnlyHotspotCallback() {
+        start(object : WifiManager.LocalOnlyHotspotCallback() {
             override fun onStarted(startedReservation: WifiManager.LocalOnlyHotspotReservation?) {
                 if (startedReservation == null) return finish(LocalOnlyHotspotEvent.Failed(nullReservationReason))
                 reservation.set(startedReservation)
@@ -502,16 +508,15 @@ object WifiApManager {
             Executor::class.java, WifiManager.LocalOnlyHotspotCallback::class.java)
     }
     @RequiresApi(30)
-    fun startLocalOnlyHotspotFlow(config: SoftApConfiguration, executor: Executor? = InPlaceExecutor) =
-        localOnlyHotspotFlow(-3) { wifi, callback -> startLocalOnlyHotspot(wifi, config, executor, callback) }
+    fun startLocalOnlyHotspotFlow(config: SoftApConfiguration, executor: Executor? = InPlaceExecutor,
+                                  wifi: WifiManager = newLocalOnlyHotspotManager()) =
+        localOnlyHotspotFlow(wifi, -3) { startLocalOnlyHotspot(wifi, config, executor, it) }
     @SuppressLint("MissingPermission")
-    fun startLocalOnlyHotspotFlow(handler: Handler? = null) =
-        localOnlyHotspotFlow(-2) { wifi, callback -> wifi.startLocalOnlyHotspot(callback, handler) }
+    fun startLocalOnlyHotspotFlow(wifi: WifiManager, handler: Handler? = null) =
+        localOnlyHotspotFlow(wifi, -2) { wifi.startLocalOnlyHotspot(it, handler) }
     @RequiresApi(33)
     @SuppressLint("MissingPermission")
-    fun startLocalOnlyHotspotWithConfigurationFlow(config: SoftApConfiguration,
+    fun startLocalOnlyHotspotWithConfigurationFlow(wifi: WifiManager, config: SoftApConfiguration,
                                                    executor: Executor = InPlaceExecutor) =
-        localOnlyHotspotFlow(-2) { wifi, callback ->
-            wifi.startLocalOnlyHotspotWithConfiguration(config, executor, callback)
-        }
+        localOnlyHotspotFlow(wifi, -2) { wifi.startLocalOnlyHotspotWithConfiguration(config, executor, it) }
 }
