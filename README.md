@@ -209,6 +209,12 @@ Other:
   P2P becoming unavailable does not end that wait, as AOSP still removes the group, with that broadcast, first.
   On API 30..32 AOSP sends that broadcast only to `NETWORK_SETTINGS` holders while Location is off, so there the
   wait also polls `requestConnectionInfo` once a second, whatever Location does, until no group is formed.
+* Each local-only hotspot request uses a `WifiManager` of its own, from a new `createAttributionContext` (API 30+)
+  or `createConfigurationContext` (API 29) context. This assumes, as AOSP does (see
+  `WifiApManager.newLocalOnlyHotspotManager`), that `getSystemService` caches managers per `ContextImpl` and that
+  `WifiManager` keeps its local-only hotspot callback proxy per instance: `LocalOnlyHotspotReservation.close()` and
+  its finalizer stop whichever request that proxy holds, so a reservation arriving after its request was cleaned up
+  would otherwise stop a successor's request.
 * (since API 30) When runtime `TetheringEventCallback.onLocalOnlyInterfacesChanged` is present, AOSP dispatches
   startup tether-state callbacks from one `executor.execute { ... }` block in `onCallbackStarted`,
   and later tether-state updates from one `executor.execute { ... }` block in
