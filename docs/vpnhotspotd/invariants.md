@@ -25,6 +25,9 @@ compatibility or cleanup impact.
   For its immutable daemon reply mark, it owns at most one live socket per exact
   IPv6 source address and port. Associations, per-listener DNS anchors, and DNS
   query tasks hold leases; only the last lease may remove and close the socket.
+  A source whose exact bind found the port in use holds the registry's single
+  send-only raw UDP fallback socket instead; that socket closes with the last
+  such source.
 
 ## Interception
 

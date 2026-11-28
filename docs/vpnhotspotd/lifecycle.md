@@ -24,7 +24,8 @@ bookkeeping:
 - one NAT66 ICMP dispatcher shared by NAT66 sessions and bound to the
   app-owned NFQUEUE number `30000`;
 - one NAT66 UDP reply-socket registry shared by all MAC listeners and sessions,
-  using the process's immutable daemon reply mark;
+  using the process's immutable daemon reply mark, including the raw reply
+  fallback socket while any reply source needs it;
 - a session map keyed by the start-session call ID;
 - one process-wide upstream-interface aggregate for optional IPsec probes;
 - one optional neighbour monitor;
@@ -202,7 +203,7 @@ per-listener DNS anchors release their reply-socket leases during this teardown.
 An overlapping detached DNS task retains its own lease, so session stop or
 replacement cannot close its reply socket prematurely. The process-wide
 registry removes and closes an exact source bind when its last lease is
-released.
+released, and closes the raw reply fallback socket when no source uses it.
 
 When the control connection closes, the daemon cancels active calls, waits for
 call tasks, stops the neighbour monitor, stops all sessions without extra

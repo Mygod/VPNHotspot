@@ -26,12 +26,15 @@ use vpnhotspotd::shared::model::{
 use vpnhotspotd::shared::nat66_counter::{Nat66CounterSource, Nat66Counters};
 
 mod icmp_error;
+mod raw_reply;
 mod reply_socket;
 mod socket_io;
 
 use icmp_error::send_packet_too_big as send_udp_packet_too_big;
 pub(super) use reply_socket::ReplySocketPool;
-use reply_socket::{report_send_response_error, send_response, ReplySocketLease};
+use reply_socket::{
+    report_send_response_error, send_response, ReplySocketLease, SendResponseError,
+};
 use socket_io::{enable_recv_hop_limit, forward_udp_datagram, recv_packet, UdpForwardResult};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -56,6 +59,7 @@ enum UdpAssociationEvent {
 struct AssociationTask {
     key: AssociationKey,
     mac: [u8; 6],
+    downstream: String,
     id: u64,
     socket: Arc<TokioUdpSocket>,
     counters: Nat66Counters,
@@ -151,25 +155,28 @@ pub(crate) fn spawn_loop(
                                     let query = buffer[..size].to_vec();
                                     let reply_socket = match retained_dns.as_ref() {
                                         Some(retained) if retained.source() == destination => {
-                                            retained.try_clone()
+                                            retained.try_clone().map_err(SendResponseError::from)
                                         }
-                                        _ => reply_sockets.lease(destination).and_then(|retained| {
-                                            retained.prepare()?;
-                                            let query = retained.try_clone()?;
-                                            retained_dns = Some(retained);
-                                            Ok(query)
-                                        }),
+                                        _ => reply_sockets
+                                            .lease(destination)
+                                            .map_err(SendResponseError::from)
+                                            .and_then(|retained| {
+                                                retained.prepare()?;
+                                                let query = retained.try_clone()?;
+                                                retained_dns = Some(retained);
+                                                Ok(query)
+                                            }),
                                     };
                                     let reply_socket = match reply_socket {
                                         Ok(socket) => socket,
                                         Err(e) => {
-                                            report::io_with_details(
+                                            report_send_response_error(
                                                 "nat66.dns_udp_reply_socket",
                                                 e,
-                                                [
-                                                    ("client", client.to_string()),
-                                                    ("destination", destination.to_string()),
-                                                ],
+                                                mac,
+                                                client,
+                                                destination,
+                                                &snapshot.downstream,
                                             );
                                             continue;
                                         }
@@ -190,8 +197,10 @@ pub(crate) fn spawn_loop(
                                                         report_send_response_error(
                                                             "nat66.dns_udp_response",
                                                             e,
+                                                            mac,
                                                             client,
                                                             destination,
+                                                            &snapshot.downstream,
                                                         );
                                                     }
                                                 }
@@ -437,6 +446,7 @@ pub(crate) fn spawn_loop(
                                 spawn(AssociationTask {
                                     key,
                                     mac,
+                                    downstream: snapshot.downstream.clone(),
                                     id: association_id,
                                     socket: upstream.clone(),
                                     counters: counters.clone(),
@@ -512,8 +522,10 @@ impl AssociationTask {
                             report_send_response_error(
                                 "nat66.udp_response",
                                 e,
+                                self.mac,
                                 self.key.client,
                                 self.key.destination,
+                                &self.downstream,
                             );
                             break;
                         }

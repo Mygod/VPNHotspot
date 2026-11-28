@@ -1,17 +1,26 @@
 use std::collections::{hash_map::Entry, HashMap};
 use std::io;
 use std::net::{SocketAddr, SocketAddrV6};
-use std::sync::{Arc, Mutex as StdMutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex as StdMutex, MutexGuard, OnceLock, Weak};
 
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::net::UdpSocket as TokioUdpSocket;
 
+use super::raw_reply::RawReplySocket;
 use crate::report;
 use crate::socket::is_udp_reply_unreachable;
+use vpnhotspotd::shared::model::mac_string;
 
 struct ReplySocketEntry {
     source: SocketAddrV6,
-    socket: OnceLock<TokioUdpSocket>,
+    socket: OnceLock<ReplySocket>,
+}
+
+enum ReplySocket {
+    Bound(TokioUdpSocket),
+    /// The exact bind found the source port in use, so replies from this source use the shared raw
+    /// socket.
+    Raw(Arc<RawReplySocket>),
 }
 
 struct ReplySocketEntryState {
@@ -47,7 +56,7 @@ impl ReplySocketLease {
         })
     }
 
-    pub(super) fn prepare(&self) -> io::Result<()> {
+    pub(super) fn prepare(&self) -> Result<(), SendResponseError> {
         self.socket().map(|_| ())
     }
 
@@ -57,12 +66,12 @@ impl ReplySocketLease {
             .expect("reply socket lease entry missing")
     }
 
-    fn socket(&self) -> io::Result<&TokioUdpSocket> {
+    fn socket(&self) -> Result<&ReplySocket, SendResponseError> {
         let entry = self.entry();
         if let Some(socket) = entry.socket.get() {
             return Ok(socket);
         }
-        let state = self.pool.lock_state()?;
+        let mut state = self.pool.lock_state()?;
         state
             .sockets
             .get(&entry.source)
@@ -71,10 +80,38 @@ impl ReplySocketLease {
         if let Some(socket) = entry.socket.get() {
             return Ok(socket);
         }
+        let (socket, in_use) = match create_reply_socket(entry.source, self.pool.mark) {
+            Ok(socket) => (ReplySocket::Bound(socket), None),
+            // Another socket owns this port on the source address or the wildcard, and SO_REUSEADDR
+            // shares a port only when both sockets set it
+            // (https://android.googlesource.com/kernel/common/+/android14-6.1-2024-07_r3/net/ipv4/udp.c#142).
+            Err(e) if e.kind() == io::ErrorKind::AddrInUse => {
+                let raw = match state.raw.upgrade() {
+                    Some(raw) => raw,
+                    None => {
+                        let raw = Arc::new(
+                            RawReplySocket::new(self.pool.mark)
+                                .map_err(SendResponseError::RawSocket)?,
+                        );
+                        state.raw = Arc::downgrade(&raw);
+                        raw
+                    }
+                };
+                (ReplySocket::Raw(raw), Some(e))
+            }
+            Err(e) => return Err(e.into()),
+        };
         entry
             .socket
-            .set(create_reply_socket(entry.source, self.pool.mark)?)
+            .set(socket)
             .map_err(|_| io::Error::other("reply socket already initialized"))?;
+        drop(state);
+        if let Some(e) = in_use {
+            report::stdout!(
+                "nat66 udp reply source {} in use, replying through raw socket: {e}",
+                entry.source
+            );
+        }
         Ok(entry
             .socket
             .get()
@@ -129,6 +166,8 @@ impl Drop for ReplySocketLease {
 #[derive(Default)]
 struct ReplySocketState {
     sockets: HashMap<SocketAddrV6, ReplySocketEntryState>,
+    /// Shared by every entry that fell back to raw replies; it closes with the last such entry.
+    raw: Weak<RawReplySocket>,
 }
 
 pub(crate) struct ReplySocketPool {
@@ -185,29 +224,62 @@ pub(super) async fn send_response(
     target: SocketAddrV6,
     payload: &[u8],
 ) -> Result<(), SendResponseError> {
-    let socket = reply_socket.socket().map_err(SendResponseError::Acquire)?;
-    if let Err(initial) = socket.send_to(payload, SocketAddr::V6(target)).await {
-        socket
-            .send_to(payload, SocketAddr::V6(target))
-            .await
-            .map_err(|error| SendResponseError::Retry { initial, error })?;
+    match reply_socket.socket()? {
+        ReplySocket::Bound(socket) => {
+            if let Err(initial) = socket.send_to(payload, SocketAddr::V6(target)).await {
+                socket
+                    .send_to(payload, SocketAddr::V6(target))
+                    .await
+                    .map_err(|error| SendResponseError::Retry {
+                        stage: "retry_send",
+                        initial,
+                        error,
+                    })?;
+            }
+        }
+        ReplySocket::Raw(socket) => {
+            let source = reply_socket.source();
+            if let Err(initial) = socket.send(source, target, payload).await {
+                socket
+                    .send(source, target, payload)
+                    .await
+                    .map_err(|error| SendResponseError::Retry {
+                        stage: "raw_retry_send",
+                        initial,
+                        error,
+                    })?;
+            }
+        }
     }
     Ok(())
 }
 
 pub(super) enum SendResponseError {
     Acquire(io::Error),
+    RawSocket(io::Error),
     Retry {
+        stage: &'static str,
         initial: io::Error,
         error: io::Error,
     },
+}
+
+impl From<io::Error> for SendResponseError {
+    fn from(error: io::Error) -> Self {
+        Self::Acquire(error)
+    }
 }
 
 impl SendResponseError {
     fn into_report_parts(self) -> (io::Error, Option<io::Error>, &'static str) {
         match self {
             Self::Acquire(error) => (error, None, "acquire_socket"),
-            Self::Retry { initial, error } => (error, Some(initial), "retry_send"),
+            Self::RawSocket(error) => (error, None, "raw_socket"),
+            Self::Retry {
+                stage,
+                initial,
+                error,
+            } => (error, Some(initial), stage),
         }
     }
 }
@@ -216,10 +288,12 @@ impl SendResponseError {
 pub(super) fn report_send_response_error(
     context: &'static str,
     error: SendResponseError,
+    mac: [u8; 6],
     client: SocketAddrV6,
     destination: SocketAddrV6,
+    downstream: &str,
 ) {
-    if let SendResponseError::Retry { initial, error } = &error {
+    if let SendResponseError::Retry { initial, error, .. } = &error {
         if is_udp_reply_unreachable(initial) && is_udp_reply_unreachable(error) {
             report::stderr!(
                 "{context} dropped: client={client} destination={destination} \
@@ -230,8 +304,10 @@ pub(super) fn report_send_response_error(
     }
     let (error, initial, stage) = error.into_report_parts();
     let mut details = vec![
+        ("mac", mac_string(&mac)),
         ("client", client.to_string()),
         ("destination", destination.to_string()),
+        ("downstream", downstream.to_owned()),
         ("reply_socket_stage", stage.to_owned()),
     ];
     if let Some(initial) = initial {

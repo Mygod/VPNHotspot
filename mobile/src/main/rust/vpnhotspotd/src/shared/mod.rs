@@ -12,3 +12,4 @@ pub mod nonfatal;
 pub mod proto;
 pub mod protocol;
 pub mod ra_wire;
+pub mod udp_wire;
