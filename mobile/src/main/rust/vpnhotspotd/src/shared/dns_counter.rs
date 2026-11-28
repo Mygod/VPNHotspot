@@ -33,6 +33,11 @@ impl DnsCounters {
         sent_to_resolver: bool,
         received_from_resolver: bool,
     ) -> io::Result<()> {
+        // A daemon-generated error that never reached the resolver counts nothing, so it must not
+        // start a generation.
+        if !sent_to_resolver && !received_from_resolver {
+            return Ok(());
+        }
         let mut counters = self
             .inner
             .lock()
@@ -188,5 +193,12 @@ mod tests {
         assert_eq!(recreated[0].sent_bytes, 50);
         assert_eq!(recreated[0].received_packets, 1);
         assert_eq!(recreated[0].received_bytes, 60);
+    }
+
+    #[test]
+    fn uncounted_exchange_starts_no_generation() {
+        let counters = DnsCounters::default();
+        counters.add_exchange(MAC, 10, 20, false, false).unwrap();
+        assert!(counters.counters("ncm0", [MAC]).unwrap().is_empty());
     }
 }

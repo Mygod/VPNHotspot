@@ -129,8 +129,9 @@ response side.
 ## Counter Generations
 
 Each daemon counter source has a lifetime, which `TrafficCounter.generation`
-identifies. When it ends, its final counters are delivered once and its Kotlin
-chain ends. A recreated source is a new source with a new chain.
+identifies. When it ends, the first read that still reaches its live store
+delivers its final counters, at most once, and its Kotlin chain ends. A
+recreated source is a new source with a new chain.
 
 DNS and NAT66 counters live in session-scoped stores, the DNS runtime's store and
 the NAT66 runtime's store, rather than in the listener runtimes that feed them,
@@ -154,8 +155,8 @@ or ICMPv6 for NAT66.
 A runtime source that is destroyed and recreated with no read in between keeps
 writing the same pending entry, so nothing resets and its counters stay
 cumulative in one generation. No generation reappears after the read that ended
-it, so its final counters are delivered once, under the generation it already
-had.
+it, so its final counters are delivered at most once, under the generation it
+already had.
 
 IPv4 forwarding counters report generation 0. Their kernel rule pair exists
 exactly while the committed `(MAC, IPv4)` pair does, Kotlin mirrors that pair
@@ -187,9 +188,15 @@ generations of one source never share a chain, even when one read reports both.
 Query aggregation sums terminal rows, so historical totals remain visible
 without attaching reset cumulative counters to old history.
 
-Ended generations are delivered at most once; normal stop, replacement, and
-routing teardown paths must still read counters before destroying daemon-owned
-state.
+Ended generations are delivered at most once. A store dies with its runtime, and
+counts since the preceding read die with it: session stop destroys both stores,
+and a replacement stops the NAT66 runtime and its store when routing commits no
+NAT66 TCP or UDP capability for a non-empty client set. Clients that stay in the
+config keep their committed capabilities, so that NAT66 stop drops prior counts
+only after every previously committed client was removed. Normal stop,
+replacement, and routing teardown paths must still read counters before
+destroying daemon-owned state; Kotlin reads before stopping a session and before
+a replacement that removes clients.
 The control path enqueues counter reads while holding the session control slot.
 Stop and Clean take the same slot before enqueuing stop, so any read that has
 observed the session as active is ordered in the session owner before a later
