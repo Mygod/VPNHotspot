@@ -1,16 +1,24 @@
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::sync::{Arc, Mutex as StdMutex};
 
+use crate::shared::counter_generation::next_counter_generation;
 use crate::shared::proto::daemon;
 
+/// Per-session DNS counters with at most one pending generation per client MAC.
+///
+/// The first counted exchange for a MAC without a pending entry starts a generation. The first
+/// read that finds the MAC without a DNS client runtime reports that generation's final counters
+/// and drops it, so any later exchange for the MAC starts a new generation from zero.
 #[derive(Clone, Default)]
 pub struct DnsCounters {
     inner: Arc<StdMutex<HashMap<[u8; 6], DnsCounter>>>,
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 struct DnsCounter {
+    generation: u64,
     sent_packets: u64,
     sent_bytes: u64,
     received_packets: u64,
@@ -26,11 +34,20 @@ impl DnsCounters {
         sent_to_resolver: bool,
         received_from_resolver: bool,
     ) -> io::Result<()> {
+        // A daemon-generated error that never reached the resolver counts nothing, so it must not
+        // start a generation.
+        if !sent_to_resolver && !received_from_resolver {
+            return Ok(());
+        }
         let mut counters = self
             .inner
             .lock()
             .map_err(|_| io::Error::other("dns counter state poisoned"))?;
-        counters.entry(mac).or_default().add_exchange(
+        let counter = match counters.entry(mac) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => entry.insert(DnsCounter::new()?),
+        };
+        counter.add_exchange(
             query_len,
             response_len,
             sent_to_resolver,
@@ -59,6 +76,16 @@ impl DnsCounters {
 }
 
 impl DnsCounter {
+    fn new() -> io::Result<Self> {
+        Ok(Self {
+            generation: next_counter_generation()?,
+            sent_packets: 0,
+            sent_bytes: 0,
+            received_packets: 0,
+            received_bytes: 0,
+        })
+    }
+
     fn add_exchange(
         &mut self,
         query_len: usize,
@@ -89,6 +116,7 @@ impl DnsCounter {
             sent_bytes: self.sent_bytes,
             received_packets: self.received_packets,
             received_bytes: self.received_bytes,
+            generation: self.generation,
         }
     }
 }
@@ -101,7 +129,7 @@ mod tests {
 
     #[test]
     fn counter_counts_only_resolver_api_sides() {
-        let mut counter = DnsCounter::default();
+        let mut counter = DnsCounter::new().unwrap();
 
         counter.add_exchange(10, 20, false, false);
         assert_eq!(counter.sent_packets, 0);
@@ -143,5 +171,36 @@ mod tests {
 
         assert_eq!(counters.counters("ncm0", []).unwrap().len(), 1);
         assert!(counters.counters("ncm0", []).unwrap().is_empty());
+    }
+
+    #[test]
+    fn retired_generation_reports_final_counters_and_later_exchange_starts_new_generation() {
+        let counters = DnsCounters::default();
+        counters.add_exchange(MAC, 10, 20, true, true).unwrap();
+        let generation = counters.counters("ncm0", [MAC]).unwrap()[0].generation;
+        assert_ne!(generation, 0);
+
+        counters.add_exchange(MAC, 30, 40, true, true).unwrap();
+        let retired = counters.counters("ncm0", []).unwrap();
+        assert_eq!(retired.len(), 1);
+        assert_eq!(retired[0].generation, generation);
+        assert_eq!(retired[0].sent_packets, 2);
+        assert_eq!(retired[0].sent_bytes, 40);
+
+        counters.add_exchange(MAC, 50, 60, true, true).unwrap();
+        let recreated = counters.counters("ncm0", [MAC]).unwrap();
+        assert_eq!(recreated.len(), 1);
+        assert!(recreated[0].generation > generation);
+        assert_eq!(recreated[0].sent_packets, 1);
+        assert_eq!(recreated[0].sent_bytes, 50);
+        assert_eq!(recreated[0].received_packets, 1);
+        assert_eq!(recreated[0].received_bytes, 60);
+    }
+
+    #[test]
+    fn uncounted_exchange_starts_no_generation() {
+        let counters = DnsCounters::default();
+        counters.add_exchange(MAC, 10, 20, false, false).unwrap();
+        assert!(counters.counters("ncm0", [MAC]).unwrap().is_empty());
     }
 }

@@ -158,6 +158,9 @@ impl Ipv4ForwardCounter {
             sent_bytes: sent.bytes,
             received_packets: received.packets,
             received_bytes: received.bytes,
+            // Kotlin registers IPv4 forwarding chains with the committed (MAC, IPv4) pair, and
+            // routing resets these kernel counters only when that pair changes.
+            generation: 0,
         })
     }
 }
@@ -229,6 +232,7 @@ mod tests {
         assert_eq!(proto.sent_bytes, 500);
         assert_eq!(proto.received_packets, 7);
         assert_eq!(proto.received_bytes, 700);
+        assert_eq!(proto.generation, 0);
         assert_eq!(
             proto.source.and_then(|source| source.source),
             Some(daemon::traffic_counter_source::Source::Ipv4ForwardAddress(

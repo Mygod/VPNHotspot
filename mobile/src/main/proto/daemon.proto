@@ -138,6 +138,12 @@ message TrafficCounter {
   uint64 sent_bytes = 5;
   uint64 received_packets = 6;
   uint64 received_bytes = 7;
+  // Lifetime of a daemon-owned DNS or NAT66 counter source, unique across the daemon processes of
+  // one boot. Counters are cumulative within one generation; a new generation for the same mac,
+  // downstream and source counts from zero, and a generation missing from a read has ended. IPv4
+  // forwarding counters report 0 because Kotlin registers their chains with the committed
+  // (MAC, IPv4) pair.
+  uint64 generation = 8;
 }
 
 message TrafficCounterSource {

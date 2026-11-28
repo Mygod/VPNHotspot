@@ -93,8 +93,9 @@ source to the existing persistence shape:
 - daemon-owned DNS or NAT66 source: store `ip = 0.0.0.0` and the reserved source
   marker above.
 
-The structured counter source is the stable active-recorder key. The persisted
-`upstream` marker is only the current no-migration storage representation.
+The structured counter source plus its counter generation is the active-recorder
+key. The persisted `upstream` marker is only the current no-migration storage
+representation; the generation is not persisted.
 Routing keeps the recorder's active client set in sync with allowed MACs, while
 IPv4 neighbour entries only add or remove IPv4 forwarding rows. A client losing
 its IPv4 neighbour therefore loses IPv4 forwarding until ARP returns, but does
@@ -125,23 +126,92 @@ traffic. They are not counted unless a query was actually handed to Android's
 resolver; in that case the sent query side may be counted without a received
 response side.
 
+## Counter Generations
+
+Each daemon counter source has a lifetime, which `TrafficCounter.generation`
+identifies. When it ends, the first read that still reaches its live store
+delivers its final counters, at most once, and its Kotlin chain ends. A
+recreated source is a new source with a new chain.
+
+DNS and NAT66 counters live in session-scoped stores, the DNS runtime's store and
+the NAT66 runtime's store, rather than in the listener runtimes that feed them,
+so the counted lifetime is that of a store entry. Each store keeps at most one
+pending entry per key: the client MAC for DNS, and the client MAC plus TCP, UDP,
+or ICMPv6 for NAT66.
+
+- The first counted unit for a key without a pending entry starts a generation.
+  Generations come from one process-wide counter, described below.
+- Every read reports each pending entry's cumulative counters with its
+  generation.
+- The first read that finds the key without its runtime source reports that
+  generation's final counters and drops the entry. That source is the MAC's DNS
+  client runtime for DNS, the MAC's committed TCP or UDP listener for NAT66 TCP
+  or UDP, and the MAC's committed membership in a session with ICMP Echo for
+  NAT66 ICMPv6.
+- Any later unit for the key starts a new generation from zero. It may come
+  from a recreated runtime, from a task that finished after the read, or from
+  NAT66 gateway DNS for a MAC that currently has no DNS client runtime.
+
+A runtime source that is destroyed and recreated with no read in between keeps
+writing the same pending entry, so nothing resets and its counters stay
+cumulative in one generation. No generation reappears after the read that ended
+it, so its final counters are delivered at most once, under the generation it
+already had.
+
+IPv4 forwarding counters report generation 0. Their kernel rule pair exists
+exactly while the committed `(MAC, IPv4)` pair does, Kotlin mirrors that pair
+with explicit register and unregister calls, and routing resets the rules when
+the address moves to another MAC.
+
+Generations stay unique across the daemon processes of one boot. Kotlin starts
+the daemon on demand, and a daemon can also die unexpectedly, so Kotlin may
+still hold chains from a predecessor when a successor reports counters. The
+process-wide counter therefore takes its base at the first allocation from
+`CLOCK_BOOTTIME` in nanoseconds, which is monotonic system-wide for the whole
+boot, and every allocation then adds one. With allocation `i` made at time
+`t_i`, generation `base + i` is at most `t_0 + i`, which is at most `t_i`,
+because a daemon allocates far fewer than one generation per nanosecond: each
+allocation is the first counted unit of a new store entry. A successor reads
+its base after Kotlin has stopped reading its predecessor, so after every
+predecessor generation that Kotlin saw was allocated, and all successor
+generations are larger. A predecessor that lingers may keep allocating, but
+Kotlin no longer reads it. `CLOCK_BOOTTIME` is far above zero once userspace
+runs, so the reserved generation 0 never comes from the counter. Nanoseconds of
+uptime fit `uint64` for centuries; Kotlin receives them as a signed `Long` bit
+for bit and only compares them for equality.
+
 ## Recorder Chain Boundaries
 
 Traffic records are chained only while Kotlin keeps an active recorder entry for
-the same MAC, downstream interface, and counter source. `previousId` links each
-new cumulative sample to the previous row in that active chain.
+the same MAC, downstream interface, counter source, and generation.
+`previousId` links each new cumulative sample to the previous row in that active
+chain.
 
 Kotlin ends a chain by flushing the latest counters and removing the active
-recorder entry. If the same MAC/downstream/source appears later, the recorder
-starts a new unlinked chain. Query aggregation sums terminal rows, so historical
-totals remain visible without attaching reset cumulative counters to old
-history.
+recorder entry. A daemon-owned chain ends at the first read that omits its
+generation. The read that delivers an ended generation updates the chain with
+the final counters, and the next read drops the chain. An IPv4 forwarding chain
+ends when Kotlin unregisters the address. A new generation, or the same IPv4
+forwarding source registered again, starts a new unlinked chain. Two
+generations of one source never share a chain, even when one read reports both.
+Query aggregation sums terminal rows, so historical totals remain visible
+without attaching reset cumulative counters to old history.
 
-Removed per-MAC runtime sources move their final counters into a retired
-snapshot. A traffic counter read returns active plus retired counters and then
-drops the retired entries. Retired delivery is at-most-once; normal stop,
+Ended generations are delivered at most once. A store dies with its runtime, and
+counts since the preceding read die with it: session stop destroys both stores,
+and a replacement stops the NAT66 runtime and its store when routing commits no
+NAT66 TCP or UDP capability for a non-empty client set. Clients that stay in the
+config keep their committed capabilities, so that NAT66 stop drops prior counts
+only after every previously committed client was removed. Normal stop,
 replacement, and routing teardown paths must still read counters before
-destroying daemon-owned state.
+destroying daemon-owned state; Kotlin reads before a replacement that removes
+clients, and before stopping a session while its routing still has clients.
+What a destroyed store counted between Kotlin's read and the daemon applying the
+stop or replacement is lost; nothing bounds that interval, which includes the
+IPC round trip. After the last MAC leaves, Routing skips its stop-time read and
+polling stops once no recorder entries or clients remain, so a generation that
+late in-flight work starts after the read following that replacement is lost
+when the session stops.
 The control path enqueues counter reads while holding the session control slot.
 Stop and Clean take the same slot before enqueuing stop, so any read that has
 observed the session as active is ordered in the session owner before a later

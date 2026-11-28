@@ -48,7 +48,7 @@ NAT66 state is split by lifetime:
 | Process | `ReplySocketPool` | daemon reply mark, exact UDP reply-source registry, socket leases shared across sessions |
 | Session | `nat66::Runtime` | committed per-MAC TCP/UDP capabilities, optional RA task, ICMP registration, cleanup prefixes, counter store |
 | RA task | `nat66/ra.rs` | IPv6-address event and request connections, raw ICMPv6 receive socket, periodic/suppression state |
-| Client | per-MAC runtime | TCP/UDP listener ports, stop token, active DNS/NAT66 tasks, source-scoped counters |
+| Client | per-MAC runtime | TCP/UDP listener ports, stop token, active DNS/NAT66 tasks; its counters stay in the session counter store until a read ends their generation |
 | Listener | TCP/UDP loops | Accepted TCP connections, UDP association table, per-listener DNS reply-socket anchor |
 | Flow | TCP task, UDP association task, or UDP DNS query task | MAC/downstream accounting context, upstream socket, downstream reply path and reply-socket lease, ICMP error registration where applicable |
 
@@ -397,8 +397,24 @@ NAT66 cleanup has two layers:
   state.
 
 Per-MAC runtime removal cancels that MAC's TCP tasks, UDP associations, Echo
-allocations, and UDP error registrations, then preserves final source counters
-long enough for one structured traffic-counter read.
+allocations, and UDP error registrations. Its source counters stay in the
+runtime's counter store until a structured traffic-counter read finds the source
+inactive, as long as the runtime itself survives; that read reports them as
+final and ends their counter generation. A listener recreated for the MAC after
+that read counts under a new generation. A listener recreated before the next
+read is still active at that read, so its counters continue in the same
+generation.
+
+The runtime and its counter store do not survive a session replacement that
+removes the last MAC with a committed TCP/UDP capability while the remaining
+MACs still have none, because routing then commits no NAT66 TCP/UDP capability
+and the session stops NAT66. Such a replacement drops the removed MACs' unread
+final counters and the unread ICMP Echo counters of remaining MACs that never
+had a committed listener. Kotlin reads counters before every replacement that
+removes a MAC, so the loss covers what NAT66 counted between Kotlin's read
+before the replacement and the daemon applying it. Those are separate steps,
+including the replacement's IPC round trip, and nothing bounds the interval
+between them.
 
 Reply sockets are process-owned file descriptors rather than routing or
 firewall mutations. Session stop releases listener anchors and association

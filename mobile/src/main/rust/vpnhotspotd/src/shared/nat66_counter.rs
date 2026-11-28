@@ -1,7 +1,9 @@
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::sync::{Arc, Mutex as StdMutex};
 
+use crate::shared::counter_generation::next_counter_generation;
 use crate::shared::proto::daemon;
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
@@ -17,13 +19,19 @@ pub struct Nat66CounterKey {
     pub source: Nat66CounterSource,
 }
 
+/// NAT66 counters of one runtime with at most one pending generation per MAC and source.
+///
+/// The first counted unit for a key without a pending entry starts a generation. The first read
+/// that finds the key without its runtime source reports that generation's final counters and
+/// drops it, so any later unit for the key starts a new generation from zero.
 #[derive(Clone, Default)]
 pub struct Nat66Counters {
     inner: Arc<StdMutex<HashMap<Nat66CounterKey, Nat66Counter>>>,
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 struct Nat66Counter {
+    generation: u64,
     sent_packets: u64,
     sent_bytes: u64,
     received_packets: u64,
@@ -109,7 +117,16 @@ impl Nat66Counters {
             .inner
             .lock()
             .map_err(|_| io::Error::other("nat66 counter state poisoned"))?;
-        update(counters.entry(Nat66CounterKey { mac, source }).or_default());
+        update(match counters.entry(Nat66CounterKey { mac, source }) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => entry.insert(Nat66Counter {
+                generation: next_counter_generation()?,
+                sent_packets: 0,
+                sent_bytes: 0,
+                received_packets: 0,
+                received_bytes: 0,
+            }),
+        });
         Ok(())
     }
 }
@@ -138,6 +155,7 @@ impl Nat66Counter {
             sent_bytes: self.sent_bytes,
             received_packets: self.received_packets,
             received_bytes: self.received_bytes,
+            generation: self.generation,
         }
     }
 }
@@ -205,5 +223,67 @@ mod tests {
 
         let second = counters.counters("ncm0", active).unwrap();
         assert_eq!(second.len(), 1);
+    }
+
+    #[test]
+    fn recreated_source_starts_new_generation_while_active_source_keeps_its_own() {
+        let counters = Nat66Counters::default();
+        let tcp = Nat66CounterKey {
+            mac: MAC,
+            source: Nat66CounterSource::Tcp,
+        };
+        let udp = Nat66CounterKey {
+            mac: MAC,
+            source: Nat66CounterSource::Udp,
+        };
+        counters
+            .add_sent_bytes(MAC, Nat66CounterSource::Tcp, 12)
+            .unwrap();
+        counters
+            .add_sent_packet(MAC, Nat66CounterSource::Udp, 34)
+            .unwrap();
+        let first = counters.counters("ncm0", [tcp, udp]).unwrap();
+        let tcp_generation = find(&first, daemon::DaemonTrafficSource::Nat66Tcp).generation;
+        let udp_generation = find(&first, daemon::DaemonTrafficSource::Nat66Udp).generation;
+        assert_ne!(tcp_generation, 0);
+        assert_ne!(tcp_generation, udp_generation);
+
+        counters
+            .add_sent_bytes(MAC, Nat66CounterSource::Tcp, 56)
+            .unwrap();
+        let retired = counters.counters("ncm0", [udp]).unwrap();
+        let retired_tcp = find(&retired, daemon::DaemonTrafficSource::Nat66Tcp);
+        assert_eq!(retired_tcp.generation, tcp_generation);
+        assert_eq!(retired_tcp.sent_bytes, 68);
+
+        counters
+            .add_sent_bytes(MAC, Nat66CounterSource::Tcp, 78)
+            .unwrap();
+        let recreated = counters.counters("ncm0", [tcp, udp]).unwrap();
+        assert_eq!(recreated.len(), 2);
+        let recreated_tcp = find(&recreated, daemon::DaemonTrafficSource::Nat66Tcp);
+        assert!(recreated_tcp.generation > tcp_generation);
+        assert_eq!(recreated_tcp.sent_bytes, 78);
+        let active_udp = find(&recreated, daemon::DaemonTrafficSource::Nat66Udp);
+        assert_eq!(active_udp.generation, udp_generation);
+        assert_eq!(active_udp.sent_bytes, 34);
+    }
+
+    fn find(
+        counters: &[daemon::TrafficCounter],
+        source: daemon::DaemonTrafficSource,
+    ) -> &daemon::TrafficCounter {
+        counters
+            .iter()
+            .find(|counter| {
+                counter
+                    .source
+                    .as_ref()
+                    .and_then(|counter_source| counter_source.source.clone())
+                    == Some(daemon::traffic_counter_source::Source::DaemonSource(
+                        source as i32,
+                    ))
+            })
+            .unwrap()
     }
 }

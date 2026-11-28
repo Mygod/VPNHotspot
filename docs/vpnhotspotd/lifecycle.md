@@ -168,9 +168,25 @@ the matching interception state.
 
 Client changes are MAC-scoped. Replacement stages DNS and NAT66 resources for
 new MAC/protocol capabilities, reconciles routing, publishes only committed
-capabilities, and cancels removed or uncommitted per-MAC resources. Before a MAC
-or counter source is removed, the session exposes its final daemon-owned
-counters through the next traffic-counter read.
+capabilities, and cancels removed or uncommitted per-MAC resources. When a MAC
+or counter source is removed, the session keeps its daemon-owned counters under
+that source's counter generation until a traffic-counter read finds the source
+inactive, as long as the store holding them survives. That read reports them as
+final and ends the generation, and a MAC or capability that counts again after
+it does so under a new generation. A source removed and recreated before the
+next read is still active at that read, so its generation continues; see
+[`traffic.md`](traffic.md#counter-generations).
+
+The NAT66 store does not survive a replacement that stops NAT66 because routing
+committed no NAT66 TCP/UDP capability for the next non-empty client set. That
+happens when the replacement removes the last client with a committed NAT66
+TCP/UDP capability while the remaining clients still have none. The stopped
+store takes its unread counts with it: the removed clients' final NAT66
+counters, and the ICMP Echo counts of remaining clients that never had a
+committed listener. Kotlin reads counters before every replacement that removes
+a client, so the loss is what NAT66 counted between Kotlin's read before the
+replacement and the daemon applying it. Those are separate steps, including the
+replacement's IPC round trip, and nothing bounds the interval between them.
 
 When the next client set is empty, replacement publishes no NAT66 routing
 capabilities. Existing NAT66 runtime state may stay alive only to preserve
