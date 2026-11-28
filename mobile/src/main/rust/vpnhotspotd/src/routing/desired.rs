@@ -8,14 +8,15 @@ use crate::{firewall::IptablesTarget, netlink, report};
 use vpnhotspotd::shared::downstream::DownstreamIpv4;
 use vpnhotspotd::shared::model::{
     mac_string, ClientDnsPorts, ClientIpv6NatPorts, Ipv6NatConfig, Ipv6NatPorts, SessionConfig,
-    SessionPorts, UpstreamConfig, UpstreamRole, ANDROID_ROUTE_TABLE_LOCAL_NETWORK,
-    DAEMON_INTERCEPT_FWMARK_MASK, DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_TABLE,
+    SessionPorts, UpstreamConfig, UpstreamRole, DAEMON_INTERCEPT_FWMARK_MASK,
+    DAEMON_INTERCEPT_FWMARK_VALUE, DAEMON_TABLE,
 };
 use vpnhotspotd::shared::proto::daemon::MasqueradeMode;
 
 use super::iptables::IptablesRule;
 use super::ipv6_nat_firewall::Ipv6NatFirewall;
 use super::ipv6_nat_intercept::Ipv6NatInterceptMode;
+use super::ipv6_nat_routes::push_prefix_routes;
 use super::netlink_commands::{
     IpAddressCommand, IpCommand, IpFamily, IpOperation, IpRouteCommand, IpRuleCommand, RouteType,
     RuleAction,
@@ -196,17 +197,7 @@ impl Runtime {
             .zip(self.ports.ipv6_nat.as_ref())
             .zip(self.ipv6_nat_intercept_mode);
         if let Some(((ipv6_nat, ports), intercept_mode)) = ipv6_nat {
-            push_unique(
-                &mut mutations,
-                RoutingMutation::Ip(IpCommand::Route(IpRouteCommand {
-                    operation: IpOperation::Replace,
-                    route_type: RouteType::Unicast,
-                    destination: IpAddr::V6(ipv6_nat.gateway.first_address()),
-                    prefix_len: ipv6_nat.gateway.network_length(),
-                    interface: config.downstream.clone(),
-                    table: ANDROID_ROUTE_TABLE_LOCAL_NETWORK,
-                })),
-            );
+            push_prefix_routes(&mut mutations, &mut self.connection, config, ipv6_nat).await;
             push_unique(
                 &mut mutations,
                 RoutingMutation::Ip(IpCommand::Address(IpAddressCommand {
