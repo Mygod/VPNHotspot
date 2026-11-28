@@ -50,6 +50,13 @@ enum RoutingMutation {
         chain: &'static str,
     },
     Iptables(IptablesRule),
+    /// A NAT66 phone address's input return and interception return, kept as one mutation so the
+    /// interception return never stands without the input return that keeps the downstream
+    /// `REJECT` off the same address.
+    LocalAddressReturn {
+        input: IptablesRule,
+        intercept: IptablesRule,
+    },
     IpForward {
         downstream: String,
     },
@@ -74,6 +81,24 @@ impl RoutingMutation {
             Self::Iptables(rule) => {
                 apply_iptables_batch(rule.target, rule.table, std::slice::from_ref(rule)).await
             }
+            Self::LocalAddressReturn { input, intercept } => {
+                apply_iptables_batch(input.target, input.table, std::slice::from_ref(input))
+                    .await?;
+                let result = apply_iptables_batch(
+                    intercept.target,
+                    intercept.table,
+                    std::slice::from_ref(intercept),
+                )
+                .await;
+                // Unrecorded, the input return would be inserted again on retry; removing it keeps
+                // the pair all-or-nothing. A failed removal is reported and leaves only an input
+                // return, which at most lets that address skip the downstream REJECT, until Clean
+                // flushes the chain.
+                if result.is_err() {
+                    input.delete().await;
+                }
+                result
+            }
             Self::IpForward { downstream } => add_ip_forward(downstream).await,
             Self::Ip(command) => command.apply(connection).await,
             Self::NetdNat {
@@ -90,6 +115,11 @@ impl RoutingMutation {
         match self {
             Self::EnsureIptablesChain { .. } => true,
             Self::Iptables(rule) => rule.delete().await,
+            // The input return goes only after the interception return, and the pair stays applied
+            // until both deletions succeed, so a retry repeats whichever half remains.
+            Self::LocalAddressReturn { input, intercept } => {
+                intercept.delete().await && input.delete().await
+            }
             Self::IpForward { downstream } => remove_ip_forward(downstream).await,
             Self::Ip(command) => command.delete_result(connection).await,
             // Revert is intentionally omitted because netd tracks forwarding state globally by

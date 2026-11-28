@@ -80,8 +80,8 @@ impl Ipv6NatFirewall {
         }
         // Inserted after the input reject and above the generic ACL gate and protocol jumps; later
         // reconciles insert them at the chain heads, which keeps both properties.
-        for rule in Self::local_address_return_rules(config, ipv6_nat, local_addresses) {
-            push_unique(mutations, RoutingMutation::Iptables(rule));
+        for mutation in Self::local_address_returns(config, ipv6_nat, local_addresses) {
+            push_unique(mutations, mutation);
         }
         for protocol in Self::enabled_listener_protocols(ports) {
             for rule in Self::gateway_dns_prelude_rules(config, ipv6_nat, protocol) {

@@ -111,10 +111,7 @@ impl Runtime {
         let Some(ipv6_nat) = config.ipv6_nat.as_ref() else {
             return;
         };
-        let stale = Ipv6NatFirewall::local_address_return_rules(config, ipv6_nat, &previous)
-            .into_iter()
-            .map(RoutingMutation::Iptables)
-            .collect::<Vec<_>>();
+        let stale = Ipv6NatFirewall::local_address_returns(config, ipv6_nat, &previous);
         let mut desired = self
             .applied
             .iter()
@@ -123,15 +120,11 @@ impl Runtime {
             .collect::<Vec<_>>();
         // The same condition under which `desired_mutations` emits the NAT66 session firewall.
         if self.ports.ipv6_nat.is_some() && self.ipv6_nat_intercept_mode.is_some() {
-            desired.extend(
-                Ipv6NatFirewall::local_address_return_rules(
-                    config,
-                    ipv6_nat,
-                    self.local_addresses(),
-                )
-                .into_iter()
-                .map(RoutingMutation::Iptables),
-            );
+            desired.extend(Ipv6NatFirewall::local_address_returns(
+                config,
+                ipv6_nat,
+                self.local_addresses(),
+            ));
         }
         self.reconcile(desired).await;
     }
@@ -145,17 +138,15 @@ impl Runtime {
 }
 
 impl Ipv6NatFirewall {
-    /// Returns each phone address from both the NAT66 input filter and interception, filter rule
-    /// first. Reconciliation applies them in this order and rolls back in reverse. If only the
-    /// filter return fails to apply, the base input reject refuses that address explicitly until a
-    /// later reconcile retries it; the failure is reported either way.
-    pub(super) fn local_address_return_rules(
+    /// Returns each phone address from both the NAT66 input filter and interception, as one
+    /// [`RoutingMutation::LocalAddressReturn`] per address.
+    pub(super) fn local_address_returns(
         config: &SessionConfig,
         ipv6_nat: &Ipv6NatConfig,
         addresses: &[Ipv6Addr],
-    ) -> Vec<IptablesRule> {
+    ) -> Vec<RoutingMutation> {
         exempt_ipv6_addresses(addresses, ipv6_nat.gateway)
-            .flat_map(|address| {
+            .map(|address| {
                 let args = vec![
                     "-i".to_owned(),
                     config.downstream.clone(),
@@ -164,15 +155,20 @@ impl Ipv6NatFirewall {
                     "-j".to_owned(),
                     "RETURN".to_owned(),
                 ];
-                [
-                    IptablesRule::new(
+                RoutingMutation::LocalAddressReturn {
+                    input: IptablesRule::new(
                         IptablesTarget::Ipv6,
                         "filter",
                         "vpnhotspot_v6_input",
                         args.clone(),
                     ),
-                    IptablesRule::new(IptablesTarget::Ipv6, "mangle", "vpnhotspot_v6_tproxy", args),
-                ]
+                    intercept: IptablesRule::new(
+                        IptablesTarget::Ipv6,
+                        "mangle",
+                        "vpnhotspot_v6_tproxy",
+                        args,
+                    ),
+                }
             })
             .collect()
     }

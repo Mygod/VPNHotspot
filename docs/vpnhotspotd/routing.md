@@ -16,6 +16,7 @@ represents session routing state as `RoutingMutation` values:
 | --- | --- | --- |
 | `EnsureIptablesChain` | `iptables-restore`/`ip6tables-restore` `-N <chain>`; after a nonzero exit, verify the chain with `-L <chain> -n` | no-op; chains are scaffold state |
 | `Iptables` | `iptables-restore`/`ip6tables-restore` `-I <chain> ...` | delete the same rule with `-D <chain> ...` |
+| `LocalAddressReturn` | `ip6tables-restore` `-I` of the filter return, then the mangle return; the filter return is deleted again if the mangle insert fails | delete the mangle return, then the filter return |
 | `IpForward` | `ndc ipfwd enable vpnhotspot_<downstream>`, or `/proc/sys/net/ipv4/ip_forward = 1` fallback | `ndc ipfwd disable vpnhotspot_<downstream>` only |
 | `Ip` | rtnetlink rule, route, or address replace | rtnetlink delete for the same rule, route, or address |
 | `NetdNat` | `ndc nat enable <downstream> <upstream> 0` | no-op; netd has no app-owned token |
@@ -542,8 +543,8 @@ required session-level local/special exclusions, base input filter rules,
 gateway DNS preludes, and matching MAC-scoped listener TPROXY rule all exist.
 If routing fails the rules required for that MAC/protocol, the staged listener
 is cancelled and that MAC/protocol capability is omitted from the committed
-session. Phone address returns are not commit requirements; a missing one only
-leaves that address on the proxied path.
+session. Phone address returns are not commit requirements; a missing pair
+only leaves that address on the proxied path.
 
 ### NAT66 Phone Address Returns
 
@@ -557,6 +558,13 @@ External mutations, for each followed address outside the session's
 
 - `ip6tables -t filter -I vpnhotspot_v6_input -i <downstream> -d <phone-address>/128 -j RETURN`
 - `ip6tables -t mangle -I vpnhotspot_v6_tproxy -i <downstream> -d <phone-address>/128 -j RETURN`
+
+Each address's two rules are one `LocalAddressReturn` mutation, so the mangle
+return never stands without the filter return. Applying inserts the filter
+return, then the mangle return; if the mangle insert fails, it deletes the
+filter return again and leaves the pair unapplied. Deleting removes the mangle
+return, then the filter return, and keeps the pair in the applied list until
+both deletions succeed.
 
 Followed addresses come from an `AF_INET6` `RTM_GETADDR` dump across all
 interfaces, parsed by
@@ -634,11 +642,10 @@ re-resolve upstream interfaces or retry other failed mutations.
 
 Rollback:
 
-- an address that leaves the followed set: delete its `vpnhotspot_v6_tproxy`
-  return, then its `vpnhotspot_v6_input` return;
+- an address that leaves the followed set: delete its pair, the
+  `vpnhotspot_v6_tproxy` return first, then its `vpnhotspot_v6_input` return;
 - replacement that removes the NAT66 session firewall, and session stop: delete
-  with the rest of the applied list, which also removes the mangle return before
-  the filter return.
+  each pair the same way with the rest of the applied list.
 
 Clean:
 
@@ -663,10 +670,14 @@ Failure and missing-state behavior:
   session withdraws every per-address return and stops following, because the
   set could only go stale and a stale return would keep a departed address off
   its upstream path.
-- insert or delete failure: the generic `routing.apply_iptables` or
-  `routing.iptables_delete` nonfatal. A failed insert stays out of the applied
-  list, so the next refresh or replacement retries it. If only the filter return
-  fails, the downstream `REJECT` refuses that address explicitly until then.
+- insert failure: the generic `routing.apply` nonfatal, carrying the failed
+  restore input. The pair stays out of the applied list, so the next refresh or
+  replacement retries it, and the address stays proxied until then. If the
+  filter return's rollback delete also fails, `routing.iptables_delete` reports
+  it, and the leftover filter return at most lets that address skip the
+  downstream `REJECT` until Clean flushes the chain.
+- delete failure: `routing.iptables_delete`. The pair stays applied, and the
+  next reconcile that no longer wants it retries whichever half remains.
 - expected races: rules match only the destination address and interface name,
   so an address that disappears before its rule is installed still gets an
   installable rule, which the deletion notification then removes. A departing
