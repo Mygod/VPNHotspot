@@ -140,7 +140,7 @@ pending entry per key: the client MAC for DNS, and the client MAC plus TCP, UDP,
 or ICMPv6 for NAT66.
 
 - The first counted unit for a key without a pending entry starts a generation.
-  Generations come from one process-wide counter that starts at 1.
+  Generations come from one process-wide counter, described below.
 - Every read reports each pending entry's cumulative counters with its
   generation.
 - The first read that finds the key without its runtime source reports that
@@ -163,13 +163,22 @@ exactly while the committed `(MAC, IPv4)` pair does, Kotlin mirrors that pair
 with explicit register and unregister calls, and routing resets the rules when
 the address moves to another MAC.
 
-Generations are unique within one daemon process and restart with each daemon
-process. Kotlin starts the daemon on demand and stops it when no call is left,
-so a daemon stops or dies only after all of its sessions end. Restarting the
-numbering is safe while Kotlin holds no predecessor chain for a key that the
-successor reports. Revert and Clean remove a downstream's chains for every MAC
-its routing allowed before Kotlin can start another session on that downstream,
-and Kotlin drops any other chain at the first read that omits it.
+Generations stay unique across the daemon processes of one boot. Kotlin starts
+the daemon on demand, and a daemon can also die unexpectedly, so Kotlin may
+still hold chains from a predecessor when a successor reports counters. The
+process-wide counter therefore takes its base at the first allocation from
+`CLOCK_BOOTTIME` in nanoseconds, which is monotonic system-wide for the whole
+boot, and every allocation then adds one. With allocation `i` made at time
+`t_i`, generation `base + i` is at most `t_0 + i`, which is at most `t_i`,
+because a daemon allocates far fewer than one generation per nanosecond: each
+allocation is the first counted unit of a new store entry. A successor reads
+its base after Kotlin has stopped reading its predecessor, so after every
+predecessor generation that Kotlin saw was allocated, and all successor
+generations are larger. A predecessor that lingers may keep allocating, but
+Kotlin no longer reads it. `CLOCK_BOOTTIME` is far above zero once userspace
+runs, so the reserved generation 0 never comes from the counter. Nanoseconds of
+uptime fit `uint64` for centuries; Kotlin receives them as a signed `Long` bit
+for bit and only compares them for equality.
 
 ## Recorder Chain Boundaries
 

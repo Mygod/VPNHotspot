@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::sync::{Arc, Mutex as StdMutex};
@@ -42,15 +43,16 @@ impl DnsCounters {
             .inner
             .lock()
             .map_err(|_| io::Error::other("dns counter state poisoned"))?;
-        counters
-            .entry(mac)
-            .or_insert_with(DnsCounter::new)
-            .add_exchange(
-                query_len,
-                response_len,
-                sent_to_resolver,
-                received_from_resolver,
-            );
+        let counter = match counters.entry(mac) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => entry.insert(DnsCounter::new()?),
+        };
+        counter.add_exchange(
+            query_len,
+            response_len,
+            sent_to_resolver,
+            received_from_resolver,
+        );
         Ok(())
     }
 
@@ -74,14 +76,14 @@ impl DnsCounters {
 }
 
 impl DnsCounter {
-    fn new() -> Self {
-        Self {
-            generation: next_counter_generation(),
+    fn new() -> io::Result<Self> {
+        Ok(Self {
+            generation: next_counter_generation()?,
             sent_packets: 0,
             sent_bytes: 0,
             received_packets: 0,
             received_bytes: 0,
-        }
+        })
     }
 
     fn add_exchange(
@@ -127,7 +129,7 @@ mod tests {
 
     #[test]
     fn counter_counts_only_resolver_api_sides() {
-        let mut counter = DnsCounter::new();
+        let mut counter = DnsCounter::new().unwrap();
 
         counter.add_exchange(10, 20, false, false);
         assert_eq!(counter.sent_packets, 0);

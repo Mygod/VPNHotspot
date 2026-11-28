@@ -1,3 +1,4 @@
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::sync::{Arc, Mutex as StdMutex};
@@ -116,17 +117,16 @@ impl Nat66Counters {
             .inner
             .lock()
             .map_err(|_| io::Error::other("nat66 counter state poisoned"))?;
-        update(
-            counters
-                .entry(Nat66CounterKey { mac, source })
-                .or_insert_with(|| Nat66Counter {
-                    generation: next_counter_generation(),
-                    sent_packets: 0,
-                    sent_bytes: 0,
-                    received_packets: 0,
-                    received_bytes: 0,
-                }),
-        );
+        update(match counters.entry(Nat66CounterKey { mac, source }) {
+            Entry::Occupied(entry) => entry.into_mut(),
+            Entry::Vacant(entry) => entry.insert(Nat66Counter {
+                generation: next_counter_generation()?,
+                sent_packets: 0,
+                sent_bytes: 0,
+                received_packets: 0,
+                received_bytes: 0,
+            }),
+        });
         Ok(())
     }
 }
