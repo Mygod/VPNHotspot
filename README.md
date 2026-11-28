@@ -228,8 +228,10 @@ Other:
   local-network rules and those routes: the implicit `from all fwmark 0x0/0x10000` rule for sockets
   not explicitly bound to a network, and the downstream network's explicit rule for accepted TCP
   sockets. With the Tethering module's per-downstream local network agent, both select the
-  downstream's interface table instead of table 97. UDP replies from apps covered by a
-  non-bypassable VPN match that VPN's UID rule first and go into the tunnel.
+  downstream's interface table instead of table 97. That traffic otherwise follows Android's
+  local-delivery rules as IPv4 tethered clients do: netd's eBPF ingress filter can drop it for apps
+  covered by a VPN, and UDP replies from apps covered by a non-bypassable VPN match that VPN's UID
+  rule first and go into the tunnel.
 * For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata.
 * `IPv6 NAT` fwmark fallback for TPROXY uses masked high reserved bits `0x10000000/0x10000000`.
   That fallback is expected on only kernels without effective `FRA_IP_PROTO` policy-rule support, which upstream Linux added in 4.17.

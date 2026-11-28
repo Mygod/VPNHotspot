@@ -585,25 +585,35 @@ Effect: a downstream packet addressed to the phone's own address leaves
 it to whichever local socket owns that address and port, with the client's own
 source address, as it does for IPv4 tethered clients. Replies from a local
 socket that is not explicitly bound to a network reach the client through the
-NAT66 prefix route in table 97, via AOSP's
-`from all fwmark 0x0/0x10000 lookup local_network` rule; a socket explicitly
-bound to another network replies elsewhere, as it does to IPv4 tethered
-clients. Like the other local/special returns, this traffic is outside NAT66
-admission and counting, so a blocked MAC reaches local apps on these addresses
-as a blocked IPv4 client does.
+NAT66 prefix route, via AOSP's implicit
+`from all fwmark 0x0/0x10000 lookup <table>` local-network rule. An accepted
+TCP socket inherits netd's incoming local-network mark, because Android enables
+`tcp_fwmark_accept`, so its replies use that network's explicit rule instead.
+Both rules select table 97 for a `LOCAL_NET_ID` downstream and the downstream's
+interface table for a per-downstream local network; see
+[NAT66 Routes, Address, And Policy Rule](#nat66-routes-address-and-policy-rule).
+A socket explicitly bound to another network replies elsewhere, as it does to
+IPv4 tethered clients. Like the other local/special returns, this traffic is
+outside NAT66 admission and counting, so a blocked MAC reaches local apps on
+these addresses as a blocked IPv4 client does.
 
-A non-bypassable VPN also takes UDP replies from the apps it covers. Its UID
-rule matches every unprotected socket in its UID ranges regardless of netId, at
-priority 13000 on Android 17 (12000 on Android 10), ahead of the implicit
-local-network rule at 20000 (17000 on Android 10). When the VPN's table routes
-the client's NAT66 address, for example through an IPv6 default route, such an
-app receives the client's datagram, but its reply goes into the tunnel and never
-reaches the client. TCP
-is unaffected: netd marks packets arriving on a local-network interface with the
-local netId, `explicitlySelected`, and `protectedFromVpn`, and Android enables
-`tcp_fwmark_accept`, so an accepted socket inherits that mark and its replies
-match the explicit local-network rule instead of the VPN. IPv4 tethered clients
-have the same UDP limit.
+Phone-local destinations otherwise follow Android's own local-delivery rules,
+the same as for IPv4 tethered clients. The old proxy path bypassed them because
+its connections came from uid 0 over loopback.
+
+- netd's eBPF ingress filter drops packets arriving on a non-VPN interface for
+  a VPN's own interface addresses, for every app. It also drops them for apps
+  that a non-bypassable full-route VPN isolates to its interface, and for apps
+  in lockdown while the VPN is down. System uids and loopback are exempt, and
+  TCP RSTs and ingress FINs skip the owner match.
+- A non-bypassable VPN's UID rule matches every unprotected socket in its UID
+  ranges regardless of netId, at priority 13000 on Android 17 (12000 on
+  Android 10), ahead of the implicit local-network rule at 20000 (17000 on
+  Android 10). When the VPN's table routes the client's NAT66 address, for
+  example through an IPv6 default route, an app it covers that does receive
+  the client's datagram sends its UDP reply into the tunnel. An accepted TCP
+  socket's inherited mark sets `protectedFromVpn`, so its replies skip that
+  rule.
 
 AOSP sources:
 
@@ -616,6 +626,10 @@ AOSP sources:
   https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/RouteController.cpp#481
 - `tcp_fwmark_accept`:
   https://android.googlesource.com/platform/system/core/+/android-17.0.0_r1/rootdir/init.rc#316
+- eBPF owner match and ingress filter:
+  https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/bpf/progs/netd.c#741
+  and
+  https://android.googlesource.com/platform/packages/modules/Connectivity/+/android-17.0.0_r1/bpf/progs/netd.c#763
 
 Without these returns, the daemon would proxy such traffic upstream. Its UDP
 reply socket must then bind the exact original destination, which fails with
