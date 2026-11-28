@@ -658,8 +658,18 @@ its connections came from uid 0 over loopback.
   the client's datagram sends its UDP reply into the tunnel. An accepted TCP
   socket's inherited mark sets `protectedFromVpn`, so its replies skip that
   rule.
+- netd enables `use_oif_addrs_only`, so a UDP service bound to `[::]` that
+  replies without `IPV6_PKTINFO` sends from the downstream's address, the NAT66
+  gateway. A client that sent to another phone address, such as a cellular one,
+  over a connected UDP socket drops that reply, as an IPv4 client does when its
+  reply comes from the IPv4 downstream address. Clients should reach phone UDP
+  services at the gateway address.
 
 AOSP sources:
+
+- `use_oif_addrs_only` enabled on every interface:
+  - https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/InterfaceController.cpp#267
+  - https://android.googlesource.com/platform/system/netd/+/android-17.0.0_r1/server/InterfaceController.cpp#257
 
 - implicit local-network rule:
   - https://android.googlesource.com/platform/system/netd/+/android-10.0.0_r1/server/RouteController.cpp#654

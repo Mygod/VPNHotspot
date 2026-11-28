@@ -263,7 +263,10 @@ gateway reply socket. The acquisition report stays, because that gateway socket,
 destination whose port a local app holds on the wildcard address, can still
 collide. Those local-delivery rules can drop the packet before an app covered
 by a VPN receives it, or send that app's UDP reply into the tunnel; see the
-routing document.
+routing document. A UDP service bound to `[::]` without `IPV6_PKTINFO` also
+replies from the gateway address, because netd enables `use_oif_addrs_only`,
+so clients should reach phone UDP services at the gateway, as IPv4 clients do
+at the downstream address.
 
 UDP hop-limit behavior is part of the NAT66 contract. Missing hop-limit
 metadata is reported and the datagram is dropped. Expired hop limit produces a

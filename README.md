@@ -232,10 +232,12 @@ Other:
   sockets and reflected kernel replies. When the platform release gives each downstream its own
   local network agent (Android 15+, on by default from 25Q4), that explicit rule selects the
   downstream's interface table (ifindex + 1000), which is assumed to hold the kernel's prefix route
-  for the gateway address because netd sets `accept_ra_rt_table` to -1000. That traffic otherwise follows Android's local-delivery rules as IPv4
-  tethered clients do: netd's eBPF ingress filter can drop it for apps covered by a VPN, and UDP
-  replies from apps covered by a non-bypassable VPN match that VPN's UID rule first and go into the
-  tunnel.
+  for the gateway address because netd sets `accept_ra_rt_table` to -1000. That traffic otherwise
+  follows Android's local-delivery rules as IPv4 tethered clients do: netd's eBPF ingress filter can
+  drop it for apps covered by a VPN, and UDP replies from apps covered by a non-bypassable VPN match
+  that VPN's UID rule first and go into the tunnel. Because netd enables `use_oif_addrs_only`, a UDP
+  service bound to `[::]` replies from the gateway address, so clients should reach phone UDP
+  services at the gateway.
 * For packet marks, Android fwmark is assumed to use low bits for netId and routing metadata.
 * `IPv6 NAT` fwmark fallback for TPROXY uses masked high reserved bits `0x10000000/0x10000000`.
   That fallback is expected on only kernels without effective `FRA_IP_PROTO` policy-rule support, which upstream Linux added in 4.17.
