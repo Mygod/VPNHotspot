@@ -16,15 +16,16 @@ import be.mygod.vpnhotspot.util.TileServiceDismissHandle
 import be.mygod.vpnhotspot.widget.SmartSnackbar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
 import timber.log.Timber
@@ -68,7 +69,7 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
         }
     }
 
-    override val coroutineContext = Job()
+    override val coroutineContext = Dispatchers.Main.immediate + Job()
     private val managedIfaces = MutableStateFlow<ScatterSet<String>>(emptyScatterSet())
     private val inactiveIfaceSet = MutableStateFlow<ScatterSet<String>>(emptyScatterSet())
     private val monitoredIfaceSet = MutableStateFlow<ScatterSet<String>>(emptyScatterSet())
@@ -76,9 +77,14 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
     private val binder = Binder(this)
     private var downstreams = MutableScatterMap<String, Downstream>()
     /**
-     * Protects downstream state across suspending start/stop transitions.
+     * Downstream transitions, run to completion one at a time in arrival order by the worker launched in [onCreate]:
+     * downstream start/stop suspend, so running intents and tether state changes as independent coroutines would
+     * interleave them. Every downstream field is only touched from these transitions, all on the main thread.
      */
-    private val downstreamsMutex = Mutex()
+    private val transitions = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private var destroyed = false
+    /** The start ID of the latest start whose transition has run, so stopping never drops a start still queued. */
+    private var lastStartId = 0
     private var tetherStatesJob: Job? = null
     private var tetheredIfaces: Set<String>? = null
 
@@ -98,8 +104,11 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
                     }
                 }
         }
+        val self = coroutineContext.job
         TetherStates.flow.map { it.tethered }.distinctUntilChanged().collect { tetheredInterfaces ->
-            downstreamsMutex.withLock {
+            transitions.trySend {
+                // a state collected before the transition that stopped this collector ran is stale
+                if (tetherStatesJob !== self) return@trySend
                 tetheredIfaces = tetheredInterfaces
                 val toRemove = downstreams.toMutableScatterMap()
                 tetheredInterfaces.forEach { iface ->
@@ -110,11 +119,11 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
                     if (!downstream.monitor) check(downstreams.remove(iface, downstream))
                     downstream.stop()
                 }
-                onDownstreamsChangedLocked()
+                onDownstreamsChanged()
             }
         }
     }
-    private suspend fun onDownstreamsChangedLocked() {
+    private suspend fun onDownstreamsChanged() {
         val monitoredIfaces = MutableScatterSet<String>()
         val inactiveIfaces = MutableScatterSet<String>()
         val managedIfaces = MutableScatterSet<String>()
@@ -135,22 +144,39 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
                 ifaces.forEach { iface -> add(iface) }
             }))
         }
-        // Publish to the bound binder before the teardown below: when reached from the TetherStates
-        // collector, unregisterReceiver() cancels tetherStatesJob — this coroutine's own parent — which
-        // would otherwise skip this withContext and leave stale managedIfaces visible to bound UI.
-        withContext(Dispatchers.Main) {
-            monitoredIfaceSet.value = monitoredIfaces
-            inactiveIfaceSet.value = inactiveIfaces
-            this@TetheringService.managedIfaces.value = managedIfaces
-        }
+        monitoredIfaceSet.value = monitoredIfaces
+        inactiveIfaceSet.value = inactiveIfaces
+        this.managedIfaces.value = managedIfaces
         if (managedIfaces.isEmpty()) {
-            interfaces.value = null
             unregisterReceiver()
-            ServiceNotification.stopForeground(this)
-            stopSelf()
+            if (stopSelfResult(lastStartId)) {
+                interfaces.value = null
+                ServiceNotification.stopForeground(this)
+            } else {
+                // a newer start is still queued: keep the foreground slot it claimed, with an empty placeholder in
+                // place of the interfaces just torn down, since re-promoting later can be denied in the background
+                interfaces.value = Interfaces()
+            }
         } else {
             if (tetherStatesJob == null) tetherStatesJob = launchTetherStatesJob()
             interfaces.value = Interfaces(active, notificationInactive)
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        launch {
+            try {
+                for (transition in transitions) if (!destroyed) transition()
+            } finally {
+                withContext(NonCancellable) {
+                    unregisterReceiver()
+                    val oldDownstreams = downstreams
+                    downstreams = MutableScatterMap()
+                    oldDownstreams.forEachValue { it.stop() }    // force clean to prevent leakage
+                }
+                this@TetheringService.cancel()
+            }
         }
     }
 
@@ -159,65 +185,55 @@ class TetheringService : NetlinkNeighbourMonitoringService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         launch { BootReceiver.startIfEnabled() }
         ServiceNotification.startForeground(this)   // call this first just in case we are shutting down immediately
-        launch {
-            downstreamsMutex.withLock {
-                if (intent != null) {
-                    for (iface in intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()) {
-                        var newDownstream: Downstream? = null
-                        downstreams.compute(iface) { _, existing ->
-                            existing ?: Downstream(this@TetheringService, iface).also { newDownstream = it }
-                        }
-                        if (newDownstream?.start() == false) dismissIfApplicable()
+        transitions.trySend {
+            lastStartId = startId
+            if (intent != null) {
+                for (iface in intent.getStringArrayExtra(EXTRA_ADD_INTERFACES) ?: emptyArray()) {
+                    var newDownstream: Downstream? = null
+                    downstreams.compute(iface) { _, existing ->
+                        existing ?: Downstream(this@TetheringService, iface).also { newDownstream = it }
                     }
-                    val monitorList = intent.getStringArrayListExtra(EXTRA_ADD_INTERFACES_MONITOR) ?:
-                        intent.getStringExtra(EXTRA_ADD_INTERFACE_MONITOR)?.let { listOf(it) }
-                    if (!monitorList.isNullOrEmpty()) for (iface in monitorList) {
-                        val isTethered = tetheredIfaces?.contains(iface) == true
-                        var downstreamToStart: Downstream? = null
-                        downstreams.compute(iface) { _, downstream ->
-                            if (downstream == null) {
-                                Downstream(this@TetheringService, iface, true).also {
-                                    if (isTethered) downstreamToStart = it
-                                }
-                            } else {
-                                downstream.monitor = true
-                                if (isTethered && !downstream.started) downstreamToStart = downstream
-                                downstream
+                    if (newDownstream?.start() == false) dismissIfApplicable()
+                }
+                val monitorList = intent.getStringArrayListExtra(EXTRA_ADD_INTERFACES_MONITOR) ?:
+                    intent.getStringExtra(EXTRA_ADD_INTERFACE_MONITOR)?.let { listOf(it) }
+                if (!monitorList.isNullOrEmpty()) for (iface in monitorList) {
+                    val isTethered = tetheredIfaces?.contains(iface) == true
+                    var downstreamToStart: Downstream? = null
+                    downstreams.compute(iface) { _, downstream ->
+                        if (downstream == null) {
+                            Downstream(this@TetheringService, iface, true).also {
+                                if (isTethered) downstreamToStart = it
                             }
-                        }
-                        if (downstreamToStart?.start() == false) dismissIfApplicable()
-                    }
-                    intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.stop() }
-                    intent.getStringExtra(EXTRA_REMOVE_INTERFACE_MONITOR)?.also { iface ->
-                        downstreams[iface]?.also { downstream ->
-                            downstream.monitor = false
-                            if (!downstream.started) downstreams.remove(iface)?.stop()
+                        } else {
+                            downstream.monitor = true
+                            if (isTethered && !downstream.started) downstreamToStart = downstream
+                            downstream
                         }
                     }
-                    onDownstreamsChangedLocked()
-                } else if (downstreams.isEmpty()) withContext(Dispatchers.Main) {
-                    if (stopSelfResult(startId)) {
-                        interfaces.value = null
-                        ServiceNotification.stopForeground(this@TetheringService)
+                    if (downstreamToStart?.start() == false) dismissIfApplicable()
+                }
+                intent.getStringExtra(EXTRA_REMOVE_INTERFACE)?.also { downstreams.remove(it)?.stop() }
+                intent.getStringExtra(EXTRA_REMOVE_INTERFACE_MONITOR)?.also { iface ->
+                    downstreams[iface]?.also { downstream ->
+                        downstream.monitor = false
+                        if (!downstream.started) downstreams.remove(iface)?.stop()
                     }
                 }
+                onDownstreamsChanged()
+            } else if (downstreams.isEmpty() && stopSelfResult(startId)) {
+                interfaces.value = null
+                ServiceNotification.stopForeground(this@TetheringService)
             }
         }
         return START_NOT_STICKY
     }
 
     override fun onDestroy() {
+        destroyed = true
         interfaces.value = null
         ServiceNotification.stopForeground(this)
-        launch {
-            downstreamsMutex.withLock {
-                unregisterReceiver()
-                val oldDownstreams = downstreams
-                downstreams = MutableScatterMap()
-                oldDownstreams.forEachValue { it.stop() }    // force clean to prevent leakage
-                cancel()
-            }
-        }
+        transitions.close()     // the worker skips the transitions left and tears every downstream down
         super.onDestroy()
     }
 
